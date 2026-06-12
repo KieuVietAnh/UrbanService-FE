@@ -5,12 +5,12 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AuthProvider } from './contexts/AuthContext';
 import { AppRoutes } from './routes/AppRoutes';
-import { mockDb } from './store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 
 function App() {
   useEffect(() => {
-    // Initialize mock database in localStorage
-    mockDb.init();
+    // Initialize mock database in localStorage (via shared-api tools)
+    toolsApi.init();
     
     // Set default theme to light if not set
     const savedTheme = localStorage.getItem('urbanmind_theme') || 'light';

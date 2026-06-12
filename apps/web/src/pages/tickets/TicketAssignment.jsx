@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { assignmentApi } from '../../services/api/assignmentApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const TicketAssignment = () => {
@@ -66,7 +66,7 @@ export const TicketAssignment = () => {
   }
 
   // Calculate projected deadline based on priority
-  const slaConfig = mockDb.getSlaConfig();
+  const slaConfig = toolsApi.getSlaConfig();
   const slaHours = slaConfig[ticket.priority]?.hours || 24;
   const projectedDeadline = new Date();
   projectedDeadline.setHours(projectedDeadline.getHours() + slaHours);
@@ -99,8 +99,8 @@ export const TicketAssignment = () => {
           </div>
           <div className="flex gap-2 text-xs font-bold pt-2">
             <span className="badge badge-sm badge-info uppercase py-2 px-2.5">Priority: {ticket.priority}</span>
-            <span className="badge badge-sm badge-outline uppercase py-2 px-2.5">
-              Category: {mockDb.getCategories().find(c => c.categoryId === ticket.categoryId)?.categoryName}
+              <span className="badge badge-sm badge-outline uppercase py-2 px-2.5">
+              Category: {toolsApi.getCategories().find(c => c.categoryId === ticket.categoryId)?.categoryName}
             </span>
           </div>
         </div>

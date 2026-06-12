@@ -1,16 +1,20 @@
 export const ROLE_MAP = {
   ServiceUser: 'Resident',
   SystemStaff: 'System Staff',
+  ServiceOperator: 'Service Provider',
   ServiceProvider: 'Service Provider',
   InteractionManager: 'Interaction Manager',
+  SystemAdmin: 'Admin',
   Administrator: 'Admin',
 };
 
 const BACKEND_TO_INTERNAL = {
   ServiceUser: 'service-user',
   SystemStaff: 'system-staff',
+  ServiceOperator: 'service-provider',
   ServiceProvider: 'service-provider',
   InteractionManager: 'interaction-manager',
+  SystemAdmin: 'administrator',
   Administrator: 'administrator',
 };
 
@@ -30,9 +34,11 @@ export const getInternalRole = (role) => {
     case 'systemstaff':
       return 'system-staff';
     case 'serviceprovider':
+    case 'serviceoperator':
       return 'service-provider';
     case 'interactionmanager':
       return 'interaction-manager';
+    case 'systemadmin':
     case 'administrator':
     case 'admin':
       return 'administrator';

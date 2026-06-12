@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const TicketListPage = () => {
@@ -265,7 +265,7 @@ export const TicketListPage = () => {
             className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
           >
             <option value="">Tất cả danh mục</option>
-            {mockDb.getCategories().map(c => (
+            {toolsApi.getCategories().map(c => (
               <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
             ))}
           </select>
@@ -413,7 +413,7 @@ export const TicketListPage = () => {
                     <td className="py-3.5">
                       <div className="flex items-center gap-1.5 font-bold text-slate-700">
                         {renderCategoryIcon(t.categoryId)}
-                        <span>{mockDb.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
+                        <span>{toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
                       </div>
                     </td>
                     <td className="max-w-[150px] truncate py-3.5 text-slate-500 font-semibold">

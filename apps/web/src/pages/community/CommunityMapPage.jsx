@@ -1,9 +1,9 @@
 // src/pages/community/CommunityMapPage.jsx
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 
 export const CommunityMapPage = () => {
-  const tickets = mockDb.getTickets().filter((ticket) => ticket.latitude && ticket.longitude);
+  const tickets = toolsApi.getTickets().filter((ticket) => ticket.latitude && ticket.longitude);
 
   return (
     <div className="space-y-6">

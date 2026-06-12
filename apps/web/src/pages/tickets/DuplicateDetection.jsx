@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const DuplicateDetection = () => {
@@ -17,7 +17,7 @@ export const DuplicateDetection = () => {
 
   useEffect(() => {
     // Read all submitted / active tickets to show potential duplicates
-    const all = mockDb.getTickets().filter(t => t.status !== 'Closed');
+    const all = toolsApi.getTickets().filter(t => t.status !== 'Closed');
     
     // Group tickets by proximity to mock duplication queue (e.g. group tickets in same category and near coordinates)
     const groups = [];

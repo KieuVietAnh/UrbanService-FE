@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { slaApi } from '../../services/api/slaApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const CategoryManagement = () => {
@@ -79,7 +79,7 @@ export const CategoryManagement = () => {
         ) : (
           categories.map((cat) => {
             // Find operator assigned to this category
-            const operator = mockDb.getOperators().find(o => o.categoryId === cat.categoryId);
+            const operator = toolsApi.getOperators().find(o => o.categoryId === cat.categoryId);
             
             return (
               <div 

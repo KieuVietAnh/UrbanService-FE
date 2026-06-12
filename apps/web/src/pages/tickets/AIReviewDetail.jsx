@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const AIReviewDetail = () => {
@@ -144,7 +144,7 @@ export const AIReviewDetail = () => {
                     <span className="font-bold text-gray-500">Tóm tắt sự cố (AI):</span>
                     <span className="badge badge-primary badge-xs py-1.5 px-2 text-[8px] font-bold uppercase">Confidence: {Math.round(selectedTicket.confidenceScore * 100)}%</span>
                   </div>
-                  <p className="font-medium text-primary italic">"{selectedTicket.description ? mockDb.aiClassify(selectedTicket.title, selectedTicket.description).summary : ''}"</p>
+                  <p className="font-medium text-primary italic">"{selectedTicket.description ? toolsApi.aiClassify(selectedTicket.title, selectedTicket.description).summary : ''}"</p>
                 </div>
 
                 <div className="space-y-3 text-xs">
@@ -157,7 +157,7 @@ export const AIReviewDetail = () => {
                       onChange={(e) => setEditCategoryId(Number(e.target.value))}
                       className="select select-bordered select-sm rounded-xl font-bold"
                     >
-                      {mockDb.getCategories().map(c => (
+                      {toolsApi.getCategories().map(c => (
                         <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
                       ))}
                     </select>
@@ -182,7 +182,7 @@ export const AIReviewDetail = () => {
 
                 <div className="bg-base-200 p-3.5 rounded-xl border border-base-300 text-[10px] font-bold text-gray-500 space-y-1">
                   <div>Phân tích cảm xúc: <span className="text-error">{selectedTicket.sentiment} (Tiêu cực)</span></div>
-                  <div>Trùng lặp gần đây: <span>{mockDb.checkDuplicates(Number(editCategoryId), selectedTicket.latitude, selectedTicket.longitude).length} vé nghi trùng</span></div>
+                  <div>Trùng lặp gần đây: <span>{toolsApi.checkDuplicates(Number(editCategoryId), selectedTicket.latitude, selectedTicket.longitude).length} vé nghi trùng</span></div>
                 </div>
 
                 <button 

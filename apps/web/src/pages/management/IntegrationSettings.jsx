@@ -1,6 +1,6 @@
 // src/pages/management/IntegrationSettings.jsx
 import { useState, useEffect } from 'react';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const IntegrationSettings = () => {
@@ -8,15 +8,15 @@ export const IntegrationSettings = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Read from mock DB
-    setIntegrations(mockDb.getIntegrations());
+    // Read from shared tools API
+    setIntegrations(toolsApi.getIntegrations());
     setLoading(false);
   }, []);
 
   const handleToggle = (key) => {
     const updated = { ...integrations };
     updated[key].enabled = !updated[key].enabled;
-    mockDb.updateIntegrations(updated);
+    toolsApi.updateIntegrations(updated);
     setIntegrations(updated);
     alert('Đã cập nhật cấu hình cổng tích hợp!');
   };

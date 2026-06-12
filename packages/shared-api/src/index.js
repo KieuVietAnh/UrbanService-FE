@@ -9,3 +9,4 @@ export { userApi } from './userApi.js';
 export { slaApi } from './slaApi.js';
 export { mockDb } from './mockStore.js';
 export { getFeedbackBasePath, normalizeTicketsResponse, normalizeCommentsResponse } from './ticketApiHelpers.js';
+export { toolsApi } from './toolsApi.js';
