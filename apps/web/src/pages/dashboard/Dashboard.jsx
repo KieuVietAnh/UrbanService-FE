@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart, SLAPerformanceChart, CategoryVolumeBarChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 
@@ -119,7 +119,7 @@ export const Dashboard = () => {
         {/* Welcome Section & Weather widget */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1">
-            <h2 className="text-2xl font-black text-slate-900">Chào buổi sáng, Minh!</h2>
+            <h2 className="text-2xl font-black text-slate-900">Chào, {user?.fullName || 'Bạn'}!</h2>
             <p className="text-xs font-semibold text-slate-500">Cùng chung tay xây dựng đô thị thông minh và bền vững ngày hôm nay.</p>
           </div>
           <div className="btn btn-xs rounded-xl font-bold bg-[#EFF6FF] border border-[#BFDBFE] text-[#2563EB] flex gap-2 items-center py-2 px-3 h-auto hover:bg-[#EFF6FF]">
@@ -232,7 +232,7 @@ export const Dashboard = () => {
                       <td className="py-3.5">
                         <div className="flex items-center gap-1.5 font-bold text-slate-700">
                           {renderCategoryIcon(t.categoryId)}
-                          <span>{mockDb.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
+                          <span>{toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
                         </div>
                       </td>
                       <td className="py-3.5">
@@ -472,7 +472,7 @@ export const Dashboard = () => {
                     <td className="py-3.5">
                       <div className="flex items-center gap-1.5 font-bold text-slate-700">
                         {renderCategoryIcon(t.categoryId)}
-                        <span>{mockDb.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
+                        <span>{toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
                       </div>
                     </td>
                     <td className="py-3.5">

@@ -82,9 +82,11 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     setLoading(true);
+    setUser(null);
     try {
       await authApi.logout();
-      setUser(null);
+    } catch (err) {
+      console.warn('AuthContext.logout: error during logout', err);
     } finally {
       setLoading(false);
     }

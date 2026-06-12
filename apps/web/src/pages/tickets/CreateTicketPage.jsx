@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import * as Lucide from 'lucide-react';
 
@@ -48,7 +48,7 @@ export const CreateTicketPage = () => {
     if (!title || !description) return;
     
     // Call simulated AI
-    const analysis = mockDb.aiClassify(title, description);
+    const analysis = toolsApi.aiClassify(title, description);
     setAiAnalysis(analysis);
     setCategoryId(analysis.categoryId);
     setPriority(analysis.urgencyLevel);
@@ -61,7 +61,7 @@ export const CreateTicketPage = () => {
     setLocationText(address);
 
     // Run duplicate check on location select
-    const matches = mockDb.checkDuplicates(Number(categoryId), lat, lng);
+    const matches = toolsApi.checkDuplicates(Number(categoryId), lat, lng);
     setDuplicates(matches);
     if (matches.length > 0) {
       setShowDuplicateWarn(true);
@@ -183,7 +183,7 @@ export const CreateTicketPage = () => {
               <div className="space-y-1">
                 <span className="text-slate-400 font-bold text-[10px] block uppercase tracking-wider">Danh mục đề xuất:</span>
                 <span className="font-black text-slate-700 block">
-                  {mockDb.getCategories().find(c => c.categoryId === categoryId)?.categoryName || 'Chưa nhận diện'}
+                  {toolsApi.getCategories().find(c => c.categoryId === categoryId)?.categoryName || 'Chưa nhận diện'}
                 </span>
               </div>
               <div className="space-y-1">
@@ -232,7 +232,7 @@ export const CreateTicketPage = () => {
                 onChange={(e) => setCategoryId(Number(e.target.value))}
                 className="select select-bordered text-xs font-bold rounded-xl border-slate-200 focus:outline-none"
               >
-                {mockDb.getCategories().map(c => (
+                {toolsApi.getCategories().map(c => (
                   <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
                 ))}
               </select>
@@ -414,7 +414,7 @@ export const CreateTicketPage = () => {
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Tiêu đề:</span> <span className="font-bold text-slate-700">{title}</span></div>
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Mô tả:</span> <span className="font-semibold text-slate-600 line-clamp-2">{description}</span></div>
-              <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Danh mục:</span> <span className="font-bold text-slate-700">{mockDb.getCategories().find(c => c.categoryId === categoryId)?.categoryName}</span></div>
+              <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Danh mục:</span> <span className="font-bold text-slate-700">{toolsApi.getCategories().find(c => c.categoryId === categoryId)?.categoryName}</span></div>
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Vị trí sự cố:</span> <span className="font-bold text-slate-700">{locationText}</span></div>
             </div>
           </div>

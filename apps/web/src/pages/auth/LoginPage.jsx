@@ -9,7 +9,7 @@ const normalizeRole = (role) => {
   const normalized = String(role).trim().toLowerCase();
   if (normalized === 'serviceuser' || normalized === 'service-user') return 'service-user';
   if (normalized === 'systemstaff' || normalized === 'system-staff') return 'system-staff';
-  if (normalized === 'serviceprovider' || normalized === 'service-provider') return 'service-provider';
+  if (normalized === 'serviceprovider' || normalized === 'service-provider' || normalized === 'serviceoperator' || normalized === 'service-operator') return 'service-provider';
   if (normalized === 'interactionmanager' || normalized === 'interaction-manager') return 'interaction-manager';
   if (normalized === 'systemadmin' || normalized === 'admin' || normalized === 'administrator') return 'administrator';
   return normalized;
@@ -66,9 +66,9 @@ export const LoginPage = () => {
     }
   };
 
-  const handleAutofill = (autofillEmail) => {
+  const handleAutofill = (autofillEmail, autofillPassword = '123456789') => {
     setEmail(autofillEmail);
-    setPassword('123456');
+    setPassword(autofillPassword);
     setError('');
   };
 
@@ -174,16 +174,17 @@ export const LoginPage = () => {
           </Link>
         </div>
 
-        {/* Quick entry for demo walk-through */}
+        {/* Quick login accounts */}
         <div className="border-t border-slate-200 pt-5 space-y-2">
           <h4 className="text-[9px] uppercase font-bold text-slate-400 text-center tracking-wider mb-2">
-            Đăng Nhập Nhanh Trải Nghiệm 14 Luồng
+            Đăng nhập nhanh bằng tài khoản mẫu
           </h4>
+          <p className="text-[10px] text-slate-500 text-center">Mật khẩu mặc định: <span className="font-semibold">123456789</span></p>
           <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
-            <button onClick={() => handleAutofill('user@urbanmind.vn')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-[#0052CC]">Người Dân (Resident)</button>
-            <button onClick={() => handleAutofill('staff@urbanmind.vn')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-info">Nhân Viên (Staff)</button>
-            <button onClick={() => handleAutofill('operator@urbanmind.vn')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-warning">Kỹ Thuật (Operator)</button>
-            <button onClick={() => handleAutofill('manager@urbanmind.vn')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-secondary">Quản Lý (Manager)</button>
+            <button onClick={() => handleAutofill('anhkvse182347@fpt.edu.vn', '123456789')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-[#0052CC]">Administrator</button>
+            <button onClick={() => handleAutofill('kvietanh123@gmail.com', '123456789')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-info">System Staff</button>
+            <button onClick={() => handleAutofill('xbg4623@gmail.com', '123456789')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-warning">Interaction Manager</button>
+            <button onClick={() => handleAutofill('xbg4622@gmail.com', '123456789')} type="button" className="btn btn-xs btn-outline rounded-lg py-2 hover:bg-secondary">Service Operator</button>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 // src/pages/analytics/InteractionHistoryMonitoring.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const InteractionHistoryMonitoring = () => {
@@ -9,8 +9,8 @@ export const InteractionHistoryMonitoring = () => {
   const [tickets, setTickets] = useState([]);
 
   useEffect(() => {
-    // Fetch all active/resolved tickets to monitor conversations
-    setTickets(mockDb.getTickets());
+    // Fetch all active/resolved tickets to monitor conversations via shared tools
+    setTickets(toolsApi.getTickets());
   }, []);
 
   return (

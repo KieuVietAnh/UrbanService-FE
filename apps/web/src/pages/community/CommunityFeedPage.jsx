@@ -1,7 +1,7 @@
 // src/pages/community/CommunityFeedPage.jsx
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const CommunityFeedPage = () => {
@@ -11,7 +11,7 @@ export const CommunityFeedPage = () => {
 
   useEffect(() => {
     // Fetch all public tickets (excluding drafted/closed ones or just show all for feed)
-    setTickets(mockDb.getTickets());
+    setTickets(toolsApi.getTickets());
   }, []);
 
   const handleSupportToggle = (feedbackId, e) => {
@@ -21,16 +21,16 @@ export const CommunityFeedPage = () => {
     setSupportedList(prev => ({ ...prev, [feedbackId]: !isSupported }));
     
     // Update count in database
-    const allTickets = mockDb.getTickets();
+    const allTickets = toolsApi.getTickets();
     const ticket = allTickets.find(t => t.feedbackId === feedbackId);
     if (ticket) {
       if (!isSupported) {
         // Mock Upvote
         ticket.confidenceScore = (ticket.confidenceScore || 0.9) + 0.01; // increase visibility score
         // Create an audit logs
-        mockDb.addAudit('anonymous', 'Support Ticket', 'Feedback', feedbackId);
+        toolsApi.addAudit('anonymous', 'Support Ticket', 'Feedback', feedbackId);
       }
-      mockDb.updateTickets(allTickets);
+      toolsApi.updateTickets(allTickets);
       setTickets(allTickets);
     }
   };
@@ -66,7 +66,7 @@ export const CommunityFeedPage = () => {
                 <div className="flex items-center justify-between text-[9px] font-bold text-gray-400">
                   <span>{t.feedbackId}</span>
                   <span className="badge badge-xs bg-base-200 text-gray-500 py-1.5 px-2">
-                    {mockDb.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}
+                    {toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}
                   </span>
                 </div>
                 <h4 className="font-extrabold text-sm text-base-content line-clamp-1">{t.title}</h4>

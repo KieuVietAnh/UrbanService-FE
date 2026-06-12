@@ -1,14 +1,14 @@
 // src/pages/admin/AuditLog.jsx
 import { useState, useEffect } from 'react';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 
 export const AuditLog = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Read logs from mock DB
-    setLogs(mockDb.getAuditLogs());
+    // Read logs from shared tools API
+    setLogs(toolsApi.getAuditLogs());
     setLoading(false);
   }, []);
 

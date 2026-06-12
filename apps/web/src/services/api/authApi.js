@@ -72,7 +72,11 @@ export const authApi = {
 
   async logout() {
     tokenStorage.clear();
-    await sharedAuthApi.logout();
+    try {
+      await sharedAuthApi.logout();
+    } catch (err) {
+      console.warn('authApi.logout: logout request failed, cleared local session anyway', err);
+    }
     return { success: true };
   },
 

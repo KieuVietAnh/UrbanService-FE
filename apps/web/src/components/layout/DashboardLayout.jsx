@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import * as Lucide from 'lucide-react';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const DashboardLayout = ({ children }) => {
@@ -29,7 +29,7 @@ export const DashboardLayout = ({ children }) => {
 
     // Simulate AI response delay
     setTimeout(() => {
-      const replyText = mockDb.getAiChatReply(userMsg);
+      const replyText = toolsApi.getAiChatReply(userMsg);
       setChatMessages(prev => [...prev, { sender: 'ai', text: replyText }]);
       setLoadingReply(false);
     }, 800);

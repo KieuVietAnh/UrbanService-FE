@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { mockDb } from '../../store/mockStore';
+import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
 export const HelperWorkspacePage = () => {
@@ -79,7 +79,7 @@ export const HelperWorkspacePage = () => {
         <div>
           <h2 className="text-2xl font-black">Nhiệm Vụ Đơn Vị Thi Công</h2>
           <p className="text-xs text-gray-500 font-semibold">
-            Đơn vị: <span className="text-primary font-bold">{mockDb.getOperators().find(o => o.operatorId === user?.operatorId)?.operatorName}</span>
+            Đơn vị: <span className="text-primary font-bold">{toolsApi.getOperators().find(o => o.operatorId === user?.operatorId)?.operatorName}</span>
           </p>
         </div>
       </div>

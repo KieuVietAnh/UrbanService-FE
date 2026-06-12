@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { notificationApi } from '../../services/api/notificationApi';
 
 export const Header = ({ onMenuToggle }) => {
-  const { user, login, logout } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
@@ -40,16 +40,6 @@ export const Header = ({ onMenuToggle }) => {
     if (!user) return;
     await notificationApi.markAllAsRead(user.userId);
     fetchNotifications();
-  };
-
-  // Switch role helper for Capstone evaluation
-  const handleRoleSwitch = async (email) => {
-    try {
-      await login(email, '123456');
-      navigate('/dashboard');
-    } catch (err) {
-      console.error(err);
-    }
   };
 
   // Convert pathname to readable breadcrumbs
@@ -176,51 +166,8 @@ export const Header = ({ onMenuToggle }) => {
         </div>
       )}
 
-      {/* Right section: Walkthrough Switcher, Notification, User Profile */}
+      {/* Right section: Notification, User Profile */}
       <div className="flex items-center gap-3">
-        {/* WALKTHROUGH SWITCHER */}
-        <div className="dropdown dropdown-end">
-          <label tabIndex={0} className="btn btn-warning btn-sm gap-2 rounded-xl text-xs uppercase font-bold animate-bounce hover:animate-none">
-            <Lucide.Shuffle size={16} />
-            Đổi Vai Trò Demo
-          </label>
-          <ul tabIndex={0} className="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-72 mt-2 border border-base-300 z-50">
-            <li className="menu-title px-4 py-2 text-xs font-bold text-center text-primary border-b border-base-200">
-              WALKTHROUGH ROLES SWITCHER
-            </li>
-            <li>
-              <button onClick={() => handleRoleSwitch('user@urbanmind.vn')} className="flex justify-between items-center py-3">
-                <span className="font-semibold text-xs">Resident (Người Dân)</span>
-                <span className="badge badge-sm badge-accent">Citizen</span>
-              </button>
-            </li>
-            <li>
-              <button onClick={() => handleRoleSwitch('staff@urbanmind.vn')} className="flex justify-between items-center py-3">
-                <span className="font-semibold text-xs">System Staff (Nhân Viên)</span>
-                <span className="badge badge-sm badge-info">Frontdesk</span>
-              </button>
-            </li>
-            <li>
-              <button onClick={() => handleRoleSwitch('operator@urbanmind.vn')} className="flex justify-between items-center py-3">
-                <span className="font-semibold text-xs">Service Provider (Đội Kỹ Thuật)</span>
-                <span className="badge badge-sm badge-warning">Operator</span>
-              </button>
-            </li>
-            <li>
-              <button onClick={() => handleRoleSwitch('manager@urbanmind.vn')} className="flex justify-between items-center py-3">
-                <span className="font-semibold text-xs">Interaction Manager (Quản Lý)</span>
-                <span className="badge badge-sm badge-secondary">Analyst</span>
-              </button>
-            </li>
-            <li>
-              <button onClick={() => handleRoleSwitch('admin@urbanmind.vn')} className="flex justify-between items-center py-3">
-                <span className="font-semibold text-xs">Administrator (Quản Trị)</span>
-                <span className="badge badge-sm badge-error">Admin</span>
-              </button>
-            </li>
-          </ul>
-        </div>
-
         {/* NOTIFICATION CENTER */}
         <div className="dropdown dropdown-end">
           <label tabIndex={0} className="btn btn-ghost btn-circle relative">
