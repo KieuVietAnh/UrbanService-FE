@@ -1,46 +1,13 @@
 // src/components/layout/Header.jsx
-import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { notificationApi } from '../../services/api/notificationApi';
+import { NotificationBell } from '../notifications/NotificationBell';
 
 export const Header = ({ onMenuToggle }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const fetchNotifications = useCallback(async () => {
-    if (!user) return;
-    try {
-      const res = await notificationApi.getNotifications(user.userId);
-      setNotifications(res);
-      setUnreadCount(res.filter(n => !n.isRead).length);
-    } catch (err) {
-      console.error(err);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 5000);
-    return () => clearInterval(interval);
-  }, [fetchNotifications, user]);
-
-  const handleMarkAsRead = async (id) => {
-    await notificationApi.markAsRead(id);
-    fetchNotifications();
-  };
-
-  const handleMarkAllAsRead = async () => {
-    if (!user) return;
-    await notificationApi.markAllAsRead(user.userId);
-    fetchNotifications();
-  };
 
   // Convert pathname to readable breadcrumbs
   const getBreadcrumbs = () => {
@@ -168,60 +135,7 @@ export const Header = ({ onMenuToggle }) => {
 
       {/* Right section: Notification, User Profile */}
       <div className="flex items-center gap-3">
-        {/* NOTIFICATION CENTER */}
-        <div className="dropdown dropdown-end">
-          <label tabIndex={0} className="btn btn-ghost btn-circle relative">
-            <div className="indicator">
-              <Lucide.Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="badge badge-xs badge-error indicator-item font-extrabold text-[8px] p-1">
-                  {unreadCount}
-                </span>
-              )}
-            </div>
-          </label>
-          <div tabIndex={0} className="dropdown-content card card-compact w-80 shadow bg-base-100 border border-base-300 mt-2 z-50">
-            <div className="card-body p-0">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-base-300">
-                <h3 className="font-bold text-sm">Thông Báo</h3>
-                {unreadCount > 0 && (
-                  <button onClick={handleMarkAllAsRead} className="text-xs text-primary font-semibold hover:underline">
-                    Đọc tất cả
-                  </button>
-                )}
-              </div>
-              <div className="max-h-64 overflow-y-auto divide-y divide-base-300">
-                {notifications.length === 0 ? (
-                  <div className="px-4 py-6 text-center text-gray-500 text-xs">Không có thông báo mới nào</div>
-                ) : (
-                  notifications.map((notif, idx) => (
-                    <div 
-                      key={idx} 
-                      onClick={() => {
-                        handleMarkAsRead(notif.notificationId);
-                        navigate(notif.targetUrl);
-                      }}
-                      className={`p-3 hover:bg-base-200 cursor-pointer flex gap-3 transition-colors ${
-                        !notif.isRead ? 'bg-primary/5' : ''
-                      }`}
-                    >
-                      <div className="p-2 h-fit rounded-lg bg-base-300 text-primary">
-                        <Lucide.AlertCircle size={16} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h5 className={`text-xs truncate ${!notif.isRead ? 'font-bold' : ''}`}>{notif.title}</h5>
-                        <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{notif.message}</p>
-                        <span className="text-[8px] text-gray-400 mt-1 block">
-                          {new Date(notif.createdAt).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <NotificationBell />
 
         {/* User avatar dropdown (specifically for Citizen role since they have no sidebar) */}
         {isCitizen && (

@@ -74,6 +74,7 @@ export const LoginPage = () => {
 
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    console.log('LoginPage clientId:', clientId);
     if (!clientId) return;
     const scriptId = 'google-identity-script';
     if (document.getElementById(scriptId)) return;
