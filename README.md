@@ -1,80 +1,67 @@
-# 🏙️ UrbanMind — Capstone Project (SEP491)
+﻿# 🏙️ UrbanMind — Capstone Project
 
-> **Hệ thống quản lý phản ánh và dịch vụ đô thị thông minh**  
-> Urban Service Interaction & Feedback Platform
+> **Hệ thống quản lý phản ánh và dịch vụ đô thị thông minh**
 
 ---
 
 ## 📌 Giới thiệu dự án
 
-**UrbanMind** là nền tảng cho phép người dân (`Citizen`) phản ánh các vấn đề đô thị (hư hỏng đường, ngập nước, rác thải, …), đội ngũ hỗ trợ (`Helper`) nhận và xử lý phản ánh, và các cấp quản lý (`Inspector`, `Admin`, `Department Head`) giám sát toàn bộ hệ thống thông qua dashboard phân tích dữ liệu.
+UrbanMind là nền tảng giúp người dân phản ánh sự cố đô thị (đèn đường hỏng, ngập nước, rác thải, cây ngã, …), cho phép đội kỹ thuật và quản lý theo dõi, xử lý và đánh giá tiến trình xử lý qua dashboard.
 
-| Thông tin | Chi tiết |
-|-----------|----------|
-| Mã đồ án | SU26SE058 |
-| Học kỳ | Summer 2026 |
-| Nền tảng | Web (React) + Mobile (React Native/Expo) |
-| Deploy Web | Vercel |
-| Deploy Mobile | Expo EAS Build / TestFlight / APK |
+---
+
+## 🌐 Deploy hiện tại
+
+- Frontend: `http://152.42.177.174`
+- Backend Swagger UI: [http://152.42.177.174:8080/swagger/index.html](http://152.42.177.174:8080/swagger/index.html)
 
 ---
 
 ## 🏗️ Kiến trúc Monorepo
 
-Dự án sử dụng **pnpm Workspaces** (Monorepo) để quản lý nhiều ứng dụng trong cùng một repository.
+Dự án sử dụng **pnpm Workspaces** để quản lý nhiều package và ứng dụng trong cùng repository.
 
 ```
-SEP491/
+UrbanService-FE/
 ├── apps/
-│   ├── web/                        # ✅ React + Vite (Web App)
-│   └── mobile/                     # 📱 React Native + Expo (Mobile App)
-│
+│   ├── web/                        # React + Vite frontend
+│   └── mobile/                     # Expo React Native mobile app
 ├── packages/
-│   └── common/                     # 📦 Shared logic (utils, constants, types)
-│       └── index.js
-│
+│   ├── common/                     # Shared logic và helper chung
+│   ├── shared-api/                 # API wrapper dùng chung
+│   ├── shared-types/               # Định nghĩa kiểu dữ liệu và role mapping
+│   ├── shared-ui/                  # UI component chung
+│   └── shared-utils/               # Utility functions chung
 ├── package.json                    # Root workspace scripts
 ├── pnpm-workspace.yaml             # Workspace registration
-├── .gitignore
 └── README.md
 ```
 
 ---
 
-## 📁 Cấu trúc chi tiết `apps/web`
+## 📁 Cấu trúc `apps/web`
 
 ```
 apps/web/
 ├── public/                         # Static assets
 ├── src/
-│   ├── assets/                     # Images, icons, fonts
-│   ├── components/
-│   │   ├── charts/                 # Chart components (Recharts)
+│   ├── api/                        # Shared API config và axios wrapper
+│   ├── assets/                     # Images, icons, media files
+│   ├── components/                 # UI components tái sử dụng
+│   │   ├── charts/                 # Biểu đồ
 │   │   ├── layout/                 # Header, Sidebar, Layout wrappers
-│   │   └── maps/                   # Map components (Leaflet / Google Maps)
-│   │
-│   ├── contexts/                   # React Context (AuthContext, ThemeContext, …)
-│   ├── guards/                     # Route Guards (PrivateRoute, RoleGuard)
-│   ├── pages/
-│   │   ├── LandingPage.jsx         # Trang chủ public
-│   │   ├── auth/                   # Login, Register, ForgotPassword
-│   │   ├── dashboard/              # Dashboard theo từng role
-│   │   ├── tickets/                # Danh sách, tạo mới, chi tiết phản ánh
-│   │   ├── management/             # Quản lý user, phân công
-│   │   ├── analytics/              # Báo cáo thống kê
-│   │   ├── community/              # Forum, bình luận cộng đồng
-│   │   ├── profile/                # Trang cá nhân
-│   │   ├── settings/               # Cài đặt tài khoản
-│   │   └── admin/                  # Admin panel
-│   │
-│   ├── roles/                      # Role-specific logic/constants
-│   ├── routes/                     # React Router config
-│   ├── services/                   # API service layer (axios calls)
-│   ├── store/                      # State management (Zustand / Redux)
+│   │   └── maps/                   # Map components (Leaflet)
+│   ├── contexts/                   # React context (Auth, state, ...)
+│   ├── guards/                     # Route guards (RoleGuard, ProtectedRoute)
+│   ├── hooks/                      # Custom hooks
+│   ├── pages/                      # Pages theo route
+│   ├── roles/                      # Role-specific config
+│   ├── routes/                     # App route definitions
+│   ├── services/                   # API service layer
+│   ├── store/                      # State management
 │   ├── App.jsx
 │   ├── main.jsx
 │   └── index.css
-│
 ├── index.html
 ├── package.json
 └── vite.config.js
@@ -82,262 +69,122 @@ apps/web/
 
 ---
 
-## 📁 Cấu trúc chi tiết `apps/mobile`
-
-> ⚠️ Mobile chỉ hỗ trợ **2 roles**: `Citizen` và `Helper`
+## 📁 Cấu trúc `apps/mobile`
 
 ```
 apps/mobile/
 ├── App.js                          # Entry point Expo
 ├── package.json
-└── (Sẽ mở rộng khi có Figma mobile)
-    ├── src/
-    │   ├── screens/
-    │   │   ├── citizen/            # Màn hình cho Citizen
-    │   │   └── helper/             # Màn hình cho Helper
-    │   ├── navigation/             # React Navigation stack/tab
-    │   ├── services/               # API calls (dùng chung với web nếu có thể)
-    │   ├── contexts/               # Auth, Theme context
-    │   └── components/             # Reusable UI components
-    └── assets/
+└── (cấu trúc mở rộng theo nhu cầu mobile)
 ```
 
 ---
 
-## 👥 Các Role trong hệ thống
+## 📁 Cấu trúc `packages`
 
-| Role | Nền tảng | Quyền hạn |
-|------|----------|-----------|
-| `citizen` | Web + Mobile | Gửi phản ánh, theo dõi trạng thái |
-| `helper` | Web + Mobile | Nhận & xử lý phản ánh được giao |
-| `inspector` | Web only | Kiểm tra chất lượng xử lý |
-| `department_head` | Web only | Quản lý phòng ban, phân công |
-| `admin` | Web only | Quản trị toàn hệ thống |
-
-### 🖥️ Layout theo role (Web)
-
-- **Citizen**: Navbar ngang (horizontal) — Không có sidebar
-- **Các role còn lại**: Sidebar dọc + Header ngang
+```
+packages/
+├── common/                        # Shared helper logic và constants
+├── shared-api/                    # API wrapper chung cho client
+├── shared-types/                  # Kiểu dữ liệu chung và role mapping
+├── shared-ui/                     # Shared UI components
+└── shared-utils/                  # Utility functions chung
+```
 
 ---
 
-## 🔌 Tích hợp Backend API
+## 👥 Các role chính
 
-### Base URL
-```
-Development:  http://localhost:8080/api
-Production:   https://api.urbanmind.io/api   (cập nhật sau)
-```
+| Role nội bộ | Miêu tả |
+|-------------|--------|
+| `service-user` | Người dân phản ánh và theo dõi ticket |
+| `service-provider` | Đội kỹ thuật xử lý ticket |
+| `interaction-manager` | Quản lý tương tác và giám sát |
+| `administrator` | Quản trị viên hệ thống |
+| `system-staff` | Nhân viên hệ thống nội bộ |
 
-### Authentication
-- Sử dụng **JWT Bearer Token**
-- Token được lưu trong `localStorage` key: `token`
-- Refresh token flow: chưa implement (TODO)
-- Header format:
-```
-Authorization: Bearer <access_token>
-```
+---
 
-### File cấu hình môi trường
+## 🔌 Backend API
+
+### Deploy hiện tại
+- Frontend: `http://152.42.177.174`
+- Backend Swagger UI: `http://152.42.177.174:8080/swagger/index.html`
+
+### Base URL môi trường
+- Local development: `http://localhost:8080/api`
+- Production backend: `http://152.42.177.174:8080/api`
+
+### Cấu hình môi trường
 
 Tạo file `.env` tại `apps/web/`:
+
 ```env
 VITE_API_BASE_URL=http://localhost:8080/api
-VITE_GOOGLE_MAPS_API_KEY=your_google_maps_key
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 ```
 
 Tạo file `.env` tại `apps/mobile/`:
+
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://localhost:8080/api
 ```
 
-> ⚠️ **KHÔNG commit file `.env` lên GitHub!**
-
-### Services Layer (apps/web/src/services/)
-
-Các API call được tổ chức theo module:
-
-```
-services/
-├── authService.js          # POST /auth/login, /auth/register, /auth/logout
-├── ticketService.js        # CRUD /tickets
-├── userService.js          # GET/PUT /users, /users/me
-├── departmentService.js    # GET /departments
-├── analyticsService.js     # GET /analytics/summary, /analytics/tickets
-└── api.js                  # Axios instance với interceptors
-```
-
-### Các API Endpoints cần thiết (Backend cần implement)
-
-#### Auth
-| Method | Endpoint | Mô tả |
-|--------|----------|-------|
-| POST | `/auth/login` | Đăng nhập, trả về JWT |
-| POST | `/auth/register` | Đăng ký tài khoản Citizen |
-| POST | `/auth/logout` | Đăng xuất |
-| GET | `/auth/me` | Lấy thông tin user hiện tại |
-
-#### Tickets (Phản ánh)
-| Method | Endpoint | Mô tả |
-|--------|----------|-------|
-| GET | `/tickets` | Danh sách phản ánh (filter, sort, pagination) |
-| POST | `/tickets` | Tạo phản ánh mới |
-| GET | `/tickets/:id` | Chi tiết phản ánh |
-| PUT | `/tickets/:id` | Cập nhật phản ánh |
-| PATCH | `/tickets/:id/status` | Cập nhật trạng thái |
-| DELETE | `/tickets/:id` | Xóa phản ánh |
-| POST | `/tickets/:id/assign` | Phân công Helper |
-| POST | `/tickets/:id/comments` | Thêm bình luận |
-
-#### Users
-| Method | Endpoint | Mô tả |
-|--------|----------|-------|
-| GET | `/users` | Danh sách user (Admin only) |
-| GET | `/users/:id` | Chi tiết user |
-| PUT | `/users/:id` | Cập nhật thông tin |
-| PATCH | `/users/:id/role` | Đổi role (Admin only) |
-
-#### Analytics
-| Method | Endpoint | Mô tả |
-|--------|----------|-------|
-| GET | `/analytics/summary` | Tổng quan thống kê |
-| GET | `/analytics/tickets` | Thống kê phản ánh theo thời gian |
-| GET | `/analytics/by-category` | Thống kê theo danh mục |
-| GET | `/analytics/by-area` | Thống kê theo khu vực |
+> ⚠️ **KHÔNG commit file `.env` lên GitHub**
 
 ---
 
-## 🚀 Hướng dẫn cài đặt & chạy
+## 🚀 Cài đặt & chạy
 
-### Yêu cầu hệ thống
-- Node.js >= 18.x
-- pnpm >= 8.x (hoặc npm >= 9.x)
+### Yêu cầu
+- Node.js >= 18
+- pnpm >= 8
 
 ### Cài đặt
 
 ```bash
-# Clone repository
-git clone https://github.com/<your-org>/urbanmind.git
-cd urbanmind
-
-# Cài đặt dependencies cho toàn bộ monorepo
-npm install
-# hoặc
+git clone https://github.com/<your-org>/UrbanService-FE.git
+cd UrbanService-FE
 pnpm install
 ```
 
-### Chạy development
+### Chạy ứng dụng
 
 ```bash
-# Chạy Web app
-npm run dev:web
-# → http://localhost:5173
-
-# Chạy Mobile app (cần Expo CLI và Expo Go app trên điện thoại)
-npm run dev:mobile
-# → Scan QR code bằng Expo Go
+pnpm dev:web
+# Mở http://localhost:5173
 ```
-
-### Build production
 
 ```bash
-# Build Web
-npm run build:web
-# → Output: apps/web/dist/
+pnpm dev:mobile
+# Khởi chạy Expo cho mobile
 ```
 
----
-
-## ☁️ Deployment
-
-### Web — Vercel
-
-1. Kết nối GitHub repo với [Vercel](https://vercel.com)
-2. Cấu hình:
-   - **Root Directory**: `apps/web`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-3. Thêm Environment Variables trên Vercel dashboard
-4. Auto-deploy khi push lên branch `main`
-
-### Mobile — Expo EAS Build
+### Build web
 
 ```bash
-# Cài đặt EAS CLI
-npm install -g eas-cli
-
-# Đăng nhập Expo
-eas login
-
-# Build APK (Android)
-cd apps/mobile
-eas build --platform android --profile preview
-
-# Build cho iOS (cần Apple Developer Account)
-eas build --platform ios
+pnpm build:web
+# Output: apps/web/dist/
 ```
 
 ---
 
-## 🌿 Git Workflow
+## 🧩 Root scripts
 
-### Branch Strategy
-
-```
-main              ← Production (Web deploy tự động)
-├── develop       ← Integration branch
-│   ├── feature/citizen-ui
-│   ├── feature/ticket-management
-│   ├── feature/analytics-dashboard
-│   ├── fix/auth-token-expiry
-│   └── chore/monorepo-setup
-```
-
-### Commit Convention (Conventional Commits)
-
-```
-feat: thêm tính năng tạo phản ánh
-fix: sửa lỗi token không hợp lệ
-chore: cập nhật dependencies
-style: chỉnh CSS layout Citizen
-refactor: tách service layer
-docs: cập nhật README
-```
+| Lệnh | Mô tả |
+|------|-------|
+| `pnpm dev` | Chạy web app tại `apps/web` |
+| `pnpm dev:web` | Chạy Web frontend |
+| `pnpm dev:mobile` | Chạy Mobile app |
+| `pnpm build:web` | Build Web app |
 
 ---
 
-## 🧪 Test Accounts (Development)
+## 📌 Lưu ý dự án
 
-> Yêu cầu Backend seed sẵn dữ liệu này vào database dev:
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@urbanmind.io | Admin@123 |
-| Department Head | dept@urbanmind.io | Dept@123 |
-| Inspector | inspector@urbanmind.io | Inspect@123 |
-| Helper | helper@urbanmind.io | Helper@123 |
-| Citizen | citizen@urbanmind.io | Citizen@123 |
-
----
-
-## 🤝 Phân công team
-
-| Thành viên | Nhiệm vụ |
-|------------|----------|
-| Frontend Web | React + Vite (`apps/web`) |
-| Frontend Mobile | React Native + Expo (`apps/mobile`) |
-| Backend | Spring Boot / Node.js API |
-| Database | ERD, Migration, Seeding |
-
----
-
-## 📞 Liên hệ & Tài liệu
-
-- 📄 API Specification: `API Specification.docx` (trong repo)
-- 📊 ERD: `ERD/` folder
-- 📋 SRS: `Report3_Software Requirement Specification.docx`
-- 🎨 Figma Design: Liên hệ team Frontend để nhận link
-
----
-
-*Last updated: June 2026 — SU26SE058 UrbanMind Team*
+- `apps/web` là frontend chính dùng React + Vite.
+- `packages/shared-api` chứa các API wrapper chung.
+- `packages/shared-types` chứa các loại dữ liệu và helper chung.
+- `apps/mobile` là Expo mobile app, đang ở trạng thái khởi tạo.
+- Deploy frontend hiện tại tại: `http://152.42.177.174`.
+- Backend Swagger UI: `http://152.42.177.174:8080/swagger/index.html`.
