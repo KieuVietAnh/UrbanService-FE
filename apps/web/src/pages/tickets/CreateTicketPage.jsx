@@ -109,7 +109,7 @@ export const CreateTicketPage = () => {
       attachments: attachments.map((item) => item.file),
     };
     try {
-      const response = await ticketApi.createTicket(user.userId, user.fullName, payload);
+      await ticketApi.createTicket(user.userId, user.fullName, payload);
       setStep(5); // Success step
     } catch (err) {
       console.error('createTicket error', err);

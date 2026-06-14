@@ -52,12 +52,13 @@ const normalizeIncident = (ticket) => {
 
 export function useIncidentMapData() {
   const { user } = useAuth();
+  const role = user?.role;
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const loadIncidents = useCallback(async () => {
-    if (!user?.role) {
+    if (!role) {
       setIncidents([]);
       return;
     }
@@ -66,7 +67,7 @@ export function useIncidentMapData() {
     setError('');
 
     try {
-      const response = await ticketApi.getTickets({}, { role: user.role });
+      const response = await ticketApi.getTickets({}, { role });
       const tickets = Array.isArray(response) ? response : [];
       const validIncidents = tickets
         .map(normalizeIncident)
@@ -78,7 +79,7 @@ export function useIncidentMapData() {
     } finally {
       setLoading(false);
     }
-  }, [user?.role]);
+  }, [role]);
 
   useEffect(() => {
     loadIncidents();

@@ -19,7 +19,8 @@ const formatRelativeTime = (value) => {
     if (minutes < 60) return `${minutes} phút trước`;
     if (hours < 24) return `${hours} giờ trước`;
     return `${days} ngày trước`;
-  } catch (error) {
+  } catch (e) {
+    void e;
     return 'Vừa xong';
   }
 };
@@ -31,7 +32,7 @@ export const NotificationBell = () => {
     notifications,
     unreadCount,
     loading,
-    error,
+    error: notificationsError,
     markAsRead,
     markAllAsRead,
     loadNotifications,
@@ -86,8 +87,8 @@ export const NotificationBell = () => {
           <div className="max-h-72 overflow-y-auto divide-y divide-base-300">
             {loading ? (
               <div className="px-4 py-6 text-center text-gray-500 text-xs">Đang tải thông báo...</div>
-            ) : error ? (
-              <div className="px-4 py-6 text-center text-error text-xs">{error}</div>
+            ) : notificationsError ? (
+              <div className="px-4 py-6 text-center text-error text-xs">{notificationsError}</div>
             ) : visibleNotifications.length === 0 ? (
               <div className="px-4 py-6 text-center text-gray-500 text-xs">Không có thông báo mới</div>
             ) : (
