@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ticketApi } from '../../services/api/ticketApi';
 import { useAuth } from '../../contexts/AuthContext';
@@ -66,28 +66,7 @@ const isVideoFile = (fileUrl = '') => {
   );
 };
 
-const getAttachmentName = (file, index, isVideo = false) => {
-  if (!file) return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
-
-  if (typeof file === 'string') {
-    const nameFromUrl = file.split('/').pop();
-
-    if (nameFromUrl && nameFromUrl.includes('.')) {
-      return nameFromUrl;
-    }
-
-    return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
-  }
-
-  return (
-    file.fileName ||
-    file.name ||
-    file.originalFileName ||
-    file.originalName ||
-    file.displayName ||
-    (isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm')
-  );
-};
+// attachment name helper removed (unused)
 
 export const CommunityFeedbackDetailPage = () => {
   const { id: feedbackId } = useParams();
@@ -106,7 +85,7 @@ export const CommunityFeedbackDetailPage = () => {
   const [supportCount, setSupportCount] = useState(0);
   const [previewAttachment, setPreviewAttachment] = useState(null);
 
-  const fetchDetail = async () => {
+  const fetchDetail = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
@@ -138,13 +117,13 @@ export const CommunityFeedbackDetailPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [feedbackId]);
 
   useEffect(() => {
     if (feedbackId) {
       fetchDetail();
     }
-  }, [feedbackId]);
+  }, [feedbackId, fetchDetail]);
 
   const handleSupportToggle = async () => {
     if (supportLoading) return;

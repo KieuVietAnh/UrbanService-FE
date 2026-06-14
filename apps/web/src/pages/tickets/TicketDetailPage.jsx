@@ -59,28 +59,7 @@ export const TicketDetailPage = () => {
       url.includes('.m4v')
     );
   };
-  const getAttachmentName = (file, index, isVideo = false) => {
-    if (!file) return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
-
-    if (typeof file === 'string') {
-      const nameFromUrl = file.split('/').pop();
-
-      if (nameFromUrl && nameFromUrl.includes('.')) {
-        return nameFromUrl;
-      }
-
-      return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
-    }
-
-    return (
-      file.fileName ||
-      file.name ||
-      file.originalFileName ||
-      file.originalName ||
-      file.displayName ||
-      (isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm')
-    );
-  };
+  // attachment name helper removed (unused)
   // attachment URL helper provided by the hook: getAttachmentUrl
 
   if (loading) {

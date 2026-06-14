@@ -1,17 +1,11 @@
-name: Deploy Web to VPS
+name: Deploy Web to Production
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "apps/web/**"
-      - "packages/common/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/deploy-web.yml"
-
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -23,6 +17,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     name: Build and deploy React web
     runs-on: ubuntu-latest
 
@@ -36,19 +31,7 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - name: Verify pnpm
-        run: pnpm -v
-
-      - name: Restore pnpm store cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
+   
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -56,6 +39,9 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+
+      - name: Verify pnpm
+        run: pnpm -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
