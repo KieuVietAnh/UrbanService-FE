@@ -24,6 +24,7 @@ export const CreateTicketPage = () => {
   const [longitude, setLongitude] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [submitError, setSubmitError] = useState('');
+  const [previewAttachment, setPreviewAttachment] = useState(null);
 
   // AI Simulation States
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -107,10 +108,8 @@ export const CreateTicketPage = () => {
       longitude,
       attachments: attachments.map((item) => item.file),
     };
-    console.log('Submitting createTicket payload', payload);
     try {
       const response = await ticketApi.createTicket(user.userId, user.fullName, payload);
-      console.log('createTicket response', response);
       setStep(5); // Success step
     } catch (err) {
       console.error('createTicket error', err);
@@ -416,27 +415,43 @@ export const CreateTicketPage = () => {
 
                 return (
                   <div
-                    key={idx}
+                    key={`${attachment.name || attachment.file?.name || 'attachment'}-${idx}`}
                     className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-200 group bg-slate-100"
                   >
-                    {isVideo ? (
-                      <video
-                        src={attachment.preview}
-                        controls
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <img
-                        src={attachment.preview}
-                        alt="Evidence"
-                        className="w-full h-full object-cover"
-                      />
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPreviewAttachment(attachment)}
+                      className="block w-full h-full text-left"
+                    >
+                      {isVideo ? (
+                        <div className="relative w-full h-full bg-black">
+                          <video
+                            src={attachment.preview}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="w-full h-full object-cover opacity-80"
+                          />
+
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+                            <div className="w-10 h-10 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-lg">
+                              <Lucide.Play size={18} fill="currentColor" />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={attachment.preview}
+                          alt="Evidence"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                      )}
+                    </button>
 
                     <button
                       type="button"
                       onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== idx))}
-                      className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-black text-white rounded-full transition-colors"
+                      className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-black text-white rounded-full transition-colors z-10"
                     >
                       <Lucide.Trash size={12} />
                     </button>
@@ -517,6 +532,59 @@ export const CreateTicketPage = () => {
           </div>
         </div>
       )}
+      {/* Attachment preview modal */}
+      {previewAttachment && (() => {
+        const isVideo = isVideoFile(previewAttachment.file);
+        const previewUrl = previewAttachment.preview;
+
+        return (
+          <div
+            className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6"
+            onClick={() => setPreviewAttachment(null)}
+          >
+            <div
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200">
+                <div className="min-w-0">
+                  <h3 className="font-black text-sm text-slate-900 truncate">
+                    {isVideo ? 'Video minh chứng' : 'Hình ảnh minh chứng'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Xem lại trước khi gửi phản ánh
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(null)}
+                  className="btn btn-sm btn-ghost btn-circle"
+                >
+                  <Lucide.X size={18} />
+                </button>
+              </div>
+
+              <div className="bg-black flex items-center justify-center max-h-[75vh]">
+                {isVideo ? (
+                  <video
+                    src={previewUrl}
+                    controls
+                    autoPlay
+                    className="w-full max-h-[75vh] object-contain"
+                  />
+                ) : (
+                  <img
+                    src={previewUrl}
+                    alt="Evidence preview"
+                    className="w-full max-h-[75vh] object-contain"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -53,6 +53,7 @@ const getAttachmentUrl = (file) => {
 
   return raw.startsWith('/') ? raw : `/${raw}`;
 };
+
 const isVideoFile = (fileUrl = '') => {
   const url = fileUrl.toLowerCase();
 
@@ -64,6 +65,30 @@ const isVideoFile = (fileUrl = '') => {
     url.includes('.m4v')
   );
 };
+
+const getAttachmentName = (file, index, isVideo = false) => {
+  if (!file) return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
+
+  if (typeof file === 'string') {
+    const nameFromUrl = file.split('/').pop();
+
+    if (nameFromUrl && nameFromUrl.includes('.')) {
+      return nameFromUrl;
+    }
+
+    return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
+  }
+
+  return (
+    file.fileName ||
+    file.name ||
+    file.originalFileName ||
+    file.originalName ||
+    file.displayName ||
+    (isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm')
+  );
+};
+
 export const CommunityFeedbackDetailPage = () => {
   const { id: feedbackId } = useParams();
   const navigate = useNavigate();
@@ -79,6 +104,7 @@ export const CommunityFeedbackDetailPage = () => {
 
   const [isSupported, setIsSupported] = useState(false);
   const [supportCount, setSupportCount] = useState(0);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
 
   const fetchDetail = async () => {
     try {
@@ -101,18 +127,7 @@ export const CommunityFeedbackDetailPage = () => {
       setSupportCount(detail?.supportCount || detail?.supportsCount || 0);
 
       const commentsFromDetail = normalizeComments(detail);
-
-      if (commentsFromDetail.length > 0) {
-        setComments(commentsFromDetail);
-      } else {
-        try {
-          const commentsResponse = await ticketApi.getComments(feedbackId);
-          setComments(normalizeComments(commentsResponse));
-        } catch (commentErr) {
-          console.warn('Không lấy được bình luận công khai:', commentErr);
-          setComments([]);
-        }
-      }
+      setComments(commentsFromDetail);
     } catch (err) {
       console.error('Không lấy được chi tiết phản ánh cộng đồng:', err);
       setError(
@@ -320,6 +335,7 @@ export const CommunityFeedbackDetailPage = () => {
             Hình ảnh / video đính kèm
           </h3>
 
+          {/* Attachment Form */}
           {attachments.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {attachments.map((file, index) => {
@@ -327,31 +343,36 @@ export const CommunityFeedbackDetailPage = () => {
                 const isVideo = isVideoFile(fileUrl);
 
                 return (
-                  <div
-                    key={index}
-                    className="rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm"
+                  <button
+                    key={file?.attachmentId || file?.id || fileUrl || index}
+                    type="button"
+                    onClick={() => setPreviewAttachment(file)}
+                    className="rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm text-left group relative"
                   >
                     {isVideo ? (
-                      <video
-                        src={fileUrl}
-                        controls
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <a
-                        href={fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block w-full h-full"
-                      >
-                        <img
+                      <div className="relative w-full h-full bg-black">
+                        <video
                           src={fileUrl}
-                          alt={`Attachment ${index + 1}`}
-                          className="w-full h-full object-cover hover:scale-105 transition-transform"
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-cover opacity-80"
                         />
-                      </a>
+
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+                          <div className="w-12 h-12 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-lg">
+                            <Lucide.Play size={22} fill="currentColor" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={fileUrl}
+                        alt={`Attachment ${index + 1}`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -441,6 +462,60 @@ export const CommunityFeedbackDetailPage = () => {
           )}
         </div>
       </div>
+
+      {/* Preview Modal */}
+      {previewAttachment && (() => {
+        const previewUrl = getAttachmentUrl(previewAttachment);
+        const isVideo = isVideoFile(previewUrl);
+
+        return (
+          <div
+            className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6"
+            onClick={() => setPreviewAttachment(null)}
+          >
+            <div
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200">
+                <div className="min-w-0">
+                  <h3 className="font-black text-sm text-slate-900 truncate">
+                    {isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Xem trực tiếp trong trang
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(null)}
+                  className="btn btn-sm btn-ghost btn-circle"
+                >
+                  <Lucide.X size={18} />
+                </button>
+              </div>
+
+              <div className="bg-black flex items-center justify-center max-h-[75vh]">
+                {isVideo ? (
+                  <video
+                    src={previewUrl}
+                    controls
+                    autoPlay
+                    className="w-full max-h-[75vh] object-contain"
+                  />
+                ) : (
+                  <img
+                    src={previewUrl}
+                    alt="Attachment preview"
+                    className="w-full max-h-[75vh] object-contain"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

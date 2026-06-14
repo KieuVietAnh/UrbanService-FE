@@ -10,10 +10,6 @@ export const CommunityFeedPage = () => {
   const [tickets, setTickets] = useState([]);
   const [supportedList, setSupportedList] = useState({});
 
-  // useEffect(() => {
-  //   // Fetch all public tickets (excluding drafted/closed ones or just show all for feed)
-  //   setTickets(toolsApi.getTickets());
-  // }, []);
   useEffect(() => {
   const fetchTickets = async () => {
     try {
@@ -26,27 +22,6 @@ export const CommunityFeedPage = () => {
 
   fetchTickets();
 }, []);
-
-  // const handleSupportToggle = (feedbackId, e) => {
-  //   e.stopPropagation(); // Stop card click navigation
-    
-  //   const isSupported = supportedList[feedbackId];
-  //   setSupportedList(prev => ({ ...prev, [feedbackId]: !isSupported }));
-    
-  //   // Update count in database
-  //   const allTickets = toolsApi.getTickets();
-  //   const ticket = allTickets.find(t => t.feedbackId === feedbackId);
-  //   if (ticket) {
-  //     if (!isSupported) {
-  //       // Mock Upvote
-  //       ticket.confidenceScore = (ticket.confidenceScore || 0.9) + 0.01; // increase visibility score
-  //       // Create an audit logs
-  //       toolsApi.addAudit('anonymous', 'Support Ticket', 'Feedback', feedbackId);
-  //     }
-  //     toolsApi.updateTickets(allTickets);
-  //     setTickets(allTickets);
-  //   }
-  // };
 
   const handleSupportToggle = async (feedbackId, e) => {
   e.stopPropagation();

@@ -34,6 +34,8 @@ export const TicketListPage = () => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [attachmentLoading, setAttachmentLoading] = useState(false);
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] = useState(null);
+  const [attachmentWarning, setAttachmentWarning] = useState('');
+  const [previewAttachment, setPreviewAttachment] = useState(null);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
@@ -303,42 +305,20 @@ export const TicketListPage = () => {
     }
   };
 
-  // const handleDeleteAttachment = async (file) => {
-  //   if (!editTarget) return;
-
-  //   const attachmentId = getAttachmentId(file);
-
-  //   if (!attachmentId) {
-  //     alert('Không tìm thấy attachmentId để xóa file này.');
-  //     return;
-  //   }
-
-  //   try {
-  //     setAttachmentLoading(true);
-
-  //     await ticketApi.deleteAttachment(editTarget.feedbackId, attachmentId);
-
-  //     setEditAttachments((prev) =>
-  //       prev.filter((item) => getAttachmentId(item) !== attachmentId)
-  //     );
-  //   } catch (err) {
-  //     console.error('Không thể xóa tệp đính kèm:', err);
-  //     alert(
-  //       err?.response?.data?.message ||
-  //       err?.message ||
-  //       'Không thể xóa tệp đính kèm.'
-  //     );
-  //   } finally {
-  //     setAttachmentLoading(false);
-  //   }
-  // };
   const handleDeleteAttachment = async () => {
+    if (editAttachments.length <= 1) {
+      setAttachmentWarning('Phản ánh phải có ít nhất một hình ảnh hoặc video minh chứng.');
+      setAttachmentDeleteTarget(null);
+      return;
+    }
+
     if (!editTarget || !attachmentDeleteTarget) return;
 
     const attachmentId = getAttachmentId(attachmentDeleteTarget);
 
     if (!attachmentId) {
       alert('Không tìm thấy attachmentId để xóa file này.');
+      setAttachmentDeleteTarget(null);
       return;
     }
 
@@ -1006,7 +986,7 @@ export const TicketListPage = () => {
                         Hình ảnh / video đính kèm
                       </p>
                       <p className="text-xs text-slate-500 font-medium">
-                        Thêm hoặc xóa file đính kèm cho phản ánh này.
+                        Thêm hoặc xóa file đính kèm cho phản ánh này. Cần giữ lại ít nhất 1 ảnh hoặc video minh chứng.
                       </p>
                     </div>
                   </div>
@@ -1021,7 +1001,11 @@ export const TicketListPage = () => {
                             key={getAttachmentId(file) || fileUrl || index}
                             className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-3"
                           >
-                            <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewAttachment(file)}
+                              className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0"
+                            >
                               {fileUrl ? (
                                 isVideoFile(fileUrl) ? (
                                   <div className="relative w-full h-full bg-black">
@@ -1049,27 +1033,34 @@ export const TicketListPage = () => {
                               ) : (
                                 <Lucide.File size={20} className="text-slate-400" />
                               )}
-                            </div>
+                            </button>
 
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-bold text-slate-700 truncate">
                                 {getAttachmentName(file, index)}
                               </p>
                               {fileUrl && (
-                                <a
-                                  href={fileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewAttachment(file)}
                                   className="text-[10px] text-[#0052CC] font-bold hover:underline"
                                 >
                                   Xem file
-                                </a>
+                                </button>
                               )}
                             </div>
 
                             <button
                               type="button"
-                              onClick={() => setAttachmentDeleteTarget(file)}
+                              onClick={() => {
+                                if (editAttachments.length <= 1) {
+                                  setAttachmentWarning('Phản ánh phải có ít nhất một hình ảnh hoặc video minh chứng.');
+                                  setAttachmentDeleteTarget(null);
+                                  return;
+                                }
+
+                                setAttachmentDeleteTarget(file);
+                              }}
                               disabled={attachmentLoading}
                               className="btn btn-ghost btn-circle btn-xs text-red-500 hover:bg-red-50"
                               title="Xóa file"
@@ -1197,6 +1188,93 @@ export const TicketListPage = () => {
           </div>
         </div>
       )}
+
+      {/* Warning Modal */}
+      {attachmentWarning && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-5">
+            <div className="flex items-start gap-4">
+              <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+                <Lucide.AlertTriangle size={22} />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-slate-900">
+                  Không thể xóa file cuối cùng
+                </h3>
+
+                <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                  {attachmentWarning}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setAttachmentWarning('')}
+                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-xl font-bold"
+              >
+                Đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {previewAttachment && (() => {
+        const previewUrl = getAttachmentUrl(previewAttachment);
+        const isVideo = isVideoFile(previewUrl);
+
+        return (
+          <div
+            className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6"
+            onClick={() => setPreviewAttachment(null)}
+          >
+            <div
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200">
+                <div className="min-w-0">
+                  <h3 className="font-black text-sm text-slate-900 truncate">
+                    {isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Xem trực tiếp trong trang
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(null)}
+                  className="btn btn-sm btn-ghost btn-circle"
+                >
+                  <Lucide.X size={18} />
+                </button>
+              </div>
+
+              <div className="bg-black flex items-center justify-center max-h-[75vh]">
+                {isVideo ? (
+                  <video
+                    src={previewUrl}
+                    controls
+                    autoPlay
+                    className="w-full max-h-[75vh] object-contain"
+                  />
+                ) : (
+                  <img
+                    src={previewUrl}
+                    alt="Attachment preview"
+                    className="w-full max-h-[75vh] object-contain"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

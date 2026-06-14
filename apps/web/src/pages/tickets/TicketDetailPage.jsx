@@ -1,5 +1,6 @@
 // src/pages/tickets/TicketDetailPage.jsx
 
+import { Fragment, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import useTicketDetail from '../../hooks/useTicketDetail';
@@ -30,7 +31,7 @@ export const TicketDetailPage = () => {
     ratingLoading,
     getAttachmentUrl,
   } = useTicketDetail(feedbackId, user);
-
+  const [previewAttachment, setPreviewAttachment] = useState(null);
   const getRatingText = (val) => {
     switch (val) {
       case 1: return 'Rất tệ';
@@ -56,6 +57,28 @@ export const TicketDetailPage = () => {
       url.includes('.ogg') ||
       url.includes('.mov') ||
       url.includes('.m4v')
+    );
+  };
+  const getAttachmentName = (file, index, isVideo = false) => {
+    if (!file) return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
+
+    if (typeof file === 'string') {
+      const nameFromUrl = file.split('/').pop();
+
+      if (nameFromUrl && nameFromUrl.includes('.')) {
+        return nameFromUrl;
+      }
+
+      return isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm';
+    }
+
+    return (
+      file.fileName ||
+      file.name ||
+      file.originalFileName ||
+      file.originalName ||
+      file.displayName ||
+      (isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm')
     );
   };
   // attachment URL helper provided by the hook: getAttachmentUrl
@@ -148,22 +171,32 @@ export const TicketDetailPage = () => {
       <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm overflow-x-auto">
         <div className="flex justify-between items-center w-full min-w-[600px] px-4">
           {steps.map((st, idx) => (
-            <>
+            <Fragment key={st.title || idx}>
               {idx > 0 && (
-                <div className={`h-0.5 flex-1 mx-2 rounded-full transition-colors duration-300 ${currentStep >= idx ? 'bg-[#0052CC]' : 'bg-slate-200'
-                  }`}></div>
+                <div
+                  className={`h-0.5 flex-1 mx-2 rounded-full transition-colors duration-300 ${currentStep >= idx ? 'bg-[#0052CC]' : 'bg-slate-200'
+                    }`}
+                ></div>
               )}
+
               <div className="flex flex-col items-center text-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300 ${currentStep >= idx
-                  ? 'bg-[#0052CC] text-white shadow-md shadow-[#0052CC]/20 ring-4 ring-[#0052CC]/10'
-                  : 'bg-slate-100 text-slate-400 border border-slate-200'
-                  }`}>
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300 ${currentStep >= idx
+                    ? 'bg-[#0052CC] text-white shadow-md shadow-[#0052CC]/20 ring-4 ring-[#0052CC]/10'
+                    : 'bg-slate-100 text-slate-400 border border-slate-200'
+                    }`}
+                >
                   {idx + 1}
                 </div>
-                <span className="text-[10px] font-black mt-2 text-slate-700">{st.title}</span>
-                <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">{st.sub}</span>
+
+                <span className="text-[10px] font-black mt-2 text-slate-700">
+                  {st.title}
+                </span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">
+                  {st.sub}
+                </span>
               </div>
-            </>
+            </Fragment>
           ))}
         </div>
       </div>
@@ -190,45 +223,41 @@ export const TicketDetailPage = () => {
               <span className="text-xs font-bold text-slate-400 block uppercase tracking-wider"> Hình ảnh / video đính kèm</span>
               {attachments.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* {attachments.map((file, i) => {
-                    const fileUrl = getAttachmentUrl(file);
-                    return (
-                      <a
-                        key={i}
-                        href={fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-2xl overflow-hidden border border-slate-200 aspect-video block bg-slate-50 shadow-sm"
-                      >
-                        <img src={fileUrl} alt={`Attachment ${i + 1}`} className="w-full h-full object-cover hover:scale-102 transition-transform" />
-                      </a>
-                    );
-                  })} */}
                   {attachments.map((file, i) => {
                     const fileUrl = getAttachmentUrl(file);
                     const isVideo = isVideoFile(fileUrl);
 
                     return (
-                      <div
-                        key={i}
-                        className="rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm"
+                      <button
+                        key={file?.attachmentId || file?.id || fileUrl || `attachment-${i}`}
+                        type="button"
+                        onClick={() => setPreviewAttachment(file)}
+                        className="rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm text-left group relative"
                       >
                         {isVideo ? (
-                          <video
-                            src={fileUrl}
-                            controls
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <a href={fileUrl} target="_blank" rel="noopener noreferrer">
-                            <img
+                          <div className="relative w-full h-full bg-black">
+                            <video
                               src={fileUrl}
-                              alt={`Attachment ${i + 1}`}
-                              className="w-full h-full object-cover hover:scale-105 transition-transform"
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="w-full h-full object-cover opacity-80"
                             />
-                          </a>
+
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+                              <div className="w-12 h-12 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-lg">
+                                <Lucide.Play size={22} fill="currentColor" />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <img
+                            src={fileUrl}
+                            alt={`Attachment ${i + 1}`}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -427,6 +456,71 @@ export const TicketDetailPage = () => {
                 Gửi
               </button>
             </form>
+
+            {/* Preview Modal */}
+            {previewAttachment && (() => {
+              const previewUrl = getAttachmentUrl(previewAttachment);
+              const isVideo = isVideoFile(previewUrl);
+
+              return (
+                <div
+                  className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6"
+                  onClick={() => setPreviewAttachment(null)}
+                >
+                  <div
+                    className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200">
+                      <div className="min-w-0">
+                        <h3 className="font-black text-sm text-slate-900 truncate">
+                          {isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm'}
+                        </h3>
+                        <p className="text-xs text-slate-500 font-semibold">
+                          Xem trực tiếp trong trang
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={previewUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm btn-outline rounded-xl font-bold text-xs"
+                        >
+                          Mở file gốc
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => setPreviewAttachment(null)}
+                          className="btn btn-sm btn-ghost btn-circle"
+                        >
+                          <Lucide.X size={18} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-black flex items-center justify-center max-h-[75vh]">
+                      {isVideo ? (
+                        <video
+                          src={previewUrl}
+                          controls
+                          autoPlay
+                          className="w-full max-h-[75vh] object-contain"
+                        />
+                      ) : (
+                        <img
+                          src={previewUrl}
+                          alt="Attachment preview"
+                          className="w-full max-h-[75vh] object-contain"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
