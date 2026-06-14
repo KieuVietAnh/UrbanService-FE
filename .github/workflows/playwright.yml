@@ -1,4 +1,4 @@
-name: Playwright E2E Tests
+name: CI
 
 on:
   push:
@@ -6,21 +6,31 @@ on:
       - main
     paths:
       - 'apps/web/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
       - '.github/workflows/playwright.yml'
   pull_request:
     paths:
       - 'apps/web/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/playwright.yml'
+
+concurrency:
+  group: ci-${{ github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  playwright:
-    name: Run Playwright E2E
+  ci:
+    name: CI - install, lint, build, test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        browser: [chromium, firefox, webkit]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,39 +38,41 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          run_install: false
-
-      - name: Verify pnpm
-        run: pnpm -v
+          version: 8
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
+      - name: Verify pnpm
+        run: pnpm -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint web application
+        run: pnpm --dir apps/web lint
+
+      - name: Build web application
+        run: pnpm --dir apps/web build
+
       - name: Install Playwright browsers
         run: pnpm --dir apps/web exec playwright install --with-deps
 
-      - name: Run E2E tests
+      - name: Run Playwright E2E tests
         working-directory: apps/web
-        run: pnpm test:e2e --project=${{ matrix.browser }}
+        run: pnpm exec playwright test --project=chromium --project=firefox --project=webkit
 
-      - name: Upload Playwright report
-        if: always()
+      - name: Ensure Playwright report path exists
+        if: failure()
+        run: mkdir -p apps/web/tests/results/html
+
+      - name: Upload Playwright report on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.browser }}
+          name: playwright-report
           path: apps/web/tests/results/html
