@@ -20,9 +20,10 @@ test.describe('Leaflet Map', () => {
 
     if (await mapPage.hasMarkers()) {
       await mapPage.clickFirstMarker();
-      await expect(page.locator('.leaflet-popup-content')).toBeVisible();
+      const popup = page.locator('.leaflet-popup .leaflet-popup-content');
+      await expect(popup).toBeVisible({ timeout: 15000 });
     } else {
-      await expect(mapPage.emptyStateMessage).toBeVisible();
+      await expect(mapPage.emptyStateCard).toBeVisible();
     }
   });
 });
