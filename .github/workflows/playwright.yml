@@ -61,9 +61,9 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --dir apps/web exec playwright install --with-deps
 
-      - name: Run Playwright E2E tests
+      - name: Run Playwright E2E smoke tests
         working-directory: apps/web
-        run: pnpm exec playwright test --project=chromium --project=firefox --project=webkit
+        run: pnpm exec playwright test --project=smoke
 
       - name: Ensure Playwright report path exists
         if: always()

@@ -31,6 +31,16 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    {
+      name: 'smoke',
+      testMatch: ['tests/smoke/**'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'destructive',
+      testMatch: ['tests/destructive/**'],
+      use: { ...devices['Desktop Chrome'] },
+    },
   ],
   outputDir: 'tests/results/videos',
 });

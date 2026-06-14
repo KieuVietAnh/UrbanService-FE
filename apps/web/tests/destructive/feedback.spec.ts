@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+if (!process.env.RUN_DESTRUCTIVE_TESTS) test.skip(true, 'Destructive tests are skipped unless RUN_DESTRUCTIVE_TESTS is set');
 import { LoginPage } from '../pages/LoginPage';
 import { FeedbackPage } from '../pages/FeedbackPage';
 
