@@ -161,50 +161,16 @@ export const ticketApi = {
     return axiosClient.delete(`${getTicketPath(feedbackId, options.role)}/support`);
   },
 
-  getComments(feedbackId, options = {}) {
-    const path = `${getTicketPath(feedbackId, options.role)}/comments`;
-
-    return (async () => {
-      try {
-        const res = await axiosClient.get(path);
-        return normalizeCommentsResponse(res);
-      } catch (err) {
-        console.warn('shared-api getComments GET failed', feedbackId, err?.response?.status, err?.response?.data || err?.message || err);
-      }
-
-      try {
-        const res = await axiosClient.get(path, { params: { page: 0, size: 50 } });
-        return normalizeCommentsResponse(res);
-      } catch (err2) {
-        console.warn('shared-api getComments GET with params failed', feedbackId, err2?.response?.status, err2?.response?.data || err2?.message || err2);
-      }
-
-      try {
-        const res = await axiosClient.post(path, { page: 0, size: 50 });
-        return normalizeCommentsResponse(res);
-      } catch (err3) {
-        console.warn('shared-api getComments POST {page,size} failed', feedbackId, err3?.response?.status, err3?.response?.data || err3?.message || err3);
-      }
-
-      try {
-        const res = await axiosClient.post(path);
-        return normalizeCommentsResponse(res);
-      } catch (err4) {
-        console.warn('shared-api getComments POST empty body failed', feedbackId, err4?.response?.status, err4?.response?.data || err4?.message || err4);
-      }
-
-      try {
-        const params = new URLSearchParams();
-        params.append('page', '0');
-        params.append('size', '50');
-        const res = await axiosClient.post(path, params);
-        return normalizeCommentsResponse(res);
-      } catch (err5) {
-        console.error('shared-api getComments all attempts failed for', feedbackId, err5?.response?.status, err5?.response?.data || err5?.message || err5);
-        return [];
-      }
-    })();
-  },
+ getComments(feedbackId, options = {}) {
+  return (async () => {
+    try {
+      const ticket = await axiosClient.get(getTicketPath(feedbackId, options.role));
+      return normalizeCommentsResponse(ticket);
+    } catch (err) {
+      return [];
+    }
+  })();
+},
 
   addComment(feedbackId, userId, userName, userRole, content, options = {}) {
     return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, {
