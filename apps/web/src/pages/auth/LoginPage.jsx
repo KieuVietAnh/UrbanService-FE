@@ -1,7 +1,8 @@
 // src/pages/auth/LoginPage.jsx
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useGoogleIdentity } from '../../hooks/useGoogleIdentity';
 import * as Lucide from 'lucide-react';
 
 const normalizeRole = (role) => {
@@ -72,22 +73,36 @@ export const LoginPage = () => {
     setError('');
   };
 
-  useEffect(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    console.log('LoginPage clientId:', clientId);
-    if (!clientId) return;
-    const scriptId = 'google-identity-script';
-    if (document.getElementById(scriptId)) return;
-    const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
-    s.id = scriptId;
-    s.async = true;
-    s.defer = true;
-    document.head.appendChild(s);
-  }, []);
+  const handleGoogleLoginCallback = useCallback(
+    async (response) => {
+      try {
+        setLoading(true);
+        const idToken = response?.credential;
+        if (!idToken) {
+          setError('Google login failed to return credential.');
+          return;
+        }
+        const user = await googleLogin(idToken);
+        if (!user?.isVerified) {
+          navigate('/verify-email');
+          return;
+        }
+        const redirect = searchParams.get('redirect') || getRoleDashboard(user.role);
+        navigate(redirect);
+      } catch (err) {
+        setError(err.message || 'Google đăng nhập thất bại.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [googleLogin, navigate, searchParams],
+  );
+
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  useGoogleIdentity(googleClientId, handleGoogleLoginCallback);
 
   const handleGoogleSignIn = () => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    const clientId = googleClientId;
     if (!clientId) {
       setError('Google login not configured.');
       return;
@@ -97,31 +112,6 @@ export const LoginPage = () => {
       setError('Google SDK not loaded yet. Vui lòng thử lại.');
       return;
     }
-
-    window.google.accounts.id.initialize({
-      client_id: clientId,
-      callback: async (response) => {
-        try {
-          setLoading(true);
-          const idToken = response?.credential;
-          if (!idToken) {
-            setError('Google login failed to return credential.');
-            return;
-          }
-          const user = await googleLogin(idToken);
-          if (!user?.isVerified) {
-            navigate('/verify-email');
-            return;
-          }
-          const redirect = searchParams.get('redirect') || getRoleDashboard(user.role);
-          navigate(redirect);
-        } catch (err) {
-          setError(err.message || 'Google đăng nhập thất bại.');
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
 
     window.google.accounts.id.prompt();
   };
