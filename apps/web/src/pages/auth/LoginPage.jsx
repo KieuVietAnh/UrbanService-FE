@@ -99,10 +99,12 @@ export const LoginPage = () => {
   );
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  console.log('LoginPage - VITE_GOOGLE_CLIENT_ID:', googleClientId);
   useGoogleIdentity(googleClientId, handleGoogleLoginCallback);
 
   const handleGoogleSignIn = () => {
     const clientId = googleClientId;
+    console.log('handleGoogleSignIn - clientId:', clientId);
     if (!clientId) {
       setError('Google login not configured.');
       return;
