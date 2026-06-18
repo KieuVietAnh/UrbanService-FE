@@ -1,5 +1,5 @@
 // src/pages/auth/LoginPage.jsx
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGoogleIdentity } from '../../hooks/useGoogleIdentity';
