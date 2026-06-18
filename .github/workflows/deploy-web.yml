@@ -6,6 +6,7 @@ on:
       - CI
     types:
       - completed
+
   workflow_dispatch:
 
 permissions:
@@ -24,14 +25,13 @@ jobs:
     environment:
       name: production
       url: http://152.42.177.174
-  
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-   
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -46,6 +46,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate production env variables
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          test -n "$VITE_API_BASE_URL"
+          test -n "$VITE_GOOGLE_CLIENT_ID"
+          echo "Production env variables are available"
+
       - name: Create production env file
         working-directory: apps/web
         env:
@@ -56,6 +65,9 @@ jobs:
           VITE_API_BASE_URL=${VITE_API_BASE_URL}
           VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
           EOF
+
+          echo ".env.production created"
+          cat .env.production | sed 's/=.*/=***/'
 
       - name: Build web application
         run: pnpm --dir apps/web build
@@ -85,9 +97,15 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key \
-            "$VPS_USER@$VPS_HOST" \
-            "mkdir -p /var/www/urban-service-web"
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" '
+            if [ "$(id -u)" -eq 0 ]; then
+              mkdir -p /var/www/urban-service-web
+              chown -R "$USER:$USER" /var/www/urban-service-web
+            else
+              sudo mkdir -p /var/www/urban-service-web
+              sudo chown -R "$USER:$USER" /var/www/urban-service-web
+            fi
+          '
 
       - name: Deploy web files
         env:
@@ -104,9 +122,13 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          ssh -i ~/.ssh/deploy_key \
-            "$VPS_USER@$VPS_HOST" \
-            "nginx -t && systemctl reload nginx"
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" '
+            if [ "$(id -u)" -eq 0 ]; then
+              nginx -t && systemctl reload nginx
+            else
+              sudo nginx -t && sudo systemctl reload nginx
+            fi
+          '
 
       - name: Deployment completed
         run: |
