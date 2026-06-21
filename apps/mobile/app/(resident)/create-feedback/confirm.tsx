@@ -2,7 +2,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { AppScreen } from '@/components/ui/AppScreen';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppCard } from '@/components/ui/AppCard';
-import { colors } from '@/constants/theme';
+import { colors, radius } from '@/constants/theme';
 import { useCreateFeedbackStore } from '@/features/feedback/createFeedback.store';
 import { useRouter } from 'expo-router';
 
@@ -32,22 +32,22 @@ export default function ConfirmScreen() {
 
         {/* Summary cards */}
         <View style={styles.summaryContainer}>
-          <AppCard style={styles.summaryCard}>
+          <AppCard style={{ padding: 20, borderRadius: radius.lg }}>
             <Text style={styles.summaryTitle}>Danh mục:</Text>
             <Text style={styles.summaryValue}>{category || 'Chưa chọn'}</Text>
           </AppCard>
 
-          <AppCard style={styles.summaryCard}>
+          <AppCard style={{ padding: 20, borderRadius: radius.lg }}>
             <Text style={styles.summaryTitle}>Mô tả:</Text>
             <Text style={styles.summaryValue}>{description || 'Chưa có mô tả'}</Text>
           </AppCard>
 
-          <AppCard style={styles.summaryCard}>
+          <AppCard style={{ padding: 20, borderRadius: radius.lg }}>
             <Text style={styles.summaryTitle}>Vị trí:</Text>
             <Text style={styles.summaryValue}>{location || 'Chưa có vị trí'}</Text>
           </AppCard>
 
-          <AppCard style={styles.summaryCard}>
+          <AppCard style={{ padding: 20, borderRadius: radius.lg }}>
             <Text style={styles.summaryTitle}>Bằng chứng ({evidence.length}):</Text>
             {evidence.length > 0 ? (
               <View style={styles.evidenceList}>
@@ -109,12 +109,6 @@ const styles = StyleSheet.create({
   summaryContainer: {
     marginBottom: 32,
     gap: 16,
-  },
-  summaryCard: {
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
   },
   summaryTitle: {
     fontSize: 14,

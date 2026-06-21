@@ -127,11 +127,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 4,
     fontSize: 12,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.surface,
   },
 });

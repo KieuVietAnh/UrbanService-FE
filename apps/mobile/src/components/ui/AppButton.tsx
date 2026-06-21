@@ -57,13 +57,13 @@ export const AppButton = ({
         }
       : size === 'md'
       ? {
-          padding: spacing.md,
+          padding: 20,
           borderRadius: radius.md,
           text: { fontSize: typography.lg, fontWeight: typography.semibold as any },
         }
       : size === 'lg'
       ? {
-          padding: spacing.lg,
+          padding: 28,
           borderRadius: radius.lg,
           text: { fontSize: typography.xl, fontWeight: typography.bold as any },
         }

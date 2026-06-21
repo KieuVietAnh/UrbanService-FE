@@ -111,9 +111,9 @@ export default function TicketDetailScreen() {
             {/* Step 1: Đã gửi phản ánh */}
             <View style={[
               styles.timelineStep,
-              feedback.status !== 'pending' ? styles.completedStep : '',
+              feedback.status !== 'pending' ? styles.completedStep : undefined,
             ]}>
-              <Text style={styles.timelineStepText}>Đã gửi phản ánh</Text>
+              <Text style={[styles.timelineStepText, feedback.status !== 'pending' && styles.completedStepText]}>Đã gửi phản ánh</Text>
             </View>
             <View style={styles.timelineConnector}>
               <View style={styles.timelineLine} />
@@ -122,11 +122,11 @@ export default function TicketDetailScreen() {
             {/* Step 2: Đang tiếp nhận */}
             <View style={[
               styles.timelineStep,
-              feedback.status === 'in_progress' || feedback.status === 'completed'
+              (feedback.status === 'in_progress' || feedback.status === 'completed')
                 ? styles.completedStep
-                : '',
+                : undefined,
             ]}>
-              <Text style={styles.timelineStepText}>Đang tiếp nhận</Text>
+              <Text style={[styles.timelineStepText, (feedback.status === 'in_progress' || feedback.status === 'completed') && styles.completedStepText]}>Đang tiếp nhận</Text>
             </View>
             <View style={styles.timelineConnector}>
               <View style={styles.timelineLine} />
@@ -135,9 +135,9 @@ export default function TicketDetailScreen() {
             {/* Step 3: Đang xử lý */}
             <View style={[
               styles.timelineStep,
-              feedback.status === 'completed' ? styles.completedStep : '',
+              feedback.status === 'completed' ? styles.completedStep : undefined,
             ]}>
-              <Text style={styles.timelineStepText}>Đang xử lý</Text>
+              <Text style={[styles.timelineStepText, feedback.status === 'completed' && styles.completedStepText]}>Đang xử lý</Text>
             </View>
             <View style={styles.timelineConnector}>
               <View style={styles.timelineLine} />
@@ -146,9 +146,9 @@ export default function TicketDetailScreen() {
             {/* Step 4: Hoàn tất */}
             <View style={[
               styles.timelineStep,
-              feedback.status === 'completed' ? styles.completedStep : '',
+              feedback.status === 'completed' ? styles.completedStep : undefined,
             ]}>
-              <Text style={styles.timelineStepText}>Hoàn thành</Text>
+              <Text style={[styles.timelineStepText, feedback.status === 'completed' && styles.completedStepText]}>Hoàn thành</Text>
             </View>
           </View>
         </View>
@@ -198,12 +198,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 4,
     fontSize: 12,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.surface,
   },
   evidenceContainer: {
     flexDirection: 'row',
@@ -234,13 +234,18 @@ const styles = StyleSheet.create({
   },
   timelineStep: {
     alignItems: 'center',
+    padding: 8,
   },
   completedStep: {
-    // This will be used to style completed steps
+    backgroundColor: colors.primarySoft,
+    borderRadius: 4,
   },
   timelineStepText: {
     fontSize: 12,
     color: colors.muted,
+  },
+  completedStepText: {
+    color: colors.text,
   },
   timelineConnector: {
     alignItems: 'center',
