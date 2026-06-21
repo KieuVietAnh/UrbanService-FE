@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { Footer } from './Footer';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -40,21 +41,26 @@ export const DashboardLayout = ({ children }) => {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-base-300 overflow-hidden text-base-content font-sans">
-      {/* Sidebar navigation */}
-      {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+    <div className="flex flex-col w-screen bg-base-300 text-base-content font-sans min-h-screen">
+      <div className="flex flex-1 min-w-0 overflow-hidden">
+        {/* Sidebar navigation */}
+        {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
-      {/* Main container */}
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden bg-base-100">
-        <Header onMenuToggle={toggleSidebar} />
-        
-        {/* Main scrollable workspace */}
-        <main className="flex-1 overflow-y-auto p-6 bg-base-200">
-          <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
-            {children}
-          </div>
-        </main>
+        {/* Main container */}
+        <div className="flex-1 flex flex-col w-full overflow-hidden bg-base-100">
+          <Header onMenuToggle={toggleSidebar} />
+          
+          {/* Main scrollable workspace */}
+          <main className="flex-1 overflow-y-auto p-6 bg-base-200">
+            <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
+
+      {/* Footer */}
+      <Footer />
 
       {/* PERSISTENT AI COPILOT FLOATING BUTTON */}
       <button 

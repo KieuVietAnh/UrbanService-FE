@@ -1,6 +1,7 @@
 import { axiosClient } from './axiosClient.js';
 import {
   getFeedbackBasePath,
+  normalizeRoleForFeedback,
   normalizeTicketsResponse,
   normalizeCommentsResponse,
 } from './ticketApiHelpers.js';
@@ -11,7 +12,7 @@ const getStoredUserRole = () => {
     const raw = localStorage.getItem('urbanmind_auth_user');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed?.role || null;
+    return normalizeRoleForFeedback(parsed?.role || null);
   } catch {
     return null;
   }
@@ -22,9 +23,18 @@ const getTicketPath = (feedbackId, role) => {
   return `${base}/${feedbackId}`;
 };
 
+const updateFeedbackStatus = (feedbackId, statusData, options = {}) => {
+  // Swagger defines the status endpoint as PATCH /api/management/feedbacks/{feedbackId}/status.
+  // The previous PUT call hit the same route with an unsupported verb, which produced 405.
+  return axiosClient.patch(`${getTicketPath(feedbackId, options.role)}/status`, statusData);
+};
+
 export const ticketApi = {
   async getTickets(filters = {}, options = {}) {
-    const response = await axiosClient.get(getFeedbackBasePath(options.role), { params: filters });
+    const response = await axiosClient.get(
+      getFeedbackBasePath(options.role, getStoredUserRole()),
+      { params: filters }
+    );
     return normalizeTicketsResponse(response);
   },
 
@@ -107,14 +117,14 @@ export const ticketApi = {
         }
       });
 
-      return axiosClient.post(getFeedbackBasePath(options.role), formData, {
+      return axiosClient.post(getFeedbackBasePath(options.role, getStoredUserRole()), formData, {
         headers: {
           'Content-Type': undefined,
         },
       });
     }
 
-    return axiosClient.post(getFeedbackBasePath(options.role), {
+    return axiosClient.post(getFeedbackBasePath(options.role, getStoredUserRole()), {
       userId,
       reporterName,
       ...ticketData,
@@ -181,11 +191,17 @@ export const ticketApi = {
     });
   },
 
-  verifyAndApprove(feedbackId, staffUserId, updateData, options = {}) {
-    return axiosClient.put(`${getTicketPath(feedbackId, options.role)}/status`, {
-      staffUserId,
-      ...updateData,
-    });
+  async verifyAndApprove(feedbackId, staffUserId, updateData = {}, options = {}) {
+    const { note, status = 'Verified', ...feedbackUpdates } = updateData || {};
+
+    if (Object.keys(feedbackUpdates).length > 0) {
+      await this.updateTicket(feedbackId, feedbackUpdates, options);
+    }
+
+    return updateFeedbackStatus(feedbackId, {
+      status,
+      note: note || 'Feedback verified after AI review.',
+    }, options);
   },
 
   mergeTickets(masterId, duplicateIds, staffUserId, options = {}) {
@@ -197,20 +213,17 @@ export const ticketApi = {
   },
 
   updateOperatorStatus(feedbackId, operatorUserId, status, note, files = [], options = {}) {
-    return axiosClient.put(`${getTicketPath(feedbackId, options.role)}/status`, {
-      operatorUserId,
+    return updateFeedbackStatus(feedbackId, {
       status,
       note,
-      files,
-    });
+    }, options);
   },
 
   reviewResolution(feedbackId, staffUserId, isApproved, note, options = {}) {
-    return axiosClient.put(`${getTicketPath(feedbackId, options.role)}/status`, {
-      staffUserId,
-      isApproved,
+    return updateFeedbackStatus(feedbackId, {
+      status: isApproved ? 'Approved' : 'NeedRework',
       note,
-    });
+    }, options);
   },
 
   submitReview(feedbackId, userId, rating, isSatisfied, comment, options = {}) {

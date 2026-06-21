@@ -1,68 +1,133 @@
+import { axiosClient } from './axiosClient.js';
 import { mockDb } from './mockStore.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const OPERATOR_ROLE_NAMES = ['ServiceProvider', 'ServiceOperator'];
+
+const getFeedbackId = (feedbackOrId) => {
+  if (typeof feedbackOrId === 'string') return feedbackOrId;
+  return feedbackOrId?.feedbackId || feedbackOrId?.id || feedbackOrId?.ticketId || '';
+};
+
+const normalizeOperator = (operator) => {
+  const operatorName = operator.operatorName || operator.fullName || operator.userName || operator.email || '';
+  const operatorId = Number.isInteger(Number(operator.operatorId))
+    ? Number(operator.operatorId)
+    : Number.isInteger(Number(operator.operatorId ?? operator.userId))
+      ? Number(operator.operatorId ?? operator.userId)
+      : operator.operatorId;
+
+  return {
+    ...operator,
+    operatorId,
+    operatorName,
+  };
+};
+
 export const assignmentApi = {
-  async getOperators() {
-    return mockDb.getOperators();
-  },
-
-  async assignTicket(feedbackId, operatorId, staffUserId, note = '') {
-    const tickets = mockDb.getTickets();
-    const ticket = tickets.find((t) => t.feedbackId === feedbackId);
-    if (!ticket) throw new Error('Không tìm thấy phản ánh.');
-
-    const oldStatus = ticket.status;
-    const operators = mockDb.getOperators();
-    const operator = operators.find((o) => o.operatorId === Number(operatorId));
-    if (!operator) throw new Error('Đơn vị xử lý không hợp lệ.');
-
-    const slaConfig = mockDb.getSlaConfig();
-    const hours = slaConfig[ticket.priority]?.hours || 24;
-    const dueDate = new Date();
-    dueDate.setHours(dueDate.getHours() + hours);
-
-    ticket.status = 'Assigned';
-    ticket.dueDate = dueDate.toISOString();
-    ticket.updatedAt = new Date().toISOString();
-    ticket.assignment = {
-      operatorId: Number(operatorId),
-      operatorName: operator.operatorName,
-      assignedBy: staffUserId,
-      assignedAt: new Date().toISOString(),
-      status: 'Assigned',
-      note,
+  async getOperators(categoryId) {
+    const params = {
+      PageNumber: 1,
+      PageSize: 100,
+      IsActive: true,
     };
 
-    mockDb.updateTickets(tickets);
-    mockDb.addAudit(staffUserId, 'Assign Ticket to Operator', 'Feedback', feedbackId, { oldStatus }, { operatorId, dueDate });
+    const operators = [];
+    let permissionError = null;
 
-    const history = mockDb.get('urbanmind_history') || [];
-    history.unshift({
-      historyId: history.length + 1,
-      feedbackId,
-      changedByUserId: staffUserId,
-      oldStatus,
-      newStatus: 'Assigned',
-      note: `Phân công nhiệm vụ cho đơn vị: ${operator.operatorName}. Hạn chót: ${dueDate.toLocaleString()}`,
-      changedAt: new Date().toISOString(),
-    });
-    mockDb.set('urbanmind_history', history);
+    for (const roleName of OPERATOR_ROLE_NAMES) {
+      try {
+        const response = await axiosClient.get('/api/admin/users', {
+          params: { ...params, RoleName: roleName },
+        });
 
-    const opUser = mockDb.getUsers().find((u) => u.operatorId === Number(operatorId));
-    if (opUser) {
-      const notifs = mockDb.getNotifications();
-      notifs.unshift({
-        notificationId: notifs.length + 1,
-        userId: opUser.userId,
-        title: 'Yêu cầu xử lý sự cố mới',
-        message: `Công việc "${ticket.title}" vừa được phân công cho đơn vị của bạn. Hạn chót: ${dueDate.toLocaleString()}`,
-        type: 'Assignment',
-        isRead: false,
-        targetUrl: `/provider/tickets/${feedbackId}`,
-        createdAt: new Date().toISOString(),
-      });
-      mockDb.updateNotifications(notifs);
+        if (response?.items && Array.isArray(response.items)) {
+          operators.push(...response.items);
+        } else if (Array.isArray(response)) {
+          operators.push(...response);
+        }
+      } catch (error) {
+        // Capture 403 errors separately to show permission issue
+        if (error.response?.status === 403) {
+          permissionError = error;
+          console.error(
+            `⚠️ Permission denied: Your role does not have access to the operator list. ` +
+            `Admin role is required to fetch operators from /api/admin/users.`,
+            error
+          );
+        } else {
+          console.warn(`Failed loading operators for role ${roleName}.`, error);
+        }
+      }
     }
 
-    return ticket;
-  }
+    // If we got no operators AND encountered a permission error, don't silently fall back to mock
+    if (operators.length === 0 && permissionError) {
+      console.error(
+        '❌ Cannot load operators: Permission denied (403). ' +
+        'Ask your administrator to either:\n' +
+        '  1. Grant you Admin role temporarily, or\n' +
+        '  2. Use a staff account with Admin permissions for operator assignment'
+      );
+      // Return empty array instead of mock data to prevent bad assignments
+      return [];
+    }
+
+    // Only use mock data if there was a different error (not permission) or as development fallback
+    const normalizedOperators = operators.length > 0
+      ? operators.map(normalizeOperator)
+      : mockDb.getOperators().map(normalizeOperator);
+
+    if (categoryId != null && categoryId !== '' && normalizedOperators.some((op) => op.categoryId !== undefined)) {
+      return normalizedOperators.filter((op) => Number(op.categoryId) === Number(categoryId));
+    }
+
+    return normalizedOperators;
+  },
+
+  async assignTicket(feedbackOrId, operatorId, staffUserId, note = '') {
+    const source = typeof feedbackOrId === 'object' && feedbackOrId !== null ? feedbackOrId : {};
+    const feedbackId = getFeedbackId(feedbackOrId);
+    const payload = {
+      feedbackId,
+      operatorId: Number(source.operatorId ?? operatorId),
+      staffUserId: source.staffUserId ?? staffUserId,
+      note: source.note ?? note,
+    };
+
+    if (!payload.feedbackId) {
+      throw new Error('Không thể phân công vì thiếu mã phản ánh.');
+    }
+
+    if (!UUID_PATTERN.test(payload.feedbackId)) {
+      throw new Error('Mã phản ánh không hợp lệ. Vui lòng tải lại danh sách và thử lại.');
+    }
+
+    if (!Number.isInteger(payload.operatorId) || payload.operatorId <= 0) {
+      throw new Error(
+        '❌ OperatorId không hợp lệ hoặc không tồn tại. ' +
+        'Vui lòng kiểm tra quyền Admin hoặc chọn operator từ danh sách hợp lệ.'
+      );
+    }
+
+    if (!payload.staffUserId) {
+      throw new Error('Không thể phân công vì thiếu thông tin nhân viên.');
+    }
+
+    console.debug('Assign feedback payload', payload);
+    try {
+      return await axiosClient.post('/api/management/feedbacks/assign', payload);
+    } catch (error) {
+      if (error.response?.status === 400) {
+        console.error(
+          '❌ Assignment failed (400 Bad Request). Possible causes:\n' +
+          `  - OperatorId ${payload.operatorId} does not exist on backend\n` +
+          `  - Operator is inactive\n` +
+          `  - Feedback is in invalid status for assignment\n` +
+          'Check browser console for full error details.'
+        );
+      }
+      throw error;
+    }
+  },
 };

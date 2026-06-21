@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const RegisterPage = () => {
@@ -53,10 +54,11 @@ export const RegisterPage = () => {
 
         {/* Error Alert */}
         {error && (
-          <div className="alert alert-error text-xs font-semibold rounded-xl flex items-center gap-2 py-3 px-4">
-            <Lucide.AlertCircle size={16} />
-            <span>{error}</span>
-          </div>
+          <ErrorAlert 
+            title="Lỗi đăng ký"
+            message={error}
+            onClose={() => setError('')}
+          />
         )}
 
         {/* Form */}

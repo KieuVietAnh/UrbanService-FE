@@ -27,11 +27,11 @@ export const Dashboard = () => {
 
         let resTickets = [];
         if (user.role === 'service-user') {
-          resTickets = await ticketApi.getTickets({ userId: user.userId });
+          resTickets = await ticketApi.getTickets({ userId: user.userId }, { role: user.role });
         } else if (user.role === 'service-provider') {
-          resTickets = await ticketApi.getTickets({ operatorId: user.operatorId });
+          resTickets = await ticketApi.getTickets({ operatorId: user.operatorId }, { role: user.role });
         } else {
-          resTickets = await ticketApi.getTickets();
+          resTickets = await ticketApi.getTickets({}, { role: user.role });
         }
 
         console.log('Dashboard ticket fetch response', resTickets);
