@@ -55,10 +55,7 @@ export default function ResidentHomeScreen() {
           <AppCard style={styles.actionCard}>
             <AppButton
               variant="outline"
-              onPress={() => {
-                // Placeholder for feedback list
-                console.log('Danh sách phản ánh pressed');
-              }}
+              onPress={() => router.push('/(resident)/tickets')}
               style={styles.actionButton}
             >
               Danh sách phản ánh
