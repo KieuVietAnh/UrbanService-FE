@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function StatusBadge({ status }) {
   const label = status || 'Unknown';
   const cls = {

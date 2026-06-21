@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function EmptyState({ title = 'Không có dữ liệu', detail = '' }) {
   return (
     <div className="py-12 text-center rounded-3xl space-y-4 flex flex-col items-center">
