@@ -32,6 +32,7 @@ const getLoginErrorMessage = (message?: string | null) => {
 export default function LoginScreen() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
+  const isLoading = useAuthStore((state) => state.isLoading);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -44,35 +45,39 @@ export default function LoginScreen() {
   const [passwordVisible, setPasswordVisible] = useState(false);
 
   const handleLogin = async () => {
-    const trimmedEmail = email.trim();
-
     setError(null);
 
-    if (!trimmedEmail || !password.trim()) {
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
       setError('Vui lòng nhập đầy đủ email và mật khẩu.');
       return;
     }
 
     try {
-      await login(trimmedEmail, password);
+      await login(trimmedEmail, trimmedPassword);
 
-      const currentUser = useAuthStore.getState().user;
-      const currentError = useAuthStore.getState().error;
-
-      if (!currentUser) {
-        setError(
-          getLoginErrorMessage(currentError) ||
-          'Email hoặc mật khẩu không đúng. Vui lòng thử lại.'
-        );
+      const { user, error: storeError } = useAuthStore.getState();
+      if (storeError) {
+        setError(getLoginErrorMessage(storeError) || 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
         return;
       }
-
-      router.replace('/');
+      if (user) {
+        // Redirect based on role
+        if (user.role === 'service-user') {
+          router.replace('/(resident)');
+        } else if (user.role === 'system-staff') {
+          router.replace('/(staff)');
+        } else {
+          // Fallback to home
+          router.replace('/');
+        }
+      } else {
+        setError('Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
+      }
     } catch (err: any) {
-      setError(
-        getLoginErrorMessage(err?.message) ||
-        'Email hoặc mật khẩu không đúng. Vui lòng thử lại.'
-      );
+      setError(getLoginErrorMessage(err?.message) || 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
     }
   };
 
@@ -181,9 +186,10 @@ export default function LoginScreen() {
 
             {/* Primary button */}
             <TouchableOpacity
-              style={styles.primaryButton}
-              activeOpacity={0.8}
+              style={[styles.primaryButton, isLoading && styles.disabledButton]}
+              disabled={isLoading}
               onPress={handleLogin}
+              activeOpacity={0.8}
             >
               <View style={styles.primaryButtonContent}>
                 <Text style={styles.primaryButtonText}>Đăng nhập</Text>
@@ -399,6 +405,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 10,
     elevation: 3,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   primaryButtonContent: {
     flexDirection: 'row',
