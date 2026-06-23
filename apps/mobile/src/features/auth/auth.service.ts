@@ -1,33 +1,9 @@
 import { authApi } from '@urbanmind/shared-api';
-import { setTokenStorage, setAuthToken, setApiBaseUrl } from '@urbanmind/shared-api';
-import { AsyncStorageService } from '@/services/storage/asyncStorage';
+import { setAuthToken } from '@urbanmind/shared-api';
 import { User } from '@/types/auth.types';
-
-let isInitialized = false;
 
 export class AuthService {
   static async login(email: string, password: string): Promise<User> {
-    if (!isInitialized) {
-      // Configure API base URL from environment (Expo injects variables into process.env)
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-      if (apiUrl) {
-        setApiBaseUrl(apiUrl);
-      }
-      // Override token storage to use AsyncStorage for React Native
-      setTokenStorage(
-        async () => {
-          return await AsyncStorageService.getItem<string>('urbanmind_auth_token');
-        },
-        async (token: string) => {
-          await AsyncStorageService.setItem('urbanmind_auth_token', token);
-        },
-        async () => {
-          await AsyncStorageService.removeItem('urbanmind_auth_token');
-        }
-      );
-      isInitialized = true;
-    }
-
     const response = await authApi.login(email, password);
     // Handle both cases: if interceptor returns data directly or if it returns AxiosResponse
     const data = 'data' in response ? response.data : response;
@@ -35,7 +11,7 @@ export class AuthService {
 
     // Normalize role: map backend roles to mobile expected roles
     const normalizeRole = (role: string): 'service-user' | 'system-staff' => {
-      if (!role) return 'service-user'; // fallback
+      if (!role) return 'service-user';
       const lower = role.trim().toLowerCase();
       if (lower.startsWith('service')) return 'service-user';
       if (lower.startsWith('system')) return 'system-staff';

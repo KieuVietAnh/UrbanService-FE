@@ -1,11 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import { AppScreen } from '@/components/ui/AppScreen';
 import { AppCard } from '@/components/ui/AppCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { colors } from '@/constants/theme';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { mockFeedbacks, Feedback } from '@/mocks/feedbackMock';
+import { Feedback } from '@/mocks/feedbackMock';
+import { ticketApi } from '@urbanmind/shared-api';
 
 export default function TicketDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string | string[] }>();
@@ -15,9 +16,110 @@ export default function TicketDetailScreen() {
   const ticketId = Array.isArray(id) ? id[0] : id;
   const stringTicketId = String(ticketId);
 
-  const feedback = mockFeedbacks.find((item) => String(item.id) === stringTicketId);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Map API status to UI status
+  const mapStatus = (apiStatus: string): Feedback['status'] => {
+    const lower = apiStatus.toLowerCase();
+    if (lower === 'submitted') return 'pending';
+    if (lower === 'verified') return 'in_progress';
+    if (['resolved', 'completed', 'closed'].includes(lower)) return 'completed';
+    return 'pending'; // default fallback
+  };
+
+  useEffect(() => {
+    const fetchTicket = async () => {
+      if (!ticketId) {
+        setError('ID phản ánh không hợp lệ');
+        setLoading(false);
+        return;
+      }
+      console.log('[TicketDetail] route id:', ticketId);
+      setLoading(true);
+      setError(null);
+      try {
+        // Fetch ticket detail for the current user (resident/service-user)
+        const response = await ticketApi.getTicketById(ticketId, { role: 'service-user' });
+        console.log('[TicketDetail] response exists:', !!response);
+        if (response) {
+          console.log('[TicketDetail] response keys:', Object.keys(response));
+        }
+        // Handle both possible shapes: interceptor returns data directly, or wrapped in { data }
+        const data = response && 'data' in response ? response.data : response;
+        console.log('[TicketDetail] normalized detail data exists:', !!data);
+        if (data) {
+          console.log('[TicketDetail] data keys:', Object.keys(data));
+        }
+        // Map API detail object to Feedback shape
+        const normalized: Feedback = {
+          id: data.feedbackId,
+          category: data.categoryName,
+          description: data.title,
+          location: data.locationText,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          status: mapStatus(data.status),
+          evidence: data.evidence || [],
+          priority: data.priority,
+          attachmentCount: data.attachmentCount,
+          commentCount: data.commentCount,
+          supportCount: data.supportCount,
+        };
+        setFeedback(normalized);
+      } catch (err: any) {
+        console.log('[TicketDetail] error:', err);
+        // Handle 404 or other errors
+        if (err.response?.status === 404 || err.message?.includes('not found')) {
+          setError('Không tìm thấy phản ánh');
+        } else {
+          const msg = err.message || 'Lỗi không xác định';
+          setError(msg);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTicket();
+  }, [ticketId]);
+
+  if (loading) {
+    return (
+      <AppScreen>
+        <View style={styles.content}>
+          <Text style={styles.title}>Đang tải chi tiết phản ánh...</Text>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        </View>
+      </AppScreen>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppScreen>
+        <View style={styles.content}>
+          <Text style={styles.title}>{error}</Text>
+          <AppButton
+            variant="outline"
+            onPress={() => {
+              // Go back to the ticket list
+              router.back();
+            }}
+            style={styles.backButton}
+          >
+            Quay lại
+          </AppButton>
+        </View>
+      </AppScreen>
+    );
+  }
 
   if (!feedback) {
+    // Should not happen, but fallback
     return (
       <AppScreen>
         <View style={styles.content}>
@@ -41,8 +143,8 @@ export default function TicketDetailScreen() {
     feedback.status === 'pending'
       ? colors.amber
       : feedback.status === 'in_progress'
-      ? colors.purple
-      : colors.emerald;
+        ? colors.purple
+        : colors.emerald;
 
   return (
     <AppScreen>
@@ -71,6 +173,9 @@ export default function TicketDetailScreen() {
             <Text style={styles.detailLabel}>Vị trí:</Text>
             <Text style={styles.detailValue}>{feedback.location}</Text>
 
+            <Text style={styles.detailLabel}>Ưu tiên:</Text>
+            <Text style={styles.detailValue}>{feedback.priority || 'Không xác định'}</Text>
+
             <Text style={styles.detailLabel}>Trạng thái:</Text>
             <View style={styles.statusBadgeContainer}>
               <Text style={[
@@ -80,8 +185,8 @@ export default function TicketDetailScreen() {
                 {feedback.status === 'pending'
                   ? 'Chưa xử lý'
                   : feedback.status === 'in_progress'
-                  ? 'Đang xử lý'
-                  : 'Hoàn thành'}
+                    ? 'Đang xử lý'
+                    : 'Hoàn thành'}
               </Text>
             </View>
 
@@ -90,7 +195,21 @@ export default function TicketDetailScreen() {
               {new Date(feedback.createdAt).toLocaleString('vi-VN')}
             </Text>
 
-            {feedback.evidence.length > 0 && (
+            <Text style={styles.detailLabel}>Ngày cập nhật:</Text>
+            <Text style={styles.detailValue}>
+              {new Date(feedback.updatedAt).toLocaleString('vi-VN')}
+            </Text>
+
+            <Text style={styles.detailLabel}>Số lượng file đính kèm:</Text>
+            <Text style={styles.detailValue}>{feedback.attachmentCount}</Text>
+
+            <Text style={styles.detailLabel}>Số lượng bình luận:</Text>
+            <Text style={styles.detailValue}>{feedback.commentCount}</Text>
+
+            <Text style={styles.detailLabel}>Số lượng người ủng hộ:</Text>
+            <Text style={styles.detailValue}>{feedback.supportCount}</Text>
+
+            {feedback.evidence && feedback.evidence.length > 0 && (
               <>
                 <Text style={styles.detailLabel}>Minh chứng:</Text>
                 <View style={styles.evidenceContainer}>
@@ -145,7 +264,6 @@ export default function TicketDetailScreen() {
 
             {/* Step 4: Hoàn tất */}
             <View style={[
-              styles.timelineStep,
               feedback.status === 'completed' ? styles.completedStep : undefined,
             ]}>
               <Text style={[styles.timelineStepText, feedback.status === 'completed' && styles.completedStepText]}>Hoàn thành</Text>
