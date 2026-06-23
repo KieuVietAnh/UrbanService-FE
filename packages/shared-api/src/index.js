@@ -10,4 +10,5 @@ export { slaApi } from './slaApi.js';
 export { mockDb } from './mockStore.js';
 export { getFeedbackBasePath, normalizeTicketsResponse, normalizeCommentsResponse } from './ticketApiHelpers.js';
 export { toolsApi } from './toolsApi.js';
+export { setAuthToken, removeAuthToken, setTokenStorage, setApiBaseUrl } from './axiosClient.js';
 export { managementFeedbackApi } from './managementFeedbackApi.js';

@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "urban-service-mobile",
+    "slug": "urban-service-mobile",
+    "version": "1.0.0",
+    "scheme": "urbanmind",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+    },
+    "web": {
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
