@@ -126,7 +126,7 @@ export const CreateTicketPage = () => {
       <div className="flex items-center justify-center border-b border-slate-100 pb-6">
         <ul className="steps steps-horizontal w-full max-w-xl text-[10px] font-bold text-slate-400">
           <li className={`step ${step >= 1 ? 'step-primary text-[#0052CC]' : ''}`}>Mô tả</li>
-          <li className={`step ${step >= 2 ? 'step-primary text-[#0052CC]' : ''}`}>AI Phân Loại</li>
+          <li className={`step ${step >= 2 ? 'step-primary text-[#0052CC]' : ''}`}>Phân Loại</li>
           <li className={`step ${step >= 3 ? 'step-primary text-[#0052CC]' : ''}`}>Vị trí</li>
           <li className={`step ${step >= 4 ? 'step-primary text-[#0052CC]' : ''}`}>Minh chứng</li>
           <li className={`step ${step >= 5 ? 'step-primary text-[#0052CC]' : ''}`}>Hoàn tất</li>
@@ -172,7 +172,7 @@ export const CreateTicketPage = () => {
             disabled={!title.trim() || !description.trim()}
             className="btn btn-primary w-full rounded-xl font-bold h-11 text-xs gap-1"
           >
-            Tiếp Tục (AI Phân Tích)
+            Tiếp Tục
             <Lucide.ArrowRight size={16} />
           </button>
         </div>
@@ -182,69 +182,23 @@ export const CreateTicketPage = () => {
       {step === 2 && aiAnalysis && (
         <div className="space-y-6 max-w-xl mx-auto w-full">
           <div className="text-center space-y-1">
-            <h3 className="text-base font-black text-slate-900">Bước 2: AI Tự Động Phân Loại</h3>
-            <p className="text-xs text-slate-500 font-semibold">Mô hình AI đã tự động phân loại sự cố dựa trên nội dung bạn cung cấp.</p>
-          </div>
-
-          <div className="card bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-              <Lucide.Sparkles className="text-[#0052CC] animate-pulse" size={18} />
-              <span className="font-extrabold text-xs text-[#0052CC] uppercase tracking-wider">Kết Quả Phân Tích Copilot AI</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="space-y-1">
-                <span className="text-slate-400 font-bold text-[10px] block uppercase tracking-wider">Danh mục đề xuất:</span>
-                <span className="font-black text-slate-700 block">
-                  {toolsApi.getCategories().find(c => c.categoryId === categoryId)?.categoryName || 'Chưa nhận diện'}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <span className="text-slate-400 font-bold text-[10px] block uppercase tracking-wider">Độ khẩn cấp đề xuất:</span>
-                <div>
-                  {priority === 'Critical' && <span className="badge-priority-critical">KHẨN CẤP</span>}
-                  {priority === 'High' && <span className="badge-priority-high">CAO</span>}
-                  {priority === 'Medium' && <span className="badge-priority-medium">TRUNG BÌNH</span>}
-                  {priority === 'Low' && <span className="badge-priority-low">THẤP</span>}
-                </div>
-              </div>
-              <div className="col-span-2 space-y-1">
-                <span className="text-slate-400 font-bold text-[10px] block uppercase tracking-wider">Tóm tắt ngắn gọn bởi AI:</span>
-                <p className="font-semibold text-slate-600 bg-white p-3 rounded-xl border border-slate-200 italic leading-relaxed">
-                  "{aiAnalysis.summary}"
-                </p>
-              </div>
-              <div className="col-span-2 space-y-2 mt-1">
-                <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                  <span>MỨC ĐỘ TIN CẬY CỦA AI:</span>
-                  <span className="text-[#0052CC]">{Math.round(aiAnalysis.confidenceScore * 100)}%</span>
-                </div>
-                <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="bg-[#0052CC] h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.round(aiAnalysis.confidenceScore * 100)}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="alert bg-blue-50/50 border border-blue-200 text-xs font-semibold rounded-2xl flex gap-2 text-slate-600">
-            <Lucide.Info size={16} className="text-[#0052CC]" />
-            <span>Bạn có thể chọn lại danh mục hoặc mức khẩn cấp nếu nhận thấy kết quả AI gợi ý chưa chính xác.</span>
+            <h3 className="text-base font-black text-slate-900">Bước 2: Phân Loại Sự Cố</h3>
+            <p className="text-xs text-slate-500 font-semibold">Vui lòng chọn danh mục và mức độ khẩn cấp phù hợp cho sự cố.</p>
           </div>
 
           {/* Edit Form */}
           <div className="grid grid-cols-2 gap-4">
             <div className="form-control space-y-1">
               <label className="label py-0">
-                <span className="label-text font-bold text-xs text-slate-700">Chọn lại Danh mục</span>
+                <span className="label-text font-bold text-xs text-slate-700">Chọn Danh mục *</span>
               </label>
               <select
                 value={categoryId}
                 onChange={(e) => setCategoryId(Number(e.target.value))}
                 className="select select-bordered text-xs font-bold rounded-xl border-slate-200 focus:outline-none"
+                required
               >
+                <option value="">-- Chọn danh mục --</option>
                 {toolsApi.getCategories().map(c => (
                   <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
                 ))}
@@ -252,12 +206,13 @@ export const CreateTicketPage = () => {
             </div>
             <div className="form-control space-y-1">
               <label className="label py-0">
-                <span className="label-text font-bold text-xs text-slate-700">Mức độ khẩn cấp</span>
+                <span className="label-text font-bold text-xs text-slate-700">Mức độ khẩn cấp *</span>
               </label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 className="select select-bordered text-xs font-bold rounded-xl border-slate-200 focus:outline-none"
+                required
               >
                 <option value="Low">Thấp (Low)</option>
                 <option value="Medium">Trung bình (Medium)</option>
@@ -271,7 +226,7 @@ export const CreateTicketPage = () => {
             <button type="button" onClick={() => setStep(1)} className="btn btn-outline border-slate-200 flex-1 rounded-xl text-xs h-11 text-slate-600">
               Quay Lại
             </button>
-            <button type="button" onClick={() => setStep(3)} className="btn btn-primary flex-1 rounded-xl font-bold text-xs h-11">
+            <button type="button" onClick={() => setStep(3)} disabled={!categoryId} className="btn btn-primary flex-1 rounded-xl font-bold text-xs h-11">
               Tiếp Tục Chọn Vị Trí
             </button>
           </div>

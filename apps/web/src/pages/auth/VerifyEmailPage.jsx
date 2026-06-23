@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const VerifyEmailPage = () => {
@@ -107,18 +108,20 @@ export const VerifyEmailPage = () => {
 
         {/* Error notification */}
         {error && (
-          <div className="alert alert-error text-xs font-semibold py-3 px-4 rounded-xl flex items-center gap-2">
-            <Lucide.AlertCircle size={16} />
-            <span>{error}</span>
-          </div>
+          <ErrorAlert 
+            title="Lỗi xác thực email"
+            message={error}
+            onClose={() => setError('')}
+          />
         )}
 
         {/* Success notification */}
         {success && (
-          <div className="alert alert-success text-xs font-semibold py-3 px-4 rounded-xl flex items-center gap-2">
-            <Lucide.CheckCircle size={16} />
-            <span>{success}</span>
-          </div>
+          <SuccessAlert 
+            title="Thành công"
+            message={success}
+            onClose={() => setSuccess('')}
+          />
         )}
 
         {/* Step 1: Send OTP Button */}

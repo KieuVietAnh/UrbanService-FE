@@ -25,6 +25,8 @@ import { AIReviewDetail } from '../pages/tickets/AIReviewDetail';
 import { DuplicateDetection } from '../pages/tickets/DuplicateDetection';
 import { TicketAssignment } from '../pages/tickets/TicketAssignment';
 import { CompletedTicketReview } from '../pages/tickets/CompletedTicketReview';
+import { ManagementFeedbackListPage } from '../pages/staff/ManagementFeedbackListPage';
+import { ManagementFeedbackDetailPage } from '../pages/staff/ManagementFeedbackDetailPage';
 
 // Service Provider (Operator) Page
 import { HelperWorkspacePage } from '../pages/community/HelperWorkspacePage';
@@ -127,6 +129,24 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={['system-staff']}>
             <DashboardLayout>
               <AIReviewDetail />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/feedbacks" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['system-staff']}>
+            <DashboardLayout>
+              <ManagementFeedbackListPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/feedbacks/:feedbackId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['system-staff']}>
+            <DashboardLayout>
+              <ManagementFeedbackDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
@@ -278,3 +298,5 @@ export const AppRoutes = () => {
     </Routes>
   );
 };
+
+
