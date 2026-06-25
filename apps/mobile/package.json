@@ -16,6 +16,7 @@
     "@urbanmind/shared-api": "workspace:*",
     "@urbanmind/shared-types": "workspace:*",
     "expo": "~51.0.0",
+    "expo-av": "~14.0.7",
     "expo-constants": "~16.0.2",
     "expo-image-picker": "~15.1.0",
     "expo-linking": "~6.3.1",

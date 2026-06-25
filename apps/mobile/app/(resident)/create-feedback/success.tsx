@@ -114,8 +114,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    height: 58,
+    minHeight: 86,
     paddingHorizontal: 20,
+    paddingTop: 34,
+    paddingBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
