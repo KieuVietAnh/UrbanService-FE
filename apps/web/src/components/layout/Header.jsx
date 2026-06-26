@@ -1,5 +1,5 @@
 // src/components/layout/Header.jsx
-import { useLocation, useNavigate, NavLink } from 'react-router-dom';
+import { Link, useLocation, useNavigate, NavLink } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { NotificationBell } from '../notifications/NotificationBell';
@@ -12,38 +12,92 @@ export const Header = ({ onMenuToggle }) => {
   // Convert pathname to readable breadcrumbs
   const getBreadcrumbs = () => {
     const paths = location.pathname.split('/').filter(p => p);
-    if (paths.length === 0) return 'Tổng Quan';
-    
-    return paths.map((path, idx) => {
-      let segmentName = path;
-      if (path === 'tickets') segmentName = 'Phản Ánh';
-      else if (path === 'create') segmentName = 'Gửi Phản Ánh Mới';
-      else if (path === 'queue') segmentName = 'Hàng Chờ Kiểm Duyệt';
-      else if (path === 'duplicates') segmentName = 'Hộp Thư Trùng Lặp';
-      else if (path === 'review') segmentName = 'Duyệt Kết Quả';
-      else if (path === 'community') segmentName = 'Cộng Đồng';
-      else if (path === 'feed') segmentName = 'Bảng Tin';
-      else if (path === 'map') segmentName = 'Bản Đồ Sự Cố';
-      else if (path === 'analytics') segmentName = 'Báo Cáo Phân Tích';
-      else if (path === 'sla') segmentName = 'Chỉ Số SLA';
-      else if (path === 'sentiment') segmentName = 'Ý Kiến Cư Dân (AI)';
-      else if (path === 'heatmap') segmentName = 'Bản Đồ Nhiệt';
-      else if (path === 'management') segmentName = 'Cấu Hình';
-      else if (path === 'users') segmentName = 'Quản Lý Người Dùng';
-      else if (path === 'categories') segmentName = 'Quản Lý Danh Mục';
-      else if (path === 'integrations') segmentName = 'Kênh Tích Hợp';
-      else if (path === 'profile') segmentName = 'Hồ Sơ';
-      else if (path === 'settings') segmentName = 'Cài Đặt';
-      
+
+    const labelMap = {
+      dashboard: 'Tổng quan hệ thống',
+
+      admin: 'Quản trị hệ thống',
+      audit: 'Nhật ký hệ thống',
+      performance: 'Hiệu năng & Logs',
+
+      management: 'Cấu hình quản trị',
+      users: 'Quản lý người dùng',
+      roles: 'Quản lý vai trò',
+      categories: 'Cấu hình danh mục',
+      sla: 'Cấu hình SLA',
+      integrations: 'Cấu hình tích hợp',
+
+      analytics: 'Báo cáo phân tích',
+      sentiment: 'Ý kiến cư dân',
+      heatmap: 'Bản đồ nhiệt',
+
+      provider: 'Đơn vị xử lý',
+      tasks: 'Nhiệm vụ được giao',
+
+      tickets: 'Phản ánh',
+      create: 'Gửi phản ánh mới',
+      queue: 'Hàng chờ kiểm duyệt',
+      duplicates: 'Hộp thư trùng lặp',
+      review: 'Duyệt kết quả',
+
+      community: 'Cộng đồng',
+      feed: 'Bảng tin',
+      map: 'Bản đồ sự cố',
+
+      profile: 'Hồ sơ',
+      settings: 'Cài đặt',
+    };
+
+    if (location.pathname === '/dashboard') {
       return (
-        <span key={idx} className="flex items-center gap-1">
-          {idx > 0 && <Lucide.ChevronRight size={14} className="text-gray-400" />}
-          <span className={idx === paths.length - 1 ? 'font-bold text-base-content' : 'text-gray-400'}>
-            {segmentName}
-          </span>
+        <span className="font-bold text-base-content">
+          Tổng quan hệ thống
         </span>
       );
-    });
+    }
+
+    const hiddenBreadcrumbSegments = new Set([
+      'admin',
+      'management',
+      'analytics',
+      'provider',
+      'tickets',
+      'community',
+    ]);
+
+    const visiblePaths = paths.filter(path => !hiddenBreadcrumbSegments.has(path));
+
+    return (
+      <div className="flex items-center gap-1.5">
+        <Link
+          to="/dashboard"
+          className="font-semibold text-base-content/45 transition-colors hover:text-primary"
+        >
+          Tổng quan hệ thống
+        </Link>
+
+        {visiblePaths.map((path, idx) => {
+          if (idx === 0 && path === 'dashboard') return null;
+
+          const segmentName = labelMap[path] || path;
+
+          return (
+            <span key={`${path}-${idx}`} className="flex items-center gap-1.5">
+              <Lucide.ChevronRight size={14} className="text-base-content/30" />
+              <span
+                className={
+                  idx === visiblePaths.length - 1
+                    ? 'font-bold text-base-content'
+                    : 'font-semibold text-base-content/45'
+                }
+              >
+                {segmentName}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+    );
   };
 
   const isCitizen = user?.role === 'service-user';
@@ -82,8 +136,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/dashboard"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-                isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -92,8 +145,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/tickets/create"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-                isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -103,8 +155,7 @@ export const Header = ({ onMenuToggle }) => {
             to="/tickets"
             end
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-                isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -113,8 +164,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/community/feed"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-                isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -123,8 +173,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/community/map"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-                isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >

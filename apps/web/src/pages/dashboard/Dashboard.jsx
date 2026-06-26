@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
 import { toolsApi } from '@urbanmind/shared-api';
-import { SentimentDonutChart, SLAPerformanceChart, CategoryVolumeBarChart } from '../../components/charts/CustomCharts';
+import { SentimentDonutChart, SLAPerformanceChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 
 export const Dashboard = () => {
@@ -608,53 +608,363 @@ export const Dashboard = () => {
   // 5. ADMINISTRATOR DASHBOARD (administrator)
   // ----------------------------------------------------
   if (user.role === 'administrator') {
+    const storageUsageValue = stats.storageUsage?.split(' ')[0] || '0';
+    const recentTickets = Array.isArray(tickets) ? tickets.slice(0, 4) : [];
+    const adminMetrics = [
+      {
+        label: 'Tài khoản hoạt động',
+        value: stats.totalUsers || 0,
+        helper: 'Người dùng toàn hệ thống',
+        icon: Lucide.Users,
+        tone: 'bg-blue-50 text-blue-700 border-blue-100',
+      },
+      {
+        label: 'Sức khỏe API',
+        value: '99.98%',
+        helper: 'Gateway đang ổn định',
+        icon: Lucide.Activity,
+        tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+      },
+      {
+        label: 'Dung lượng DB',
+        value: `${storageUsageValue} KB`,
+        helper: 'Theo thống kê hệ thống',
+        icon: Lucide.Database,
+        tone: 'bg-cyan-50 text-cyan-700 border-cyan-100',
+      },
+      {
+        label: 'Phân loại AI',
+        value: 'Đang bật',
+        helper: 'Luồng phân loại đang bật',
+        icon: Lucide.Bot,
+        tone: 'bg-violet-50 text-violet-700 border-violet-100',
+      },
+    ];
+
+    const adminQuickLinks = [
+      {
+        title: 'Quản lý người dùng',
+        description: 'Kiểm soát tài khoản, trạng thái và quyền truy cập.',
+        to: '/management/users',
+        icon: Lucide.Users,
+      },
+      {
+        title: 'Cấu hình SLA',
+        description: 'Thiết lập ngưỡng xử lý cho từng nhóm phản ánh.',
+        to: '/management/sla',
+        icon: Lucide.Gauge,
+      },
+      {
+        title: 'Nhật ký hệ thống',
+        description: 'Theo dõi lịch sử thao tác và sự kiện quan trọng.',
+        to: '/admin/audit',
+        icon: Lucide.FileClock,
+      },
+    ];
+
+    const integrations = [
+      { name: 'Zalo Mini App API', status: 'Đã kết nối', icon: Lucide.Radio },
+      { name: 'Messenger Webhook', status: 'Đã kết nối', icon: Lucide.CheckCircle2 },
+      { name: 'Tổng đài hotline', status: 'Đang bật', icon: Lucide.PhoneCall },
+    ];
+
+    const categoryDistribution = Array.isArray(stats.categoryDistribution)
+      ? stats.categoryDistribution.map((item, index) => ({
+          id: Number(item.categoryId ?? item.id ?? index + 1),
+          name: item.categoryName || item.name || item.label || `Danh mục ${index + 1}`,
+          count: Number(item.count ?? item.value ?? item.total ?? 0),
+        }))
+      : [];
+    const totalCategoryTickets = categoryDistribution.reduce((sum, item) => sum + item.count, 0);
+    const maxCategoryCount = Math.max(...categoryDistribution.map(item => item.count), 1);
+    const hasLowCategoryData = totalCategoryTickets > 0 && totalCategoryTickets <= 5;
+
     return (
       <div className="space-y-6 text-slate-800">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">Tổng quan quản trị viên</h2>
-          <p className="text-xs text-gray-500 font-semibold">Theo dõi sức khỏe tài nguyên máy chủ, tích hợp đa kênh và phân nhiệm tài khoản.</p>
-        </div>
+        <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-blue-100/70 blur-3xl" />
+          <div className="absolute bottom-0 left-10 h-32 w-32 rounded-full bg-emerald-100/60 blur-3xl" />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-[#0052CC]">{stats.totalUsers}</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">Tài khoản hoạt động</span>
-          </div>
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-success">99.98%</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">API Health</span>
-          </div>
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-info">{stats.storageUsage.split(' ')[0]} KB</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">Dung lượng DB</span>
-          </div>
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-purple-500">Active</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">AI Classification</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <CategoryVolumeBarChart data={stats.categoryDistribution} />
-
-          <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
-            <h3 className="font-extrabold text-sm border-b border-slate-200 pb-2">Tích hợp đa kênh tiếp nhận</h3>
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span className="font-bold text-slate-700">Zalo mini app API</span>
-                <span className="badge badge-success badge-xs font-bold text-white uppercase py-1.5 px-2">Connected</span>
+          <div className="relative flex flex-col gap-5 p-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em] text-blue-700">
+                <Lucide.ShieldCheck size={14} />
+                Trung tâm quản trị
               </div>
-              <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span className="font-bold text-slate-700">Messenger webhook</span>
-                <span className="badge badge-success badge-xs font-bold text-white uppercase py-1.5 px-2">Connected</span>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-black tracking-tight text-slate-950 lg:text-3xl">
+                  Tổng quan quản trị hệ thống
+                </h2>
+                <p className="max-w-xl text-sm font-semibold leading-6 text-slate-500">
+                  Theo dõi sức khỏe nền tảng, tài nguyên máy chủ, tích hợp tiếp nhận đa kênh và dữ liệu vận hành đô thị trong một màn hình.
+                </p>
               </div>
-              <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <span className="font-bold text-slate-700">Tổng đài hotline (speech-to-text)</span>
-                <span className="badge badge-success badge-xs font-bold text-white uppercase py-1.5 px-2">Active</span>
+            </div>
+
+            <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
+              <Link
+                to="/admin/performance"
+                className="rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-white/70">
+                  <Lucide.Server size={14} />
+                  Vận hành
+                </div>
+                <div className="mt-2 text-sm font-black">Hiệu năng & Nhật ký</div>
+              </Link>
+              <Link
+                to="/management/users"
+                className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-blue-800 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-blue-500">
+                  <Lucide.KeyRound size={14} />
+                  Phân quyền
+                </div>
+                <div className="mt-2 text-sm font-black">Quản lý quyền</div>
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {adminMetrics.map((metric) => {
+            const Icon = metric.icon;
+
+            return (
+              <div key={metric.label} className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex items-start justify-between gap-3">
+                  <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${metric.tone}`}>
+                    <Icon size={20} />
+                  </div>
+                  <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Theo dõi
+                  </span>
+                </div>
+                <div className="mt-5 space-y-1">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">{metric.label}</p>
+                  <p className="text-2xl font-black text-slate-950">{metric.value}</p>
+                  <p className="text-xs font-semibold text-slate-500">{metric.helper}</p>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="xl:col-span-2 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-black text-slate-950">Phân bổ phản ánh theo danh mục</h3>
+                <p className="text-xs font-semibold text-slate-500">Tổng hợp khối lượng phản ánh để Admin theo dõi cấu hình danh mục.</p>
+              </div>
+              <Link to="/management/categories" className="inline-flex items-center gap-1 text-xs font-black text-blue-700 hover:underline">
+                Cấu hình danh mục
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Tổng phản ánh</p>
+                  <p className="mt-1 text-2xl font-black text-slate-950">{totalCategoryTickets}</p>
+                </div>
+                <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${hasLowCategoryData ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                  <span className="h-2 w-2 rounded-full bg-current" />
+                  {hasLowCategoryData ? 'Dữ liệu còn ít' : 'Đang cập nhật'}
+                </span>
+              </div>
+
+              {categoryDistribution.length === 0 ? (
+                <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                    <Lucide.BarChart3 size={22} />
+                  </div>
+                  <p className="mt-3 text-sm font-black text-slate-700">Chưa có dữ liệu danh mục</p>
+                  <p className="mt-1 max-w-sm text-xs font-semibold leading-5 text-slate-400">
+                    Khi có phản ánh mới, hệ thống sẽ tự động tổng hợp theo từng danh mục.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {categoryDistribution.map((category) => {
+                    const percent = Math.round((category.count / maxCategoryCount) * 100);
+                    const barWidth = category.count === 0 ? '0%' : `${Math.max(percent, 12)}%`;
+
+                    return (
+                      <div key={`${category.id}-${category.name}`} className="rounded-2xl border border-slate-200 bg-white p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50">
+                              {renderCategoryIcon(category.id)}
+                            </div>
+                            <span className="truncate text-xs font-black text-slate-800">{category.name}</span>
+                          </div>
+                          <span className="shrink-0 text-sm font-black text-slate-950">
+                            {category.count}
+                            <span className="ml-1 text-[10px] font-bold text-slate-400">phiếu</span>
+                          </span>
+                        </div>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${category.count === 0 ? 'bg-transparent' : 'bg-gradient-to-r from-blue-600 to-violet-600'}`}
+                            style={{ width: barWidth }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {hasLowCategoryData && (
+                <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-[11px] font-semibold leading-5 text-amber-700">
+                  Dữ liệu hiện còn ít nên hệ thống ưu tiên hiển thị dạng danh sách để tránh biểu đồ bị phóng đại. Khi số lượng phản ánh tăng, phần này vẫn phản ánh đúng tỷ trọng từng danh mục.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-slate-950">Tích hợp đa kênh</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Các kênh tiếp nhận phản ánh đang hoạt động.</p>
+              </div>
+              <div className="rounded-2xl bg-emerald-50 p-2 text-emerald-600">
+                <Lucide.CheckCircle2 size={18} />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {integrations.map((integration) => {
+                const Icon = integration.icon;
+
+                return (
+                  <div key={integration.name} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
+                        <Icon size={16} />
+                      </div>
+                      <span className="truncate text-xs font-black text-slate-700">{integration.name}</span>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                      {integration.status}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <Link
+              to="/management/integrations"
+              className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-700 transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+            >
+              Quản lý tích hợp
+              <Lucide.ArrowRight size={14} />
+            </Link>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-black text-slate-950">Phản ánh mới nhất</h3>
+                <p className="text-xs font-semibold text-slate-500">Dữ liệu tổng hợp để Admin giám sát luồng vận hành.</p>
+              </div>
+              <Link to="/admin/performance" className="inline-flex items-center gap-1 text-xs font-black text-blue-700 hover:underline">
+                Xem hiệu năng
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="table w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    <th className="py-3">Mã</th>
+                    <th className="py-3">Nội dung</th>
+                    <th className="py-3">Danh mục</th>
+                    <th className="py-3">Ưu tiên</th>
+                    <th className="py-3">Trạng thái</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {recentTickets.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="py-8 text-center text-xs font-bold text-slate-400">
+                        Chưa có dữ liệu phản ánh để hiển thị.
+                      </td>
+                    </tr>
+                  ) : (
+                    recentTickets.map((ticket) => (
+                      <tr key={ticket.feedbackId} className="hover:bg-slate-50/70">
+                        <td className="py-3.5 font-black text-blue-700">{formatTicketId(ticket.feedbackId)}</td>
+                        <td className="max-w-[240px] py-3.5 font-bold text-slate-700">
+                          <div className="truncate">{ticket.title}</div>
+                        </td>
+                        <td className="py-3.5">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-700">
+                            {renderCategoryIcon(ticket.categoryId)}
+                            <span className="truncate">
+                              {toolsApi.getCategories().find(c => c.categoryId === ticket.categoryId)?.categoryName || 'Chưa phân loại'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3.5">{renderPriorityBadge(ticket.priority)}</td>
+                        <td className="py-3.5">{renderStatusBadge(ticket.status)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4">
+              <h3 className="text-base font-black text-slate-950">Lối tắt quản trị</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">Các flow Admin thường cần kiểm tra.</p>
+            </div>
+
+            <div className="space-y-3">
+              {adminQuickLinks.map((item) => {
+                const Icon = item.icon;
+
+                return (
+                  <Link
+                    key={item.title}
+                    to={item.to}
+                    className="group flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 transition-all hover:border-blue-200 hover:bg-blue-50"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm group-hover:text-blue-700">
+                      <Icon size={17} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-xs font-black text-slate-800">{item.title}</h4>
+                        <Lucide.ArrowRight size={14} className="shrink-0 text-slate-300 group-hover:text-blue-700" />
+                      </div>
+                      <p className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">{item.description}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-800">
+              <div className="flex items-start gap-3">
+                <Lucide.AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-black">Gợi ý kiểm tra định kỳ</p>
+                  <p className="mt-1 text-[11px] font-semibold leading-5 text-amber-700">
+                    Xem log hệ thống và SLA sau mỗi phiên cấu hình để đảm bảo flow xử lý không bị lệch.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     );
   }
