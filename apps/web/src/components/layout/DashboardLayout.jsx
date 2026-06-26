@@ -44,8 +44,8 @@ export const DashboardLayout = ({ children }) => {
     user?.role === 'administrator' || user?.role === 'service-provider';
 
   return (
-    <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-base-300 text-base-content font-sans">
-      <div className="flex flex-1 min-w-0 overflow-hidden">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-base-300 text-base-content font-sans">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar navigation */}
         {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
@@ -54,7 +54,7 @@ export const DashboardLayout = ({ children }) => {
           <Header onMenuToggle={toggleSidebar} />
 
           {/* Main scrollable workspace */}
-          <main className="flex-1 overflow-y-auto p-6 bg-base-200">
+          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-base-200 p-6">
             <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
               {children}
             </div>
