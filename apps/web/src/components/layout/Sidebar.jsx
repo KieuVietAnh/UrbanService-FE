@@ -1,5 +1,6 @@
 // src/components/layout/Sidebar.jsx
 
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -30,13 +31,32 @@ const getRoleNameVietnamese = (role) => {
   }
 };
 
+
+const getUserInitials = (value = '') => {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) return 'U';
+
+  const parts = normalizedValue.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+
+  return normalizedValue.slice(0, 2).toUpperCase();
+};
+
 export const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [avatarError, setAvatarError] = useState(false);
 
   if (!user) return null;
 
   const menuItems = menuMapping[user.role] || [];
+  const displayName = user.fullName || user.email || 'Người dùng';
+  const userInitials = getUserInitials(displayName);
+  const showAvatarImage = Boolean(user.avatarUrl) && !avatarError;
 
   const handleLogout = async () => {
     await logout();
@@ -77,15 +97,25 @@ export const Sidebar = ({ isOpen, onClose }) => {
         </div>
 
         {/* User Card */}
-        <div className="px-6 py-4 border-b border-base-300 bg-base-100/50 flex items-center gap-3">
-          <div className="avatar">
-            <div className="w-10 rounded-full ring-2 ring-primary ring-offset-base-100 ring-offset-2">
-              <img src={user.avatarUrl} alt="User Avatar" />
-            </div>
+        <div className="flex items-center gap-3 border-b border-base-300 bg-base-100/50 px-6 py-4">
+          <div className={showAvatarImage ? 'avatar' : 'avatar placeholder'}>
+            {showAvatarImage ? (
+              <div className="w-10 rounded-full ring-2 ring-primary ring-offset-base-100 ring-offset-2">
+                <img
+                  src={user.avatarUrl}
+                  alt={displayName}
+                  onError={() => setAvatarError(true)}
+                />
+              </div>
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-secondary/15 text-primary ring-2 ring-primary ring-offset-base-100 ring-offset-2">
+                <span className="leading-none text-sm font-extrabold tracking-tight">{userInitials}</span>
+              </div>
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <h4 className="font-bold text-sm truncate">{user.fullName}</h4>
-            <div className="badge badge-primary badge-xs py-2 px-2 text-[10px] uppercase font-bold mt-1">
+          <div className="min-w-0 flex-1">
+            <h4 className="truncate text-sm font-bold">{displayName}</h4>
+            <div className="badge badge-primary badge-xs mt-1 px-2 py-2 text-[10px] font-bold uppercase">
               {getRoleNameVietnamese(user.role)}
             </div>
           </div>
