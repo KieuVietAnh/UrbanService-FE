@@ -86,7 +86,7 @@ export const Header = ({ onMenuToggle }) => {
               <Lucide.ChevronRight size={14} className="text-base-content/30" />
               <span
                 className={
-                  idx === paths.length - 1
+                  idx === visiblePaths.length - 1
                     ? 'font-bold text-base-content'
                     : 'font-semibold text-base-content/45'
                 }
