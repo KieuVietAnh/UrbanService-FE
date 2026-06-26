@@ -135,7 +135,7 @@ export const AuditLog = () => {
             <div className="max-w-3xl">
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-primary">
                 <Lucide.ShieldCheck size={14} />
-                Audit Trail
+                Nhật ký truy vết
               </div>
               <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
                 Nhật ký hệ thống
@@ -148,7 +148,7 @@ export const AuditLog = () => {
             <div className="rounded-2xl border border-success/15 bg-success/10 px-4 py-3">
               <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-success/80">
                 <span className="h-2 w-2 rounded-full bg-success" />
-                Monitoring
+                Đang theo dõi
               </div>
               <div className="mt-1 text-sm font-black text-base-content">Đang ghi nhận hoạt động</div>
             </div>

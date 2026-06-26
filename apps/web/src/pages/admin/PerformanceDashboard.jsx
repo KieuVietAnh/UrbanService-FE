@@ -15,34 +15,34 @@ import { analyticsApi } from '../../services/api/analyticsApi';
 const serviceCards = [
   {
     title: 'Cổng dịch vụ API',
-    subtitle: 'Gateway & public endpoints',
-    status: 'Healthy',
+    subtitle: 'Cổng kết nối & endpoint công khai',
+    status: 'Ổn định',
     statusClass: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     iconClass: 'bg-emerald-500/10 text-emerald-600',
     Icon: Server,
     rows: [
       { label: 'Thời gian phản hồi TB', value: '120ms', valueClass: 'text-base-content' },
       { label: 'Tỷ lệ thành công', value: '99.98%', valueClass: 'text-emerald-600' },
-      { label: 'Peak request', value: '250 req/s', valueClass: 'text-base-content' },
+      { label: 'Lưu lượng cao điểm', value: '250 req/s', valueClass: 'text-base-content' },
     ],
   },
   {
     title: 'Mô hình AI Copilot',
     subtitle: 'Phân loại & hỗ trợ xử lý',
-    status: 'Active',
+    status: 'Đang bật',
     statusClass: 'bg-sky-100 text-sky-700 border-sky-200',
     iconClass: 'bg-sky-500/10 text-sky-600',
     Icon: Bot,
     rows: [
       { label: 'Tốc độ xử lý GPU', value: '0.8 giây/token', valueClass: 'text-base-content' },
       { label: 'Độ chính xác NLP', value: '94.2%', valueClass: 'text-base-content' },
-      { label: 'Hàng chờ phân loại', value: '00 Phiếu', valueClass: 'text-emerald-600' },
+      { label: 'Hàng chờ phân loại', value: '0 phiếu', valueClass: 'text-emerald-600' },
     ],
   },
   {
     title: 'Lưu trữ CSDL',
-    subtitle: 'Database & backup service',
-    status: 'Sufficient',
+    subtitle: 'Cơ sở dữ liệu & sao lưu',
+    status: 'Đủ dung lượng',
     statusClass: 'bg-amber-100 text-amber-700 border-amber-200',
     iconClass: 'bg-amber-500/10 text-amber-600',
     Icon: Database,
@@ -55,21 +55,21 @@ const serviceCards = [
 
 const healthMetrics = [
   {
-    label: 'API uptime',
+    label: 'Thời gian hoạt động API',
     value: '99.98%',
     description: 'Ổn định trong 24h gần nhất',
     progress: 99,
     Icon: ShieldCheck,
   },
   {
-    label: 'Response time',
+    label: 'Thời gian phản hồi',
     value: '120ms',
     description: 'Thời gian phản hồi trung bình',
     progress: 86,
     Icon: Zap,
   },
   {
-    label: 'AI accuracy',
+    label: 'Độ chính xác AI',
     value: '94.2%',
     description: 'Độ chính xác phân loại NLP',
     progress: 94,
@@ -124,13 +124,13 @@ export const PerformanceDashboard = () => {
 
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-primary">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
                 <Activity className="h-3.5 w-3.5" />
-                System Monitoring
+                Giám sát hệ thống
               </div>
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-base-content md:text-3xl">
-                  Hiệu Năng &amp; Trạng Thái Hệ Thống
+                  Hiệu năng &amp; trạng thái hệ thống
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-base-content/60">
                   Theo dõi sức khỏe hạ tầng, thời gian đáp ứng API, trạng thái AI Copilot và dung lượng lưu trữ của nền tảng UrbanMind.
@@ -142,7 +142,7 @@ export const PerformanceDashboard = () => {
               <p className="text-[11px] font-bold uppercase tracking-wider text-base-content/45">Tổng quan hệ thống</p>
               <div className="mt-1 flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" />
-                <span className="text-sm font-black text-base-content">Operational</span>
+                <span className="text-sm font-black text-base-content">Đang vận hành</span>
               </div>
             </div>
           </div>

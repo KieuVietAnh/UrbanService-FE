@@ -619,7 +619,7 @@ export const Dashboard = () => {
         tone: 'bg-blue-50 text-blue-700 border-blue-100',
       },
       {
-        label: 'API Health',
+        label: 'Sức khỏe API',
         value: '99.98%',
         helper: 'Gateway đang ổn định',
         icon: Lucide.Activity,
@@ -633,8 +633,8 @@ export const Dashboard = () => {
         tone: 'bg-cyan-50 text-cyan-700 border-cyan-100',
       },
       {
-        label: 'AI Classification',
-        value: 'Active',
+        label: 'Phân loại AI',
+        value: 'Đang bật',
         helper: 'Luồng phân loại đang bật',
         icon: Lucide.Bot,
         tone: 'bg-violet-50 text-violet-700 border-violet-100',
@@ -663,9 +663,9 @@ export const Dashboard = () => {
     ];
 
     const integrations = [
-      { name: 'Zalo mini app API', status: 'Connected', icon: Lucide.Radio },
-      { name: 'Messenger webhook', status: 'Connected', icon: Lucide.CheckCircle2 },
-      { name: 'Tổng đài hotline', status: 'Active', icon: Lucide.PhoneCall },
+      { name: 'Zalo Mini App API', status: 'Đã kết nối', icon: Lucide.Radio },
+      { name: 'Messenger Webhook', status: 'Đã kết nối', icon: Lucide.CheckCircle2 },
+      { name: 'Tổng đài hotline', status: 'Đang bật', icon: Lucide.PhoneCall },
     ];
 
     const categoryDistribution = Array.isArray(stats.categoryDistribution)
@@ -689,7 +689,7 @@ export const Dashboard = () => {
             <div className="max-w-2xl space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em] text-blue-700">
                 <Lucide.ShieldCheck size={14} />
-                Administrator Control Center
+                Trung tâm quản trị
               </div>
               <div className="space-y-2">
                 <h2 className="text-2xl font-black tracking-tight text-slate-950 lg:text-3xl">
@@ -708,9 +708,9 @@ export const Dashboard = () => {
               >
                 <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-white/70">
                   <Lucide.Server size={14} />
-                  Health
+                  Vận hành
                 </div>
-                <div className="mt-2 text-sm font-black">Hiệu năng & Logs</div>
+                <div className="mt-2 text-sm font-black">Hiệu năng & Nhật ký</div>
               </Link>
               <Link
                 to="/management/users"
@@ -718,7 +718,7 @@ export const Dashboard = () => {
               >
                 <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-blue-500">
                   <Lucide.KeyRound size={14} />
-                  Access
+                  Phân quyền
                 </div>
                 <div className="mt-2 text-sm font-black">Quản lý quyền</div>
               </Link>
@@ -737,7 +737,7 @@ export const Dashboard = () => {
                     <Icon size={20} />
                   </div>
                   <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    Live
+                    Theo dõi
                   </span>
                 </div>
                 <div className="mt-5 space-y-1">

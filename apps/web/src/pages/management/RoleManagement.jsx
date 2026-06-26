@@ -127,29 +127,35 @@ export const RoleManagement = () => {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-base-100 to-base-100 p-6 shadow-sm">
-        <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-primary/10 blur-3xl" />
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-primary">
-              <Lucide.KeyRound size={14} />
-              Access Control
-            </div>
-            <h2 className="text-3xl font-black tracking-tight text-base-content">
-              Phân quyền vai trò & quyền hạn
-            </h2>
-            <p className="mt-2 text-sm font-medium leading-6 text-base-content/60">
-              Cấu hình ma trận quyền cho từng nhóm vai trò nghiệp vụ, giúp Admin kiểm soát đúng phạm vi truy cập trong hệ thống UrbanMind.
-            </p>
-          </div>
+      <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
+        <div className="relative p-6 sm:p-8">
+          <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute bottom-0 right-28 h-28 w-28 rounded-full bg-secondary/10 blur-3xl" />
 
-          <button
-            onClick={handleSave}
-            className="btn btn-primary rounded-2xl font-bold shadow-lg shadow-primary/20"
-          >
-            <Lucide.Save size={18} />
-            Lưu cấu hình
-          </button>
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
+                <Lucide.KeyRound size={14} />
+                Phân quyền hệ thống
+              </div>
+              <div>
+                <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
+                  Quản Lý Vai Trò & Quyền Hạn
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-base-content/60">
+                  Cấu hình ma trận quyền cho từng nhóm vai trò nghiệp vụ, giúp Admin kiểm soát đúng phạm vi truy cập trong hệ thống UrbanMind.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSave}
+              className="btn btn-primary rounded-2xl px-5 text-xs font-black shadow-lg shadow-primary/20"
+            >
+              <Lucide.Save size={17} />
+              Lưu thay đổi
+            </button>
+          </div>
         </div>
       </section>
 
@@ -159,7 +165,7 @@ export const RoleManagement = () => {
             <div className="rounded-2xl bg-primary/10 p-3 text-primary">
               <Lucide.UsersRound size={22} />
             </div>
-            <span className="badge badge-primary badge-outline font-bold">Roles</span>
+            <span className="badge badge-primary badge-outline font-bold">Vai trò</span>
           </div>
           <p className="mt-4 text-sm font-bold text-base-content/50">Vai trò hệ thống</p>
           <p className="mt-1 text-3xl font-black text-base-content">{roles.length}</p>
@@ -170,7 +176,7 @@ export const RoleManagement = () => {
             <div className="rounded-2xl bg-info/10 p-3 text-info">
               <Lucide.ListChecks size={22} />
             </div>
-            <span className="badge badge-info badge-outline font-bold">Permissions</span>
+            <span className="badge badge-info badge-outline font-bold">Quyền</span>
           </div>
           <p className="mt-4 text-sm font-bold text-base-content/50">Quyền đang hiển thị</p>
           <p className="mt-1 text-3xl font-black text-base-content">{permissions.length}</p>
@@ -181,7 +187,7 @@ export const RoleManagement = () => {
             <div className="rounded-2xl bg-success/10 p-3 text-success">
               <Lucide.CheckCircle2 size={22} />
             </div>
-            <span className="badge badge-success badge-outline font-bold">Granted</span>
+            <span className="badge badge-success badge-outline font-bold">Đã bật</span>
           </div>
           <p className="mt-4 text-sm font-bold text-base-content/50">Ô quyền đã bật</p>
           <p className="mt-1 text-3xl font-black text-base-content">{grantedPermissionCount}</p>
@@ -199,7 +205,7 @@ export const RoleManagement = () => {
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {roles.map(role => {
           const meta = roleMeta[role.key] || {};
           const Icon = meta.icon || Lucide.UserRoundCog;

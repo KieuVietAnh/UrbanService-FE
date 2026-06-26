@@ -122,16 +122,16 @@ export const UserManagement = () => {
         role,
         operatorId: role === 'service-provider' ? Number(operatorId) : null
       }, currentAdmin?.userId);
-      
+
       alert('Tạo người dùng mới thành công! Mật khẩu mặc định là: 123456');
       setShowCreateModal(false);
-      
+
       // Reset
       setFullName('');
       setEmail('');
       setPhone('');
       setRole('service-user');
-      
+
       fetchUsers();
     } catch (err) {
       alert(err.message || 'Lỗi khi tạo tài khoản.');
@@ -147,10 +147,10 @@ export const UserManagement = () => {
           <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-primary/10 via-primary/5 to-transparent lg:block" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl space-y-3">
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-primary">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
                 <Lucide.UsersRound size={14} />
-                User Access Control
-              </span>
+                Quản trị tài khoản
+              </div>
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
                   Quản lý người dùng
@@ -171,9 +171,9 @@ export const UserManagement = () => {
                 <Lucide.RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
                 Làm mới
               </button>
-              <button 
+              <button
                 type="button"
-                onClick={() => setShowCreateModal(true)} 
+                onClick={() => setShowCreateModal(true)}
                 className="btn btn-primary rounded-2xl text-xs font-black shadow-lg shadow-primary/20"
               >
                 <Lucide.UserPlus size={16} />
@@ -344,11 +344,10 @@ export const UserManagement = () => {
                           </div>
                         </td>
                         <td className="px-5 py-4">
-                          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black uppercase ${
-                            u.isActive
+                          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black uppercase ${u.isActive
                               ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
                               : 'bg-rose-50 text-rose-700 ring-1 ring-rose-100'
-                          }`}>
+                            }`}>
                             <span className={`h-2 w-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                             {u.isActive ? 'Hoạt động' : 'Đã khóa'}
                           </span>
@@ -357,12 +356,11 @@ export const UserManagement = () => {
                           {isCurrentAdmin ? (
                             <span className="text-[11px] font-bold text-base-content/40">Tài khoản hiện tại</span>
                           ) : (
-                            <button 
+                            <button
                               type="button"
                               onClick={() => handleToggleStatus(u.userId, u.isActive)}
-                              className={`btn btn-sm rounded-xl text-[11px] font-black ${
-                                u.isActive ? 'btn-outline btn-error' : 'btn-primary'
-                              }`}
+                              className={`btn btn-sm rounded-xl text-[11px] font-black ${u.isActive ? 'btn-outline btn-error' : 'btn-primary'
+                                }`}
                             >
                               {u.isActive ? (
                                 <>
@@ -457,15 +455,15 @@ export const UserManagement = () => {
                 <Lucide.X size={18} />
               </button>
             </div>
-            
+
             <form onSubmit={handleCreateUser} className="space-y-5 p-6 text-xs">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="form-control sm:col-span-2">
                   <label className="label">
                     <span className="label-text text-xs font-black">Họ và tên *</span>
                   </label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Ví dụ: Trần Quốc Toản"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
@@ -478,8 +476,8 @@ export const UserManagement = () => {
                   <label className="label">
                     <span className="label-text text-xs font-black">Email đăng nhập *</span>
                   </label>
-                  <input 
-                    type="email" 
+                  <input
+                    type="email"
                     placeholder="account@urbanmind.vn"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -492,8 +490,8 @@ export const UserManagement = () => {
                   <label className="label">
                     <span className="label-text text-xs font-black">Số điện thoại *</span>
                   </label>
-                  <input 
-                    type="tel" 
+                  <input
+                    type="tel"
                     placeholder="09XXXXXXXX"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
@@ -506,8 +504,8 @@ export const UserManagement = () => {
                   <label className="label">
                     <span className="label-text text-xs font-black">Vai trò phân nhiệm *</span>
                   </label>
-                  <select 
-                    value={role} 
+                  <select
+                    value={role}
                     onChange={(e) => setRole(e.target.value)}
                     className="select select-bordered h-11 rounded-2xl text-sm font-bold"
                     required
@@ -525,8 +523,8 @@ export const UserManagement = () => {
                     <label className="label">
                       <span className="label-text text-xs font-black">Gắn đơn vị vận hành công ích</span>
                     </label>
-                    <select 
-                      value={operatorId} 
+                    <select
+                      value={operatorId}
                       onChange={(e) => setOperatorId(e.target.value)}
                       className="select select-bordered h-11 rounded-2xl text-sm font-bold"
                     >
@@ -545,15 +543,15 @@ export const UserManagement = () => {
               </div>
 
               <div className="flex flex-col-reverse gap-2 border-t border-base-300 pt-5 sm:flex-row sm:justify-end">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowCreateModal(false)}
                   className="btn btn-ghost rounded-2xl text-xs font-black"
                 >
                   Hủy bỏ
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn btn-primary rounded-2xl text-xs font-black"
                   disabled={createLoading}
                 >
