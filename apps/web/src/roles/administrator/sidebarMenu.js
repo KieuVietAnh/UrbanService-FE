@@ -2,6 +2,7 @@
 export default [
   { name: 'Tổng Quan Hệ Thống', path: '/dashboard', icon: 'LayoutDashboard' },
   { name: 'Quản Lý Người Dùng', path: '/management/users', icon: 'Users2' },
+  { name: 'Quản Lý Vai Trò', path: '/management/roles',icon: 'ShieldCheck'},
   { name: 'Cấu Hình Danh Mục', path: '/management/categories', icon: 'FolderKanban' },
   { name: 'Cấu Hình SLA', path: '/management/sla', icon: 'Clock' },
   { name: 'Cấu Hình Tích Hợp', path: '/management/integrations', icon: 'Link2' },

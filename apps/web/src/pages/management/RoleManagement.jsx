@@ -1,5 +1,5 @@
 // src/pages/management/RoleManagement.jsx
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import * as Lucide from 'lucide-react';
 
 export const RoleManagement = () => {
@@ -36,6 +36,79 @@ export const RoleManagement = () => {
     'administrator': ['ticket:view-all', 'user:manage', 'category:manage', 'sla:manage', 'integration:manage', 'system:logs']
   });
 
+  const roleMeta = {
+    'service-user': {
+      label: 'Người dân',
+      tone: 'badge-info',
+      icon: Lucide.Users,
+      description: 'Gửi phản ánh và theo dõi hồ sơ cá nhân'
+    },
+    'system-staff': {
+      label: 'Cán bộ tiếp nhận',
+      tone: 'badge-warning',
+      icon: Lucide.ClipboardCheck,
+      description: 'Kiểm duyệt, gộp trùng và điều phối phản ánh'
+    },
+    'service-provider': {
+      label: 'Đơn vị xử lý',
+      tone: 'badge-success',
+      icon: Lucide.Wrench,
+      description: 'Cập nhật tiến độ và báo cáo hoàn thành'
+    },
+    'interaction-manager': {
+      label: 'Quản lý tương tác',
+      tone: 'badge-secondary',
+      icon: Lucide.MessagesSquare,
+      description: 'Theo dõi phân tích và tương tác người dùng'
+    },
+    'administrator': {
+      label: 'Quản trị viên',
+      tone: 'badge-primary',
+      icon: Lucide.ShieldCheck,
+      description: 'Quản trị tài khoản, cấu hình và nhật ký hệ thống'
+    }
+  };
+
+  const permissionGroups = [
+    {
+      title: 'Tiếp nhận phản ánh',
+      icon: Lucide.Inbox,
+      permissions: ['ticket:create', 'ticket:view-own', 'ticket:view-all']
+    },
+    {
+      title: 'Điều phối & kiểm duyệt',
+      icon: Lucide.Route,
+      permissions: ['ticket:verify', 'ticket:merge', 'ticket:assign']
+    },
+    {
+      title: 'Xử lý hiện trường',
+      icon: Lucide.HardHat,
+      permissions: ['ticket:update-progress', 'ticket:resolve', 'ticket:inspect-resolution']
+    },
+    {
+      title: 'Đánh giá & quản trị',
+      icon: Lucide.BarChart3,
+      permissions: ['ticket:rate', 'analytics:view', 'user:manage']
+    }
+  ];
+
+  const listedPermissionKeys = permissions.map(permission => permission.key);
+  const grantedPermissionCount = roles.reduce((total, role) => {
+    const activePerms = matrix[role.key] || [];
+    return total + activePerms.filter(permission => listedPermissionKeys.includes(permission)).length;
+  }, 0);
+  const totalPermissionSlots = roles.length * permissions.length;
+  const coverageRate = totalPermissionSlots > 0
+    ? Math.round((grantedPermissionCount / totalPermissionSlots) * 100)
+    : 0;
+  const administratorPermissionCount = (matrix.administrator || []).filter(permission => (
+    listedPermissionKeys.includes(permission)
+  )).length;
+
+  const getPermissionInfo = permissionKey => {
+    return permissions.find(permission => permission.key === permissionKey);
+  };
+
   const handleToggle = (roleKey, permKey) => {
     const activePerms = matrix[roleKey] || [];
     const isChecked = activePerms.includes(permKey);
@@ -54,61 +127,241 @@ export const RoleManagement = () => {
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-black">Phân Quyền Vai Trò &amp; Quyền Hạn</h2>
-          <p className="text-xs text-gray-500 font-semibold">Định cấu hình chi tiết ma trận phân quyền cho các nhóm vai trò nghiệp vụ tham gia hệ thống.</p>
-        </div>
-        <button 
-          onClick={handleSave} 
-          className="btn btn-primary rounded-xl font-bold text-xs gap-2"
-        >
-          <Lucide.Save size={16} />
-          Lưu Cấu Hình Phân Quyền
-        </button>
-      </div>
+      <section className="relative overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-base-100 to-base-100 p-6 shadow-sm">
+        <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-3xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-primary">
+              <Lucide.KeyRound size={14} />
+              Access Control
+            </div>
+            <h2 className="text-3xl font-black tracking-tight text-base-content">
+              Phân quyền vai trò & quyền hạn
+            </h2>
+            <p className="mt-2 text-sm font-medium leading-6 text-base-content/60">
+              Cấu hình ma trận quyền cho từng nhóm vai trò nghiệp vụ, giúp Admin kiểm soát đúng phạm vi truy cập trong hệ thống UrbanMind.
+            </p>
+          </div>
 
-      {/* Grid Matrix Table */}
-      <div className="card bg-base-100 border border-base-300 rounded-3xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto w-full">
-          <table className="table w-full text-xs">
+          <button
+            onClick={handleSave}
+            className="btn btn-primary rounded-2xl font-bold shadow-lg shadow-primary/20"
+          >
+            <Lucide.Save size={18} />
+            Lưu cấu hình
+          </button>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
+              <Lucide.UsersRound size={22} />
+            </div>
+            <span className="badge badge-primary badge-outline font-bold">Roles</span>
+          </div>
+          <p className="mt-4 text-sm font-bold text-base-content/50">Vai trò hệ thống</p>
+          <p className="mt-1 text-3xl font-black text-base-content">{roles.length}</p>
+        </div>
+
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="rounded-2xl bg-info/10 p-3 text-info">
+              <Lucide.ListChecks size={22} />
+            </div>
+            <span className="badge badge-info badge-outline font-bold">Permissions</span>
+          </div>
+          <p className="mt-4 text-sm font-bold text-base-content/50">Quyền đang hiển thị</p>
+          <p className="mt-1 text-3xl font-black text-base-content">{permissions.length}</p>
+        </div>
+
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="rounded-2xl bg-success/10 p-3 text-success">
+              <Lucide.CheckCircle2 size={22} />
+            </div>
+            <span className="badge badge-success badge-outline font-bold">Granted</span>
+          </div>
+          <p className="mt-4 text-sm font-bold text-base-content/50">Ô quyền đã bật</p>
+          <p className="mt-1 text-3xl font-black text-base-content">{grantedPermissionCount}</p>
+        </div>
+
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="rounded-2xl bg-warning/10 p-3 text-warning">
+              <Lucide.Activity size={22} />
+            </div>
+            <span className="badge badge-warning badge-outline font-bold">{coverageRate}%</span>
+          </div>
+          <p className="mt-4 text-sm font-bold text-base-content/50">Tỷ lệ phân quyền</p>
+          <progress className="progress progress-warning mt-3 h-2" value={coverageRate} max="100" />
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-5">
+        {roles.map(role => {
+          const meta = roleMeta[role.key] || {};
+          const Icon = meta.icon || Lucide.UserRoundCog;
+          const activeCount = (matrix[role.key] || []).filter(permission => (
+            listedPermissionKeys.includes(permission)
+          )).length;
+          const activeRate = permissions.length > 0
+            ? Math.round((activeCount / permissions.length) * 100)
+            : 0;
+
+          return (
+            <div key={role.key} className="rounded-3xl border border-base-300 bg-base-100 p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl bg-base-200 p-3 text-primary">
+                  <Icon size={20} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className={`badge ${meta.tone || 'badge-neutral'} badge-outline mb-2 font-bold`}>
+                    {meta.label || role.name}
+                  </span>
+                  <h3 className="truncate text-sm font-black text-base-content">{role.name}</h3>
+                  <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-base-content/55">
+                    {meta.description}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-xs font-bold text-base-content/50">
+                <span>{activeCount}/{permissions.length} quyền</span>
+                <span>{activeRate}%</span>
+              </div>
+              <progress className="progress progress-primary mt-2 h-2" value={activeRate} max="100" />
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-base-300 bg-base-100 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-lg font-black text-base-content">Ma trận phân quyền</h3>
+            <p className="mt-1 text-sm font-medium text-base-content/55">
+              Bật/tắt quyền cho từng vai trò. Các thay đổi chỉ được xác nhận khi bấm lưu cấu hình.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-bold text-base-content/60">
+            <span className="badge badge-ghost gap-1 rounded-xl">
+              <Lucide.Shield size={13} />
+              Admin: {administratorPermissionCount} quyền hiển thị
+            </span>
+            <span className="badge badge-ghost gap-1 rounded-xl">
+              <Lucide.MousePointerClick size={13} />
+              Click checkbox để thay đổi
+            </span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="table w-full min-w-[1120px]">
             <thead>
-              <tr className="bg-base-200 text-gray-500 uppercase tracking-wider font-extrabold text-[10px]">
-                <th>Quyền hạn hệ thống / Tính năng</th>
-                {roles.map(r => (
-                  <th key={r.key} className="text-center">{r.name}</th>
-                ))}
+              <tr className="border-base-300 bg-base-200/80 text-[11px] font-black uppercase tracking-wider text-base-content/55">
+                <th className="sticky left-0 z-10 w-[320px] bg-base-200/95 backdrop-blur">
+                  Quyền hạn hệ thống
+                </th>
+                {roles.map(role => {
+                  const meta = roleMeta[role.key] || {};
+                  const Icon = meta.icon || Lucide.UserRoundCog;
+
+                  return (
+                    <th key={role.key} className="min-w-[150px] text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <Icon size={17} />
+                        <span>{meta.label || role.name}</span>
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
-            <tbody className="divide-y divide-base-300">
-              {permissions.map((p) => (
-                <tr key={p.key} className="hover:bg-base-200/50">
-                  <td className="font-semibold text-base-content py-3">
-                    <div>
-                      <span className="font-extrabold text-[11px] block">{p.key}</span>
-                      <span className="text-[10px] text-gray-500 font-medium block mt-0.5">{p.desc}</span>
-                    </div>
-                  </td>
-                  {roles.map((r) => {
-                    const hasPerm = (matrix[r.key] || []).includes(p.key);
-                    return (
-                      <td key={r.key} className="text-center py-3">
-                        <input 
-                          type="checkbox" 
-                          checked={hasPerm}
-                          onChange={() => handleToggle(r.key, p.key)}
-                          className="checkbox checkbox-primary checkbox-xs mx-auto" 
-                        />
+
+            <tbody>
+              {permissionGroups.map(group => {
+                const GroupIcon = group.icon;
+
+                return (
+                  <Fragment key={group.title}>
+                    <tr className="border-base-300">
+                      <td colSpan={roles.length + 1} className="bg-base-200/50 px-4 py-3">
+                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-base-content/50">
+                          <GroupIcon size={15} />
+                          {group.title}
+                        </div>
                       </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                    </tr>
+
+                    {group.permissions.map(permissionKey => {
+                      const permission = getPermissionInfo(permissionKey);
+                      if (!permission) return null;
+
+                      return (
+                        <tr key={permission.key} className="group border-base-300 hover:bg-base-200/40">
+                          <td className="sticky left-0 z-10 bg-base-100 py-4 backdrop-blur group-hover:bg-base-200">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5 rounded-xl bg-primary/10 p-2 text-primary">
+                                <Lucide.Key size={16} />
+                              </div>
+                              <div>
+                                <div className="font-mono text-xs font-black text-base-content">
+                                  {permission.key}
+                                </div>
+                                <div className="mt-1 text-xs font-semibold leading-5 text-base-content/55">
+                                  {permission.desc}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {roles.map(role => {
+                            const hasPerm = (matrix[role.key] || []).includes(permission.key);
+
+                            return (
+                              <td key={role.key} className="text-center">
+                                <label className="inline-flex cursor-pointer items-center justify-center rounded-2xl p-2 transition hover:bg-base-200">
+                                  <input
+                                    type="checkbox"
+                                    checked={hasPerm}
+                                    onChange={() => handleToggle(role.key, permission.key)}
+                                    className="checkbox checkbox-primary checkbox-sm"
+                                    aria-label={`${role.name} - ${permission.key}`}
+                                  />
+                                </label>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
+
+      <section className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="rounded-2xl bg-info/10 p-3 text-info">
+            <Lucide.Info size={20} />
+          </div>
+          <div>
+            <h3 className="font-black text-base-content">Ghi chú vận hành</h3>
+            <p className="mt-1 text-sm font-medium leading-6 text-base-content/60">
+              Đây là màn cấu hình quyền ở cấp vai trò. Khi cần thay đổi quyền nhạy cảm như quản lý tài khoản hoặc log hệ thống, Admin nên kiểm tra lại tác động tới flow xử lý phản ánh trước khi lưu.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="badge badge-primary badge-outline rounded-xl font-bold">Nguyên tắc least privilege</span>
+              <span className="badge badge-info badge-outline rounded-xl font-bold">Theo dõi thay đổi sau khi lưu</span>
+              <span className="badge badge-warning badge-outline rounded-xl font-bold">Không cấp quyền dư thừa</span>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };
