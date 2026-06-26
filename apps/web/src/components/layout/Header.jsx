@@ -10,35 +10,58 @@ export const Header = ({ onMenuToggle }) => {
   const navigate = useNavigate();
 
   // Convert pathname to readable breadcrumbs
-  const getBreadcrumbs = () => {
+    const getBreadcrumbs = () => {
     const paths = location.pathname.split('/').filter(p => p);
-    if (paths.length === 0) return 'Tổng Quan';
-    
+    if (paths.length === 0) return 'Tổng quan hệ thống';
+
+    const labelMap = {
+      dashboard: 'Tổng quan hệ thống',
+
+      admin: 'Quản trị hệ thống',
+      audit: 'Nhật ký hệ thống',
+      performance: 'Hiệu năng & Logs',
+
+      management: 'Cấu hình quản trị',
+      users: 'Quản lý người dùng',
+      roles: 'Quản lý vai trò',
+      categories: 'Cấu hình danh mục',
+      sla: 'Cấu hình SLA',
+      integrations: 'Cấu hình tích hợp',
+
+      analytics: 'Báo cáo phân tích',
+      sentiment: 'Ý kiến cư dân',
+      heatmap: 'Bản đồ nhiệt',
+
+      provider: 'Đơn vị xử lý',
+      tasks: 'Nhiệm vụ được giao',
+
+      tickets: 'Phản ánh',
+      create: 'Gửi phản ánh mới',
+      queue: 'Hàng chờ kiểm duyệt',
+      duplicates: 'Hộp thư trùng lặp',
+      review: 'Duyệt kết quả',
+
+      community: 'Cộng đồng',
+      feed: 'Bảng tin',
+      map: 'Bản đồ sự cố',
+
+      profile: 'Hồ sơ',
+      settings: 'Cài đặt',
+    };
+
     return paths.map((path, idx) => {
-      let segmentName = path;
-      if (path === 'tickets') segmentName = 'Phản Ánh';
-      else if (path === 'create') segmentName = 'Gửi Phản Ánh Mới';
-      else if (path === 'queue') segmentName = 'Hàng Chờ Kiểm Duyệt';
-      else if (path === 'duplicates') segmentName = 'Hộp Thư Trùng Lặp';
-      else if (path === 'review') segmentName = 'Duyệt Kết Quả';
-      else if (path === 'community') segmentName = 'Cộng Đồng';
-      else if (path === 'feed') segmentName = 'Bảng Tin';
-      else if (path === 'map') segmentName = 'Bản Đồ Sự Cố';
-      else if (path === 'analytics') segmentName = 'Báo Cáo Phân Tích';
-      else if (path === 'sla') segmentName = 'Chỉ Số SLA';
-      else if (path === 'sentiment') segmentName = 'Ý Kiến Cư Dân (AI)';
-      else if (path === 'heatmap') segmentName = 'Bản Đồ Nhiệt';
-      else if (path === 'management') segmentName = 'Cấu Hình';
-      else if (path === 'users') segmentName = 'Quản Lý Người Dùng';
-      else if (path === 'categories') segmentName = 'Quản Lý Danh Mục';
-      else if (path === 'integrations') segmentName = 'Kênh Tích Hợp';
-      else if (path === 'profile') segmentName = 'Hồ Sơ';
-      else if (path === 'settings') segmentName = 'Cài Đặt';
-      
+      const segmentName = labelMap[path] || path;
+
       return (
-        <span key={idx} className="flex items-center gap-1">
-          {idx > 0 && <Lucide.ChevronRight size={14} className="text-gray-400" />}
-          <span className={idx === paths.length - 1 ? 'font-bold text-base-content' : 'text-gray-400'}>
+        <span key={idx} className="flex items-center gap-1.5">
+          {idx > 0 && <Lucide.ChevronRight size={14} className="text-base-content/30" />}
+          <span
+            className={
+              idx === paths.length - 1
+                ? 'font-bold text-base-content'
+                : 'font-semibold text-base-content/45'
+            }
+          >
             {segmentName}
           </span>
         </span>
