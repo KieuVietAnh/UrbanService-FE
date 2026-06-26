@@ -50,6 +50,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [avatarError, setAvatarError] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   if (!user) return null;
 
@@ -58,9 +60,23 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const userInitials = getUserInitials(displayName);
   const showAvatarImage = Boolean(user.avatarUrl) && !avatarError;
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
+  const handleLogoutClick = () => {
+    setIsLogoutModalOpen(true);
+  };
+
+  const handleLogoutCancel = () => {
+    setIsLogoutModalOpen(false);
+  };
+
+  const handleLogoutConfirm = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      navigate('/login');
+    } finally {
+      setIsLoggingOut(false);
+      setIsLogoutModalOpen(false);
+    }
   };
 
   // Helper to render icon by string name
@@ -73,7 +89,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
   };
 
   return (
-    <aside
+    <>
+      <aside
       className={`fixed inset-y-0 left-0 z-40 h-screen w-64 flex-shrink-0 transform border-r border-base-300 bg-base-200 transition-transform duration-300 lg:static lg:inset-auto lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
     >
@@ -109,7 +126,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
               </div>
             ) : (
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-secondary/15 text-primary ring-2 ring-primary ring-offset-base-100 ring-offset-2">
-                <span className="leading-none text-sm font-extrabold tracking-tight">{userInitials}</span>
+                <span className="text-sm font-extrabold leading-none tracking-tight">{userInitials}</span>
               </div>
             )}
           </div>
@@ -148,7 +165,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
         {/* Footer Actions */}
         <div className="shrink-0 border-t border-base-300 p-4">
           <button
-            onClick={handleLogout}
+            type="button"
+            onClick={handleLogoutClick}
             className="btn btn-error btn-outline w-full gap-2 rounded-xl"
           >
             <Lucide.LogOut size={18} />
@@ -156,6 +174,57 @@ export const Sidebar = ({ isOpen, onClose }) => {
           </button>
         </div>
       </div>
-    </aside>
+      </aside>
+
+      {isLogoutModalOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md rounded-[1.75rem] border border-base-300 bg-base-100 p-0 shadow-2xl">
+            <div className="border-b border-base-300 p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-error/10 text-error">
+                  <Lucide.LogOut size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-base-content">Xác nhận đăng xuất</h3>
+                  <p className="mt-2 text-sm font-medium leading-6 text-base-content/60">
+                    Bạn sẽ rời khỏi phiên làm việc hiện tại và cần đăng nhập lại để tiếp tục sử dụng UrbanMind.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 p-5 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleLogoutCancel}
+                className="btn btn-ghost rounded-2xl"
+                disabled={isLoggingOut}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleLogoutConfirm}
+                className="btn btn-error rounded-2xl"
+                disabled={isLoggingOut}
+              >
+                {isLoggingOut ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  <Lucide.LogOut size={18} />
+                )}
+                Đăng xuất
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="modal-backdrop"
+            onClick={handleLogoutCancel}
+            aria-label="Đóng hộp thoại đăng xuất"
+          />
+        </div>
+      )}
+    </>
   );
 };
