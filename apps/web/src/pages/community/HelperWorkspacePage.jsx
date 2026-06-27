@@ -1,72 +1,198 @@
 // src/pages/community/HelperWorkspacePage.jsx
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
+const STATUS_META = {
+  Assigned: {
+    label: 'Chờ tiếp nhận',
+    badge: 'badge-warning',
+    tone: 'text-warning',
+    bg: 'bg-warning/10',
+    icon: Lucide.Clock3,
+  },
+  Accepted: {
+    label: 'Đã tiếp nhận',
+    badge: 'badge-info',
+    tone: 'text-info',
+    bg: 'bg-info/10',
+    icon: Lucide.Handshake,
+  },
+  'On the way': {
+    label: 'Đang di chuyển',
+    badge: 'badge-info',
+    tone: 'text-info',
+    bg: 'bg-info/10',
+    icon: Lucide.Truck,
+  },
+  InProgress: {
+    label: 'Đang xử lý',
+    badge: 'badge-primary',
+    tone: 'text-primary',
+    bg: 'bg-primary/10',
+    icon: Lucide.Wrench,
+  },
+  Resolved: {
+    label: 'Chờ nghiệm thu',
+    badge: 'badge-success',
+    tone: 'text-success',
+    bg: 'bg-success/10',
+    icon: Lucide.CheckCircle2,
+  },
+};
+
+const PRIORITY_META = {
+  Critical: { label: 'Rất khẩn cấp', className: 'badge-error' },
+  High: { label: 'Cao', className: 'badge-error' },
+  Medium: { label: 'Trung bình', className: 'badge-warning' },
+  Low: { label: 'Thấp', className: 'badge-info' },
+};
+
+const STATUS_FLOW = ['Assigned', 'Accepted', 'On the way', 'InProgress', 'Resolved'];
+
+const getStatusMeta = status => {
+  return STATUS_META[status] || {
+    label: status || 'Chưa xác định',
+    badge: 'badge-ghost',
+    tone: 'text-base-content/60',
+    bg: 'bg-base-200',
+    icon: Lucide.CircleDashed,
+  };
+};
+
+const getPriorityMeta = priority => {
+  return PRIORITY_META[priority] || { label: priority || 'Không rõ', className: 'badge-ghost' };
+};
+
+const formatDateTime = value => {
+  if (!value) return 'Chưa có thời gian';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Chưa có thời gian';
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+};
+
+const getTicketCategory = ticket => {
+  return ticket?.categoryName || ticket?.category?.name || ticket?.category || 'Chưa phân loại';
+};
+
 export const HelperWorkspacePage = () => {
   const { user } = useAuth();
+  const operatorId = user?.operatorId;
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
-
-  // Resolution states
   const [resSummary, setResSummary] = useState('');
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  const operatorName = useMemo(() => {
+    return (
+      toolsApi.getOperators().find(operator => operator.operatorId === operatorId)?.operatorName ||
+      'Đơn vị xử lý'
+    );
+  }, [operatorId]);
 
   const fetchTasks = useCallback(async () => {
-    if (!user?.operatorId) return;
+    if (!operatorId) return;
 
     try {
-      const res = await ticketApi.getTickets({ operatorId: user.operatorId });
-      const active = res.filter(t => t.status !== 'Closed');
+      const res = await ticketApi.getTickets({ operatorId });
+      const active = Array.isArray(res) ? res.filter(ticket => ticket.status !== 'Closed') : [];
+
       setTickets(active);
-      if (active.length > 0) {
-        setSelectedTicket(active[0]);
-      } else {
-        setSelectedTicket(null);
-      }
+      setSelectedTicket(currentTicket => {
+        if (active.length === 0) return null;
+
+        const existingTicket = active.find(ticket => ticket.feedbackId === currentTicket?.feedbackId);
+        return existingTicket || active[0];
+      });
     } catch (err) {
       console.error(err);
+      setNotice({ type: 'error', message: 'Không thể tải danh sách nhiệm vụ. Vui lòng thử lại.' });
     }
-  }, [user]);
+  }, [operatorId]);
 
   useEffect(() => {
-    if (!user?.operatorId) return;
+    if (!operatorId) return;
 
     fetchTasks();
-  }, [fetchTasks, user?.operatorId]);
+  }, [fetchTasks, operatorId]);
 
-  const handleUpdateStatus = async (status) => {
-    if (!selectedTicket) return;
+  useEffect(() => {
+    if (!notice) return undefined;
+
+    const timer = window.setTimeout(() => setNotice(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  const taskStats = useMemo(() => {
+    return tickets.reduce(
+      (acc, ticket) => {
+        acc.total += 1;
+        if (ticket.status === 'Assigned') acc.waiting += 1;
+        if (ticket.status === 'Accepted' || ticket.status === 'On the way' || ticket.status === 'InProgress') {
+          acc.processing += 1;
+        }
+        if (ticket.status === 'Resolved') acc.resolved += 1;
+        return acc;
+      },
+      { total: 0, waiting: 0, processing: 0, resolved: 0 }
+    );
+  }, [tickets]);
+
+  const selectedStatusIndex = Math.max(STATUS_FLOW.indexOf(selectedTicket?.status), 0);
+  const selectedStatusMeta = getStatusMeta(selectedTicket?.status);
+  const SelectedStatusIcon = selectedStatusMeta.icon;
+  const selectedPriorityMeta = getPriorityMeta(selectedTicket?.priority);
+
+  const canAccept = selectedTicket?.status === 'Assigned';
+  const canMove = selectedTicket?.status === 'Accepted' || selectedTicket?.status === 'Assigned';
+  const canStart = selectedTicket?.status === 'On the way' || selectedTicket?.status === 'Accepted';
+  const canComplete = selectedTicket?.status === 'InProgress' || selectedTicket?.status === 'On the way';
+
+  const handleUpdateStatus = async status => {
+    if (!selectedTicket || !user?.userId) return;
+
     setLoading(true);
     try {
       await ticketApi.updateOperatorStatus(selectedTicket.feedbackId, user.userId, status, '');
       await fetchTasks();
-      alert(`Đã cập nhật trạng thái sự cố thành: ${status}`);
+      setNotice({ type: 'success', message: `Đã cập nhật trạng thái: ${getStatusMeta(status).label}` });
     } catch (err) {
       console.error(err);
+      setNotice({ type: 'error', message: 'Cập nhật trạng thái thất bại. Vui lòng thử lại.' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCompletionSubmit = async (e) => {
+  const handleCompletionSubmit = async e => {
     e.preventDefault();
-    if (!selectedTicket || !resSummary.trim()) return;
+    if (!selectedTicket || !resSummary.trim() || !user?.userId) return;
+
     setLoading(true);
     try {
       // Mock Base64 Resolution Image
       const resolutionPhoto = 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=400&q=80';
-      
+
       await ticketApi.updateOperatorStatus(selectedTicket.feedbackId, user.userId, 'Resolved', resSummary, [resolutionPhoto]);
-      alert('Đã gửi báo cáo hoàn thành công việc! Chờ nghiệm thu từ cán bộ tiếp nhận.');
       setShowCompletionModal(false);
       setResSummary('');
       await fetchTasks();
+      setNotice({ type: 'success', message: 'Đã gửi báo cáo hoàn thành. Vui lòng chờ cán bộ nghiệm thu.' });
     } catch (err) {
       console.error(err);
+      setNotice({ type: 'error', message: 'Không thể gửi báo cáo hoàn thành. Vui lòng thử lại.' });
     } finally {
       setLoading(false);
     }
@@ -74,177 +200,415 @@ export const HelperWorkspacePage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-black">Nhiệm Vụ Đơn Vị Thi Công</h2>
-          <p className="text-xs text-gray-500 font-semibold">
-            Đơn vị: <span className="text-primary font-bold">{toolsApi.getOperators().find(o => o.operatorId === user?.operatorId)?.operatorName}</span>
-          </p>
+      <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
+        <div className="relative p-6 sm:p-8">
+          <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute bottom-0 right-28 h-28 w-28 rounded-full bg-secondary/10 blur-3xl" />
+
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
+                <Lucide.ClipboardList size={14} />
+                Điều phối thi công
+              </div>
+              <div>
+                <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
+                  Nhiệm vụ được giao
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-base-content/60">
+                  Theo dõi phản ánh đã được phân công, cập nhật tiến độ xử lý và gửi báo cáo hoàn thành cho đơn vị {operatorName}.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={fetchTasks}
+              disabled={loading}
+              className="btn btn-primary rounded-2xl px-5 text-xs font-black shadow-lg shadow-primary/20"
+            >
+              {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.RefreshCw size={17} />}
+              Làm mới
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-base-content/40">Tổng nhiệm vụ</p>
+            <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+              <Lucide.Inbox size={18} />
+            </div>
+          </div>
+          <p className="mt-4 text-3xl font-black text-base-content">{taskStats.total}</p>
+          <p className="mt-1 text-xs font-semibold text-base-content/50">Đang mở trong hệ thống</p>
+        </div>
+
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-base-content/40">Chờ tiếp nhận</p>
+            <div className="rounded-2xl bg-warning/10 p-2 text-warning">
+              <Lucide.Clock3 size={18} />
+            </div>
+          </div>
+          <p className="mt-4 text-3xl font-black text-base-content">{taskStats.waiting}</p>
+          <p className="mt-1 text-xs font-semibold text-base-content/50">Cần xác nhận xử lý</p>
+        </div>
+
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-base-content/40">Đang xử lý</p>
+            <div className="rounded-2xl bg-info/10 p-2 text-info">
+              <Lucide.Wrench size={18} />
+            </div>
+          </div>
+          <p className="mt-4 text-3xl font-black text-base-content">{taskStats.processing}</p>
+          <p className="mt-1 text-xs font-semibold text-base-content/50">Đang thực hiện ngoài hiện trường</p>
+        </div>
+
+        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-base-content/40">Chờ nghiệm thu</p>
+            <div className="rounded-2xl bg-success/10 p-2 text-success">
+              <Lucide.CheckCircle2 size={18} />
+            </div>
+          </div>
+          <p className="mt-4 text-3xl font-black text-base-content">{taskStats.resolved}</p>
+          <p className="mt-1 text-xs font-semibold text-base-content/50">Đã báo hoàn thành</p>
+        </div>
+      </section>
 
       {tickets.length === 0 ? (
-        <div className="card bg-base-100 border border-base-300 p-12 text-center rounded-3xl space-y-4">
-          <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+        <section className="rounded-[2rem] border border-base-300 bg-base-100 p-12 text-center shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-success/10 text-success">
             <Lucide.CheckCircle2 size={32} />
           </div>
-          <div>
-            <h3 className="font-extrabold text-sm">Không Có Nhiệm Vụ Nào</h3>
-            <p className="text-xs text-gray-500 font-semibold mt-1">Hệ thống hiện không ghi nhận phản ánh nào được phân công cho đơn vị của bạn.</p>
-          </div>
-        </div>
+          <h3 className="mt-5 text-base font-black text-base-content">Không có nhiệm vụ đang mở</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm font-medium leading-6 text-base-content/60">
+            Hệ thống hiện chưa ghi nhận phản ánh nào được phân công cho đơn vị của bạn. Khi có nhiệm vụ mới, danh sách sẽ hiển thị tại đây.
+          </p>
+          <button type="button" onClick={fetchTasks} className="btn btn-outline btn-sm mt-5 rounded-2xl">
+            <Lucide.RefreshCw size={15} />
+            Kiểm tra lại
+          </button>
+        </section>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Assigned Tasks List Column */}
-          <div className="card bg-base-100 border border-base-300 p-4 rounded-3xl shadow-sm space-y-3 h-[600px] overflow-y-auto">
-            <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400 px-2">Hộp Thư Công Việc ({tickets.length})</h4>
-            <div className="space-y-2">
-              {tickets.map((t) => (
-                <div 
-                  key={t.feedbackId}
-                  onClick={() => setSelectedTicket(t)}
-                  className={`p-3 rounded-2xl border cursor-pointer transition-all duration-200 text-xs flex flex-col gap-1.5 ${
-                    selectedTicket?.feedbackId === t.feedbackId 
-                      ? 'border-primary bg-primary/5 shadow-sm' 
-                      : 'border-base-300 hover:bg-base-200/50'
-                  }`}
-                >
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-gray-400">{t.feedbackId}</span>
-                    <span className={`badge badge-xs text-[8px] uppercase font-bold py-1.5 ${
-                      t.status === 'Resolved' ? 'badge-success' : 'badge-warning'
-                    }`}>{t.status}</span>
-                  </div>
-                  <h5 className="font-extrabold truncate text-base-content">{t.title}</h5>
-                  <span className="text-[10px] font-semibold text-gray-400 line-clamp-1">{t.locationText}</span>
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_1fr]">
+          <div className="rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
+            <div className="border-b border-base-300 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-base-content/40">Hộp thư công việc</p>
+                  <h3 className="mt-1 text-lg font-black text-base-content">{tickets.length} nhiệm vụ</h3>
                 </div>
-              ))}
+                <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                  <Lucide.ClipboardList size={20} />
+                </div>
+              </div>
+            </div>
+
+            <div className="max-h-[680px] space-y-3 overflow-y-auto p-4">
+              {tickets.map(ticket => {
+                const statusMeta = getStatusMeta(ticket.status);
+                const priorityMeta = getPriorityMeta(ticket.priority);
+                const StatusIcon = statusMeta.icon;
+                const isSelected = selectedTicket?.feedbackId === ticket.feedbackId;
+
+                return (
+                  <button
+                    key={ticket.feedbackId}
+                    type="button"
+                    onClick={() => setSelectedTicket(ticket)}
+                    className={`w-full rounded-3xl border p-4 text-left transition-all duration-200 ${
+                      isSelected
+                        ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
+                        : 'border-base-300 bg-base-100 hover:border-primary/30 hover:bg-base-200/60'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-[11px] font-black uppercase tracking-[0.16em] text-base-content/35">
+                          {ticket.feedbackId}
+                        </p>
+                        <h4 className="mt-1 line-clamp-2 text-sm font-black leading-5 text-base-content">
+                          {ticket.title || 'Phản ánh chưa có tiêu đề'}
+                        </h4>
+                      </div>
+                      <span className={`badge badge-xs ${priorityMeta.className} shrink-0 font-black uppercase`}>
+                        {priorityMeta.label}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-base-content/55">
+                      <Lucide.MapPin size={14} className="shrink-0 text-base-content/35" />
+                      <span className="truncate">{ticket.locationText || 'Chưa có địa chỉ'}</span>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black ${statusMeta.bg} ${statusMeta.tone}`}>
+                        <StatusIcon size={13} />
+                        {statusMeta.label}
+                      </span>
+                      <span className="text-[11px] font-bold text-base-content/40">
+                        {formatDateTime(ticket.updatedAt || ticket.createdAt || ticket.submittedAt)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Task Action details panel Column */}
           {selectedTicket && (
-            <div className="lg:col-span-2 flex flex-col gap-6 h-[600px] overflow-y-auto">
-              
-              {/* Ticket detail card */}
-              <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-4">
-                <div className="flex justify-between items-start border-b border-base-300 pb-3">
-                  <div>
-                    <span className="text-[10px] font-bold text-gray-400">{selectedTicket.feedbackId}</span>
-                    <h4 className="font-extrabold text-sm text-base-content mt-1">{selectedTicket.title}</h4>
-                  </div>
-                  <span className="badge badge-error uppercase font-extrabold py-2 px-2.5 text-[9px]">
-                    Khẩn cấp: {selectedTicket.priority}
-                  </span>
-                </div>
-
-                <div className="text-xs space-y-3">
-                  <p><span className="font-bold text-gray-500">Mô tả sự cố:</span> <span className="font-medium text-gray-600">{selectedTicket.description}</span></p>
-                  <p><span className="font-bold text-gray-500">Địa chỉ:</span> <span className="font-semibold">{selectedTicket.locationText}</span></p>
-                  {selectedTicket.assignment?.note && (
-                    <div className="bg-primary/5 p-3.5 rounded-xl border border-primary/20 text-primary font-semibold">
-                      Chỉ thị điều phối: "{selectedTicket.assignment.note}"
+            <div className="space-y-6">
+              <div className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
+                <div className="border-b border-base-300 p-6">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-base-200 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-base-content/45">
+                          {selectedTicket.feedbackId}
+                        </span>
+                        <span className={`badge ${selectedStatusMeta.badge} badge-sm font-black uppercase`}>
+                          {selectedStatusMeta.label}
+                        </span>
+                        <span className={`badge ${selectedPriorityMeta.className} badge-sm font-black uppercase`}>
+                          {selectedPriorityMeta.label}
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-2xl font-black leading-tight text-base-content">
+                        {selectedTicket.title || 'Phản ánh chưa có tiêu đề'}
+                      </h3>
+                      <p className="mt-2 text-sm font-medium leading-6 text-base-content/60">
+                        {selectedTicket.description || 'Chưa có mô tả chi tiết từ người gửi phản ánh.'}
+                      </p>
                     </div>
-                  )}
+
+                    <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl ${selectedStatusMeta.bg} ${selectedStatusMeta.tone}`}>
+                      <SelectedStatusIcon size={26} />
+                    </div>
+                  </div>
                 </div>
 
-                {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
-                  <div className="space-y-2 text-xs">
-                    <span className="font-bold text-gray-500">Ảnh hiện trường người dân chụp:</span>
-                    <div className="grid grid-cols-2 gap-2">
-                      {selectedTicket.attachments.map((img, i) => (
-                        <img key={i} src={img} alt="Before" className="w-full aspect-video object-cover rounded-xl border border-base-300" />
+                <div className="grid gap-4 p-6 md:grid-cols-3">
+                  <div className="rounded-3xl border border-base-300 bg-base-200/50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-base-content/40">
+                      <Lucide.MapPin size={15} />
+                      Địa điểm
+                    </div>
+                    <p className="mt-2 text-sm font-bold leading-6 text-base-content">
+                      {selectedTicket.locationText || 'Chưa có địa chỉ'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-3xl border border-base-300 bg-base-200/50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-base-content/40">
+                      <Lucide.FolderKanban size={15} />
+                      Danh mục
+                    </div>
+                    <p className="mt-2 text-sm font-bold leading-6 text-base-content">
+                      {getTicketCategory(selectedTicket)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-3xl border border-base-300 bg-base-200/50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-base-content/40">
+                      <Lucide.CalendarClock size={15} />
+                      Cập nhật gần nhất
+                    </div>
+                    <p className="mt-2 text-sm font-bold leading-6 text-base-content">
+                      {formatDateTime(selectedTicket.updatedAt || selectedTicket.createdAt || selectedTicket.submittedAt)}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedTicket.assignment?.note && (
+                  <div className="px-6 pb-6">
+                    <div className="rounded-3xl border border-primary/20 bg-primary/5 p-4 text-primary">
+                      <div className="flex items-start gap-3">
+                        <Lucide.MessageSquareText size={18} className="mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.16em]">Chỉ thị điều phối</p>
+                          <p className="mt-1 text-sm font-bold leading-6">{selectedTicket.assignment.note}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {selectedTicket.attachments?.length > 0 && (
+                  <div className="border-t border-base-300 p-6">
+                    <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-base-content/40">
+                      <Lucide.Image size={15} />
+                      Ảnh hiện trường
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {selectedTicket.attachments.map((imageUrl, index) => (
+                        <img
+                          key={`${imageUrl}-${index}`}
+                          src={imageUrl}
+                          alt={`Ảnh hiện trường ${index + 1}`}
+                          className="aspect-video w-full rounded-3xl border border-base-300 object-cover"
+                        />
                       ))}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Progress update controls */}
-              <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-4">
-                <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400 border-b border-base-300 pb-2">Tiến Độ Xử Lý</h4>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold">
-                  <button 
+              <div className="rounded-[2rem] border border-base-300 bg-base-100 p-6 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-base-content/40">Tiến độ xử lý</p>
+                    <h3 className="mt-1 text-lg font-black text-base-content">Cập nhật trạng thái hiện trường</h3>
+                  </div>
+                  <span className="rounded-full bg-base-200 px-3 py-1 text-xs font-bold text-base-content/50">
+                    Thực hiện theo đúng thứ tự xử lý
+                  </span>
+                </div>
+
+                <div className="mt-6 grid gap-3 md:grid-cols-5">
+                  {STATUS_FLOW.map((status, index) => {
+                    const meta = getStatusMeta(status);
+                    const StepIcon = meta.icon;
+                    const isDone = index <= selectedStatusIndex;
+
+                    return (
+                      <div
+                        key={status}
+                        className={`rounded-3xl border p-4 ${
+                          isDone ? 'border-primary/20 bg-primary/5 text-primary' : 'border-base-300 bg-base-200/50 text-base-content/45'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <StepIcon size={18} />
+                          <span className="text-xs font-black">0{index + 1}</span>
+                        </div>
+                        <p className="mt-3 text-sm font-black">{meta.label}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <button
+                    type="button"
                     onClick={() => handleUpdateStatus('Accepted')}
-                    disabled={selectedTicket.status !== 'Assigned' || loading}
-                    className="btn btn-sm btn-outline rounded-xl"
+                    disabled={!canAccept || loading}
+                    className="btn btn-outline rounded-2xl"
                   >
-                    Tiếp Nhận
+                    <Lucide.Handshake size={17} />
+                    Tiếp nhận
                   </button>
-                  <button 
+                  <button
+                    type="button"
                     onClick={() => handleUpdateStatus('On the way')}
-                    disabled={(selectedTicket.status !== 'Accepted' && selectedTicket.status !== 'Assigned') || loading}
-                    className="btn btn-sm btn-outline rounded-xl"
+                    disabled={!canMove || loading}
+                    className="btn btn-outline rounded-2xl"
                   >
-                    Di Chuyển
+                    <Lucide.Truck size={17} />
+                    Di chuyển
                   </button>
-                  <button 
+                  <button
+                    type="button"
                     onClick={() => handleUpdateStatus('InProgress')}
-                    disabled={(selectedTicket.status !== 'On the way' && selectedTicket.status !== 'Accepted') || loading}
-                    className="btn btn-sm btn-outline rounded-xl"
+                    disabled={!canStart || loading}
+                    className="btn btn-outline rounded-2xl"
                   >
-                    Đang Sửa Chữa
+                    <Lucide.Wrench size={17} />
+                    Đang xử lý
                   </button>
-                  <button 
+                  <button
+                    type="button"
                     onClick={() => setShowCompletionModal(true)}
-                    disabled={(selectedTicket.status !== 'InProgress' && selectedTicket.status !== 'On the way') || loading}
-                    className="btn btn-sm btn-primary rounded-xl"
+                    disabled={!canComplete || loading}
+                    className="btn btn-primary rounded-2xl"
                   >
-                    Báo Hoàn Thành
+                    <Lucide.CheckCircle2 size={17} />
+                    Báo hoàn thành
                   </button>
                 </div>
               </div>
-
             </div>
           )}
-        </div>
+        </section>
       )}
 
-      {/* RESOLUTION SUBMISSION MODAL */}
       {showCompletionModal && (
         <div className="modal modal-open">
-          <div className="modal-box rounded-3xl border border-base-300 max-w-md p-6 space-y-4">
-            <h3 className="font-extrabold text-base text-primary flex items-center gap-2">
-              <Lucide.CheckCircle2 size={20} />
-              Báo Cáo Hoàn Thành Công Việc
-            </h3>
-            <p className="text-xs text-gray-500 font-semibold">Nhập tóm tắt hành động đã sửa chữa và đính kèm bằng chứng nghiệm thu chất lượng hoàn trả.</p>
-            
-            <form onSubmit={handleCompletionSubmit} className="space-y-4 text-xs">
-              <div className="form-control">
-                <textarea 
-                  rows="4" 
-                  placeholder="Ví dụ: Đã thay thế bóng đèn LED 150W mới, điều chỉnh cột và cố định cáp điện an toàn..."
+          <div className="modal-box max-w-xl rounded-[2rem] border border-base-300 bg-base-100 p-0 shadow-2xl">
+            <div className="border-b border-base-300 p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-success/10 text-success">
+                  <Lucide.CheckCircle2 size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-base-content">Báo cáo hoàn thành công việc</h3>
+                  <p className="mt-2 text-sm font-medium leading-6 text-base-content/60">
+                    Nhập tóm tắt hành động đã xử lý để gửi cán bộ tiếp nhận nghiệm thu kết quả.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleCompletionSubmit} className="space-y-5 p-6">
+              <label className="form-control">
+                <span className="label-text mb-2 text-xs font-black uppercase tracking-[0.16em] text-base-content/45">
+                  Tóm tắt xử lý
+                </span>
+                <textarea
+                  rows="5"
+                  placeholder="Ví dụ: Đã thay thế bóng đèn LED mới, kiểm tra nguồn điện và cố định lại cáp an toàn..."
                   value={resSummary}
-                  onChange={(e) => setResSummary(e.target.value)}
-                  className="textarea textarea-bordered text-xs font-semibold p-2.5 rounded-xl"
+                  onChange={e => setResSummary(e.target.value)}
+                  className="textarea textarea-bordered rounded-2xl text-sm font-medium leading-6"
                   required
-                ></textarea>
+                />
+              </label>
+
+              <div className="rounded-3xl border border-base-300 bg-base-200/70 p-4 text-sm font-medium leading-6 text-base-content/60">
+                <div className="flex items-start gap-3">
+                  <Lucide.Info size={18} className="mt-0.5 shrink-0 text-primary" />
+                  <p>Hệ thống đang dùng ảnh nghiệm thu mẫu để mô phỏng bằng chứng hoàn thành. Khi API hoàn thiện có thể thay bằng upload ảnh thật.</p>
+                </div>
               </div>
 
-              <div className="bg-base-200 p-3 rounded-xl border border-base-300 text-[10px] text-gray-400 font-bold">
-                Mẹo: Hệ thống sẽ tự động tạo ảnh nghiệm thu sau sửa chữa để minh chứng.
-              </div>
-
-              <div className="flex gap-2 justify-end">
-                <button 
-                  type="button" 
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
                   onClick={() => setShowCompletionModal(false)}
-                  className="btn btn-sm btn-ghost rounded-xl text-[10px]"
+                  className="btn btn-ghost rounded-2xl"
+                  disabled={loading}
                 >
                   Hủy bỏ
                 </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-sm btn-primary rounded-xl text-[10px] font-bold"
+                <button
+                  type="submit"
+                  className="btn btn-primary rounded-2xl"
                   disabled={loading || !resSummary.trim()}
                 >
-                  Gửi Nghiệm Thu
+                  {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.SendHorizontal size={17} />}
+                  Gửi nghiệm thu
                 </button>
               </div>
             </form>
+          </div>
+          <button
+            type="button"
+            className="modal-backdrop"
+            onClick={() => setShowCompletionModal(false)}
+            aria-label="Đóng báo cáo hoàn thành"
+          />
+        </div>
+      )}
+
+      {notice && (
+        <div className="toast toast-end toast-bottom z-50">
+          <div className={`alert ${notice.type === 'error' ? 'alert-error' : 'alert-success'} rounded-2xl shadow-lg`}>
+            {notice.type === 'error' ? <Lucide.AlertTriangle size={18} /> : <Lucide.CheckCircle2 size={18} />}
+            <span className="text-sm font-bold">{notice.message}</span>
           </div>
         </div>
       )}

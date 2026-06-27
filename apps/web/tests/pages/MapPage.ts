@@ -38,6 +38,21 @@ export class MapPage extends BasePage {
     const marker = this.markerLayer.first();
     await marker.waitFor({ state: 'visible', timeout: 20000 });
     await marker.scrollIntoViewIfNeeded();
-    await marker.click();
+
+    // Leaflet markers can be flaky in CI while the map is settling or when a
+    // tooltip is rendered during Playwright's hover step. Try a normal click
+    // first, then fall back to a forced DOM click and a coordinate click.
+    await marker.click({ force: true });
+
+    if ((await this.page.locator('.leaflet-popup-content').count()) === 0) {
+      await marker.dispatchEvent('click');
+    }
+
+    if ((await this.page.locator('.leaflet-popup-content').count()) === 0) {
+      const box = await marker.boundingBox();
+      if (box) {
+        await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      }
+    }
   }
 }

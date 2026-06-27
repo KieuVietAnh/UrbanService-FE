@@ -47,9 +47,10 @@ function AutoFitBounds({ incidents }) {
       map.fitBounds(validPositions, {
         padding: [40, 40],
         maxZoom: 15,
+        animate: false,
       });
     } else {
-      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: false });
     }
   }, [map, validPositions]);
 
@@ -104,8 +105,13 @@ export const IncidentMap = ({ incidents }) => {
             key={`${marker.latitude}-${marker.longitude}`}
             position={[marker.latitude, marker.longitude]}
             icon={defaultIcon}
+            eventHandlers={{
+              click: (event) => {
+                event.target.openPopup();
+              },
+            }}
           >
-            <Tooltip direction="top" offset={[0, -10]} opacity={0.95} sticky>
+            <Tooltip direction="top" offset={[0, -10]} opacity={0.95} sticky interactive={false} className="pointer-events-none">
               <div className="space-y-1 text-xs">
                 {marker.tickets.length === 1 ? (
                   <>
