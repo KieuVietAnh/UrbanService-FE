@@ -2,6 +2,7 @@
 
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { normalizeRole } from '../utils/roleMap';
 
 export const RoleGuard = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
@@ -14,8 +15,10 @@ export const RoleGuard = ({ children, allowedRoles }) => {
     );
   }
 
-  if (!user || !allowedRoles.includes(user.role)) {
-    // If unauthorized, redirect to standard dashboard fallback
+  const currentRole = normalizeRole(user?.role);
+  const normalizedAllowedRoles = allowedRoles.map(role => normalizeRole(role));
+
+  if (!normalizedAllowedRoles.includes(currentRole)) {
     return <Navigate to="/dashboard" replace />;
   }
 

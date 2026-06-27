@@ -6,6 +6,7 @@ import { Footer } from './Footer';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { useAuth } from '../../contexts/AuthContext';
+import { normalizeRole } from '../../utils/roleMap';
 
 export const DashboardLayout = ({ children }) => {
   const { user } = useAuth();
@@ -40,8 +41,10 @@ export const DashboardLayout = ({ children }) => {
     setInputVal(question);
   };
 
+  const currentRole = normalizeRole(user?.role);
+
   const shouldHideFooter =
-    user?.role === 'administrator' || user?.role === 'service-provider';
+    currentRole === 'administrator' || currentRole === 'service-provider';
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-base-300 text-base-content font-sans">
@@ -107,8 +110,8 @@ export const DashboardLayout = ({ children }) => {
                   </div>
                 </div>
                 <div className={`chat-bubble text-xs font-medium leading-relaxed max-w-[85%] ${msg.sender === 'ai'
-                    ? 'bg-base-100 text-base-content border border-base-300 shadow-sm'
-                    : 'bg-primary text-primary-content shadow-sm'
+                  ? 'bg-base-100 text-base-content border border-base-300 shadow-sm'
+                  : 'bg-primary text-primary-content shadow-sm'
                   }`}>
                   {msg.text}
                 </div>

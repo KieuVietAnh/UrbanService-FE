@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { normalizeRole } from '../../utils/roleMap';
 
 // Import all sidebar menus
 import userMenu from '../../roles/service-user/sidebarMenu';
@@ -55,7 +56,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   if (!user) return null;
 
-  const menuItems = menuMapping[user.role] || [];
+  const currentRole = normalizeRole(user?.role);
+  const menuItems = menuMapping[currentRole] || [];
   const displayName = user.fullName || user.email || 'Người dùng';
   const userInitials = getUserInitials(displayName);
   const showAvatarImage = Boolean(user.avatarUrl) && !avatarError;
@@ -133,7 +135,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
           <div className="min-w-0 flex-1">
             <h4 className="truncate text-sm font-bold">{displayName}</h4>
             <div className="badge badge-primary badge-xs mt-1 px-2 py-2 text-[10px] font-bold uppercase">
-              {getRoleNameVietnamese(user.role)}
+              {getRoleNameVietnamese(currentRole)}
             </div>
           </div>
         </div>

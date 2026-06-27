@@ -7,9 +7,11 @@ import { analyticsApi } from '../../services/api/analyticsApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart, SLAPerformanceChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
+import { normalizeRole } from '../../utils/roleMap';
 
 export const Dashboard = () => {
   const { user } = useAuth();
+  const currentRole = normalizeRole(user?.role);
   const navigate = useNavigate();
 
   const [stats, setStats] = useState(null);
@@ -26,12 +28,12 @@ export const Dashboard = () => {
         setStats(resStats);
 
         let resTickets = [];
-        if (user.role === 'service-user') {
-          resTickets = await ticketApi.getTickets({ userId: user.userId }, { role: user.role });
-        } else if (user.role === 'service-provider') {
-          resTickets = await ticketApi.getTickets({ operatorId: user.operatorId }, { role: user.role });
+        if (currentRole === 'service-user') {
+          resTickets = await ticketApi.getTickets({ userId: user.userId }, { role: currentRole });
+        } else if (currentRole === 'service-provider') {
+          resTickets = await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
         } else {
-          resTickets = await ticketApi.getTickets({}, { role: user.role });
+          resTickets = await ticketApi.getTickets({}, { role: currentRole });
         }
 
         console.log('Dashboard ticket fetch response', resTickets);
@@ -44,7 +46,7 @@ export const Dashboard = () => {
     };
 
     loadDashboardContent();
-  }, [user]);
+  }, [user, currentRole]);
 
   if (loading || !stats) {
     return (
@@ -112,7 +114,7 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   // 1. RESIDENT DASHBOARD LAYOUT (Figma: Trang chủ Người dân.png)
   // ----------------------------------------------------
-  if (user.role === 'service-user') {
+  if (currentRole === 'service-user') {
     return (
       <div className="space-y-8 text-slate-800">
         
@@ -351,7 +353,7 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   // 2. SYSTEM STAFF DASHBOARD (Figma: Không gian làm việc - Nhân viên.png)
   // ----------------------------------------------------
-  if (user.role === 'system-staff') {
+  if (currentRole=== 'system-staff') {
     return (
       <div className="space-y-6 text-slate-800">
         
@@ -506,54 +508,281 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   // 3. SERVICE PROVIDER DASHBOARD (service-provider)
   // ----------------------------------------------------
-  if (user.role === 'service-provider') {
-    const assigned = tickets.filter(t => t.status === 'Assigned' || t.status === 'Accepted' || t.status === 'InProgress');
-    
+  if (currentRole === 'service-provider') {
+    const activeStatuses = ['Assigned', 'Accepted', 'On the way', 'InProgress'];
+    const waitingStatuses = ['Assigned'];
+    const inProgressStatuses = ['Accepted', 'On the way', 'InProgress'];
+    const reviewStatuses = ['Resolved'];
+
+    const assigned = tickets.filter(t => activeStatuses.includes(t.status));
+    const waitingTasks = tickets.filter(t => waitingStatuses.includes(t.status));
+    const inProgressTasks = tickets.filter(t => inProgressStatuses.includes(t.status));
+    const reviewTasks = tickets.filter(t => reviewStatuses.includes(t.status));
+    const visibleTasks = [...assigned, ...reviewTasks].slice(0, 5);
+
+    const getOperatorStatusLabel = status => {
+      switch (status) {
+        case 'Assigned':
+          return 'Chờ tiếp nhận';
+        case 'Accepted':
+          return 'Đã tiếp nhận';
+        case 'On the way':
+          return 'Đang di chuyển';
+        case 'InProgress':
+          return 'Đang xử lý';
+        case 'Resolved':
+          return 'Chờ nghiệm thu';
+        case 'Closed':
+          return 'Hoàn tất';
+        default:
+          return 'Chờ xử lý';
+      }
+    };
+
+    const getCategoryName = categoryId => {
+      return toolsApi.getCategories().find(c => c.categoryId === categoryId)?.categoryName || 'Chưa phân loại';
+    };
+
+    const operatorStats = [
+      {
+        label: 'Tổng nhiệm vụ',
+        value: tickets.length,
+        helper: 'Phiếu được gán cho đơn vị',
+        icon: Lucide.ClipboardList,
+        iconClassName: 'bg-primary/10 text-primary',
+      },
+      {
+        label: 'Chờ tiếp nhận',
+        value: waitingTasks.length,
+        helper: 'Cần xác nhận xử lý',
+        icon: Lucide.BellRing,
+        iconClassName: 'bg-warning/10 text-warning',
+      },
+      {
+        label: 'Đang xử lý',
+        value: inProgressTasks.length,
+        helper: 'Đã nhận và đang thực hiện',
+        icon: Lucide.Wrench,
+        iconClassName: 'bg-info/10 text-info',
+      },
+      {
+        label: 'Chờ nghiệm thu',
+        value: reviewTasks.length,
+        helper: 'Đã báo hoàn thành',
+        icon: Lucide.CheckCircle2,
+        iconClassName: 'bg-success/10 text-success',
+      },
+    ];
+
+    const workflowSteps = [
+      {
+        title: 'Tiếp nhận',
+        description: 'Xác nhận nhiệm vụ được giao.',
+        icon: Lucide.Handshake,
+      },
+      {
+        title: 'Di chuyển',
+        description: 'Cập nhật trạng thái tới hiện trường.',
+        icon: Lucide.Route,
+      },
+      {
+        title: 'Xử lý',
+        description: 'Thực hiện sửa chữa và ghi nhận tiến độ.',
+        icon: Lucide.Wrench,
+      },
+      {
+        title: 'Báo hoàn thành',
+        description: 'Gửi ghi chú và ảnh nghiệm thu.',
+        icon: Lucide.Camera,
+      },
+    ];
+
     return (
-      <div className="space-y-6 text-slate-800">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">Bảng điều khiển</h2>
-          <p className="text-xs text-gray-500 font-semibold">Cập nhật tiến độ thi công và hoàn thành sửa chữa hạ tầng khu vực.</p>
-        </div>
+      <div className="space-y-6 text-base-content">
+        <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
+          <div className="relative p-6 sm:p-8">
+            <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+            <div className="absolute bottom-0 right-28 h-28 w-28 rounded-full bg-secondary/10 blur-3xl" />
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
-            <span className="text-2xl font-black text-[#d97706]">{assigned.length} Phiếu</span>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Nhiệm vụ chưa sửa xong</p>
-          </div>
-          <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm text-center">
-            <span className="text-2xl font-black text-[#059669]">
-              {tickets.filter(t => t.status === 'Resolved' || t.status === 'Closed').length} Phiếu
-            </span>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Công việc hoàn thành</p>
-          </div>
-        </div>
-
-        <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
-          <h3 className="font-extrabold text-sm border-b border-slate-200 pb-2">Danh sách công việc đang xử lý</h3>
-          {assigned.length === 0 ? (
-            <div className="py-6 text-center text-xs text-gray-500 font-semibold">Hiện tại bạn không còn công việc sửa chữa nào bị tồn đọng.</div>
-          ) : (
-            <div className="space-y-3">
-              {assigned.map(t => (
-                <div 
-                  key={t.feedbackId}
-                  onClick={() => navigate('/provider/tasks')}
-                  className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl cursor-pointer transition-all duration-200 flex justify-between items-center text-xs"
-                >
-                  <div className="space-y-1.5 truncate max-w-[75%]">
-                    <span className="text-[9px] text-[#0052CC] font-bold block">{formatTicketId(t.feedbackId)}</span>
-                    <span className="font-black text-slate-900 block truncate">{t.title}</span>
-                    <span className="text-[10px] text-slate-500 block truncate">{t.locationText}</span>
-                  </div>
-                  <span className="badge badge-sm font-bold uppercase py-2 px-2.5 bg-amber-50 text-amber-700 border-amber-200 border">
-                    {t.status}
-                  </span>
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-3xl space-y-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
+                  <Lucide.HardHat size={14} />
+                  Trung tâm xử lý
                 </div>
-              ))}
+                <div>
+                  <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
+                    Bảng điều hành đơn vị xử lý
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-base-content/60">
+                    Theo dõi nhiệm vụ được giao, cập nhật tiến độ hiện trường và gửi kết quả hoàn thành cho hệ thống UrbanMind.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="rounded-2xl border border-base-300 bg-base-100/80 px-4 py-3 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/40">
+                    Trạng thái
+                  </p>
+                  <div className="mt-1 flex items-center gap-2 text-sm font-extrabold text-success">
+                    <span className="h-2 w-2 rounded-full bg-success" />
+                    Sẵn sàng nhận việc
+                  </div>
+                </div>
+
+                <Link
+                  to="/provider/tasks"
+                  className="btn btn-primary rounded-2xl px-5 text-xs font-black shadow-lg shadow-primary/20"
+                >
+                  <Lucide.ArrowRight size={17} />
+                  Mở nhiệm vụ được giao
+                </Link>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {operatorStats.map(item => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="rounded-[1.5rem] border border-base-300 bg-base-100 p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-base-content/40">
+                      {item.label}
+                    </p>
+                    <p className="mt-3 text-3xl font-black tracking-tight text-base-content">
+                      {item.value}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-base-content/50">
+                      {item.helper}
+                    </p>
+                  </div>
+                  <div className={`rounded-2xl p-3 ${item.iconClassName}`}>
+                    <Icon size={20} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.6fr)]">
+          <div className="rounded-[1.75rem] border border-base-300 bg-base-100 shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-base-300 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-lg font-black text-base-content">Nhiệm vụ ưu tiên</h3>
+                <p className="mt-1 text-sm font-medium text-base-content/55">
+                  Các phiếu đang cần đơn vị cập nhật tiến độ hoặc báo hoàn thành.
+                </p>
+              </div>
+              <Link to="/provider/tasks" className="btn btn-outline btn-sm rounded-xl text-xs font-black">
+                Xem tất cả
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
+
+            {visibleTasks.length === 0 ? (
+              <div className="flex min-h-[280px] flex-col items-center justify-center px-6 py-12 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-success/10 text-success">
+                  <Lucide.CheckCircle2 size={28} />
+                </div>
+                <h4 className="mt-5 text-lg font-black text-base-content">Chưa có nhiệm vụ cần xử lý</h4>
+                <p className="mt-2 max-w-md text-sm font-medium leading-6 text-base-content/55">
+                  Khi hệ thống phân công phản ánh cho đơn vị, danh sách nhiệm vụ sẽ xuất hiện tại đây. Bạn vẫn có thể mở màn nhiệm vụ để kiểm tra chi tiết.
+                </p>
+                <Link to="/provider/tasks" className="btn btn-primary mt-5 rounded-2xl px-5 text-xs font-black">
+                  <Lucide.ClipboardList size={16} />
+                  Mở nhiệm vụ được giao
+                </Link>
+              </div>
+            ) : (
+              <div className="divide-y divide-base-300">
+                {visibleTasks.map(task => (
+                  <button
+                    key={task.feedbackId}
+                    type="button"
+                    onClick={() => navigate('/provider/tasks')}
+                    className="flex w-full flex-col gap-4 p-5 text-left transition hover:bg-base-200/70 lg:flex-row lg:items-center lg:justify-between"
+                  >
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                        {renderCategoryIcon(task.categoryId)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-black text-primary">{formatTicketId(task.feedbackId)}</span>
+                          <span className="rounded-full border border-base-300 px-2.5 py-1 text-[11px] font-black text-base-content/60">
+                            {getCategoryName(task.categoryId)}
+                          </span>
+                        </div>
+                        <h4 className="mt-2 truncate text-sm font-black text-base-content">{task.title}</h4>
+                        <p className="mt-1 flex items-center gap-1.5 truncate text-xs font-semibold text-base-content/45">
+                          <Lucide.MapPin size={13} />
+                          {task.locationText || 'Chưa có địa chỉ chi tiết'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="rounded-full border border-primary/15 bg-primary/10 px-3 py-1.5 text-[11px] font-black text-primary">
+                        {getOperatorStatusLabel(task.status)}
+                      </span>
+                      <Lucide.ChevronRight size={18} className="text-base-content/35" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-[1.75rem] border border-base-300 bg-base-100 p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-base-content">Quy trình xử lý</h3>
+                  <p className="mt-1 text-sm font-medium text-base-content/55">Các bước cập nhật trạng thái tại hiện trường.</p>
+                </div>
+                <div className="rounded-2xl bg-primary/10 p-3 text-primary">
+                  <Lucide.Workflow size={20} />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {workflowSteps.map((step, index) => {
+                  const Icon = step.icon;
+                  return (
+                    <div key={step.title} className="flex gap-3 rounded-2xl border border-base-300 bg-base-100 px-4 py-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-base-200 text-primary">
+                        <Icon size={17} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-black text-base-content">
+                          {index + 1}. {step.title}
+                        </p>
+                        <p className="mt-1 text-xs font-medium leading-5 text-base-content/55">{step.description}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-warning/20 bg-warning/10 p-5 text-warning-content shadow-sm">
+              <div className="flex items-start gap-3">
+                <Lucide.AlertTriangle size={20} className="mt-0.5 shrink-0" />
+                <div>
+                  <h4 className="font-black">Lưu ý vận hành</h4>
+                  <p className="mt-1 text-sm font-semibold leading-6 opacity-80">
+                    Khi hoàn thành xử lý, hãy gửi mô tả kết quả và ảnh nghiệm thu để bộ phận kiểm duyệt xác nhận trước khi đóng phản ánh.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     );
   }
@@ -561,7 +790,7 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   // 4. INTERACTION MANAGER DASHBOARD (interaction-manager)
   // ----------------------------------------------------
-  if (user.role === 'interaction-manager') {
+  if (currentRole === 'interaction-manager') {
     return (
       <div className="space-y-6 text-slate-800">
         <div>
@@ -607,7 +836,7 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   // 5. ADMINISTRATOR DASHBOARD (administrator)
   // ----------------------------------------------------
-  if (user.role === 'administrator') {
+  if (currentRole === 'administrator') {
     const storageUsageValue = stats.storageUsage?.split(' ')[0] || '0';
     const recentTickets = Array.isArray(tickets) ? tickets.slice(0, 4) : [];
     const adminMetrics = [
