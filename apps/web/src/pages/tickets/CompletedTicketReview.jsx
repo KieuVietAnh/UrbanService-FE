@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
+import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const CompletedTicketReview = () => {
@@ -13,6 +14,7 @@ export const CompletedTicketReview = () => {
   const [reworkNote, setReworkNote] = useState('');
   const [showReworkModal, setShowReworkModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   const fetchResolved = async () => {
     try {
@@ -41,7 +43,7 @@ export const CompletedTicketReview = () => {
     setLoading(true);
     try {
       await ticketApi.reviewResolution(selectedTicket.feedbackId, user.userId, true);
-      alert('Phê duyệt hoàn thành xuất sắc! Đã thông báo cho người dân đánh giá.');
+      setMessage({ type: 'success', text: 'Phê duyệt hoàn thành xuất sắc! Đã thông báo cho người dân đánh giá.' });
       fetchResolved();
     } catch (err) {
       console.error(err);
@@ -55,7 +57,7 @@ export const CompletedTicketReview = () => {
     setLoading(true);
     try {
       await ticketApi.reviewResolution(selectedTicket.feedbackId, user.userId, false, reworkNote);
-      alert('Yêu cầu làm lại thành công. Sự cố đã trả về tiến trình Đang Xử Lý.');
+      setMessage({ type: 'success', text: 'Yêu cầu làm lại thành công. Sự cố đã trả về tiến trình Đang Xử Lý.' });
       setShowReworkModal(false);
       setReworkNote('');
       fetchResolved();
@@ -68,6 +70,18 @@ export const CompletedTicketReview = () => {
 
   return (
     <div className="space-y-6">
+      {message.type === 'success' && (
+        <SuccessAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
+      {message.type === 'error' && (
+        <ErrorAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
       {/* Title */}
       <div>
         <h2 className="text-2xl font-black">Kiểm Tra &amp; Nghiệm Thu Kết Quả</h2>

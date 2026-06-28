@@ -94,14 +94,14 @@ export const Footer = () => {
                 </a>
               </div>
               <div className="flex gap-3 mt-3">
-                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="Facebook">
-                  <Lucide.Share2 size={16} />
+                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="Facebook" aria-label="Facebook">
+                  <Lucide.Share2 size={16} aria-hidden="true" />
                 </a>
-                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="Twitter">
-                  <Lucide.Send size={16} />
+                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="Twitter" aria-label="Twitter">
+                  <Lucide.Send size={16} aria-hidden="true" />
                 </a>
-                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="LinkedIn">
-                  <Lucide.Briefcase size={16} />
+                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="LinkedIn" aria-label="LinkedIn">
+                  <Lucide.Briefcase size={16} aria-hidden="true" />
                 </a>
               </div>
             </div>

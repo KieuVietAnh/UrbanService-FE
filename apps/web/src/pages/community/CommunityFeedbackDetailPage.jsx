@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ticketApi } from '../../services/api/ticketApi';
 import { useAuth } from '../../contexts/AuthContext';
+// LoadingSkeleton and ErrorAlert removed (unused)
 import * as Lucide from 'lucide-react';
 
 const normalizeDetail = (response) => {
@@ -129,21 +130,23 @@ export const CommunityFeedbackDetailPage = () => {
     if (supportLoading) return;
 
     const nextSupported = !isSupported;
+    const previousCount = supportCount;
+
+    setIsSupported(nextSupported);
+    setSupportCount((prev) => Math.max(0, prev + (nextSupported ? 1 : -1)));
+    setSupportLoading(true);
 
     try {
-      setSupportLoading(true);
-
       if (nextSupported) {
         await ticketApi.supportTicket(feedbackId);
       } else {
         await ticketApi.unsupportTicket(feedbackId);
       }
-
-      setIsSupported(nextSupported);
-      setSupportCount((prev) => Math.max(0, prev + (nextSupported ? 1 : -1)));
     } catch (err) {
       console.error('Không thể cập nhật hỗ trợ:', err);
-      alert(
+      setIsSupported(!nextSupported);
+      setSupportCount(previousCount);
+      setError(
         err?.response?.data?.message ||
         err?.message ||
         'Không thể cập nhật hỗ trợ.'
@@ -159,18 +162,30 @@ export const CommunityFeedbackDetailPage = () => {
     const content = commentInput.trim();
     if (!content || commentLoading) return;
 
+    const userId = user?.userId || user?.id;
+    const userName =
+      user?.fullName ||
+      user?.name ||
+      user?.userName ||
+      user?.email ||
+      'Người dân';
+    const userRole = user?.role || 'service-user';
+    const tempCommentId = `temp-${Date.now()}`;
+    const tempComment = {
+      commentId: tempCommentId,
+      userId,
+      userName,
+      userRole,
+      content,
+      createdAt: new Date().toISOString(),
+      isPending: true,
+    };
+
+    setComments((prev) => [...prev, tempComment]);
+    setCommentInput('');
+    setCommentLoading(true);
+
     try {
-      setCommentLoading(true);
-
-      const userId = user?.userId || user?.id;
-      const userName =
-        user?.fullName ||
-        user?.name ||
-        user?.userName ||
-        user?.email ||
-        'Người dân';
-      const userRole = user?.role || 'service-user';
-
       const response = await ticketApi.addComment(
         feedbackId,
         userId,
@@ -180,24 +195,22 @@ export const CommunityFeedbackDetailPage = () => {
       );
 
       const createdComment = normalizeDetail(response);
-
-      setComments((prev) => [
-        ...prev,
-        {
-          commentId: createdComment?.commentId || createdComment?.id || Date.now(),
-          userId,
-          userName,
-          userRole,
-          content,
-          createdAt: createdComment?.createdAt || new Date().toISOString(),
-          ...createdComment,
-        },
-      ]);
-
-      setCommentInput('');
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.commentId === tempCommentId
+            ? {
+                ...comment,
+                ...createdComment,
+                commentId: createdComment?.commentId || createdComment?.id || tempCommentId,
+                isPending: false,
+              }
+            : comment
+        )
+      );
     } catch (err) {
       console.error('Không gửi được bình luận:', err);
-      alert(
+      setComments((prev) => prev.filter((comment) => comment.commentId !== tempCommentId));
+      setError(
         err?.response?.data?.message ||
         err?.message ||
         'Không thể gửi bình luận.'
@@ -209,8 +222,40 @@ export const CommunityFeedbackDetailPage = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-20 bg-white rounded-3xl border border-slate-200">
-        <span className="loading loading-spinner loading-lg text-primary"></span>
+      <div className="space-y-6 animate-fade-in">
+        <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+          <div className="h-4 w-32 rounded-full bg-slate-100 animate-pulse" />
+        </div>
+
+        <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-5">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="space-y-3 flex-1">
+              <div className="h-6 w-40 rounded-full bg-slate-100 animate-pulse" />
+              <div className="h-8 w-full rounded-2xl bg-slate-100 animate-pulse" />
+              <div className="h-4 w-3/4 rounded-full bg-slate-100 animate-pulse" />
+            </div>
+            <div className="h-10 w-36 rounded-2xl bg-slate-100 animate-pulse" />
+          </div>
+
+          <div className="space-y-3">
+            <div className="h-5 w-48 rounded-full bg-slate-100 animate-pulse" />
+            <div className="h-32 rounded-3xl bg-slate-100 animate-pulse" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="h-44 rounded-3xl bg-slate-100 animate-pulse" />
+            <div className="h-44 rounded-3xl bg-slate-100 animate-pulse" />
+          </div>
+        </div>
+
+        <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-5">
+          <div className="h-6 w-56 rounded-full bg-slate-100 animate-pulse" />
+          <div className="h-12 rounded-2xl bg-slate-100 animate-pulse" />
+          <div className="space-y-3">
+            <div className="h-16 rounded-3xl bg-slate-100 animate-pulse" />
+            <div className="h-16 rounded-3xl bg-slate-100 animate-pulse" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -237,12 +282,14 @@ export const CommunityFeedbackDetailPage = () => {
   return (
     <div className="space-y-6 text-slate-800">
       <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-        <span
-          className="cursor-pointer hover:text-slate-600"
+        <button
+          type="button"
           onClick={() => navigate('/community/feed')}
+          className="text-slate-400 hover:text-slate-600"
+          aria-label="Quay lại bảng tin"
         >
           Bảng tin
-        </span>
+        </button>
         <Lucide.ChevronRight size={12} />
         <span className="text-primary">Chi tiết phản ánh cộng đồng</span>
       </div>
@@ -285,11 +332,12 @@ export const CommunityFeedbackDetailPage = () => {
             type="button"
             onClick={handleSupportToggle}
             disabled={supportLoading}
+            aria-busy={supportLoading}
             className={`btn btn-sm rounded-xl font-bold ${isSupported ? 'btn-primary' : 'btn-outline'
               }`}
           >
             {supportLoading ? (
-              <span className="loading loading-spinner loading-xs"></span>
+              <span className="loading loading-spinner loading-xs" aria-hidden="true" />
             ) : (
               <Lucide.Heart
                 size={15}
@@ -391,10 +439,11 @@ export const CommunityFeedbackDetailPage = () => {
           <button
             type="submit"
             disabled={commentLoading || !commentInput.trim()}
+            aria-busy={commentLoading}
             className="btn btn-primary rounded-2xl font-bold"
           >
             {commentLoading ? (
-              <span className="loading loading-spinner loading-sm"></span>
+              <span className="loading loading-spinner loading-sm" aria-hidden="true" />
             ) : (
               <>
                 <Lucide.Send size={15} />

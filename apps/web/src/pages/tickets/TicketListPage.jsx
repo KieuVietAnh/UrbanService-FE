@@ -6,6 +6,7 @@ import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
+import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 
 export const TicketListPage = () => {
   const { user } = useAuth();
@@ -38,6 +39,7 @@ export const TicketListPage = () => {
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] = useState(null);
   const [attachmentWarning, setAttachmentWarning] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [pageMessage, setPageMessage] = useState({ type: '', message: '' });
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
@@ -223,7 +225,7 @@ export const TicketListPage = () => {
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
-      alert('Trình duyệt không hỗ trợ lấy vị trí hiện tại.');
+      setPageMessage({ type: 'error', message: 'Trình duyệt không hỗ trợ lấy vị trí hiện tại.' });
       return;
     }
 
@@ -239,7 +241,7 @@ export const TicketListPage = () => {
         }));
       },
       () => {
-        alert('Không thể lấy vị trí hiện tại. Vui lòng cho phép quyền vị trí.');
+        setPageMessage({ type: 'error', message: 'Không thể lấy vị trí hiện tại. Vui lòng cho phép quyền vị trí.' });
       }
     );
   };
@@ -317,11 +319,13 @@ export const TicketListPage = () => {
       setSelectedFiles([]);
     } catch (err) {
       console.error('Không thể thêm tệp đính kèm:', err);
-      alert(
-        err?.response?.data?.message ||
-        err?.message ||
-        'Không thể thêm tệp đính kèm.'
-      );
+      setPageMessage({
+        type: 'error',
+        message:
+          err?.response?.data?.message ||
+          err?.message ||
+          'Không thể thêm tệp đính kèm.',
+      });
     } finally {
       setAttachmentLoading(false);
     }
@@ -339,7 +343,7 @@ export const TicketListPage = () => {
     const attachmentId = getAttachmentId(attachmentDeleteTarget);
 
     if (!attachmentId) {
-      alert('Không tìm thấy attachmentId để xóa file này.');
+      setPageMessage({ type: 'error', message: 'Không tìm thấy attachmentId để xóa file này.' });
       setAttachmentDeleteTarget(null);
       return;
     }
@@ -356,11 +360,13 @@ export const TicketListPage = () => {
       setAttachmentDeleteTarget(null);
     } catch (err) {
       console.error('Không thể xóa tệp đính kèm:', err);
-      alert(
-        err?.response?.data?.message ||
-        err?.message ||
-        'Không thể xóa tệp đính kèm.'
-      );
+      setPageMessage({
+        type: 'error',
+        message:
+          err?.response?.data?.message ||
+          err?.message ||
+          'Không thể xóa tệp đính kèm.',
+      });
     } finally {
       setAttachmentLoading(false);
     }
@@ -372,12 +378,12 @@ export const TicketListPage = () => {
     if (!editTarget) return;
 
     if (!editForm.title.trim()) {
-      alert('Vui lòng nhập tiêu đề phản ánh.');
+      setPageMessage({ type: 'error', message: 'Vui lòng nhập tiêu đề phản ánh.' });
       return;
     }
 
     if (!editForm.description.trim()) {
-      alert('Vui lòng nhập mô tả phản ánh.');
+      setPageMessage({ type: 'error', message: 'Vui lòng nhập mô tả phản ánh.' });
       return;
     }
 
@@ -432,11 +438,13 @@ export const TicketListPage = () => {
       setEditTarget(null);
     } catch (err) {
       console.error('Không thể cập nhật phản ánh:', err);
-      alert(
-        err?.response?.data?.message ||
-        err?.message ||
-        'Không thể cập nhật phản ánh.'
-      );
+      setPageMessage({
+        type: 'error',
+        message:
+          err?.response?.data?.message ||
+          err?.message ||
+          'Không thể cập nhật phản ánh.',
+      });
     } finally {
       setEditLoading(false);
     }
@@ -456,11 +464,13 @@ export const TicketListPage = () => {
       setDeleteTarget(null);
     } catch (err) {
       console.error('Không thể xóa phản ánh:', err);
-      alert(
-        err?.response?.data?.message ||
-        err?.message ||
-        'Không thể xóa phản ánh.'
-      );
+      setPageMessage({
+        type: 'error',
+        message:
+          err?.response?.data?.message ||
+          err?.message ||
+          'Không thể xóa phản ánh.',
+      });
     } finally {
       setDeleteLoading(false);
     }
@@ -475,6 +485,23 @@ export const TicketListPage = () => {
 
   return (
     <div className="page-container space-y-6 text-slate-800">
+      {pageMessage.type && (
+        <div>
+          {pageMessage.type === 'error' ? (
+            <ErrorAlert
+              title="Lỗi"
+              message={pageMessage.message}
+              onClose={() => setPageMessage({ type: '', message: '' })}
+            />
+          ) : (
+            <SuccessAlert
+              title="Thành công"
+              message={pageMessage.message}
+              onClose={() => setPageMessage({ type: '', message: '' })}
+            />
+          )}
+        </div>
+      )}
       {/* Breadcrumbs */}
       <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
         <span>Trang chủ</span>
@@ -639,7 +666,7 @@ export const TicketListPage = () => {
             type="button"
             onClick={() => setStatus(value)}
             aria-pressed={status === value}
-            className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === value ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+            className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition duration-200 ease-out ${status === value ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'}`}
           >
             {value === '' ? 'Tất cả' : value === 'AI Reviewed' ? 'Đang xem xét' : value === 'InProgress' ? 'Đang xử lý' : value === 'Resolved' ? 'Đã xử lý' : value}
           </button>
@@ -647,7 +674,7 @@ export const TicketListPage = () => {
       </div>
 
       {/* Main timeline list */}
-      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
+      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4 fade-in-up visible">
         {loading ? (
           <div className="flex justify-center py-20">
             <span className="loading loading-spinner loading-lg text-[color:var(--brand-primary)]"></span>

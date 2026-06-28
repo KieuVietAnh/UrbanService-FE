@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
+import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const DuplicateDetection = () => {
@@ -14,6 +15,7 @@ export const DuplicateDetection = () => {
   const [masterId, setMasterId] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
     // Read all submitted / active tickets to show potential duplicates
@@ -61,9 +63,10 @@ export const DuplicateDetection = () => {
 
       await ticketApi.mergeTickets(masterId, duplicates, user.userId);
       setSuccess(!success); // trigger reload
-      alert(`Gộp thành công! Thiết lập ${masterId} thành Master Ticket và đóng các phản ánh trùng lặp khác.`);
+      setMessage({ type: 'success', text: `Gộp thành công! Thiết lập ${masterId} thành Master Ticket và đóng các phản ánh trùng lặp khác.` });
     } catch (err) {
       console.error(err);
+      setMessage({ type: 'error', text: err?.message || 'Không thể hợp nhất các phản ánh trùng lặp.' });
     } finally {
       setLoading(false);
     }
@@ -71,6 +74,18 @@ export const DuplicateDetection = () => {
 
   return (
     <div className="space-y-6">
+      {message.type === 'success' && (
+        <SuccessAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
+      {message.type === 'error' && (
+        <ErrorAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
       {/* Title */}
       <div>
         <h2 className="text-2xl font-black">Xử Lý Phản Ánh Trùng Lặp</h2>

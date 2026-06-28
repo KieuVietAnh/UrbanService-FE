@@ -28,7 +28,7 @@ export default function DelightToast({ message = 'Hoàn tất', sub = '', open =
           <div className="text-sm font-black text-slate-900">{message}</div>
           {sub && <div className="text-[11px] text-slate-500 mt-0.5">{sub}</div>}
         </div>
-        <button onClick={() => { setVisible(false); onClose(); }} className="text-slate-400 hover:text-slate-600">✕</button>
+        <button onClick={() => { setVisible(false); onClose(); }} aria-label="Đóng thông báo" title="Đóng" className="text-slate-400 hover:text-slate-600">✕</button>
       </div>
     </div>
   );

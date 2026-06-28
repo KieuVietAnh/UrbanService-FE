@@ -10,7 +10,6 @@ const normalizeRole = (role) => getInternalRole(role);
 
 const initializeUser = () => {
   const savedUser = tokenStorage.getUser();
-  console.log('AuthContext initializeUser localStorage user', savedUser);
   if (!savedUser) return null;
   return {
     ...savedUser,
@@ -26,7 +25,6 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const res = await authApi.login(email, password);
-      console.log('AuthContext login response', res);
       const updatedUser = {
         ...res.user,
         role: normalizeRole(res.user.role),
@@ -59,9 +57,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const result = await authApi.verifyOTP(otp);
-      console.log('AuthContext verifyOtp result', result);
       const updatedUser = result?.user || tokenStorage.getUser();
-      console.log('AuthContext verifyOtp updatedUser', updatedUser);
       if (updatedUser) {
         setUser(updatedUser);
       }

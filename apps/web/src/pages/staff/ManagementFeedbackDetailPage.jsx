@@ -6,7 +6,7 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { assignmentApi, toolsApi } from '@urbanmind/shared-api';
 import { managementTypes, STATUS_BADGE_CLASSES, PRIORITY_BADGE_CLASSES } from '@urbanmind/shared-types';
 import { LoadingSpinner } from '@urbanmind/shared-ui';
-import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import IncidentMap from '../../components/maps/IncidentMap';
 import * as Lucide from 'lucide-react';
 
@@ -18,6 +18,7 @@ export const ManagementFeedbackDetailPage = () => {
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pageMessage, setPageMessage] = useState({ type: '', text: '' });
   const [categories, setCategories] = useState([]);
   const [operators, setOperators] = useState([]);
 
@@ -54,6 +55,9 @@ export const ManagementFeedbackDetailPage = () => {
           assignmentApi.getOperators(feedbackRes?.categoryId),
         ]);
 
+        setCategories(Array.isArray(categoriesRes) ? categoriesRes : []);
+        setOperators(Array.isArray(operatorsRes) ? operatorsRes : []);
+
         setFeedback(feedbackRes);
         setEditForm({
           categoryId: feedbackRes?.categoryId || '',
@@ -65,9 +69,6 @@ export const ManagementFeedbackDetailPage = () => {
           priority: feedbackRes?.priority || '',
           dueDate: feedbackRes?.dueDate || '',
         });
-        setStatusForm({ status: feedbackRes?.status || '', note: '' });
-        setCategories(Array.isArray(categoriesRes) ? categoriesRes : []);
-        setOperators(Array.isArray(operatorsRes) ? operatorsRes : []);
       } catch (err) {
         console.error('Failed to load feedback details', err);
         setError('Unable to load feedback details.');
@@ -90,7 +91,7 @@ export const ManagementFeedbackDetailPage = () => {
       setIsEditing(false);
     } catch (err) {
       console.error('Failed to update feedback', err);
-      alert('Unable to update feedback');
+      setPageMessage({ type: 'error', text: err?.message || 'Không thể cập nhật phản ánh.' });
     } finally {
       setEditLoading(false);
     }
@@ -109,7 +110,7 @@ export const ManagementFeedbackDetailPage = () => {
       setStatusForm({ status: '', note: '' });
     } catch (err) {
       console.error('Failed to update status', err);
-      alert('Unable to update status');
+      setPageMessage({ type: 'error', text: err?.message || 'Không thể cập nhật trạng thái phản ánh.' });
     } finally {
       setStatusLoading(false);
     }
@@ -123,7 +124,7 @@ export const ManagementFeedbackDetailPage = () => {
       setFeedback(prev => ({ ...prev, status: 'Verified' }));
     } catch (err) {
       console.error('Failed to verify feedback', err);
-      alert('Unable to verify feedback');
+      setPageMessage({ type: 'error', text: err?.message || 'Không thể xác minh phản ánh.' });
     } finally {
       setVerifyLoading(false);
     }
@@ -167,7 +168,6 @@ export const ManagementFeedbackDetailPage = () => {
         staffUserId: user.userId,
         note: assignForm.note,
       };
-      console.log('Assignment payload', payload);
 
       await managementFeedbackApi.assignToOperator(payload);
       setFeedback(prev => ({ ...prev, status: 'Assigned' }));
@@ -229,9 +229,11 @@ export const ManagementFeedbackDetailPage = () => {
     return attachment?.fileUrl || attachment?.url || attachment?.path || '';
   };
 
+  const nextStatusOptions = managementTypes.statusFlow[feedback?.status] || [];
+
   const canVerify = feedback?.status === 'Submitted';
   const canAssign = feedback?.status === 'Verified';
-  const canUpdateStatus = ['Verified', 'Assigned', 'InProgress'].includes(feedback?.status);
+  const canUpdateStatus = nextStatusOptions.length > 0;
 
   const attachments = Array.isArray(feedback?.attachments) ? feedback.attachments : [];
   const comments = Array.isArray(feedback?.comments) ? feedback.comments : [];
@@ -272,11 +274,28 @@ export const ManagementFeedbackDetailPage = () => {
 
   return (
     <div className="space-y-6">
+      {pageMessage.type === 'success' && (
+        <SuccessAlert
+          message={pageMessage.text}
+          onClose={() => setPageMessage({ type: '', text: '' })}
+        />
+      )}
+      {pageMessage.type === 'error' && (
+        <ErrorAlert
+          message={pageMessage.text}
+          onClose={() => setPageMessage({ type: '', text: '' })}
+        />
+      )}
       {/* Breadcrumb */}
       <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-        <span className="cursor-pointer hover:text-slate-600" onClick={() => navigate('/staff/queue')}>
+        <button
+          type="button"
+          onClick={() => navigate('/staff/queue')}
+          className="text-slate-400 hover:text-slate-600"
+          aria-label="Quay lại hàng đợi"
+        >
           Hàng đợi
-        </span>
+        </button>
         <Lucide.ChevronRight size={12} />
         <span className="text-[#0052CC]">{feedback.title}</span>
       </div>
@@ -599,7 +618,63 @@ export const ManagementFeedbackDetailPage = () => {
 
         {/* Sidebar */}
         <div className="col-span-1 space-y-6">
-          {/* Info Card */}
+          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+            <h3 className="font-bold text-slate-900">Hành động tiếp theo</h3>
+            <p className="text-sm text-slate-600">
+              {canVerify
+                ? 'Xác minh phản ánh trước khi phân công đội xử lý.'
+                : canAssign
+                ? 'Phân công ngay để phản ánh bắt đầu vào quy trình xử lý.'
+                : nextStatusOptions.length > 0
+                ? 'Cập nhật trạng thái khi phản ánh đã sẵn sàng cho bước tiếp theo.'
+                : 'Đã hoàn thành hoặc không cần hành động tiếp theo.'}
+            </p>
+            <div className="space-y-3">
+              {canVerify && (
+                <button
+                  onClick={handleVerify}
+                  disabled={verifyLoading}
+                  className="btn btn-sm w-full bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
+                >
+                  {verifyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Check size={14} />}
+                  Xác minh phản ánh
+                </button>
+              )}
+              {canAssign && (
+                <button
+                  onClick={() => setAssignModal(true)}
+                  className="btn btn-sm w-full bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
+                >
+                  <Lucide.UserPlus size={14} />
+                  Phân công đơn vị xử lý
+                </button>
+              )}
+              {nextStatusOptions.length > 0 && (
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-xs text-slate-500 font-bold mb-2">Trạng thái tiếp theo</div>
+                  <div className="flex flex-wrap gap-2">
+                    {nextStatusOptions.map((nextStatus) => (
+                      <span
+                        key={nextStatus}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_BADGE_CLASSES[nextStatus] || 'bg-slate-100 text-slate-700'}`}
+                      >
+                        {getStatusLabel(nextStatus)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!
+                canVerify &&
+                !canAssign &&
+                nextStatusOptions.length === 0 && (
+                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                    Không còn bước nào cần thực hiện cho phản ánh này.
+                  </div>
+                )}
+            </div>
+          </div>
+
           <div className="card bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-200 p-6 rounded-2xl space-y-4">
             <h3 className="font-bold text-slate-900">Thông tin</h3>
             <div className="space-y-3 text-xs">
@@ -614,6 +689,10 @@ export const ManagementFeedbackDetailPage = () => {
               <div>
                 <div className="text-slate-500 font-bold">Danh mục</div>
                 <div className="mt-1 font-bold">{feedback.categoryName}</div>
+              </div>
+              <div>
+                <div className="text-slate-500 font-bold">Đơn vị xử lý</div>
+                <div className="mt-1 font-bold">{feedback.operatorName || feedback.assignedOperatorName || 'Chưa phân công'}</div>
               </div>
             </div>
           </div>

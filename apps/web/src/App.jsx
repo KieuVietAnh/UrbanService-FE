@@ -9,12 +9,10 @@ import { toolsApi } from '@urbanmind/shared-api';
 
 function App() {
   useEffect(() => {
-    // Initialize mock database in localStorage (via shared-api tools)
-    toolsApi.init();
-    
-    // Set default theme to light if not set
-    const savedTheme = localStorage.getItem('urbanmind_theme') || 'light';
-    document.documentElement.setAttribute('data-theme', savedTheme);
+    // Initialize local mock data only when explicitly enabled for staging/demo.
+    if (import.meta.env.VITE_USE_MOCK === 'true') {
+      toolsApi.init();
+    }
   }, []);
 
   return (

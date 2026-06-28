@@ -1,11 +1,13 @@
 // src/pages/management/IntegrationSettings.jsx
 import { useState, useEffect } from 'react';
 import { toolsApi } from '@urbanmind/shared-api';
+import { SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const IntegrationSettings = () => {
   const [integrations, setIntegrations] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
     // Read from shared tools API
@@ -18,7 +20,7 @@ export const IntegrationSettings = () => {
     updated[key].enabled = !updated[key].enabled;
     toolsApi.updateIntegrations(updated);
     setIntegrations(updated);
-    alert('Đã cập nhật cấu hình cổng tích hợp!');
+    setMessage({ type: 'success', text: 'Đã cập nhật cấu hình cổng tích hợp!' });
   };
 
   const getStatusLabel = (status) => {
@@ -32,14 +34,6 @@ export const IntegrationSettings = () => {
 
     return statusMap[status] || status || 'Chưa rõ';
   };
-
-  if (loading || !integrations) {
-    return (
-      <div className="flex justify-center rounded-[2rem] border border-base-300 bg-base-100 py-20 shadow-sm">
-        <span className="loading loading-spinner loading-lg text-primary"></span>
-      </div>
-    );
-  }
 
   const integrationItems = [
     {
@@ -80,10 +74,24 @@ export const IntegrationSettings = () => {
     },
   ];
 
+  if (loading || !integrations) {
+    return (
+      <div className="flex justify-center rounded-[2rem] border border-base-300 bg-base-100 py-20 shadow-sm">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+    );
+  }
+
   const enabledCount = integrationItems.filter(item => integrations[item.key].enabled).length;
 
   return (
     <div className="space-y-6">
+      {message.type === 'success' && (
+        <SuccessAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
       <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
         <div className="relative p-6 sm:p-8">
           <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />

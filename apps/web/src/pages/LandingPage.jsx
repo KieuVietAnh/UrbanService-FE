@@ -284,9 +284,9 @@ export const LandingPage = () => {
         </div>
         <div className="max-w-7xl mx-auto flex justify-between items-center pt-6 text-[10px] font-bold text-slate-400">
           <span>Phát triển bởi Đội ngũ Công nghệ Đô thị Thông minh</span>
-          <div className="flex gap-4">
+          <div className="flex gap-4" aria-hidden="true">
             <Lucide.Award size={16} />
-            <Lucide.PlusCircle size={16} className="text-[#0052CC] cursor-pointer" />
+            <Lucide.PlusCircle size={16} className="text-[#0052CC]" />
           </div>
         </div>
       </footer>

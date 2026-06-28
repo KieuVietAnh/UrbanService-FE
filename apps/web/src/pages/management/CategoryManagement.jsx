@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { slaApi } from '../../services/api/slaApi';
 import { toolsApi } from '@urbanmind/shared-api';
+import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 const categoryIconSet = [
@@ -24,6 +25,7 @@ export const CategoryManagement = () => {
   const { user } = useAuth();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   // Form states to create category
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -76,13 +78,14 @@ export const CategoryManagement = () => {
         categoryName: catName,
         description: catDesc
       }, user.userId);
-      alert('Tạo danh mục mới thành công!');
+      setMessage({ type: 'success', text: 'Tạo danh mục mới thành công!' });
       setShowCreateModal(false);
       setCatName('');
       setCatDesc('');
       fetchCats();
     } catch (err) {
       console.error(err);
+      setMessage({ type: 'error', text: err?.message || 'Lỗi khi tạo danh mục.' });
     } finally {
       setCreateLoading(false);
     }
@@ -90,6 +93,18 @@ export const CategoryManagement = () => {
 
   return (
     <div className="space-y-6">
+      {message.type === 'success' && (
+        <SuccessAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
+      {message.type === 'error' && (
+        <ErrorAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
       <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
         <div className="relative p-6 sm:p-8">
           <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />

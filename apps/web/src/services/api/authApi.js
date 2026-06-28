@@ -35,8 +35,6 @@ const saveUserSession = (response) => {
     isVerified: userPayload?.isVerified === true || userPayload?.isVerified === 'true',
   };
 
-  console.log('authApi saveUserSession', { response, payload, userPayload, sessionUser });
-
   if (token) {
     tokenStorage.setToken(token);
   }
@@ -85,8 +83,6 @@ export const authApi = {
       updatedUser.isVerified = true;
       tokenStorage.setUser(updatedUser);
     }
-
-    console.log('authApi verifyOTP success', { response, payload, updatedUser, token });
 
     return { success: true, user: updatedUser };
   },

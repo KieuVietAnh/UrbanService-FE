@@ -8,7 +8,8 @@ html, body, #root {
   height: 100%;
   font-family: 'Inter', 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   scroll-behavior: smooth;
-  background-color: #f8fafc; /* Slate-50 background for clean Figma feel */
+  background-color: var(--bg);
+  color: var(--ink);
 }
 
 /* Layout spacing tokens and container helpers (density-aware) */
@@ -30,6 +31,7 @@ html, body, #root {
   --surface: #ffffff;
   --muted: #6b7280; /* slate-500 */
   --ink: #0f172a; /* slate-900 */
+  --bg: #f8fafc;
 
   --color-success: #047857; /* emerald-700 */
   --color-success-bg: #ecfdf5; /* emerald-50 */
@@ -39,6 +41,29 @@ html, body, #root {
   --color-danger-bg: #fff1f2; /* red-50 */
   --color-info: #2563eb; /* blue-600 */
   --color-info-bg: #eff6ff; /* blue-50 */
+
+  --badge-radius: 9999px;
+}
+
+/* Dark theme tokens: use data-theme="dark" on html */
+html[data-theme="dark"] {
+  --brand-primary: #4ea0ff; /* slightly lighter primary on dark */
+  --brand-on-primary: #081025;
+  --brand-primary-dark: #2b7ed6;
+  --surface: #0f1724; /* tinted dark surface, not pure black */
+  --bg: #071024; /* page background: deep navy slate */
+  --muted: #94a3b8; /* lighter muted on dark */
+  --ink: #e6eef8; /* light copy on dark surfaces */
+  --neutral-50: #071826;
+
+  --color-success: #16b37a;
+  --color-success-bg: #05241a;
+  --color-warning: #d77b2b;
+  --color-warning-bg: #2b1608;
+  --color-danger: #ff6b6b;
+  --color-danger-bg: #2b0b0b;
+  --color-info: #7db6ff;
+  --color-info-bg: #07182a;
 
   --badge-radius: 9999px;
 }
@@ -271,4 +296,19 @@ body { font-size: var(--text-base-size); line-height: var(--text-base-leading); 
 /* Ensure comfortable touch targets on small screens */
 @media (max-width: 640px) {
   .btn, button, .btn-primary, .btn-ghost, .btn-outline { min-height: 44px; min-width: 44px; }
+  input, textarea, select { min-height: 44px; padding-top: 0.6rem; padding-bottom: 0.6rem; }
+  .touch-target { min-height: 44px; min-width: 44px; }
+  /* Safe area helpers for mobile (notch / home indicator) */
+  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 12px); }
 }
+
+/* Bottom sheet styles */
+.bottom-sheet-backdrop { position: fixed; inset: 0; background: rgba(2,6,23,0.5); z-index: 60; }
+.bottom-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 70; background: var(--surface); border-top-left-radius: 1rem; border-top-right-radius: 1rem; box-shadow: 0 -8px 30px rgba(2,6,23,0.35); transform: translateY(100%); transition: transform var(--motion-medium) var(--ease-out-quart); }
+.bottom-sheet.open { transform: translateY(0%); }
+.bottom-sheet .sheet-handle { width: 40px; height: 4px; background: rgba(15,23,42,0.08); border-radius: 9999px; margin: 10px auto; }
+.bottom-sheet .sheet-content { padding: 16px; }
+
+/* Sticky action bar for mobile */
+.sticky-action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 80; padding: 12px; background: linear-gradient(180deg, rgba(255,255,255,0.02), var(--surface)); border-top: 1px solid rgba(15,23,42,0.06); display: flex; gap: 12px; align-items: center; justify-content: center; }
+.sticky-action-bar .fab { box-shadow: 0 8px 24px rgba(2,6,23,0.15); }

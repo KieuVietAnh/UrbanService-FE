@@ -1,5 +1,5 @@
 // src/pages/tickets/CreateTicketPage.jsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
@@ -17,9 +17,16 @@ export const CreateTicketPage = () => {
   // Wizard Steps: 1: Description, 2: AI Category & Priority, 3: GPS Map Location, 4: Image Evidence, 5: Submit Success
   const [step, setStep] = useState(1);
   const [showToast, setShowToast] = useState(false);
+  const [stepVisible, setStepVisible] = useState(true);
 
   // Form State
   const [title, setTitle] = useState('');
+
+  useEffect(() => {
+    setStepVisible(false);
+    const frame = requestAnimationFrame(() => setStepVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, [step]);
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [priority, setPriority] = useState('Medium');
@@ -140,7 +147,7 @@ export const CreateTicketPage = () => {
 
       {/* STEP 1: TITLE & DESCRIPTION */}
       {step === 1 && (
-        <div className="space-y-5 max-w-xl mx-auto w-full">
+        <div className={`space-y-5 max-w-xl mx-auto w-full fade-in-up ${stepVisible ? 'visible' : ''}`}>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <div className="text-center space-y-1">
@@ -192,7 +199,7 @@ export const CreateTicketPage = () => {
 
       {/* STEP 2: AI ANALYSIS REVIEW */}
       {step === 2 && aiAnalysis && (
-        <div className="space-y-6 max-w-xl mx-auto w-full">
+        <div className={`space-y-6 max-w-xl mx-auto w-full fade-in-up ${stepVisible ? 'visible' : ''}`}>
           <div className="text-center space-y-1">
             <h3 className="text-base font-black text-slate-900">Bước 2: Phân Loại Sự Cố</h3>
             <p className="text-xs text-slate-500 font-semibold">Vui lòng chọn danh mục và mức độ khẩn cấp phù hợp cho sự cố.</p>
@@ -247,7 +254,7 @@ export const CreateTicketPage = () => {
 
       {/* STEP 3: MAP PICKER & DUPLICATES CHECK */}
       {step === 3 && (
-        <div className="space-y-5">
+        <div className={`space-y-5 fade-in-up ${stepVisible ? 'visible' : ''}`}>
           <div className="text-center space-y-1">
             <h3 className="text-base font-black text-slate-900">Bước 3: Chọn Vị Trí Sự Cố</h3>
             <p className="text-xs text-slate-500 font-semibold">Định vị địa điểm xảy ra sự cố trên bản đồ số để nhân viên dễ tìm kiếm.</p>
@@ -255,7 +262,7 @@ export const CreateTicketPage = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Map column */}
-            <div className="lg:col-span-2 border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
+            <div className="lg:col-span-2 border border-slate-200 rounded-3xl overflow-hidden shadow-xs transition-shadow duration-200 ease-out hover:shadow-sm">
               <LocationPicker
                 latitude={latitude}
                 longitude={longitude}
@@ -266,7 +273,7 @@ export const CreateTicketPage = () => {
             {/* Coordinates HUD Column */}
             <div className="space-y-4 flex flex-col justify-between">
               <div className="space-y-4">
-                <div className="card bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
+                <div className="card bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3 transition-shadow duration-200 ease-out hover:shadow-sm">
                   <h4 className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Thông tin địa điểm</h4>
                   <div className="space-y-1">
                     <span className="text-[10px] text-slate-400 font-bold block uppercase">Địa chỉ đã chọn:</span>
@@ -284,7 +291,7 @@ export const CreateTicketPage = () => {
 
                 {/* DUPLICATE WARNING CARD ALERT */}
                 {showDuplicateWarn && (
-                  <div className="card bg-red-50 border border-red-200 p-4 rounded-2xl space-y-3">
+                  <div className="card bg-red-50 border border-red-200 p-4 rounded-2xl space-y-3 transition-shadow duration-200 ease-out hover:shadow-sm">
                     <div className="flex items-center gap-1.5 text-red-600 font-extrabold text-xs">
                       <Lucide.AlertTriangle size={16} />
                       <span>Phát hiện sự cố nghi trùng lặp!</span>
@@ -346,14 +353,14 @@ export const CreateTicketPage = () => {
 
       {/* STEP 4: UPLOAD IMAGE PROOFS & REVIEW PREVIEW */}
       {step === 4 && (
-        <div className="space-y-6 max-w-xl mx-auto w-full">
+        <div className={`space-y-6 max-w-xl mx-auto w-full fade-in-up ${stepVisible ? 'visible' : ''}`}>
           <div className="text-center space-y-1">
             <h3 className="text-base font-black text-slate-900">Bước 4: Tải Ảnh Minh Chứng</h3>
             <p className="text-xs text-slate-500 font-semibold">Tải lên bằng chứng thực tế tại hiện trường giúp cán bộ tiếp nhận nhanh hơn.</p>
           </div>
 
           {/* Drag & Drop uploader mockup */}
-          <div className="border-2 border-dashed border-slate-200 rounded-3xl p-8 text-center space-y-4 bg-slate-50/50 hover:border-[color:var(--brand-primary)] hover:bg-slate-50 transition-all cursor-pointer relative">
+          <div className="border-2 border-dashed border-slate-200 rounded-3xl p-8 text-center space-y-4 bg-slate-50/50 hover:border-[color:var(--brand-primary)] hover:bg-slate-50 transition-all duration-200 ease-out cursor-pointer relative">
             <input
               type="file"
               multiple
@@ -383,7 +390,7 @@ export const CreateTicketPage = () => {
                 return (
                   <div
                     key={`${attachment.name || attachment.file?.name || 'attachment'}-${idx}`}
-                    className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-200 group bg-slate-100"
+                    className="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-200 group bg-slate-100 transition-shadow duration-200 ease-out hover:shadow-lg"
                   >
                     <button
                       type="button"
@@ -463,7 +470,7 @@ export const CreateTicketPage = () => {
 
       {/* STEP 5: SUCCESS & NEXT STEPS */}
       {step === 5 && (
-        <div className="space-y-6 max-w-md mx-auto text-center py-8 relative">
+        <div className={`space-y-6 max-w-md mx-auto text-center py-8 relative fade-in-up ${stepVisible ? 'visible' : ''}`}>
           <ConfettiBurst />
           <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <Lucide.CheckCircle2 size={40} />
@@ -509,7 +516,7 @@ export const CreateTicketPage = () => {
 
         return (
           <div
-            className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6"
+            className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6 fade-in-up visible"
             onClick={() => setPreviewAttachment(null)}
           >
             <div

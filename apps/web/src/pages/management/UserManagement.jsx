@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api/userApi';
+import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 const ROLE_META = {
@@ -48,6 +49,7 @@ export const UserManagement = () => {
   const { user: currentAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   // Form states to create user
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -104,9 +106,10 @@ export const UserManagement = () => {
     try {
       await userApi.updateUserStatus(userId, !currentActive, currentAdmin?.userId);
       fetchUsers();
-      alert('Đã cập nhật trạng thái tài khoản thành công.');
+      setMessage({ type: 'success', text: 'Đã cập nhật trạng thái tài khoản thành công.' });
     } catch (err) {
       console.error(err);
+      setMessage({ type: 'error', text: err?.message || 'Lỗi khi cập nhật trạng thái tài khoản.' });
     }
   };
 
@@ -123,7 +126,7 @@ export const UserManagement = () => {
         operatorId: role === 'service-provider' ? Number(operatorId) : null
       }, currentAdmin?.userId);
 
-      alert('Tạo người dùng mới thành công! Mật khẩu mặc định là: 123456');
+      setMessage({ type: 'success', text: 'Tạo người dùng mới thành công! Mật khẩu mặc định là: 123456' });
       setShowCreateModal(false);
 
       // Reset
@@ -134,7 +137,7 @@ export const UserManagement = () => {
 
       fetchUsers();
     } catch (err) {
-      alert(err.message || 'Lỗi khi tạo tài khoản.');
+      setMessage({ type: 'error', text: err.message || 'Lỗi khi tạo tài khoản.' });
     } finally {
       setCreateLoading(false);
     }
@@ -142,6 +145,18 @@ export const UserManagement = () => {
 
   return (
     <div className="space-y-6">
+      {message.type === 'success' && (
+        <SuccessAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
+      {message.type === 'error' && (
+        <ErrorAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
       <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
         <div className="relative p-6 sm:p-8">
           <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-primary/10 via-primary/5 to-transparent lg:block" />

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { assignmentApi } from '../../services/api/assignmentApi';
 import { toolsApi } from '@urbanmind/shared-api';
+import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,6 +24,7 @@ export const TicketAssignment = () => {
   const [loading, setLoading] = useState(true);
   const [assignLoading, setAssignLoading] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
     const loadDetails = async () => {
@@ -90,9 +92,7 @@ export const TicketAssignment = () => {
         staffUserId: user.userId,
         note,
       };
-      console.debug('Assignment payload', assignmentPayload);
       await assignmentApi.assignTicket(assignmentPayload);
-      alert('Phân công xử lý thành công! Đội kỹ thuật đã được thông báo.');
       navigate('/dashboard');
     } catch (err) {
       console.error(err);
@@ -118,6 +118,18 @@ export const TicketAssignment = () => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {message.type === 'success' && (
+        <SuccessAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
+      {message.type === 'error' && (
+        <ErrorAlert
+          message={message.text}
+          onClose={() => setMessage({ type: '', text: '' })}
+        />
+      )}
       {/* Title */}
       <div>
         <h2 className="text-2xl font-black">Điều Phối &amp; Phân Công Xử Lý</h2>

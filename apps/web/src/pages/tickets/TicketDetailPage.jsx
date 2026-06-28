@@ -148,11 +148,11 @@ export const TicketDetailPage = () => {
     <PageTransition>
     <div className="page-container space-y-6 text-slate-800">
       <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-        <span className="cursor-pointer hover:text-slate-600" onClick={() => navigate('/dashboard')}>Trang chủ</span>
-        <Lucide.ChevronRight size={12} />
-        <span className="cursor-pointer hover:text-slate-600" onClick={() => navigate('/tickets')}>Phản ánh đã gửi</span>
-        <Lucide.ChevronRight size={12} />
-        <span className="text-[color:var(--brand-primary)]">{formatTicketId(ticket.feedbackId)}</span>
+        <button aria-label="Đi tới trang chủ" className="cursor-pointer hover:text-slate-600 text-left" onClick={() => navigate('/dashboard')}>Trang chủ</button>
+        <Lucide.ChevronRight size={12} aria-hidden />
+        <button aria-label="Xem danh sách phản ánh" className="cursor-pointer hover:text-slate-600 text-left" onClick={() => navigate('/tickets')}>Phản ánh đã gửi</button>
+        <Lucide.ChevronRight size={12} aria-hidden />
+        <span className="text-[color:var(--brand-primary)]" aria-current="page">{formatTicketId(ticket.feedbackId)}</span>
       </div>
 
       <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between gap-6">
@@ -268,6 +268,8 @@ export const TicketDetailPage = () => {
                           key={file?.attachmentId || file?.id || fileUrl || `attachment-${index}`}
                           type="button"
                           onClick={() => setPreviewAttachment(file)}
+                          aria-label={`Xem tệp đính kèm ${index + 1}`}
+                          title={`Xem tệp đính kèm ${index + 1}`}
                           className="rounded-3xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm group relative"
                         >
                           {isVideo ? (
@@ -355,6 +357,7 @@ export const TicketDetailPage = () => {
                           key={num}
                           type="radio"
                           name="rating-1"
+                          aria-label={`Đánh giá ${num} sao`}
                           checked={rating === num}
                           onChange={() => setRating(num)}
                           className="mask mask-star-2 bg-amber-400 cursor-pointer"
@@ -421,19 +424,24 @@ export const TicketDetailPage = () => {
             </div>
 
             <form onSubmit={handleSendChat} className="flex flex-col gap-3 mb-5 sm:flex-row items-stretch">
+              <label htmlFor="public-comment" className="sr-only">Viết bình luận công khai</label>
               <input
+                id="public-comment"
                 type="text"
                 placeholder="Viết bình luận công khai..."
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
+                aria-label="Viết bình luận công khai"
                 className="input input-bordered flex-1 rounded-2xl text-sm px-4 py-3"
               />
               <button
                 type="submit"
+                aria-label="Gửi bình luận"
+                title="Gửi bình luận"
                 disabled={!chatInput?.trim()}
                 className="btn btn-primary rounded-2xl font-bold text-xs h-12 min-h-0 ml-0 sm:ml-3"
               >
-                <Lucide.Send size={15} className="mr-2" />
+                <Lucide.Send size={15} className="mr-2" aria-hidden />
                 Gửi
               </button>
             </form>

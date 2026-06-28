@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { slaApi } from '../../services/api/slaApi';
+import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const SLAConfiguration = () => {
@@ -14,6 +15,7 @@ export const SLAConfiguration = () => {
   const [mediumHours, setMediumHours] = useState('');
   const [lowHours, setLowHours] = useState('');
   const [saveLoading, setSaveLoading] = useState(false);
+  const [pageMessage, setPageMessage] = useState({ type: '', text: '' });
 
   const fetchSla = async () => {
     setLoading(true);
@@ -42,10 +44,11 @@ export const SLAConfiguration = () => {
       await slaApi.updateSlaConfig('High', highHours, user.userId);
       await slaApi.updateSlaConfig('Medium', mediumHours, user.userId);
       await slaApi.updateSlaConfig('Low', lowHours, user.userId);
-      alert('Đã cập nhật cấu hình thời hạn SLA thành công!');
+      setPageMessage({ type: 'success', text: 'Đã cập nhật cấu hình thời hạn SLA thành công!' });
       fetchSla();
     } catch (err) {
       console.error(err);
+      setPageMessage({ type: 'error', text: err?.message || 'Lỗi khi cập nhật cấu hình SLA.' });
     } finally {
       setSaveLoading(false);
     }
@@ -105,6 +108,18 @@ export const SLAConfiguration = () => {
 
   return (
     <div className="space-y-6">
+      {pageMessage.type === 'success' && (
+        <SuccessAlert
+          message={pageMessage.text}
+          onClose={() => setPageMessage({ type: '', text: '' })}
+        />
+      )}
+      {pageMessage.type === 'error' && (
+        <ErrorAlert
+          message={pageMessage.text}
+          onClose={() => setPageMessage({ type: '', text: '' })}
+        />
+      )}
       <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
         <div className="relative p-6 sm:p-8">
           <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
