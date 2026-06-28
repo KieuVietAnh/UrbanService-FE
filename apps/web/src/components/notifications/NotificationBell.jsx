@@ -4,6 +4,31 @@ import * as Lucide from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useAuth } from '../../contexts/AuthContext';
 
+const notificationTypeConfig = {
+  assignment: { label: 'Phân công', icon: Lucide.UserCheck, tone: 'error' },
+  alert: { label: 'Cảnh báo', icon: Lucide.AlertTriangle, tone: 'warning' },
+  update: { label: 'Cập nhật', icon: Lucide.RefreshCcw, tone: 'info' },
+  reminder: { label: 'Nhắc nhở', icon: Lucide.Clock, tone: 'accent' },
+  default: { label: 'Thông báo', icon: Lucide.Bell, tone: 'secondary' },
+};
+
+const getNotificationType = (type) => {
+  const normalized = (type || '').toLowerCase();
+  if (normalized.includes('assign')) return 'assignment';
+  if (normalized.includes('alert') || normalized.includes('warning')) return 'alert';
+  if (normalized.includes('update') || normalized.includes('status')) return 'update';
+  if (normalized.includes('remind')) return 'reminder';
+  return 'default';
+};
+
+const toneClassMap = {
+  error: 'bg-error/10 text-error',
+  warning: 'bg-warning/10 text-warning',
+  info: 'bg-info/10 text-info',
+  accent: 'bg-accent/10 text-accent',
+  secondary: 'bg-secondary/10 text-secondary',
+};
+
 const formatRelativeTime = (value) => {
   try {
     const date = new Date(value);
@@ -19,8 +44,7 @@ const formatRelativeTime = (value) => {
     if (minutes < 60) return `${minutes} phút trước`;
     if (hours < 24) return `${hours} giờ trước`;
     return `${days} ngày trước`;
-  } catch (e) {
-    void e;
+  } catch {
     return 'Vừa xong';
   }
 };
@@ -35,11 +59,10 @@ export const NotificationBell = () => {
     error: notificationsError,
     markAsRead,
     markAllAsRead,
-    loadNotifications,
   } = useNotifications(user?.userId);
 
   const visibleNotifications = useMemo(
-    () => (Array.isArray(notifications) ? notifications.slice(0, 6) : []),
+    () => (Array.isArray(notifications) ? notifications.slice(0, 5) : []),
     [notifications]
   );
 
@@ -68,20 +91,30 @@ export const NotificationBell = () => {
           )}
         </div>
       </label>
+
       <div tabIndex={0} className="dropdown-content card card-compact w-96 shadow bg-base-100 border border-base-300 mt-2 z-50">
         <div className="card-body p-0">
           <div className="flex items-center justify-between px-4 py-3 border-b border-base-300">
             <div>
               <h3 className="font-bold text-sm">Thông Báo</h3>
-              <p className="text-[10px] text-gray-500">{unreadCount} chưa đọc</p>
+              <p className="text-[10px] text-gray-500">{unreadCount} chưa đọc · {Array.isArray(notifications) ? notifications.length : 0} tổng</p>
             </div>
-            <button
-              onClick={markAllAsRead}
-              disabled={loading || unreadCount === 0}
-              className="text-xs text-primary font-semibold hover:underline disabled:text-gray-400"
-            >
-              Đánh dấu tất cả
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={markAllAsRead}
+                disabled={loading || unreadCount === 0}
+                className="text-xs text-primary font-semibold hover:underline disabled:text-gray-400"
+              >
+                Đánh dấu tất cả
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/notifications')}
+                className="btn btn-xs btn-outline rounded-full"
+              >
+                Xem tất cả
+              </button>
+            </div>
           </div>
 
           <div className="max-h-72 overflow-y-auto divide-y divide-base-300">
@@ -93,27 +126,36 @@ export const NotificationBell = () => {
               <div className="px-4 py-6 text-center text-gray-500 text-xs">Không có thông báo mới</div>
             ) : (
               visibleNotifications.map((notification) => {
-                const isUnread = notification?.isRead === false;
+                const typeKey = getNotificationType(notification?.type);
+                const typeData = notificationTypeConfig[typeKey] || notificationTypeConfig.default;
+                const toneClasses = toneClassMap[typeData.tone] || toneClassMap.secondary;
+
                 return (
                   <button
                     type="button"
                     key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`}
                     onClick={() => handleNotificationClick(notification)}
-                    className={`w-full text-left p-3 flex gap-3 items-start transition-colors ${
-                      isUnread ? 'bg-primary/5' : 'hover:bg-base-200'
+                    className={`w-full text-left p-3 flex gap-3 items-start transition ${
+                      notification?.isRead === false ? 'bg-primary/5' : 'hover:bg-base-200'
                     }`}
                   >
-                    <div className="p-2 rounded-xl bg-base-300 text-primary shrink-0">
-                      <Lucide.AlertCircle size={16} />
+                    <div className={`p-2 rounded-xl shrink-0 ${toneClasses}`}>
+                      <typeData.icon size={16} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <h4 className={`text-xs truncate ${isUnread ? 'font-bold' : 'text-slate-700'}`}>
+                        <h4 className={`text-xs truncate ${notification?.isRead === false ? 'font-bold' : 'text-slate-700'}`}>
                           {notification?.title || 'Thông báo mới'}
                         </h4>
                         <span className="text-[9px] text-gray-400">{formatRelativeTime(notification?.createdAt)}</span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-1 line-clamp-2">
+                      <div className="mt-1 flex items-center flex-wrap gap-2 text-[11px] text-slate-500">
+                        <span className="rounded-full bg-slate-100 px-2 py-1">{typeData.label}</span>
+                        {notification?.isRead === false && (
+                          <span className="rounded-full bg-primary px-2 py-1 text-primary-content">Mới</span>
+                        )}
+                      </div>
+                      <p className="mt-2 text-[11px] text-gray-500 line-clamp-2">
                         {notification?.message || 'Không có nội dung thông báo'}
                       </p>
                     </div>
@@ -126,10 +168,10 @@ export const NotificationBell = () => {
           {Array.isArray(notifications) && notifications.length > visibleNotifications.length && (
             <button
               type="button"
-              onClick={() => loadNotifications({ pageNumber: 1, pageSize: 20 })}
-              className="w-full py-2 text-xs font-semibold text-primary hover:bg-base-200"
+              onClick={() => navigate('/notifications')}
+              className="w-full py-3 text-xs font-semibold text-primary hover:bg-base-200"
             >
-              Xem thêm
+              Xem tất cả thông báo
             </button>
           )}
         </div>

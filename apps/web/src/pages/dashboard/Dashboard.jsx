@@ -5,8 +5,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
 import { toolsApi } from '@urbanmind/shared-api';
-import { SentimentDonutChart, SLAPerformanceChart } from '../../components/charts/CustomCharts';
+import { SentimentDonutChart, SLAPerformanceChart, CategoryVolumeBarChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
+import PageTransition from '../../components/motion/PageTransition';
+import MotionCard from '../../components/motion/MotionCard';
+import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
+import CelebrationBadge from '../../components/delight/CelebrationBadge';
 import { normalizeRole } from '../../utils/roleMap';
 
 export const Dashboard = () => {
@@ -36,7 +40,7 @@ export const Dashboard = () => {
           resTickets = await ticketApi.getTickets({}, { role: currentRole });
         }
 
-        console.log('Dashboard ticket fetch response', resTickets);
+        // dashboard data loaded
         setTickets(Array.isArray(resTickets) ? resTickets : []);
       } catch (err) {
         console.error(err);
@@ -111,242 +115,355 @@ export const Dashboard = () => {
     return `UM-2026-00${num}`;
   };
 
+  const getCategoryName = (categoryId) => {
+    return toolsApi.getCategories().find((category) => category.categoryId === categoryId)?.categoryName || 'Khác';
+  };
+
+  const residentTickets = Array.isArray(tickets) ? tickets : [];
+  const residentOpenTickets = residentTickets.filter((t) => !['Resolved', 'Closed'].includes(t.status)).length;
+  const residentInProgress = residentTickets.filter((t) => ['Assigned', 'Accepted', 'On the way', 'InProgress'].includes(t.status)).length;
+  const residentResolved = residentTickets.filter((t) => ['Resolved', 'Closed'].includes(t.status)).length;
+  const residentReportedThisMonth = residentTickets.filter((t) => {
+    const created = new Date(t.createdAt);
+    const now = new Date();
+    return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+  }).length;
+  const nearbyIncidents = residentTickets
+    .filter((t) => t.locationText)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 3);
+
+  const neighborhoodTopCategories = Array.isArray(stats?.categoryDistribution)
+    ? stats.categoryDistribution.slice(0, 3)
+    : [];
+
   // ----------------------------------------------------
   // 1. RESIDENT DASHBOARD LAYOUT (Figma: Trang chủ Người dân.png)
   // ----------------------------------------------------
   if (currentRole === 'service-user') {
     return (
-      <div className="space-y-8 text-slate-800">
-        
-        {/* Welcome Section & Weather widget */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="space-y-1">
-            <h2 className="text-2xl font-black text-slate-900">Chào, {user?.fullName || 'Bạn'}!</h2>
-            <p className="text-xs font-semibold text-slate-500">Cùng chung tay xây dựng đô thị thông minh và bền vững ngày hôm nay.</p>
-          </div>
-          <div className="btn btn-xs rounded-xl font-bold bg-[#EFF6FF] border border-[#BFDBFE] text-[#2563EB] flex gap-2 items-center py-2 px-3 h-auto hover:bg-[#EFF6FF]">
-            <Lucide.Sun size={14} className="text-[#d97706]" />
-            <span>TP.HCM: 28°C • Nắng nhẹ</span>
-          </div>
-        </div>
-
-        {/* 4 Quick Action Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Card 1: Create */}
-          <Link 
-            to="/tickets/create" 
-            className="card bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all text-left space-y-4 cursor-pointer group"
-          >
-            <div className="w-10 h-10 rounded-full bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Lucide.Plus size={20} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-sm text-slate-900">Gửi phản ánh mới</h3>
-              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                Báo cáo vấn đề hạ tầng, vệ sinh môi trường.
-              </p>
-            </div>
-          </Link>
-
-          {/* Card 2: Track */}
-          <Link 
-            to="/tickets" 
-            className="card bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all text-left space-y-4 cursor-pointer group"
-          >
-            <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Lucide.RefreshCw size={18} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-sm text-slate-900">Theo dõi tiến trình</h3>
-              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                Cập nhật trạng thái các báo cáo của bạn.
-              </p>
-            </div>
-          </Link>
-
-          {/* Card 3: News */}
-          <Link 
-            to="/community/feed" 
-            className="card bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all text-left space-y-4 cursor-pointer group"
-          >
-            <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Lucide.Calendar size={18} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-sm text-slate-900">Tin tức khu vực</h3>
-              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                Thông tin quy hoạch và sự kiện cộng đồng.
-              </p>
-            </div>
-          </Link>
-
-          {/* Card 4: Reports */}
-          <Link 
-            to="/community/map" 
-            className="card bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all text-left space-y-4 cursor-pointer group"
-          >
-            <div className="w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Lucide.BarChart3 size={18} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-sm text-slate-900">Báo cáo thống kê</h3>
-              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-                Phân tích dữ liệu đô thị minh bạch.
-              </p>
-            </div>
-          </Link>
-        </div>
-
-        {/* Phản ánh gần đây Section */}
-        <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="font-extrabold text-sm text-slate-900">Phản ánh gần đây</h3>
-            <Link to="/tickets" className="text-xs font-bold text-[#0052CC] hover:underline flex items-center gap-1">
-              Xem tất cả
-              <Lucide.ArrowRight size={14} />
-            </Link>
-          </div>
-
-          <div className="overflow-x-auto w-full text-xs">
-            <table className="table w-full">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 font-extrabold uppercase text-[9px] tracking-wider border-b border-slate-200">
-                  <th className="py-3">MÃ PHẢN ÁNH</th>
-                  <th className="py-3">NỘI DUNG</th>
-                  <th className="py-3">LOẠI VẤN ĐỀ</th>
-                  <th className="py-3">TRẠNG THÁI</th>
-                  <th className="py-3">NGÀY GỬI</th>
-                  <th className="py-3 text-right">HÀNH ĐỘNG</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {tickets.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="text-center py-8 text-slate-400 font-bold">Bạn chưa gửi phản ánh nào</td>
-                  </tr>
-                ) : (
-                  (Array.isArray(tickets) ? tickets.slice(0, 3) : []).map((t) => (
-                    <tr key={t.feedbackId} className="hover:bg-slate-50/50">
-                      <td className="font-bold text-[#0052CC] py-3.5">{formatTicketId(t.feedbackId)}</td>
-                      <td className="max-w-[240px] font-semibold py-3.5 text-slate-700 truncate">
-                        {t.title}
-                      </td>
-                      <td className="py-3.5">
-                        <div className="flex items-center gap-1.5 font-bold text-slate-700">
-                          {renderCategoryIcon(t.categoryId)}
-                          <span>{toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
-                        </div>
-                      </td>
-                      <td className="py-3.5">
-                        {renderStatusBadge(t.status)}
-                      </td>
-                      <td className="font-bold text-slate-400 py-3.5">
-                        {new Date(t.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="text-right py-3.5">
-                        <button
-                          onClick={() => navigate(`/tickets/${t.feedbackId}`)}
-                          className="btn btn-ghost btn-circle btn-xs text-[#0052CC]"
-                          title="Xem chi tiết"
-                        >
-                          <Lucide.Eye size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Bottom 2-Column Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Map preview card (2 cols) */}
-          <div className="lg:col-span-2 card bg-white border border-slate-200 overflow-hidden rounded-3xl shadow-sm relative h-64 flex flex-col justify-end">
-            <div className="absolute inset-0 bg-[#E0F2FE] flex items-center justify-center overflow-hidden">
-              {/* Custom SVG mockup map of Saigon River / road network */}
-              <svg className="w-full h-full opacity-60" viewBox="0 0 600 300" fill="none" xmlns="http://www.w3.org/2000/svg">
-                {/* River */}
-                <path d="M-50,150 Q150,80 300,180 T650,140" stroke="#93C5FD" strokeWidth="60" fill="none" strokeLinecap="round" />
-                <path d="M-50,150 Q150,80 300,180 T650,140" stroke="#60A5FA" strokeWidth="20" fill="none" strokeLinecap="round" opacity="0.3" />
-                {/* Grid roads */}
-                <line x1="50" y1="-10" x2="50" y2="310" stroke="#ffffff" strokeWidth="6" />
-                <line x1="180" y1="-10" x2="180" y2="310" stroke="#ffffff" strokeWidth="6" />
-                <line x1="380" y1="-10" x2="380" y2="310" stroke="#ffffff" strokeWidth="6" />
-                <line x1="520" y1="-10" x2="520" y2="310" stroke="#ffffff" strokeWidth="6" />
-                
-                <line x1="-10" y1="80" x2="610" y2="80" stroke="#ffffff" strokeWidth="6" />
-                <line x1="-10" y1="220" x2="610" y2="220" stroke="#ffffff" strokeWidth="6" />
-                
-                {/* Diagonal roads */}
-                <line x1="-10" y1="300" x2="400" y2="-10" stroke="#ffffff" strokeWidth="4" />
-                <line x1="200" y1="310" x2="610" y2="50" stroke="#ffffff" strokeWidth="4" />
-                
-                {/* Some buildings mock */}
-                <rect x="80" y="20" width="40" height="30" rx="3" fill="#cbd5e1" />
-                <rect x="230" y="30" width="50" height="40" rx="4" fill="#94a3b8" />
-                <rect x="420" y="100" width="35" height="50" rx="3" fill="#cbd5e1" />
-                <rect x="100" y="240" width="60" height="30" rx="4" fill="#cbd5e1" />
-                <rect x="440" y="230" width="50" height="40" rx="4" fill="#94a3b8" />
-
-                {/* Map Pins */}
-                <circle cx="120" cy="110" r="8" fill="#EF4444" />
-                <circle cx="120" cy="110" r="14" stroke="#EF4444" strokeWidth="2" strokeDasharray="3 3" />
-                
-                <circle cx="410" cy="240" r="8" fill="#3B82F6" />
-                <circle cx="410" cy="240" r="14" stroke="#3B82F6" strokeWidth="2" strokeDasharray="3 3" />
-              </svg>
-            </div>
-            
-            {/* Overlay banner */}
-            <div className="absolute top-4 left-4 bg-slate-900/80 backdrop-blur-xs text-white p-3 rounded-2xl max-w-xs space-y-1">
-              <h4 className="font-extrabold text-xs">Bản đồ sự cố cộng đồng</h4>
-              <p className="text-[10px] text-slate-300 font-semibold leading-relaxed">Xem toàn cảnh các sự cố hạ tầng đô thị đang được xử lý trong khu vực của bạn.</p>
-            </div>
-
-            <div className="p-4 z-10 bg-gradient-to-t from-slate-900/60 to-transparent flex justify-start">
-              <button 
-                onClick={() => navigate('/community/map')}
-                className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-xl text-xs font-extrabold h-9"
-              >
-                <Lucide.Map size={14} />
-                Xem bản đồ
-              </button>
-            </div>
-          </div>
-
-          {/* Right Column: "Mẹo nhỏ" guide card (1 col) */}
-          <div className="lg:col-span-1 card bg-[#F8FAF8] border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col justify-between space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-slate-800">
-                <div className="p-2 rounded-xl bg-amber-50 text-amber-500">
-                  <Lucide.Lightbulb size={18} />
+      <PageTransition>
+      <div className="page-container space-y-8 text-slate-800">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_360px]">
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+              <div className="space-y-4">
+                <div className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.26em] text-blue-700">
+                  Dashboard Cư dân
                 </div>
-                <h4 className="font-extrabold text-sm text-slate-900">Mẹo nhỏ gửi phản ánh</h4>
+                <div className="space-y-3">
+                    <h2 className="heading-1">Chào, {user?.fullName || 'Bạn'}!</h2>
+                  <p className="lead max-w-2xl">
+                    Theo dõi tiến trình phản ánh, xem hoạt động cộng đồng và nắm bắt niềm tin vào dịch vụ đô thị một cách trực quan.
+                  </p>
+                </div>
+                {residentReportedThisMonth >= 3 && (
+                  <div className="mt-3">
+                    <CelebrationBadge title="Người đóng góp tích cực" subtitle={`Bạn đã gửi ${residentReportedThisMonth} báo cáo tháng này`} />
+                  </div>
+                )}
               </div>
-              <ul className="space-y-3 text-[11px] font-semibold text-slate-500 list-none pl-0 leading-relaxed">
-                <li className="flex gap-2 items-start">
-                  <Lucide.CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <span>Cung cấp hình ảnh rõ nét và chụp cận cảnh sự cố để AI tóm tắt chính xác.</span>
-                </li>
-                <li className="flex gap-2 items-start">
-                  <Lucide.CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <span>Sử dụng định vị GPS để cán bộ nhanh chóng xác định đúng vị trí thi công.</span>
-                </li>
-                <li className="flex gap-2 items-start">
-                  <Lucide.CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <span>Nhập @ai vào khung chat chi tiết để được AI Copilot hướng dẫn nhanh.</span>
-                </li>
-                <li className="flex gap-2 items-start">
-                  <Lucide.CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <span>Đánh giá chất lượng và CSAT sau khi sự cố hoàn thành để nâng cao SLA dịch vụ.</span>
-                </li>
-              </ul>
+
+                {residentTickets.length === 0 ? (
+                  <OnboardingEmpty />
+                ) : (
+                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Số báo cáo của bạn</p>
+                <p className="mt-3 metric-number">{residentTickets.length}</p>
+                <p className="mt-2 metric-label">{residentReportedThisMonth} báo cáo trong tháng</p>
+              </div>
+                )}
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Mở</p>
+                <p className="mt-3 text-3xl font-black text-slate-950">{residentOpenTickets}</p>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Đang chờ giải quyết</p>
+              </div>
+              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Đang xử lý</p>
+                <p className="mt-3 text-3xl font-black text-slate-950">{residentInProgress}</p>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Đơn vị đang xử lý</p>
+              </div>
+              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Hoàn thành</p>
+                <p className="mt-3 text-3xl font-black text-slate-950">{residentResolved}</p>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Kết quả đã đóng</p>
+              </div>
+              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Tốc độ xử lý</p>
+                <p className="mt-3 text-3xl font-black text-slate-950">{stats.processingRate}%</p>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Mức độ hoàn thành toàn thành phố</p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Niềm tin dịch vụ</p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">{stats.csatScore}/5</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Chỉ số hài lòng cư dân</p>
+                </div>
+                <div className="rounded-3xl bg-emerald-50 px-4 py-3 text-emerald-700">
+                  <Lucide.ThumbsUp size={24} />
+                </div>
+              </div>
+
+              <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${Math.min(stats.csatScore * 20, 100)}%` }} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-500">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm">
+                  <Lucide.Clock3 size={14} className="text-slate-400" />
+                  Trung bình {stats.avgResolutionTimeHours} giờ xử lý
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm">
+                  <Lucide.Server size={14} className="text-slate-400" />
+                  API: {stats.apiStatus}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+
+          <aside className="space-y-6">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="heading-3">Thông báo</h3>
+                    <p className="text-xs muted">Cập nhật mới nhất để bạn luôn nắm được.</p>
+                </div>
+                <span className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">Mới</span>
+              </div>
+              <div className="mt-5 space-y-4">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Sự cố hạ tầng</p>
+                  <p className="mt-2 text-sm font-bold text-slate-950">Cải tạo vỉa hè gần chợ Phú Nhuận</p>
+                  <p className="mt-1 text-xs text-slate-500">Dự kiến hoàn thành trong 2 ngày.</p>
+                </div>
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Chỉ số cộng đồng</p>
+                  <p className="mt-2 text-sm font-bold text-slate-950">Khối lượng phản ánh giảm 8%/tuần</p>
+                  <p className="mt-1 text-xs text-slate-500">Thể hiện khả năng phối hợp dịch vụ tốt hơn.</p>
+                </div>
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Tin tức</p>
+                  <p className="mt-2 text-sm font-bold text-slate-950">Chương trình bảo trì đèn đường sắp diễn ra</p>
+                  <p className="mt-1 text-xs text-slate-500">Cập nhật lịch và khu vực thi công.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-950">Hoạt động cộng đồng</h3>
+                  <p className="text-xs font-semibold text-slate-500">Những vấn đề nổi bật tại khu vực chung.</p>
+                </div>
+                <Lucide.Activity size={20} className="text-slate-400" />
+              </div>
+              <div className="mt-5 space-y-4">
+                  {neighborhoodTopCategories.length > 0 ? (
+                  neighborhoodTopCategories.map((category, idx) => (
+                    <MotionCard key={category.categoryId} index={idx} className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                            {renderCategoryIcon(category.categoryId)}
+                          </span>
+                          <div>
+                            <p className="text-sm font-black text-slate-950">{category.categoryName}</p>
+                            <p className="text-xs font-semibold text-slate-500">{category.count} phản ánh</p>
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">
+                          Ưu tiên
+                        </span>
+                      </div>
+                    </MotionCard>
+                  ))
+                ) : (
+                  <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                    Dữ liệu hoạt động cộng đồng đang được cập nhật.
+                  </div>
+                )}
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-3">
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-sm font-black text-slate-950">Báo cáo của bạn</h3>
+            <p className="mt-2 text-xs font-semibold text-slate-500">Trạng thái hiện tại của các phản ánh bạn đã gửi.</p>
+            <div className="mt-5 grid gap-4">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Chờ xử lý</p>
+                <p className="mt-3 text-3xl font-black text-slate-950">{residentOpenTickets}</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Đang xử lý</p>
+                <p className="mt-3 text-3xl font-black text-slate-950">{residentInProgress}</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Đã giải quyết</p>
+                <p className="mt-3 text-3xl font-black text-slate-950">{residentResolved}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Sức khỏe đô thị</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Chỉ số tổng quan phản ánh thành phố.</p>
+              </div>
+              <Lucide.ShieldCheck size={20} className="text-emerald-500" />
+            </div>
+            <div className="mt-5 grid gap-3">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Vi phạm SLA</p>
+                <p className="mt-2 text-2xl font-black text-slate-950">{stats.slaBreaches}</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Độ ổn định API</p>
+                <p className="mt-2 text-2xl font-black text-slate-950">{stats.apiStatus}</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Trạng thái AI</p>
+                <p className="mt-2 text-2xl font-black text-slate-950">{stats.aiStatus}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Sự cố gần bạn</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Các phản ánh gần đây được ghi nhận tại địa chỉ của bạn.</p>
+              </div>
+              <Lucide.MapPin size={20} className="text-slate-400" />
+            </div>
+            <div className="mt-5 space-y-4">
+              {nearbyIncidents.length > 0 ? (
+                nearbyIncidents.map((incident) => (
+                  <div key={incident.feedbackId} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-slate-950 truncate">{incident.title}</p>
+                        <p className="mt-1 text-[11px] font-semibold text-slate-500">{incident.locationText || 'Địa chỉ chưa rõ'}</p>
+                      </div>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">
+                        {renderCategoryIcon(incident.categoryId)}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-[11px] text-slate-500">{renderStatusBadge(incident.status)}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                  Chưa có sự cố địa phương có địa chỉ rõ ràng.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-3">
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <CategoryVolumeBarChart data={stats.categoryDistribution} />
+          </div>
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <SentimentDonutChart
+              positive={stats.sentimentTrend.Positive}
+              neutral={stats.sentimentTrend.Neutral}
+              negative={stats.sentimentTrend.Negative}
+            />
+          </div>
+          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Hiệu năng SLA</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Nhìn nhanh tiến độ xử lý theo tuần.</p>
+              </div>
+              <Lucide.Clock3 size={20} className="text-slate-400" />
+            </div>
+            <div className="mt-5">
+              <SLAPerformanceChart />
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-slate-950">Phản ánh gần đây</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Xem lại các báo cáo mới nhất của bạn.</p>
+              </div>
+              <Link to="/tickets" className="text-xs font-black text-blue-700 hover:underline flex items-center gap-1">
+                Xem tất cả
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
+            <div className="mt-5 overflow-x-auto">
+              <table className="table w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-400 font-black uppercase tracking-[0.18em]">
+                    <th className="py-3">Mã</th>
+                    <th className="py-3">Nội dung</th>
+                    <th className="py-3">Trạng thái</th>
+                    <th className="py-3">Ngày</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {residentTickets.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="py-8 text-center text-slate-400 font-bold">Bạn chưa có phản ánh gần đây.</td>
+                    </tr>
+                  ) : (
+                    residentTickets.slice(0, 4).map((ticket) => (
+                      <tr key={ticket.feedbackId} className="hover:bg-slate-50/70">
+                        <td className="py-3.5 font-black text-blue-700">{formatTicketId(ticket.feedbackId)}</td>
+                        <td className="py-3.5 font-semibold text-slate-700 truncate max-w-[220px]">{ticket.title}</td>
+                        <td className="py-3.5">{renderStatusBadge(ticket.status)}</td>
+                        <td className="py-3.5 font-semibold text-slate-400">{new Date(ticket.createdAt).toLocaleDateString()}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-100 text-slate-700">
+                <Lucide.Lightbulb size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-950">Tiện ích & Hỗ trợ</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Những gợi ý giúp bạn gửi phản ánh hiệu quả hơn.</p>
+              </div>
+            </div>
+            <div className="mt-6 space-y-4 text-sm text-slate-600">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="font-black">Định vị thông minh</p>
+                <p className="mt-2 text-xs text-slate-500">Khai báo vị trí chính xác để đội ngũ xử lý đến nhanh hơn.</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="font-black">Ảnh minh họa</p>
+                <p className="mt-2 text-xs text-slate-500">Chụp nhiều góc, đặc biệt là cả cảnh chung quanh để xác định phạm vi sự cố.</p>
+              </div>
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="font-black">Đánh giá kết quả</p>
+                <p className="mt-2 text-xs text-slate-500">Sau khi sự cố đóng, hãy cho biết chất lượng xử lý để cải thiện dịch vụ.</p>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
+    </PageTransition>
     );
   }
 
@@ -355,7 +472,7 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   if (currentRole=== 'system-staff') {
     return (
-      <div className="space-y-6 text-slate-800">
+      <div className="page-container space-y-6 text-slate-800">
         
         {/* Header Greeting */}
         <div className="space-y-1">
@@ -445,7 +562,7 @@ export const Dashboard = () => {
                 <Lucide.SlidersHorizontal size={14} />
                 Bộ lọc
               </button>
-              <button className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-xl text-xs font-bold h-9 min-h-0">
+              <button className="btn btn-sm bg-[color:var(--brand-primary)] hover:bg-[color:var(--brand-primary-dark)] text-white border-none rounded-xl text-xs font-bold h-9 min-h-0">
                 Xuất báo cáo
               </button>
             </div>
@@ -467,14 +584,14 @@ export const Dashboard = () => {
               <tbody className="divide-y divide-slate-100">
                 {(Array.isArray(tickets) ? tickets.slice(0, 4) : []).map(t => (
                   <tr key={t.feedbackId} className="hover:bg-slate-50/50">
-                    <td className="font-bold text-[#0052CC] py-3.5">{formatTicketId(t.feedbackId)}</td>
+                    <td className="font-bold text-[color:var(--brand-primary)] py-3.5">{formatTicketId(t.feedbackId)}</td>
                     <td className="max-w-[200px] font-semibold py-3.5 text-slate-700">
                       <div className="truncate">{t.title}</div>
                     </td>
                     <td className="py-3.5">
                       <div className="flex items-center gap-1.5 font-bold text-slate-700">
                         {renderCategoryIcon(t.categoryId)}
-                        <span>{toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
+                        <span>{getCategoryName(t.categoryId)}</span>
                       </div>
                     </td>
                     <td className="py-3.5">
@@ -488,11 +605,11 @@ export const Dashboard = () => {
                     </td>
                     <td className="text-right py-3.5">
                       {t.status === 'Submitted' ? (
-                        <Link to="/staff/queue" className="text-[#0052CC] hover:underline font-bold">Chi tiết</Link>
+                        <Link to="/staff/queue" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                       ) : t.status === 'Resolved' ? (
-                        <Link to="/staff/review" className="text-[#0052CC] hover:underline font-bold">Chi tiết</Link>
+                        <Link to="/staff/review" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                       ) : (
-                        <Link to={`/tickets/${t.feedbackId}`} className="text-[#0052CC] hover:underline font-bold">Chi tiết</Link>
+                        <Link to={`/tickets/${t.feedbackId}`} className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                       )}
                     </td>
                   </tr>
@@ -598,7 +715,7 @@ export const Dashboard = () => {
     ];
 
     return (
-      <div className="space-y-6 text-base-content">
+      <div className="page-container space-y-6 text-base-content">
         <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
           <div className="relative p-6 sm:p-8">
             <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
@@ -800,7 +917,7 @@ export const Dashboard = () => {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-[#0052CC]">{stats.csatScore}/5</span>
+            <span className="text-xl font-black text-[color:var(--brand-primary)]">{stats.csatScore}/5</span>
             <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">CSAT hài lòng</span>
           </div>
           <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">

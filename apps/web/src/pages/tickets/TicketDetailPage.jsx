@@ -1,11 +1,17 @@
 // src/pages/tickets/TicketDetailPage.jsx
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import useTicketDetail from '../../hooks/useTicketDetail';
 import { TICKET_STATUS_STEPS, getStatusStep, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
+import PageTransition from '../../components/motion/PageTransition';
+import MotionCard from '../../components/motion/MotionCard';
+import TimelineProgress from '../../components/motion/TimelineProgress';
+import ConfettiBurst from '../../components/delight/ConfettiBurst';
+import DelightToast from '../../components/delight/DelightToast';
+import { useEffect, useRef } from 'react';
 
 export const TicketDetailPage = () => {
   const { id: feedbackId } = useParams();
@@ -31,15 +37,33 @@ export const TicketDetailPage = () => {
     ratingLoading,
     getAttachmentUrl,
   } = useTicketDetail(feedbackId, user);
-  const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [, setPreviewAttachment] = useState(null);
+
+  const [resolvedToastOpen, setResolvedToastOpen] = useState(false);
+  const resolvedShownRef = useRef(false);
+
+  useEffect(() => {
+    if (ticket?.status === 'Resolved' && !resolvedShownRef.current) {
+      resolvedShownRef.current = true;
+      setResolvedToastOpen(true);
+      // auto-close after a while handled by DelightToast
+    }
+  }, [ticket?.status]);
+
   const getRatingText = (val) => {
     switch (val) {
-      case 1: return 'Rất tệ';
-      case 2: return 'Không hài lòng';
-      case 3: return 'Bình thường';
-      case 4: return 'Hài lòng';
-      case 5: return 'Rất hài lòng';
-      default: return '';
+      case 1:
+        return 'Rất tệ';
+      case 2:
+        return 'Không hài lòng';
+      case 3:
+        return 'Bình thường';
+      case 4:
+        return 'Hài lòng';
+      case 5:
+        return 'Rất hài lòng';
+      default:
+        return '';
     }
   };
 
@@ -48,9 +72,20 @@ export const TicketDetailPage = () => {
     const num = fbId.split('-').pop();
     return `UM-2026-00${num}`;
   };
-  const isVideoFile = (fileUrl = '') => {
-    const url = fileUrl.toLowerCase();
 
+  const formatDate = (value) => {
+    if (!value) return 'Không có';
+    return new Date(value).toLocaleString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const isVideoFile = (fileUrl = '') => {
+    const url = String(fileUrl).toLowerCase();
     return (
       url.includes('.mp4') ||
       url.includes('.webm') ||
@@ -59,13 +94,38 @@ export const TicketDetailPage = () => {
       url.includes('.m4v')
     );
   };
-  // attachment name helper removed (unused)
-  // attachment URL helper provided by the hook: getAttachmentUrl
+
+  const statusDescription = (status) => {
+    switch (status) {
+      case 'Submitted':
+        return 'Phản ánh đã gửi và đang chờ kiểm duyệt.';
+      case 'AI Reviewed':
+        return 'Đơn vị đang phân loại và xác định phương án xử lý.';
+      case 'Assigned':
+        return 'Đã phân công đơn vị xử lý và chuẩn bị triển khai.';
+      case 'InProgress':
+        return 'Đang tiến hành xử lý tại hiện trường.';
+      case 'Resolved':
+        return 'Đã xử lý xong. Vui lòng đánh giá chất lượng.';
+      case 'Closed':
+        return 'Phản ánh đã đóng sau khi hoàn tất các bước.';
+      default:
+        return 'Tiến trình xử lý đang được cập nhật.';
+    }
+  };
+
+  const attachments = Array.isArray(ticket?.attachments) ? ticket.attachments : [];
+  const currentStep = getStatusStep(ticket?.status);
+  const steps = TICKET_STATUS_STEPS;
+  const sortedHistory = useMemo(
+    () => Array.isArray(history) ? [...history].sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt)) : [],
+    [history]
+  );
 
   if (loading) {
     return (
       <div className="flex justify-center py-20 bg-white rounded-3xl border border-slate-200">
-        <span className="loading loading-spinner loading-lg text-[#0052CC]"></span>
+        <span className="loading loading-spinner loading-lg text-[color:var(--brand-primary)]"></span>
       </div>
     );
   }
@@ -81,102 +141,97 @@ export const TicketDetailPage = () => {
     );
   }
 
-  const attachments = Array.isArray(ticket?.attachments) ? ticket.attachments : [];
-
-  const currentStep = getStatusStep(ticket.status);
-  const steps = TICKET_STATUS_STEPS;
+  const progressPercent = Math.round(((currentStep) / Math.max(1, steps.length - 1)) * 100);
 
   return (
-    <div className="space-y-6 text-slate-800">
-      {/* Breadcrumbs */}
+    <>
+    <PageTransition>
+    <div className="page-container space-y-6 text-slate-800">
       <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
         <span className="cursor-pointer hover:text-slate-600" onClick={() => navigate('/dashboard')}>Trang chủ</span>
         <Lucide.ChevronRight size={12} />
         <span className="cursor-pointer hover:text-slate-600" onClick={() => navigate('/tickets')}>Phản ánh đã gửi</span>
         <Lucide.ChevronRight size={12} />
-        <span className="text-[#0052CC]">{formatTicketId(ticket.feedbackId)}</span>
+        <span className="text-[color:var(--brand-primary)]">{formatTicketId(ticket.feedbackId)}</span>
       </div>
 
-      {/* Detail Header */}
-      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between gap-6">
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-400">{formatTicketId(ticket.feedbackId)}</span>
-            <span className="badge bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] badge-xs font-black py-2 px-2.5 rounded-lg uppercase">
-              {ticket.categoryName || 'Chưa có danh mục'}
+            <span className="status-label status-info">
+              {ticket.categoryName || 'Chưa xác định'}
             </span>
-            {ticket.isMasterTicket && <span className="badge badge-accent badge-xs font-black py-2 px-2.5 rounded-lg text-white">MASTER TICKET</span>}
+            {ticket.isMasterTicket && <span className="badge badge-accent badge-xs font-black uppercase py-2 px-2.5 rounded-lg text-white">MASTER TICKET</span>}
           </div>
-          <h2 className="text-lg font-black text-slate-900 leading-tight">{ticket.title}</h2>
-          <p className="text-xs text-slate-500 font-bold flex items-center gap-1">
-            <Lucide.MapPin size={12} className="text-[#0052CC]" />
-            {ticket.locationText}
+          <h1 className="heading-1">{ticket.title}</h1>
+          <p className="lead flex items-center gap-2">
+            <Lucide.MapPin size={12} className="text-[color:var(--brand-primary)]" aria-hidden />
+            {ticket.locationText || 'Không có vị trí cụ thể'}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="flex flex-col gap-4 items-start sm:items-end">
           <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${PRIORITY_BADGE_CLASSES[ticket.priority] || PRIORITY_BADGE_CLASSES.Medium}`}>
             Ưu tiên: {ticket.priority || 'Không xác định'}
           </span>
-          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default}`}>
+          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default} ${ticket.status === 'Resolved' && resolvedToastOpen ? 'ring-2 ring-emerald-100' : ''}`}>
             Trạng thái: {ticket.status || 'Không xác định'}
           </span>
+          <div className="rounded-3xl bg-slate-50 px-4 py-3 text-[11px] text-slate-600 border border-slate-200">
+            {statusDescription(ticket.status)}
+          </div>
         </div>
       </div>
 
-      {/* Map Location Viewer */}
       <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h4 className="font-extrabold text-sm text-slate-900">Thông tin phản ánh</h4>
-              <p className="text-xs text-slate-500 font-semibold">Dữ liệu được tải trực tiếp từ API phản ánh.</p>
-            </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h4 className="heading-3">Tổng quan hành trình</h4>
+            <p className="text-xs muted">Nắm rõ tiến độ xử lý, đơn vị phụ trách và thời hạn hoàn thành.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-700">
-            <div className="space-y-1">
-              <div className="font-bold text-slate-500 uppercase">Địa chỉ</div>
-              <div className="text-slate-900 font-semibold">{ticket.locationText || 'Không có thông tin vị trí'}</div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-[10px] text-slate-500">
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
+              <div className="font-bold text-slate-900">{ticket.assignment?.operatorName ? 'Đã phân công' : 'Chưa phân công'}</div>
+              <div className="mt-1">Đơn vị xử lý</div>
             </div>
-            <div className="space-y-1">
-              <div className="font-bold text-slate-500 uppercase">Ngày tạo</div>
-              <div className="text-slate-900 font-semibold">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleString() : 'Không có thông tin'}</div>
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
+              <div className="font-bold text-slate-900">{formatDate(ticket.dueDate)}</div>
+              <div className="mt-1">Hạn SLA</div>
+            </div>
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
+              <div className="font-bold text-slate-900">{ticket.priority || 'Trung bình'}</div>
+              <div className="mt-1">Mức độ</div>
+            </div>
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
+              <div className="font-bold text-slate-900">{ticket.status}</div>
+              <div className="mt-1">Trạng thái</div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Horizontal Lifecycle Steps */}
-      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm overflow-x-auto">
-        <div className="flex justify-between items-center w-full min-w-[600px] px-4">
-          {steps.map((st, idx) => (
-            <Fragment key={st.title || idx}>
-              {idx > 0 && (
-                <div
-                  className={`h-0.5 flex-1 mx-2 rounded-full transition-colors duration-300 ${currentStep >= idx ? 'bg-[#0052CC]' : 'bg-slate-200'
-                    }`}
-                ></div>
-              )}
-
-              <div className="flex flex-col items-center text-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300 ${currentStep >= idx
-                    ? 'bg-[#0052CC] text-white shadow-md shadow-[#0052CC]/20 ring-4 ring-[#0052CC]/10'
-                    : 'bg-slate-100 text-slate-400 border border-slate-200'
-                    }`}
-                >
-                  {idx + 1}
-                </div>
-
-                <span className="text-[10px] font-black mt-2 text-slate-700">
-                  {st.title}
-                </span>
-                <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5">
-                  {st.sub}
-                </span>
-              </div>
-            </Fragment>
-          ))}
+          <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100 bg-slate-50 p-5">
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 mb-4">Quy trình</div>
+          <TimelineProgress percent={progressPercent} className="mb-4" />
+          <div className="flex items-center gap-4 overflow-x-auto pb-3">
+            {steps.map((step, idx) => {
+              const isComplete = currentStep > idx;
+              const isActive = currentStep === idx;
+              return (
+                <Fragment key={step.title}>
+                  <div className="flex items-center gap-3 min-w-[140px]">
+                    <div className="flex flex-col items-center text-center">
+                      <div className={`w-10 h-10 rounded-full grid place-items-center text-[11px] font-black status-transition ${isComplete ? 'bg-[color:var(--brand-primary)] text-white shadow-lg shadow-[color:var(--brand-primary)]/10' : isActive ? 'bg-[color:var(--color-info)] text-white ring-2 ring-[color:var(--color-info)]/10' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                        {idx + 1}
+                      </div>
+                      <span className="mt-2 text-[10px] font-bold text-slate-700">{step.title}</span>
+                    </div>
+                    {idx !== steps.length - 1 && <div className={`flex-1 h-0.5 rounded-full timeline-segment ${isComplete ? 'complete' : ''}`} />}
+                  </div>
+                </Fragment>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -191,60 +246,50 @@ export const TicketDetailPage = () => {
             <h4 className="font-extrabold text-sm border-b border-slate-100 pb-2 text-slate-900">Thông Tin Phản Ánh</h4>
 
             <div className="space-y-1">
-              <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Mô tả của người dân:</span>
-              <p className="text-xs font-semibold text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-150 italic">
-                "{ticket.description}"
+              <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">Mô tả của người dân</span>
+              <p className="text-sm leading-relaxed text-slate-700 bg-slate-50 p-5 rounded-3xl border border-slate-150 italic">
+                {ticket.description}
               </p>
             </div>
 
-            {/* Attachments section */}
-            <div className="space-y-2 pt-2">
-              <span className="text-xs font-bold text-slate-400 block uppercase tracking-wider"> Hình ảnh / video đính kèm</span>
-              {attachments.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {attachments.map((file, i) => {
-                    const fileUrl = getAttachmentUrl(file);
-                    const isVideo = isVideoFile(fileUrl);
-
-                    return (
-                      <button
-                        key={file?.attachmentId || file?.id || fileUrl || `attachment-${i}`}
-                        type="button"
-                        onClick={() => setPreviewAttachment(file)}
-                        className="rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm text-left group relative"
-                      >
-                        {isVideo ? (
-                          <div className="relative w-full h-full bg-black">
-                            <video
-                              src={fileUrl}
-                              muted
-                              playsInline
-                              preload="metadata"
-                              className="w-full h-full object-cover opacity-80"
-                            />
-
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-                              <div className="w-12 h-12 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-lg">
-                                <Lucide.Play size={22} fill="currentColor" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_0.9fr]">
+              <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4 text-slate-700 text-xs">
+                <div className="font-bold text-slate-900 mb-2 uppercase tracking-[0.2em] text-[10px]">Bằng chứng đính kèm</div>
+                <p className="leading-relaxed">Các ảnh và video giúp đơn vị xử lý xác định sự cố nhanh hơn và chính xác hơn.</p>
+              </div>
+              <div>
+                {attachments.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {attachments.map((file, index) => {
+                      const fileUrl = getAttachmentUrl(file);
+                      const isVideo = isVideoFile(fileUrl);
+                      return (
+                        <button
+                          key={file?.attachmentId || file?.id || fileUrl || `attachment-${index}`}
+                          type="button"
+                          onClick={() => setPreviewAttachment(file)}
+                          className="rounded-3xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm group relative"
+                        >
+                          {isVideo ? (
+                            <div className="relative w-full h-full bg-black">
+                              <video src={fileUrl} muted playsInline preload="metadata" className="w-full h-full object-cover opacity-80" />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+                                <div className="w-12 h-12 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-lg">
+                                  <Lucide.Play size={22} fill="currentColor" />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ) : (
-                          <img
-                            src={fileUrl}
-                            alt={`Attachment ${i + 1}`}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-500 text-[10px] font-semibold text-center">
-                  Không có tệp đính kèm.
-                </div>
-              )}
+                          ) : (
+                            <img src={fileUrl} alt={`Attachment ${index + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-[11px] text-slate-500">Không có tệp đính kèm.</div>
+                )}
+              </div>
             </div>
 
             {/* SLA countdown info */}
@@ -266,13 +311,13 @@ export const TicketDetailPage = () => {
           <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
             <h4 className="font-extrabold text-sm border-b border-slate-100 pb-2 text-slate-900">Lịch Sử Cập Nhật Trạng Thái</h4>
             <div className="space-y-4 text-xs">
-              {history.length > 0 ? history.filter(Boolean).map((h, i) => (
+              {sortedHistory.length > 0 ? sortedHistory.map((h, i) => (
                 <div key={h?.historyId ?? i} className="flex gap-4 items-start last:pb-0">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#0052CC] mt-1.5 ring-4 ring-[#0052CC]/10 shrink-0"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-[color:var(--brand-primary)] mt-1.5 ring-4 ring-[color:var(--brand-primary)]/10 shrink-0" aria-hidden></div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center gap-2">
                       <span className="font-extrabold text-slate-750">{h?.newStatus || h?.status || 'Cập nhật'}</span>
-                      <span className="text-[9px] text-slate-400 font-bold">{h?.changedAt ? new Date(h.changedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}</span>
+                      <span className="text-[9px] text-slate-400 font-bold">{h?.changedAt ? formatDate(h.changedAt) : '---'}</span>
                     </div>
                     <p className="text-slate-500 mt-0.5 font-medium leading-relaxed">{h?.note || h?.description || 'Không có ghi chú'}</p>
                   </div>
@@ -289,12 +334,12 @@ export const TicketDetailPage = () => {
 
           {/* Rating Form block (Flow 4: CSAT review) */}
           {ticket.status === 'Resolved' && user?.role === 'service-user' && (
-            <div className="card bg-white border border-[#0052CC]/30 shadow-md p-6 rounded-3xl space-y-4 ring-2 ring-[#0052CC]/5">
+            <div className="card bg-white border border-[color:var(--brand-primary)]/30 shadow-md p-6 rounded-3xl space-y-4 ring-2 ring-[color:var(--brand-primary)]/5">
               <div className="text-center space-y-1">
-                <div className="w-10 h-10 rounded-full bg-blue-50 text-[#0052CC] flex items-center justify-center mx-auto">
+                <div className="w-10 h-10 rounded-full bg-[color:var(--color-info-bg)] text-[color:var(--color-info)] flex items-center justify-center mx-auto" aria-hidden>
                   <Lucide.Star className="animate-pulse" size={20} />
                 </div>
-                <h3 className="font-black text-sm text-[#0052CC] uppercase tracking-wider">Đánh giá chất lượng xử lý</h3>
+                <h3 className="font-black text-sm text-[color:var(--color-info)] uppercase tracking-wider">Đánh giá chất lượng xử lý</h3>
                 <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">Ý kiến của bạn sẽ giúp ban quản lý nghiệm thu chất lượng thi công.</p>
               </div>
 
@@ -358,151 +403,83 @@ export const TicketDetailPage = () => {
             </div>
           )}
 
-          {/* Live Chat Box */}
-          <div className="card bg-white border border-slate-200 shadow-sm p-6 rounded-3xl h-[480px] flex flex-col justify-between">
-            <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                <h4 className="font-extrabold text-sm text-slate-900">Trao Đổi Trực Tuyến</h4>
+          {/* Public Comments */}
+          <div className="card bg-white border border-slate-200 shadow-sm p-6 rounded-3xl">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+              <div>
+                <h4 className="font-black text-sm text-slate-900">Bình luận cộng đồng</h4>
+                <p className="text-xs text-slate-500 font-semibold">
+                  Người dân có thể trao đổi công khai giống phần bình luận bài đăng.
+                </p>
               </div>
-              <span className="badge badge-xs bg-emerald-50 text-emerald-600 border border-emerald-200 font-bold text-[8px] uppercase tracking-wider px-1.5 py-0.5">Dân - Cán Bộ</span>
-            </div>
-
-            {/* Messages body */}
-            <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
-              {(!Array.isArray(comments) || comments.filter(Boolean).length === 0) ? (
-                <div className="h-full flex items-center justify-center text-center text-slate-400 font-semibold text-[10px] leading-relaxed">
-                  Bắt đầu cuộc trao đổi về sự cố của bạn. Nhập @ai vào khung tin nhắn để được bot tư vấn pháp lý nhanh.
+                <div className="status-label status-neutral">
+                  <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white px-2 py-0.5 text-xs text-slate-900 shadow-sm">
+                    {comments.length}
+                  </span>
+                  <span>Bình luận</span>
                 </div>
-              ) : (
-                comments.filter(Boolean).map((c, i) => {
-                  const comment = c || {};
-                  const senderName = comment.userName || comment.authorName || 'Người dùng';
-                  const isCurrentUser = comment.userId && user?.userId && comment.userId === user.userId;
-                  const displayRole = comment.userRole === 'service-user' ? 'Dân' : 'Cán bộ';
-
-                  return (
-                    <div key={comment.commentId ?? i} className={`chat ${isCurrentUser ? 'chat-end' : 'chat-start'}`}>
-                      <div className="chat-header text-[9px] font-bold text-slate-400 mb-0.5">
-                        {senderName} ({displayRole})
-                      </div>
-                      <div className={`chat-bubble text-[11px] font-semibold leading-relaxed max-w-[85%] rounded-2xl ${isCurrentUser
-                        ? 'bg-[#0052CC] text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-800 border border-slate-150 shadow-sm'
-                        }`}>
-                        {comment.content || comment.message || '---'}
-                      </div>
-                      <div className="chat-footer text-[8px] opacity-40 mt-0.5">
-                        {comment.createdAt ? new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
             </div>
 
-            {/* AI helper hints */}
-            <div className="py-2 border-t border-slate-100 flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={() => setChatInput('@ai luật vứt rác')}
-                className="badge badge-outline border-slate-200 hover:border-primary text-[9px] py-1.5 cursor-pointer font-bold text-slate-500"
-              >
-                @ai Luật rác thải
-              </button>
-              <button
-                type="button"
-                onClick={() => setChatInput('@ai tiến độ xử lý')}
-                className="badge badge-outline border-slate-200 hover:border-primary text-[9px] py-1.5 cursor-pointer font-bold text-slate-500"
-              >
-                @ai Hỏi tiến độ
-              </button>
-            </div>
-
-            {/* Input Form */}
-            <form onSubmit={handleSendChat} className="pt-2 border-t border-slate-100 flex gap-2">
+            <form onSubmit={handleSendChat} className="flex flex-col gap-3 mb-5 sm:flex-row items-stretch">
               <input
                 type="text"
-                placeholder="Nhập tin nhắn..."
+                placeholder="Viết bình luận công khai..."
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                className="input input-bordered input-sm flex-1 text-xs rounded-xl border-slate-200 focus:outline-none focus:border-primary"
+                className="input input-bordered flex-1 rounded-2xl text-sm px-4 py-3"
               />
               <button
                 type="submit"
-                className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-xl font-bold text-xs px-3 h-8 min-h-0"
+                disabled={!chatInput?.trim()}
+                className="btn btn-primary rounded-2xl font-bold text-xs h-12 min-h-0 ml-0 sm:ml-3"
               >
+                <Lucide.Send size={15} className="mr-2" />
                 Gửi
               </button>
             </form>
 
-            {/* Preview Modal */}
-            {previewAttachment && (() => {
-              const previewUrl = getAttachmentUrl(previewAttachment);
-              const isVideo = isVideoFile(previewUrl);
-
-              return (
-                <div
-                  className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6"
-                  onClick={() => setPreviewAttachment(null)}
-                >
-                  <div
-                    className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200">
-                      <div className="min-w-0">
-                        <h3 className="font-black text-sm text-slate-900 truncate">
-                          {isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm'}
-                        </h3>
-                        <p className="text-xs text-slate-500 font-semibold">
-                          Xem trực tiếp trong trang
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={previewUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-sm btn-outline rounded-xl font-bold text-xs"
-                        >
-                          Mở file gốc
-                        </a>
-
-                        <button
-                          type="button"
-                          onClick={() => setPreviewAttachment(null)}
-                          className="btn btn-sm btn-ghost btn-circle"
-                        >
-                          <Lucide.X size={18} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="bg-black flex items-center justify-center max-h-[75vh]">
-                      {isVideo ? (
-                        <video
-                          src={previewUrl}
-                          controls
-                          autoPlay
-                          className="w-full max-h-[75vh] object-contain"
-                        />
-                      ) : (
-                        <img
-                          src={previewUrl}
-                          alt="Attachment preview"
-                          className="w-full max-h-[75vh] object-contain"
-                        />
-                      )}
-                    </div>
-                  </div>
+            <div className="space-y-3">
+              {comments.length === 0 ? (
+                <div className="text-center text-slate-400 text-xs font-semibold py-8 bg-slate-50 border border-slate-100 rounded-2xl">
+                  Chưa có bình luận nào. Hãy là người đầu tiên bình luận.
                 </div>
-              );
-            })()}
+              ) : (
+                comments.filter(Boolean).map((comment, index) => {
+                  const author = comment?.userName || comment?.authorName || 'Người dùng';
+                  const content = comment?.content || comment?.message || '---';
+                  const createdAt = comment?.createdAt ? new Date(comment.createdAt).toLocaleString() : 'Vừa xong';
+
+                  return (
+                    <MotionCard key={comment.commentId || comment.id || index} index={index} className="grid gap-3 p-4 rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center font-black text-xs shrink-0">
+                          {author.charAt(0).toUpperCase()}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-extrabold text-sm text-slate-800 truncate">{author}</span>
+                            <span className="text-[10px] text-slate-400 font-bold">{createdAt}</span>
+                          </div>
+                          <p className="text-sm text-slate-600 font-medium leading-relaxed break-words mt-2">{content}</p>
+                        </div>
+                      </div>
+                    </MotionCard>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       </div>
     </div>
+    </PageTransition>
+      {resolvedToastOpen && (
+        <>
+          <ConfettiBurst />
+          <DelightToast open={resolvedToastOpen} message="Phản ánh đã được xử lý" sub="Cảm ơn bạn — hãy đánh giá chất lượng hoàn thiện." onClose={() => setResolvedToastOpen(false)} />
+        </>
+      )}
+    </>
   );
 };
