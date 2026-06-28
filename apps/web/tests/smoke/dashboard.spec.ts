@@ -16,8 +16,8 @@ test.describe('Dashboard', () => {
   test('Dashboard loads with stats and charts', async ({ page }) => {
     const dashboard = new DashboardPage(page);
     await dashboard.expectLoaded();
-    await expect(page.locator('text=Phản ánh gần đây')).toBeVisible();
-    // Check that quick-action card is visible and usable
-    await expect(page.locator('text=Gửi phản ánh mới')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Phản ánh gần đây' })).toBeVisible();
+    // Check that quick-action header link is visible and usable
+    await expect(page.getByRole('link', { name: 'Gửi phản ánh' })).toBeVisible();
   });
 });

@@ -10,7 +10,7 @@ export class DashboardPage extends BasePage {
   constructor(page: Page) {
     super(page);
     this.dashboardHeading = page.locator('h2', { hasText: /Chào,|Tổng Quan|Bản Đồ/i });
-    this.createTicketCard = page.locator('a', { hasText: /Gửi phản ánh mới/ });
+    this.createTicketCard = page.locator('a', { hasText: /Gửi phản ánh/i });
     this.ticketListCard = page.locator('a', { hasText: /Xem tất cả|Phản ánh của tôi/ });
     this.mapCard = page.locator('a', { hasText: /Bản đồ sự cố|Báo cáo thống kê/ });
   }
