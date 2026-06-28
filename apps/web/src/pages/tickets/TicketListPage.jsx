@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
+import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
 
 export const TicketListPage = () => {
   const { user } = useAuth();
@@ -473,12 +474,12 @@ export const TicketListPage = () => {
   const paginatedTickets = Array.isArray(filteredTickets) ? filteredTickets.slice(startIndex, endIndex) : [];
 
   return (
-    <div className="space-y-6 text-slate-800">
+    <div className="page-container space-y-6 text-slate-800">
       {/* Breadcrumbs */}
       <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
         <span>Trang chủ</span>
         <Lucide.ChevronRight size={12} />
-        <span className="text-[#0052CC]">Phản ánh đã gửi</span>
+        <span className="text-[color:var(--brand-primary)]">Phản ánh đã gửi</span>
       </div>
 
       {/* Header section */}
@@ -649,22 +650,11 @@ export const TicketListPage = () => {
       <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
         {loading ? (
           <div className="flex justify-center py-20">
-            <span className="loading loading-spinner loading-lg text-[#0052CC]"></span>
+            <span className="loading loading-spinner loading-lg text-[color:var(--brand-primary)]"></span>
           </div>
         ) : paginatedTickets.length === 0 ? (
-          <div className="py-12 text-center rounded-3xl space-y-4 flex flex-col items-center">
-            <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">
-              <Lucide.FileQuestion size={32} />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-sm font-extrabold text-slate-900">Không tìm thấy phản ánh nào</h3>
-              <p className="text-xs text-slate-500 font-semibold max-w-sm mx-auto leading-relaxed">
-                Bạn chưa gửi phản ánh nào phù hợp với bộ lọc này.
-              </p>
-            </div>
-            <Link to="/tickets/create" className="btn btn-outline border-slate-350 btn-sm rounded-xl font-bold text-xs h-9 min-h-0">
-              Gửi phản ánh mới
-            </Link>
+          <div className="py-6">
+            <OnboardingEmpty />
           </div>
         ) : (
           <div className="space-y-4">
@@ -732,7 +722,7 @@ export const TicketListPage = () => {
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => navigate(`/tickets/${ticket.feedbackId}`)}
-                          className="btn btn-sm rounded-2xl bg-[#0052CC] text-white border-none text-xs font-black h-10"
+                          className="btn btn-sm rounded-2xl bg-[color:var(--brand-primary)] text-white border-none text-xs font-black h-10"
                         >
                           Xem tiến độ
                         </button>
@@ -758,7 +748,7 @@ export const TicketListPage = () => {
               Hiển thị {startIndex + 1}-{endIndex} của {totalItems} phản ánh
             </div>
             <div className="flex gap-1">
-              <button
+                <button
                 onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
                 disabled={currentPage === 1}
                 className="btn btn-xs rounded-lg btn-outline border-slate-200 disabled:opacity-50 text-slate-600"
@@ -770,7 +760,7 @@ export const TicketListPage = () => {
                   key={idx}
                   onClick={() => setCurrentPage(idx + 1)}
                   className={`btn btn-xs rounded-lg w-8 h-8 ${currentPage === idx + 1
-                    ? 'bg-[#0052CC] hover:bg-[#0043a4] text-white border-none'
+                    ? 'bg-[color:var(--brand-primary)] hover:bg-[color:var(--brand-primary-dark)] text-white border-none'
                     : 'btn-outline border-slate-200 text-slate-600'
                     }`}
                 >
@@ -1041,7 +1031,7 @@ export const TicketListPage = () => {
                                 <button
                                   type="button"
                                   onClick={() => setPreviewAttachment(file)}
-                                  className="text-[10px] text-[#0052CC] font-bold hover:underline"
+                                  className="text-[10px] text-[color:var(--brand-primary)] font-bold hover:underline"
                                 >
                                   Xem file
                                 </button>
@@ -1211,7 +1201,7 @@ export const TicketListPage = () => {
               <button
                 type="button"
                 onClick={() => setAttachmentWarning('')}
-                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-xl font-bold"
+                className="btn bg-[color:var(--brand-primary)] hover:bg-[color:var(--brand-primary-dark)] text-white border-none rounded-xl font-bold"
               >
                 Đã hiểu
               </button>

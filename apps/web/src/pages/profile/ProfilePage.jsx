@@ -135,13 +135,7 @@ export const ProfilePage = () => {
     return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
   }).length;
   const resolutionRate = totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 100) : 0;
-  const resolvedDurationHours = userTickets.reduce((acc, ticket) => {
-    const createdAt = ticket.createdAt ? new Date(ticket.createdAt).getTime() : 0;
-    const resolvedAt = ticket.resolution?.resolvedAt ? new Date(ticket.resolution.resolvedAt).getTime() : 0;
-    if (!createdAt || !resolvedAt) return acc;
-    return acc + Math.max(0, (resolvedAt - createdAt) / (1000 * 60 * 60));
-  }, 0);
-  const averageResolutionHours = resolvedTickets > 0 ? Math.round(resolvedDurationHours / resolvedTickets) : 0;
+  // resolved duration calculation intentionally omitted from UI for now
   const trustScore = Math.min(
     98,
     55 + resolvedTickets * 4 + (user?.isVerified ? 20 : 0) + (reportedThisMonth >= 1 ? 8 : 0)

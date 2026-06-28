@@ -60,7 +60,7 @@ const formatRelativeTime = (value) => {
     if (minutes < 60) return `${minutes} phút trước`;
     if (hours < 24) return `${hours} giờ trước`;
     return `${days} ngày trước`;
-  } catch (e) {
+  } catch {
     return 'Vừa xong';
   }
 };

@@ -6,6 +6,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import useTicketDetail from '../../hooks/useTicketDetail';
 import { TICKET_STATUS_STEPS, getStatusStep, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
+import PageTransition from '../../components/motion/PageTransition';
+import MotionCard from '../../components/motion/MotionCard';
+import TimelineProgress from '../../components/motion/TimelineProgress';
+import ConfettiBurst from '../../components/delight/ConfettiBurst';
+import DelightToast from '../../components/delight/DelightToast';
+import { useEffect, useRef } from 'react';
 
 export const TicketDetailPage = () => {
   const { id: feedbackId } = useParams();
@@ -31,7 +37,18 @@ export const TicketDetailPage = () => {
     ratingLoading,
     getAttachmentUrl,
   } = useTicketDetail(feedbackId, user);
-  const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [, setPreviewAttachment] = useState(null);
+
+  const [resolvedToastOpen, setResolvedToastOpen] = useState(false);
+  const resolvedShownRef = useRef(false);
+
+  useEffect(() => {
+    if (ticket?.status === 'Resolved' && !resolvedShownRef.current) {
+      resolvedShownRef.current = true;
+      setResolvedToastOpen(true);
+      // auto-close after a while handled by DelightToast
+    }
+  }, [ticket?.status]);
 
   const getRatingText = (val) => {
     switch (val) {
@@ -108,7 +125,7 @@ export const TicketDetailPage = () => {
   if (loading) {
     return (
       <div className="flex justify-center py-20 bg-white rounded-3xl border border-slate-200">
-        <span className="loading loading-spinner loading-lg text-[#0052CC]"></span>
+        <span className="loading loading-spinner loading-lg text-[color:var(--brand-primary)]"></span>
       </div>
     );
   }
@@ -124,37 +141,41 @@ export const TicketDetailPage = () => {
     );
   }
 
+  const progressPercent = Math.round(((currentStep) / Math.max(1, steps.length - 1)) * 100);
+
   return (
-    <div className="space-y-6 text-slate-800">
+    <>
+    <PageTransition>
+    <div className="page-container space-y-6 text-slate-800">
       <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
         <span className="cursor-pointer hover:text-slate-600" onClick={() => navigate('/dashboard')}>Trang chủ</span>
         <Lucide.ChevronRight size={12} />
         <span className="cursor-pointer hover:text-slate-600" onClick={() => navigate('/tickets')}>Phản ánh đã gửi</span>
         <Lucide.ChevronRight size={12} />
-        <span className="text-[#0052CC]">{formatTicketId(ticket.feedbackId)}</span>
+        <span className="text-[color:var(--brand-primary)]">{formatTicketId(ticket.feedbackId)}</span>
       </div>
 
-      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between gap-4">
+      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between gap-6">
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-400">{formatTicketId(ticket.feedbackId)}</span>
-            <span className="badge bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] badge-xs font-black uppercase py-2 px-2.5 rounded-lg">
+            <span className="status-label status-info">
               {ticket.categoryName || 'Chưa xác định'}
             </span>
             {ticket.isMasterTicket && <span className="badge badge-accent badge-xs font-black uppercase py-2 px-2.5 rounded-lg text-white">MASTER TICKET</span>}
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-slate-900 leading-tight">{ticket.title}</h1>
-          <p className="text-xs text-slate-500 font-semibold flex items-center gap-2">
-            <Lucide.MapPin size={12} className="text-[#0052CC]" />
+          <h1 className="heading-1">{ticket.title}</h1>
+          <p className="lead flex items-center gap-2">
+            <Lucide.MapPin size={12} className="text-[color:var(--brand-primary)]" aria-hidden />
             {ticket.locationText || 'Không có vị trí cụ thể'}
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 items-start sm:items-end">
+        <div className="flex flex-col gap-4 items-start sm:items-end">
           <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${PRIORITY_BADGE_CLASSES[ticket.priority] || PRIORITY_BADGE_CLASSES.Medium}`}>
             Ưu tiên: {ticket.priority || 'Không xác định'}
           </span>
-          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default}`}>
+          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default} ${ticket.status === 'Resolved' && resolvedToastOpen ? 'ring-2 ring-emerald-100' : ''}`}>
             Trạng thái: {ticket.status || 'Không xác định'}
           </span>
           <div className="rounded-3xl bg-slate-50 px-4 py-3 text-[11px] text-slate-600 border border-slate-200">
@@ -166,32 +187,33 @@ export const TicketDetailPage = () => {
       <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h4 className="font-extrabold text-sm text-slate-900">Tổng quan hành trình</h4>
-            <p className="text-[11px] text-slate-500">Nắm rõ tiến độ xử lý, đơn vị phụ trách và thời hạn hoàn thành.</p>
+            <h4 className="heading-3">Tổng quan hành trình</h4>
+            <p className="text-xs muted">Nắm rõ tiến độ xử lý, đơn vị phụ trách và thời hạn hoàn thành.</p>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-[10px] text-slate-500">
-            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-3 text-center">
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
               <div className="font-bold text-slate-900">{ticket.assignment?.operatorName ? 'Đã phân công' : 'Chưa phân công'}</div>
               <div className="mt-1">Đơn vị xử lý</div>
             </div>
-            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-3 text-center">
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
               <div className="font-bold text-slate-900">{formatDate(ticket.dueDate)}</div>
               <div className="mt-1">Hạn SLA</div>
             </div>
-            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-3 text-center">
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
               <div className="font-bold text-slate-900">{ticket.priority || 'Trung bình'}</div>
               <div className="mt-1">Mức độ</div>
             </div>
-            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-3 text-center">
+            <div className="rounded-3xl bg-slate-50 border border-slate-100 p-4 text-center">
               <div className="font-bold text-slate-900">{ticket.status}</div>
               <div className="mt-1">Trạng thái</div>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100 bg-slate-50 p-5">
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 mb-4">Quy trình</div>
-          <div className="flex items-center gap-4 overflow-x-auto pb-2">
+          <TimelineProgress percent={progressPercent} className="mb-4" />
+          <div className="flex items-center gap-4 overflow-x-auto pb-3">
             {steps.map((step, idx) => {
               const isComplete = currentStep > idx;
               const isActive = currentStep === idx;
@@ -199,12 +221,12 @@ export const TicketDetailPage = () => {
                 <Fragment key={step.title}>
                   <div className="flex items-center gap-3 min-w-[140px]">
                     <div className="flex flex-col items-center text-center">
-                      <div className={`w-10 h-10 rounded-full grid place-items-center text-[11px] font-black ${isComplete ? 'bg-[#0052CC] text-white shadow-lg shadow-[#0052CC]/10' : isActive ? 'bg-[#2563EB] text-white ring-2 ring-[#2563EB]/10' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                      <div className={`w-10 h-10 rounded-full grid place-items-center text-[11px] font-black status-transition ${isComplete ? 'bg-[color:var(--brand-primary)] text-white shadow-lg shadow-[color:var(--brand-primary)]/10' : isActive ? 'bg-[color:var(--color-info)] text-white ring-2 ring-[color:var(--color-info)]/10' : 'bg-white text-slate-400 border border-slate-200'}`}>
                         {idx + 1}
                       </div>
                       <span className="mt-2 text-[10px] font-bold text-slate-700">{step.title}</span>
                     </div>
-                    {idx !== steps.length - 1 && <div className={`flex-1 h-0.5 rounded-full ${isComplete ? 'bg-[#0052CC]' : 'bg-slate-200'}`} />}
+                    {idx !== steps.length - 1 && <div className={`flex-1 h-0.5 rounded-full timeline-segment ${isComplete ? 'complete' : ''}`} />}
                   </div>
                 </Fragment>
               );
@@ -291,7 +313,7 @@ export const TicketDetailPage = () => {
             <div className="space-y-4 text-xs">
               {sortedHistory.length > 0 ? sortedHistory.map((h, i) => (
                 <div key={h?.historyId ?? i} className="flex gap-4 items-start last:pb-0">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#0052CC] mt-1.5 ring-4 ring-[#0052CC]/10 shrink-0"></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-[color:var(--brand-primary)] mt-1.5 ring-4 ring-[color:var(--brand-primary)]/10 shrink-0" aria-hidden></div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center gap-2">
                       <span className="font-extrabold text-slate-750">{h?.newStatus || h?.status || 'Cập nhật'}</span>
@@ -312,12 +334,12 @@ export const TicketDetailPage = () => {
 
           {/* Rating Form block (Flow 4: CSAT review) */}
           {ticket.status === 'Resolved' && user?.role === 'service-user' && (
-            <div className="card bg-white border border-[#0052CC]/30 shadow-md p-6 rounded-3xl space-y-4 ring-2 ring-[#0052CC]/5">
+            <div className="card bg-white border border-[color:var(--brand-primary)]/30 shadow-md p-6 rounded-3xl space-y-4 ring-2 ring-[color:var(--brand-primary)]/5">
               <div className="text-center space-y-1">
-                <div className="w-10 h-10 rounded-full bg-blue-50 text-[#0052CC] flex items-center justify-center mx-auto">
+                <div className="w-10 h-10 rounded-full bg-[color:var(--color-info-bg)] text-[color:var(--color-info)] flex items-center justify-center mx-auto" aria-hidden>
                   <Lucide.Star className="animate-pulse" size={20} />
                 </div>
-                <h3 className="font-black text-sm text-[#0052CC] uppercase tracking-wider">Đánh giá chất lượng xử lý</h3>
+                <h3 className="font-black text-sm text-[color:var(--color-info)] uppercase tracking-wider">Đánh giá chất lượng xử lý</h3>
                 <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">Ý kiến của bạn sẽ giúp ban quản lý nghiệm thu chất lượng thi công.</p>
               </div>
 
@@ -390,26 +412,26 @@ export const TicketDetailPage = () => {
                   Người dân có thể trao đổi công khai giống phần bình luận bài đăng.
                 </p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-700">
-                <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white px-2 py-0.5 text-xs text-slate-900 shadow-sm">
-                  {comments.length}
-                </span>
-                <span>Bình luận</span>
-              </div>
+                <div className="status-label status-neutral">
+                  <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white px-2 py-0.5 text-xs text-slate-900 shadow-sm">
+                    {comments.length}
+                  </span>
+                  <span>Bình luận</span>
+                </div>
             </div>
 
-            <form onSubmit={handleSendChat} className="flex flex-col gap-3 mb-5 sm:flex-row">
+            <form onSubmit={handleSendChat} className="flex flex-col gap-3 mb-5 sm:flex-row items-stretch">
               <input
                 type="text"
                 placeholder="Viết bình luận công khai..."
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                className="input input-bordered flex-1 rounded-2xl text-sm"
+                className="input input-bordered flex-1 rounded-2xl text-sm px-4 py-3"
               />
               <button
                 type="submit"
                 disabled={!chatInput?.trim()}
-                className="btn btn-primary rounded-2xl font-bold text-xs h-12 min-h-0"
+                className="btn btn-primary rounded-2xl font-bold text-xs h-12 min-h-0 ml-0 sm:ml-3"
               >
                 <Lucide.Send size={15} className="mr-2" />
                 Gửi
@@ -428,10 +450,7 @@ export const TicketDetailPage = () => {
                   const createdAt = comment?.createdAt ? new Date(comment.createdAt).toLocaleString() : 'Vừa xong';
 
                   return (
-                    <div
-                      key={comment.commentId || comment.id || index}
-                      className="grid gap-3 p-4 rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden"
-                    >
+                    <MotionCard key={comment.commentId || comment.id || index} index={index} className="grid gap-3 p-4 rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden">
                       <div className="flex items-start gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center font-black text-xs shrink-0">
                           {author.charAt(0).toUpperCase()}
@@ -445,7 +464,7 @@ export const TicketDetailPage = () => {
                           <p className="text-sm text-slate-600 font-medium leading-relaxed break-words mt-2">{content}</p>
                         </div>
                       </div>
-                    </div>
+                    </MotionCard>
                   );
                 })
               )}
@@ -454,5 +473,13 @@ export const TicketDetailPage = () => {
         </div>
       </div>
     </div>
+    </PageTransition>
+      {resolvedToastOpen && (
+        <>
+          <ConfettiBurst />
+          <DelightToast open={resolvedToastOpen} message="Phản ánh đã được xử lý" sub="Cảm ơn bạn — hãy đánh giá chất lượng hoàn thiện." onClose={() => setResolvedToastOpen(false)} />
+        </>
+      )}
+    </>
   );
 };

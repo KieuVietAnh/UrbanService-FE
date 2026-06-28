@@ -7,6 +7,10 @@ import { analyticsApi } from '../../services/api/analyticsApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart, SLAPerformanceChart, CategoryVolumeBarChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
+import PageTransition from '../../components/motion/PageTransition';
+import MotionCard from '../../components/motion/MotionCard';
+import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
+import CelebrationBadge from '../../components/delight/CelebrationBadge';
 import { normalizeRole } from '../../utils/roleMap';
 
 export const Dashboard = () => {
@@ -36,7 +40,7 @@ export const Dashboard = () => {
           resTickets = await ticketApi.getTickets({}, { role: currentRole });
         }
 
-        console.log('Dashboard ticket fetch response', resTickets);
+        // dashboard data loaded
         setTickets(Array.isArray(resTickets) ? resTickets : []);
       } catch (err) {
         console.error(err);
@@ -138,7 +142,8 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   if (currentRole === 'service-user') {
     return (
-      <div className="space-y-8 text-slate-800">
+      <PageTransition>
+      <div className="page-container space-y-8 text-slate-800">
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_360px]">
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
@@ -147,18 +152,27 @@ export const Dashboard = () => {
                   Dashboard Cư dân
                 </div>
                 <div className="space-y-3">
-                  <h2 className="text-3xl font-black tracking-tight text-slate-950">Chào, {user?.fullName || 'Bạn'}!</h2>
-                  <p className="max-w-2xl text-sm font-medium text-slate-500">
+                    <h2 className="heading-1">Chào, {user?.fullName || 'Bạn'}!</h2>
+                  <p className="lead max-w-2xl">
                     Theo dõi tiến trình phản ánh, xem hoạt động cộng đồng và nắm bắt niềm tin vào dịch vụ đô thị một cách trực quan.
                   </p>
                 </div>
+                {residentReportedThisMonth >= 3 && (
+                  <div className="mt-3">
+                    <CelebrationBadge title="Người đóng góp tích cực" subtitle={`Bạn đã gửi ${residentReportedThisMonth} báo cáo tháng này`} />
+                  </div>
+                )}
               </div>
 
-              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                {residentTickets.length === 0 ? (
+                  <OnboardingEmpty />
+                ) : (
+                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
                 <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Số báo cáo của bạn</p>
-                <p className="mt-3 text-4xl font-black text-slate-950">{residentTickets.length}</p>
-                <p className="mt-2 text-xs font-semibold text-slate-500">{residentReportedThisMonth} báo cáo trong tháng</p>
+                <p className="mt-3 metric-number">{residentTickets.length}</p>
+                <p className="mt-2 metric-label">{residentReportedThisMonth} báo cáo trong tháng</p>
               </div>
+                )}
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -216,8 +230,8 @@ export const Dashboard = () => {
             <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-black text-slate-950">Thông báo</h3>
-                  <p className="text-xs font-semibold text-slate-500">Cập nhật mới nhất để bạn luôn nắm được.</p>
+                  <h3 className="heading-3">Thông báo</h3>
+                    <p className="text-xs muted">Cập nhật mới nhất để bạn luôn nắm được.</p>
                 </div>
                 <span className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">Mới</span>
               </div>
@@ -249,9 +263,9 @@ export const Dashboard = () => {
                 <Lucide.Activity size={20} className="text-slate-400" />
               </div>
               <div className="mt-5 space-y-4">
-                {neighborhoodTopCategories.length > 0 ? (
-                  neighborhoodTopCategories.map((category) => (
-                    <div key={category.categoryId} className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                  {neighborhoodTopCategories.length > 0 ? (
+                  neighborhoodTopCategories.map((category, idx) => (
+                    <MotionCard key={category.categoryId} index={idx} className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
                           <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
@@ -266,7 +280,7 @@ export const Dashboard = () => {
                           Ưu tiên
                         </span>
                       </div>
-                    </div>
+                    </MotionCard>
                   ))
                 ) : (
                   <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
@@ -449,6 +463,7 @@ export const Dashboard = () => {
           </div>
         </section>
       </div>
+    </PageTransition>
     );
   }
 
@@ -457,7 +472,7 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   if (currentRole=== 'system-staff') {
     return (
-      <div className="space-y-6 text-slate-800">
+      <div className="page-container space-y-6 text-slate-800">
         
         {/* Header Greeting */}
         <div className="space-y-1">
@@ -547,7 +562,7 @@ export const Dashboard = () => {
                 <Lucide.SlidersHorizontal size={14} />
                 Bộ lọc
               </button>
-              <button className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-xl text-xs font-bold h-9 min-h-0">
+              <button className="btn btn-sm bg-[color:var(--brand-primary)] hover:bg-[color:var(--brand-primary-dark)] text-white border-none rounded-xl text-xs font-bold h-9 min-h-0">
                 Xuất báo cáo
               </button>
             </div>
@@ -569,7 +584,7 @@ export const Dashboard = () => {
               <tbody className="divide-y divide-slate-100">
                 {(Array.isArray(tickets) ? tickets.slice(0, 4) : []).map(t => (
                   <tr key={t.feedbackId} className="hover:bg-slate-50/50">
-                    <td className="font-bold text-[#0052CC] py-3.5">{formatTicketId(t.feedbackId)}</td>
+                    <td className="font-bold text-[color:var(--brand-primary)] py-3.5">{formatTicketId(t.feedbackId)}</td>
                     <td className="max-w-[200px] font-semibold py-3.5 text-slate-700">
                       <div className="truncate">{t.title}</div>
                     </td>
@@ -590,11 +605,11 @@ export const Dashboard = () => {
                     </td>
                     <td className="text-right py-3.5">
                       {t.status === 'Submitted' ? (
-                        <Link to="/staff/queue" className="text-[#0052CC] hover:underline font-bold">Chi tiết</Link>
+                        <Link to="/staff/queue" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                       ) : t.status === 'Resolved' ? (
-                        <Link to="/staff/review" className="text-[#0052CC] hover:underline font-bold">Chi tiết</Link>
+                        <Link to="/staff/review" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                       ) : (
-                        <Link to={`/tickets/${t.feedbackId}`} className="text-[#0052CC] hover:underline font-bold">Chi tiết</Link>
+                        <Link to={`/tickets/${t.feedbackId}`} className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                       )}
                     </td>
                   </tr>
@@ -700,7 +715,7 @@ export const Dashboard = () => {
     ];
 
     return (
-      <div className="space-y-6 text-base-content">
+      <div className="page-container space-y-6 text-base-content">
         <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
           <div className="relative p-6 sm:p-8">
             <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
@@ -902,7 +917,7 @@ export const Dashboard = () => {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-[#0052CC]">{stats.csatScore}/5</span>
+            <span className="text-xl font-black text-[color:var(--brand-primary)]">{stats.csatScore}/5</span>
             <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">CSAT hài lòng</span>
           </div>
           <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">

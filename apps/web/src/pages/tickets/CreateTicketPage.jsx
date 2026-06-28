@@ -6,6 +6,9 @@ import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import * as Lucide from 'lucide-react';
+import OnboardingTips from '../../components/onboarding/OnboardingTips';
+import ConfettiBurst from '../../components/delight/ConfettiBurst';
+import DelightToast from '../../components/delight/DelightToast';
 
 export const CreateTicketPage = () => {
   const { user } = useAuth();
@@ -13,6 +16,7 @@ export const CreateTicketPage = () => {
 
   // Wizard Steps: 1: Description, 2: AI Category & Priority, 3: GPS Map Location, 4: Image Evidence, 5: Submit Success
   const [step, setStep] = useState(1);
+  const [showToast, setShowToast] = useState(false);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -111,6 +115,7 @@ export const CreateTicketPage = () => {
     try {
       await ticketApi.createTicket(user.userId, user.fullName, payload);
       setStep(5); // Success step
+        setShowToast(true);
     } catch (err) {
       console.error('createTicket error', err);
       setSubmitError(err.message || 'Không thể gửi phản ánh. Vui lòng thử lại sau.');
@@ -124,47 +129,54 @@ export const CreateTicketPage = () => {
 
       {/* Wizard Steps indicator */}
       <div className="flex items-center justify-center border-b border-slate-100 pb-6">
-        <ul className="steps steps-horizontal w-full max-w-xl text-[10px] font-bold text-slate-400">
-          <li className={`step ${step >= 1 ? 'step-primary text-[#0052CC]' : ''}`}>Mô tả</li>
-          <li className={`step ${step >= 2 ? 'step-primary text-[#0052CC]' : ''}`}>Phân Loại</li>
-          <li className={`step ${step >= 3 ? 'step-primary text-[#0052CC]' : ''}`}>Vị trí</li>
-          <li className={`step ${step >= 4 ? 'step-primary text-[#0052CC]' : ''}`}>Minh chứng</li>
-          <li className={`step ${step >= 5 ? 'step-primary text-[#0052CC]' : ''}`}>Hoàn tất</li>
+          <ul className="steps steps-horizontal w-full max-w-xl text-[10px] font-bold text-slate-400">
+          <li className={`step ${step >= 1 ? 'step-primary text-[color:var(--brand-primary)]' : ''}`}>Mô tả</li>
+          <li className={`step ${step >= 2 ? 'step-primary text-[color:var(--brand-primary)]' : ''}`}>Phân Loại</li>
+          <li className={`step ${step >= 3 ? 'step-primary text-[color:var(--brand-primary)]' : ''}`}>Vị trí</li>
+          <li className={`step ${step >= 4 ? 'step-primary text-[color:var(--brand-primary)]' : ''}`}>Minh chứng</li>
+          <li className={`step ${step >= 5 ? 'step-primary text-[color:var(--brand-primary)]' : ''}`}>Hoàn tất</li>
         </ul>
       </div>
 
       {/* STEP 1: TITLE & DESCRIPTION */}
       {step === 1 && (
         <div className="space-y-5 max-w-xl mx-auto w-full">
-          <div className="text-center space-y-1">
-            <h3 className="text-base font-black text-slate-900">Bước 1: Mô Tả Sự Cố</h3>
-            <p className="text-xs text-slate-500 font-semibold">Cung cấp tiêu đề ngắn gọn và nội dung chi tiết phản ánh sự cố đô thị.</p>
-          </div>
-          <div className="form-control space-y-1">
-            <label className="label py-0">
-              <span className="label-text font-bold text-xs text-slate-700">Tiêu đề phản ánh *</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Ví dụ: Hỏng bóng đèn đường trước cửa số 123 Lê Lợi"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="input input-bordered w-full text-xs font-semibold rounded-xl h-11 border-slate-200 focus:border-primary focus:outline-none"
-              required
-            />
-          </div>
-          <div className="form-control space-y-1">
-            <label className="label py-0">
-              <span className="label-text font-bold text-xs text-slate-700">Mô tả chi tiết *</span>
-            </label>
-            <textarea
-              rows="5"
-              placeholder="Mô tả cụ thể sự việc, tình trạng hiện tại, mức độ ảnh hưởng đến giao thông hoặc đời sống cư dân..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="textarea textarea-bordered w-full text-xs font-semibold rounded-xl p-3 border-slate-200 focus:border-primary focus:outline-none"
-              required
-            ></textarea>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <div className="text-center space-y-1">
+                <h3 className="text-base font-black text-slate-900">Bước 1: Mô Tả Sự Cố</h3>
+                <p className="text-xs text-slate-500 font-semibold">Cung cấp tiêu đề ngắn gọn và nội dung chi tiết phản ánh sự cố đô thị.</p>
+              </div>
+              <div className="form-control space-y-1 mt-4">
+                <label className="label py-0">
+                  <span className="label-text font-bold text-xs text-slate-700">Tiêu đề phản ánh *</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Hỏng bóng đèn đường trước cửa số 123 Lê Lợi"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="input input-bordered w-full text-xs font-semibold rounded-xl h-11 border-slate-200 focus:border-primary focus:outline-none"
+                  required
+                />
+              </div>
+              <div className="form-control space-y-1 mt-3">
+                <label className="label py-0">
+                  <span className="label-text font-bold text-xs text-slate-700">Mô tả chi tiết *</span>
+                </label>
+                <textarea
+                  rows="5"
+                  placeholder="Mô tả cụ thể sự việc, tình trạng hiện tại, mức độ ảnh hưởng đến giao thông hoặc đời sống cư dân..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="textarea textarea-bordered w-full text-xs font-semibold rounded-xl p-3 border-slate-200 focus:border-primary focus:outline-none"
+                  required
+                ></textarea>
+              </div>
+            </div>
+            <aside className="hidden lg:block">
+              <OnboardingTips />
+            </aside>
           </div>
           <button
             type="button"
@@ -263,7 +275,7 @@ export const CreateTicketPage = () => {
                     </span>
                   </div>
                   {latitude && (
-                    <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-[#0052CC] mt-2">
+                    <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-[color:var(--brand-primary)] mt-2">
                       <span>Vĩ độ: {latitude.toFixed(6)}</span>
                       <span>Kinh độ: {longitude.toFixed(6)}</span>
                     </div>
@@ -287,7 +299,7 @@ export const CreateTicketPage = () => {
                           <button
                             type="button"
                             onClick={() => navigate(`/tickets/${dup.feedbackId}`)}
-                            className="text-[#0052CC] hover:underline font-bold text-[9px]"
+                            className="text-[color:var(--brand-primary)] hover:underline font-bold text-[9px]"
                           >
                             Xem
                           </button>
@@ -341,7 +353,7 @@ export const CreateTicketPage = () => {
           </div>
 
           {/* Drag & Drop uploader mockup */}
-          <div className="border-2 border-dashed border-slate-200 rounded-3xl p-8 text-center space-y-4 bg-slate-50/50 hover:border-[#0052CC] hover:bg-slate-50 transition-all cursor-pointer relative">
+          <div className="border-2 border-dashed border-slate-200 rounded-3xl p-8 text-center space-y-4 bg-slate-50/50 hover:border-[color:var(--brand-primary)] hover:bg-slate-50 transition-all cursor-pointer relative">
             <input
               type="file"
               multiple
@@ -349,11 +361,11 @@ export const CreateTicketPage = () => {
               onChange={handleFileUpload}
               className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
             />
-            <div className="mx-auto w-12 h-12 rounded-full bg-blue-50 text-[#0052CC] flex items-center justify-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-[color:var(--color-info-bg)] text-[color:var(--color-info)] flex items-center justify-center" aria-hidden>
               <Lucide.UploadCloud size={24} />
             </div>
             <div className="space-y-1 text-xs">
-              <span className="font-extrabold text-[#0052CC] block">
+              <span className="font-extrabold text-[color:var(--brand-primary)] block">
                 Kéo thả ảnh/video hoặc click để tải lên
               </span>
               <p className="text-slate-400 font-semibold">
@@ -451,14 +463,15 @@ export const CreateTicketPage = () => {
 
       {/* STEP 5: SUCCESS & NEXT STEPS */}
       {step === 5 && (
-        <div className="space-y-6 max-w-md mx-auto text-center py-8">
-          <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center animate-bounce">
+        <div className="space-y-6 max-w-md mx-auto text-center py-8 relative">
+          <ConfettiBurst />
+          <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <Lucide.CheckCircle2 size={40} />
           </div>
           <div className="space-y-2">
             <h3 className="text-2xl font-black text-slate-900">Gửi Phản Ánh Thành Công!</h3>
             <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-              Cảm ơn bạn đã phản ánh ý kiến xây dựng cảnh quan đô thị. Hồ sơ sự cố đã được tạo và gửi đến Ban điều hành Tiếp nhận. Tiến trình xử lý sẽ được cập nhật liên tục qua thông báo.
+              Cảm ơn bạn đã phản ánh. Hồ sơ đã được tạo và gửi đến Ban điều hành. Chúng tôi sẽ cập nhật tiến trình sớm.
             </p>
           </div>
 
@@ -485,6 +498,8 @@ export const CreateTicketPage = () => {
               Gửi thêm phản ánh mới
             </button>
           </div>
+
+          <DelightToast open={showToast} message="Phản ánh đã gửi" sub="Cảm ơn bạn — chúng tôi đã nhận được thông tin." onClose={() => setShowToast(false)} />
         </div>
       )}
       {/* Attachment preview modal */}
