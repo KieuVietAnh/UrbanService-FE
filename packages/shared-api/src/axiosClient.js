@@ -12,11 +12,12 @@ export const setApiBaseUrl = (baseUrl) => {
 };
 
 const AUTH_TOKEN_KEY = 'urbanmind_auth_token';
+const LEGACY_TOKEN_KEY = 'token';
 
 // Default token storage using localStorage (works for web)
 let getToken = () => {
   if (typeof localStorage !== 'undefined') {
-    return localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('token');
+    return localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
   }
   return null;
 };
@@ -24,12 +25,14 @@ let getToken = () => {
 let setToken = (token) => {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(LEGACY_TOKEN_KEY, token);
   }
 };
 
 let removeToken = () => {
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
   }
 };
 

@@ -17,6 +17,7 @@ import { TicketDetailPage } from '../pages/tickets/TicketDetailPage';
 import { CommunityFeedPage } from '../pages/community/CommunityFeedPage';
 import { CommunityFeedbackDetailPage } from '../pages/community/CommunityFeedbackDetailPage';
 import { CommunityMapPage } from '../pages/community/CommunityMapPage';
+import { NotificationCenterPage } from '../pages/notifications/NotificationCenterPage';
 import { ProfilePage } from '../pages/profile/ProfilePage';
 import { SettingsPage } from '../pages/settings/SettingsPage';
 
@@ -105,6 +106,13 @@ export const AppRoutes = () => {
         <ProtectedRoute>
           <DashboardLayout>
             <CommunityMapPage />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/notifications" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <NotificationCenterPage />
           </DashboardLayout>
         </ProtectedRoute>
       } />

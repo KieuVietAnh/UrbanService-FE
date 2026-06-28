@@ -47,17 +47,17 @@ export const DashboardLayout = ({ children }) => {
     currentRole === 'administrator' || currentRole === 'service-provider';
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-base-300 text-base-content font-sans">
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="flex min-h-screen w-full flex-col bg-base-300 text-base-content font-sans">
+      <div className="flex min-h-0 flex-1">
         {/* Sidebar navigation */}
         {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         {/* Main container */}
-        <div className="flex-1 flex flex-col w-full overflow-hidden bg-base-100">
+        <div className="flex-1 flex flex-col w-full bg-base-100">
           <Header onMenuToggle={toggleSidebar} />
 
-          {/* Main scrollable workspace */}
-          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-base-200 p-6">
+          {/* Main workspace */}
+          <main className="min-h-0 flex-1 overflow-x-hidden bg-base-200 p-6">
             <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
               {children}
             </div>

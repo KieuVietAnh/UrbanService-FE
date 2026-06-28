@@ -5,10 +5,26 @@ import { authApi as sharedAuthApi } from '@urbanmind/shared-api';
 
 const normalizeRole = (role) => getInternalRole(role);
 
+const extractToken = (response) => {
+  const payload = response?.data ?? response;
+  return (
+    response?.token ||
+    response?.accessToken ||
+    response?.authToken ||
+    payload?.token ||
+    payload?.accessToken ||
+    payload?.authToken ||
+    payload?.data?.token ||
+    payload?.data?.accessToken ||
+    payload?.data?.authToken ||
+    null
+  );
+};
+
 const saveUserSession = (response) => {
   const payload = response?.data ?? response;
   const userPayload = response?.user ?? response?.data?.user ?? payload;
-  const token = response?.token ?? payload?.token;
+  const token = extractToken(response);
   const normalizedRole = normalizeRole(userPayload?.role);
 
   const sessionUser = {
@@ -58,6 +74,11 @@ export const authApi = {
     const payload = response?.data ?? response;
     const existingUser = tokenStorage.getUser();
     const updatedUser = payload?.user ?? existingUser;
+    const token = extractToken(response);
+
+    if (token) {
+      tokenStorage.setToken(token);
+    }
 
     if (updatedUser) {
       updatedUser.role = getInternalRole(updatedUser.role);
@@ -65,7 +86,7 @@ export const authApi = {
       tokenStorage.setUser(updatedUser);
     }
 
-    console.log('authApi verifyOTP success', { response, payload, updatedUser });
+    console.log('authApi verifyOTP success', { response, payload, updatedUser, token });
 
     return { success: true, user: updatedUser };
   },

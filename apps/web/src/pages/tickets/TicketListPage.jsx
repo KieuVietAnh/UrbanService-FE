@@ -14,6 +14,7 @@ export const TicketListPage = () => {
   const [status, setStatus] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [dateRange, setDateRange] = useState(''); // mock filter
+  const [sortKey, setSortKey] = useState('newest');
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 5;
@@ -86,70 +87,90 @@ export const TicketListPage = () => {
   const countResolved = allCitizenTickets.filter(t => ['Resolved', 'Closed'].includes(t.status)).length;
   const countAwaitingReview = allCitizenTickets.filter(t => t.status === 'Resolved').length;
 
-  const renderStatusDot = (s) => {
+  const renderProgressStage = (s) => {
     switch (s) {
       case 'Submitted':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-150">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-            Đã gửi
-          </span>
-        );
+        return { label: 'Mới nhận', tone: 'bg-blue-50 text-blue-600', icon: <Lucide.Mail className="text-blue-600" size={14} /> };
       case 'AI Reviewed':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-150">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
-            Đang xem xét
-          </span>
-        );
+        return { label: 'Đang phân loại', tone: 'bg-purple-50 text-purple-600', icon: <Lucide.Cpu className="text-purple-600" size={14} /> };
       case 'Assigned':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-150">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-            Đã phân công
-          </span>
-        );
+        return { label: 'Đã phân công', tone: 'bg-indigo-50 text-indigo-600', icon: <Lucide.Users className="text-indigo-600" size={14} /> };
       case 'InProgress':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-150">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
-            Đang xử lý
-          </span>
-        );
+        return { label: 'Đang xử lý', tone: 'bg-amber-50 text-amber-600', icon: <Lucide.Wrench className="text-amber-600" size={14} /> };
       case 'Resolved':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-150">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-            Đã xử lý
-          </span>
-        );
+        return { label: 'Hoàn thành', tone: 'bg-emerald-50 text-emerald-600', icon: <Lucide.CheckCircle2 className="text-emerald-600" size={14} /> };
       case 'Closed':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-350">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
-            Đã đóng
-          </span>
-        );
+        return { label: 'Đã đóng', tone: 'bg-slate-100 text-slate-600', icon: <Lucide.Lock className="text-slate-600" size={14} /> };
       default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-50 text-slate-500 border border-slate-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-            Chờ xử lý
-          </span>
-        );
+        return { label: 'Chờ xử lý', tone: 'bg-slate-50 text-slate-500', icon: <Lucide.Clock className="text-slate-500" size={14} /> };
     }
   };
 
-  const renderCategoryIcon = (catId) => {
-    switch (catId) {
-      case 1: return <Lucide.Trash className="text-emerald-500 shrink-0" size={14} />;
-      case 2: return <Lucide.Lightbulb className="text-amber-500 shrink-0" size={14} />;
-      case 3: return <Lucide.Droplet className="text-blue-500 shrink-0" size={14} />;
-      case 4: return <Lucide.Construction className="text-indigo-500 shrink-0" size={14} />;
-      case 5: return <Lucide.Trees className="text-green-500 shrink-0" size={14} />;
-      default: return <Lucide.Construction className="text-slate-500 shrink-0" size={14} />;
+  const renderPriorityBadge = (priority) => {
+    switch (priority) {
+      case 'Critical':
+        return <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-[10px] font-black text-red-700">KHẨN CẤP</span>;
+      case 'High':
+        return <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black text-amber-700">CAO</span>;
+      case 'Medium':
+        return <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">TRUNG BÌNH</span>;
+      case 'Low':
+        return <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-700">THẤP</span>;
+      default:
+        return <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-700">TRUNG BÌNH</span>;
     }
   };
+
+  const renderStatusDot = (s) => {
+    const stage = renderProgressStage(s);
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${stage.tone} border border-slate-200`}>
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-900 opacity-75"></span>
+        {stage.label}
+      </span>
+    );
+  };
+
+  const filteredTickets = tickets
+    .filter((ticket) => {
+      const query = search.trim().toLowerCase();
+      const matchesSearch =
+        query === '' ||
+        ticket.title?.toLowerCase().includes(query) ||
+        ticket.description?.toLowerCase().includes(query) ||
+        formatTicketId(ticket.feedbackId).toLowerCase().includes(query) ||
+        ticket.locationText?.toLowerCase().includes(query);
+
+      const matchesStatus = status ? ticket.status === status : true;
+      const matchesCategory = categoryId ? String(ticket.categoryId) === String(categoryId) : true;
+      const matchesDate = dateRange
+        ? new Date(ticket.createdAt).toLocaleDateString('vi-VN').includes(dateRange)
+        : true;
+
+      return matchesSearch && matchesStatus && matchesCategory && matchesDate;
+    })
+    .sort((a, b) => {
+      if (sortKey === 'oldest') {
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      }
+      if (sortKey === 'priority') {
+        const priorityOrder = { Critical: 1, High: 2, Medium: 3, Low: 4 };
+        return (priorityOrder[a.priority] || 5) - (priorityOrder[b.priority] || 5);
+      }
+      if (sortKey === 'status') {
+        const statusOrder = {
+          Submitted: 1,
+          'AI Reviewed': 2,
+          Assigned: 3,
+          InProgress: 4,
+          Resolved: 5,
+          Closed: 6,
+        };
+        return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+      }
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
 
   const formatTicketId = (fbId) => {
     if (!fbId) return '';
@@ -445,11 +466,11 @@ export const TicketListPage = () => {
   };
 
   // Pagination calculations
-  const totalItems = tickets.length;
+  const totalItems = filteredTickets.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const paginatedTickets = Array.isArray(tickets) ? tickets.slice(startIndex, endIndex) : [];
+  const paginatedTickets = Array.isArray(filteredTickets) ? filteredTickets.slice(startIndex, endIndex) : [];
 
   return (
     <div className="space-y-6 text-slate-800">
@@ -466,7 +487,7 @@ export const TicketListPage = () => {
           <h2 className="text-2xl font-black text-slate-900">Phản ánh đã gửi</h2>
           <p className="text-xs text-slate-500 font-semibold mt-1">Theo dõi tiến độ, cập nhật hội thoại và đánh giá chất lượng xử lý các sự cố đô thị.</p>
         </div>
-        <Link to="/tickets/create" className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-xl text-xs font-bold gap-1.5 h-10 px-4 min-h-0">
+        <Link to="/tickets/create" className="btn btn-primary rounded-xl text-xs font-bold gap-1.5 h-10 px-4 min-h-0">
           <Lucide.Plus size={16} />
           Gửi phản ánh mới
         </Link>
@@ -474,132 +495,132 @@ export const TicketListPage = () => {
 
       {/* 4 Counter Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Tất cả */}
-        <div
-          onClick={() => setStatus('')}
-          className={`bg-white border p-4 rounded-2xl shadow-xs space-y-3 cursor-pointer transition-all duration-200 ${status === '' ? 'border-[#0052CC] bg-[#EFF6FF]/40 ring-1 ring-[#0052CC]' : 'border-slate-200 hover:border-slate-350'
-            }`}
-        >
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tất cả phản ánh</span>
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
-              <Lucide.FileText size={18} />
+        {[
+          {
+            label: 'Tất cả phản ánh',
+            count: countAll,
+            icon: <Lucide.FileText size={18} />,
+            active: status === '',
+            onClick: () => setStatus(''),
+          },
+          {
+            label: 'Đang xử lý',
+            count: countInProgress,
+            icon: <Lucide.Clock size={18} />,
+            active: status === 'InProgress',
+            onClick: () => setStatus('InProgress'),
+          },
+          {
+            label: 'Đã xử lý',
+            count: countResolved,
+            icon: <Lucide.CheckCircle2 size={18} />,
+            active: status === 'Resolved',
+            onClick: () => setStatus('Resolved'),
+          },
+          {
+            label: 'Chờ đánh giá',
+            count: countAwaitingReview,
+            icon: <Lucide.Star size={18} />,
+            active: status === 'Resolved',
+            onClick: () => setStatus('Resolved'),
+          },
+        ].map((card) => (
+          <button
+            key={card.label}
+            type="button"
+            onClick={card.onClick}
+            className={`w-full rounded-2xl border p-4 text-left transition duration-200 ${card.active ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+            aria-pressed={card.active}
+          >
+            <div className="flex justify-between items-center gap-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{card.label}</span>
+              <div className={card.label === 'Đã xử lý' ? 'p-2 rounded-xl bg-emerald-50 text-emerald-600' : card.label === 'Chờ đánh giá' ? 'p-2 rounded-xl bg-red-50 text-red-500' : card.label === 'Đang xử lý' ? 'p-2 rounded-xl bg-slate-100 text-slate-600' : 'p-2 rounded-xl bg-blue-50 text-blue-600'}>
+                {card.icon}
+              </div>
             </div>
-          </div>
-          <div>
-            <span className="text-2xl font-black text-slate-900">{countAll}</span>
-          </div>
-        </div>
-
-        {/* Card 2: Đang xử lý */}
-        <div
-          onClick={() => setStatus('InProgress')}
-          className={`bg-white border p-4 rounded-2xl shadow-xs space-y-3 cursor-pointer transition-all duration-200 ${status === 'InProgress' ? 'border-[#0052CC] bg-[#EFF6FF]/40 ring-1 ring-[#0052CC]' : 'border-slate-200 hover:border-slate-350'
-            }`}
-        >
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Đang xử lý</span>
-            <div className="p-2 rounded-xl bg-slate-100 text-slate-600">
-              <Lucide.Clock size={18} />
+            <div className="mt-4">
+              <span className="text-2xl font-black text-slate-900">{card.count}</span>
             </div>
-          </div>
-          <div>
-            <span className="text-2xl font-black text-slate-900">{countInProgress}</span>
-          </div>
-        </div>
-
-        {/* Card 3: Đã xử lý */}
-        <div
-          onClick={() => setStatus('Resolved')}
-          className={`bg-white border p-4 rounded-2xl shadow-xs space-y-3 cursor-pointer transition-all duration-200 ${status === 'Resolved' ? 'border-[#0052CC] bg-[#EFF6FF]/40 ring-1 ring-[#0052CC]' : 'border-slate-200 hover:border-slate-350'
-            }`}
-        >
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Đã xử lý</span>
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-              <Lucide.CheckCircle2 size={18} />
-            </div>
-          </div>
-          <div>
-            <span className="text-2xl font-black text-slate-900">{countResolved}</span>
-          </div>
-        </div>
-
-        {/* Card 4: Chờ đánh giá */}
-        <div
-          onClick={() => setStatus('Resolved')}
-          className="bg-white border border-slate-200 p-4 rounded-2xl shadow-xs space-y-3 cursor-pointer hover:border-slate-350 transition-all duration-200"
-        >
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Chờ đánh giá</span>
-            <div className="p-2 rounded-xl bg-red-50 text-red-500">
-              <Lucide.Star size={18} />
-            </div>
-          </div>
-          <div>
-            <span className="text-2xl font-black text-slate-900">{countAwaitingReview}</span>
-          </div>
-        </div>
+          </button>
+        ))}
       </div>
 
       {/* Filters Hub Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-        {/* Search */}
-        <div className="form-control col-span-1 sm:col-span-1">
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 pointer-events-none">
-              <Lucide.Search size={15} />
-            </span>
-            <input
-              type="text"
-              placeholder="Tìm kiếm mã phản ánh..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input input-bordered w-full pl-9 text-xs rounded-xl h-10 border-slate-200 focus:border-primary focus:outline-none"
-            />
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="form-control sm:col-span-2">
+            <label className="sr-only" htmlFor="resident-search">Tìm kiếm phản ánh</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+                <Lucide.Search size={15} />
+              </span>
+              <input
+                id="resident-search"
+                type="text"
+                aria-label="Tìm kiếm phản ánh"
+                placeholder="Tìm kiếm phản ánh, địa điểm, mã..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input input-bordered w-full pl-9 text-xs rounded-xl h-10 border-slate-200 focus:border-primary focus:outline-none"
+              />
+            </div>
           </div>
-        </div>
 
-        {/* Category select */}
-        <div className="form-control">
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
-          >
-            <option value="">Tất cả danh mục</option>
-            {toolsApi.getCategories().map(c => (
-              <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
-            ))}
-          </select>
-        </div>
+          <div className="form-control">
+            <label className="sr-only" htmlFor="filter-category">Lọc danh mục</label>
+            <select
+              id="filter-category"
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
+            >
+              <option value="">Tất cả danh mục</option>
+              {toolsApi.getCategories().map((c) => (
+                <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
+              ))}
+            </select>
+          </div>
 
-        {/* Status select */}
-        <div className="form-control">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
-          >
-            <option value="">Tất cả trạng thái</option>
-            <option value="Submitted">Đã gửi (Submitted)</option>
-            <option value="AI Reviewed">Đang xem xét (AI Reviewed)</option>
-            <option value="Assigned">Đã phân công (Assigned)</option>
-            <option value="InProgress">Đang xử lý (InProgress)</option>
-            <option value="Resolved">Đã xử lý (Resolved)</option>
-            <option value="Closed">Đã đóng (Closed)</option>
-          </select>
-        </div>
+          <div className="form-control">
+            <label className="sr-only" htmlFor="filter-status">Lọc trạng thái</label>
+            <select
+              id="filter-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
+            >
+              <option value="">Tất cả trạng thái</option>
+              <option value="Submitted">Đã gửi</option>
+              <option value="AI Reviewed">Đang xem xét</option>
+              <option value="Assigned">Đã phân công</option>
+              <option value="InProgress">Đang xử lý</option>
+              <option value="Resolved">Đã xử lý</option>
+              <option value="Closed">Đã đóng</option>
+            </select>
+          </div>
 
-        {/* Date picker (mock) */}
-        <div className="form-control">
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 pointer-events-none">
-              <Lucide.Calendar size={15} />
-            </span>
-            <input
-              type="text"
-              placeholder="Chọn khoảng ngày..."
+          <div className="form-control">
+            <label className="sr-only" htmlFor="sort-key">Sắp xếp</label>
+            <select
+              id="sort-key"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value)}
+              className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
+            >
+              <option value="newest">Mới nhất</option>
+              <option value="oldest">Cũ nhất</option>
+              <option value="priority">Ưu tiên</option>
+              <option value="status">Trạng thái</option>
+            </select>
+          </div>
+
+          <div className="form-control">
+            <label className="sr-only" htmlFor="date-range">Bộ lọc ngày</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+                <Lucide.Calendar size={15} />
+              </span>
+              <input
+                id="date-range"
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
               className="input input-bordered w-full pl-9 text-xs rounded-xl h-10 border-slate-200 focus:border-primary focus:outline-none"
@@ -610,66 +631,27 @@ export const TicketListPage = () => {
 
       {/* Status Shortcut Pills Row */}
       <div className="flex flex-wrap gap-2 items-center text-xs">
-        <span className="font-bold text-slate-400 mr-1">Bộ lọc nhanh:</span>
-        <button
-          onClick={() => setStatus('')}
-          className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === '' ? 'bg-[#0052CC] text-white border-[#0052CC]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          Tất cả
-        </button>
-        <button
-          onClick={() => setStatus('Submitted')}
-          className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === 'Submitted' ? 'bg-[#0052CC] text-white border-[#0052CC]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          Đã gửi
-        </button>
-        <button
-          onClick={() => setStatus('AI Reviewed')}
-          className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === 'AI Reviewed' ? 'bg-[#0052CC] text-white border-[#0052CC]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          Đang xem xét
-        </button>
-        <button
-          onClick={() => setStatus('Assigned')}
-          className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === 'Assigned' ? 'bg-[#0052CC] text-white border-[#0052CC]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          Đã phân công
-        </button>
-        <button
-          onClick={() => setStatus('InProgress')}
-          className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === 'InProgress' ? 'bg-[#0052CC] text-white border-[#0052CC]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          Đang xử lý
-        </button>
-        <button
-          onClick={() => setStatus('Resolved')}
-          className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === 'Resolved' ? 'bg-[#0052CC] text-white border-[#0052CC]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          Đã xử lý
-        </button>
-        <button
-          onClick={() => setStatus('Closed')}
-          className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === 'Closed' ? 'bg-[#0052CC] text-white border-[#0052CC]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-        >
-          Đã đóng
-        </button>
+        <span className="font-bold text-slate-400 mr-1">Sắp xếp nhanh:</span>
+        {['', 'Submitted', 'AI Reviewed', 'Assigned', 'InProgress', 'Resolved', 'Closed'].map((value) => (
+          <button
+            key={value || 'all'}
+            type="button"
+            onClick={() => setStatus(value)}
+            aria-pressed={status === value}
+            className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition-colors ${status === value ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+          >
+            {value === '' ? 'Tất cả' : value === 'AI Reviewed' ? 'Đang xem xét' : value === 'InProgress' ? 'Đang xử lý' : value === 'Resolved' ? 'Đã xử lý' : value}
+          </button>
+        ))}
       </div>
 
-      {/* Main Table view */}
+      {/* Main timeline list */}
       <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
         {loading ? (
           <div className="flex justify-center py-20">
             <span className="loading loading-spinner loading-lg text-[#0052CC]"></span>
           </div>
         ) : paginatedTickets.length === 0 ? (
-          /* Empty State */
           <div className="py-12 text-center rounded-3xl space-y-4 flex flex-col items-center">
             <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">
               <Lucide.FileQuestion size={32} />
@@ -677,79 +659,95 @@ export const TicketListPage = () => {
             <div className="space-y-1">
               <h3 className="text-sm font-extrabold text-slate-900">Không tìm thấy phản ánh nào</h3>
               <p className="text-xs text-slate-500 font-semibold max-w-sm mx-auto leading-relaxed">
-                Bạn chưa gửi phản ánh sự cố đô thị nào phù hợp với bộ lọc hiện tại.
+                Bạn chưa gửi phản ánh nào phù hợp với bộ lọc này.
               </p>
             </div>
             <Link to="/tickets/create" className="btn btn-outline border-slate-350 btn-sm rounded-xl font-bold text-xs h-9 min-h-0">
-              Gửi phản ánh đầu tiên
+              Gửi phản ánh mới
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto w-full text-xs">
-            <table className="table w-full">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 font-extrabold uppercase text-[9px] tracking-wider border-b border-slate-200">
-                  <th className="py-3">Mã phản ánh</th>
-                  <th className="py-3">Nội dung</th>
-                  <th className="py-3">Loại vấn đề</th>
-                  <th className="py-3">Vị trí</th>
-                  <th className="py-3">Ngày gửi</th>
-                  <th className="py-3">Trạng thái</th>
-                  <th className="py-3 text-right">Hành động</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginatedTickets.map((t) => (
-                  <tr key={t.feedbackId} className="hover:bg-slate-50/50">
-                    <td className="font-bold text-[#0052CC] py-3.5">{formatTicketId(t.feedbackId)}</td>
-                    <td className="max-w-[200px] font-semibold py-3.5 text-slate-700">
-                      <div className="truncate font-black">{t.title}</div>
-                      <div className="truncate text-slate-400 text-[10px] mt-0.5">{t.description}</div>
-                    </td>
-                    <td className="py-3.5">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-700">
-                        {renderCategoryIcon(t.categoryId)}
-                        <span>{toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}</span>
+          <div className="space-y-4">
+            {paginatedTickets.map((ticket) => {
+              const stage = renderProgressStage(ticket.status);
+              return (
+                <article key={ticket.feedbackId} className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                  <div className="absolute left-0 top-7 hidden h-[calc(100%-2rem)] w-0.5 bg-slate-200 md:block"></div>
+                  <div className="md:pl-8">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div className="space-y-3 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                          <span>{formatTicketId(ticket.feedbackId)}</span>
+                          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-slate-300"></span>
+                          <span>{toolsApi.getCategories().find((c) => c.categoryId === ticket.categoryId)?.categoryName}</span>
+                        </div>
+                        <h3 className="text-base font-black text-slate-950 leading-tight">
+                          {ticket.title}
+                        </h3>
+                        <p className="text-sm text-slate-600 max-w-3xl leading-6 line-clamp-2">
+                          {ticket.description}
+                        </p>
                       </div>
-                    </td>
-                    <td className="max-w-[150px] truncate py-3.5 text-slate-500 font-semibold">
-                      {t.locationText}
-                    </td>
-                    <td className="font-bold text-slate-400 py-3.5">
-                      {new Date(t.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="py-3.5">
-                      {renderStatusDot(t.status)}
-                    </td>
-                    <td className="text-right py-3.5">
-                      <div className="flex justify-end gap-1">
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {renderPriorityBadge(ticket.priority)}
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
+                          <Lucide.CalendarClock size={12} />
+                          {new Date(ticket.createdAt).toLocaleDateString('vi-VN')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="rounded-3xl bg-white border border-slate-200 p-4">
+                        <p className="text-[10px] uppercase font-black tracking-[0.2em] text-slate-400">Trạng thái</p>
+                        <div className="mt-3">{renderStatusDot(ticket.status)}</div>
+                      </div>
+                      <div className="rounded-3xl bg-white border border-slate-200 p-4">
+                        <p className="text-[10px] uppercase font-black tracking-[0.2em] text-slate-400">Tiến trình</p>
+                        <div className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-[10px] font-black text-slate-700">
+                          {stage.icon}
+                          {stage.label}
+                        </div>
+                      </div>
+                      <div className="rounded-3xl bg-white border border-slate-200 p-4">
+                        <p className="text-[10px] uppercase font-black tracking-[0.2em] text-slate-400">Vị trí</p>
+                        <p className="mt-3 text-sm font-semibold text-slate-700 truncate">
+                          {ticket.locationText || 'Chưa có địa điểm'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-1 font-semibold">
+                          <Lucide.Tag size={14} />
+                          {toolsApi.getCategories().find((c) => c.categoryId === ticket.categoryId)?.categoryName}
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-semibold">
+                          <Lucide.Megaphone size={14} />
+                          {ticket.priority}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => navigate(`/tickets/${t.feedbackId}`)}
-                          className="btn btn-ghost btn-circle btn-xs text-[#0052CC]"
-                          title="Xem chi tiết"
+                          onClick={() => navigate(`/tickets/${ticket.feedbackId}`)}
+                          className="btn btn-sm rounded-2xl bg-[#0052CC] text-white border-none text-xs font-black h-10"
                         >
-                          <Lucide.Eye size={16} />
+                          Xem tiến độ
                         </button>
                         <button
-                          onClick={() => openEditModal(t)}
-                          className="btn btn-ghost btn-circle btn-xs text-amber-500 hover:bg-amber-50"
-                          title="Sửa phản ánh"
+                          onClick={() => openEditModal(ticket)}
+                          className="btn btn-sm btn-outline rounded-2xl text-xs font-bold h-10"
                         >
-                          <Lucide.Pencil size={16} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(t)}
-                          className="btn btn-ghost btn-circle btn-xs text-red-500 hover:bg-red-50"
-                          title="Xóa phản ánh"
-                        >
-                          <Lucide.Trash2 size={16} />
+                          Chỉnh sửa
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
 
