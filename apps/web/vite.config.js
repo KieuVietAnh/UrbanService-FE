@@ -17,6 +17,7 @@ export default defineConfig({
       '@urbanmind/shared-api': path.resolve(__dirname, '../../packages/shared-api/src'),
       '@urbanmind/shared-types': path.resolve(__dirname, '../../packages/shared-types/src'),
       '@urbanmind/shared-ui': path.resolve(__dirname, '../../packages/shared-ui/src'),
+      '@urbanmind/shared-utils': path.resolve(__dirname, '../../packages/shared-utils/src'),
     },
   },
   server: {

@@ -1,115 +1,35 @@
 // src/pages/community/CommunityFeedPage.jsx
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ticketApi } from '../../services/api/ticketApi';
-import { toolsApi } from '@urbanmind/shared-api';
-import * as Lucide from 'lucide-react';
+import CommunityFeed from '../../components/community/CommunityFeed';
 
 export const CommunityFeedPage = () => {
-  const navigate = useNavigate();
-  const [tickets, setTickets] = useState([]);
-  const [supportedList, setSupportedList] = useState({});
-
-  useEffect(() => {
-  const fetchTickets = async () => {
-    try {
-      const data = await ticketApi.getTickets();
-      setTickets(data);
-    } catch (err) {
-      console.error('Không lấy được danh sách feedback:', err);
-    }
-  };
-
-  fetchTickets();
-}, []);
-
-  const handleSupportToggle = async (feedbackId, e) => {
-  e.stopPropagation();
-
-  const isSupported = supportedList[feedbackId];
-
-  try {
-    if (isSupported) {
-      await ticketApi.unsupportTicket(feedbackId);
-    } else {
-      await ticketApi.supportTicket(feedbackId);
-    }
-
-    setSupportedList((prev) => ({
-      ...prev,
-      [feedbackId]: !isSupported,
-    }));
-
-    const data = await ticketApi.getTickets();
-    setTickets(data);
-  } catch (err) {
-    console.error('Không thể cập nhật hỗ trợ:', err);
-    alert(err?.response?.data?.message || err?.message || 'Không thể cập nhật hỗ trợ.');
-  }
-};
-
   return (
     <div className="space-y-6">
-      {/* Title */}
       <div>
         <h2 className="text-2xl font-black">Bảng Tin Ý Kiến Đô Thị</h2>
         <p className="text-xs text-gray-500 font-semibold">Theo dõi phản ánh công cộng của cộng đồng dân cư và cùng nhau biểu quyết giám sát chất lượng giải quyết.</p>
       </div>
 
-      {/* Feed list */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {tickets.map((t) => {
-          const isSupported = !!supportedList[t.feedbackId];
-          // const mockUpvoteCount = isSupported ? 25 : 24;
-          const supportCount = t.supportCount || 0;
-          const displaySupportCount = isSupported ? supportCount + 1 : supportCount;
-
-          return (
-            <div 
-              key={t.feedbackId}
-              onClick={() => navigate(`/community/feed/${t.feedbackId}`)}
-              className="card bg-base-100 border border-base-300 hover:border-primary p-5 rounded-3xl shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between space-y-4"
-            >
-              {/* Image if exists */}
-              {t.attachments && t.attachments.length > 0 && (
-                <div className="w-full aspect-video rounded-2xl overflow-hidden border border-base-300">
-                  <img src={t.attachments[0]} alt="Complaint" className="w-full h-full object-cover hover:scale-105 transition-transform" />
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-[9px] font-bold text-gray-400">
-                  <span>{t.feedbackId}</span>
-                  <span className="badge badge-xs bg-base-200 text-gray-500 py-1.5 px-2">
-                    {toolsApi.getCategories().find(c => c.categoryId === t.categoryId)?.categoryName}
-                  </span>
-                </div>
-                <h4 className="font-extrabold text-sm text-base-content line-clamp-1">{t.title}</h4>
-                <p className="text-xs text-gray-500 font-medium line-clamp-3 leading-relaxed">{t.description}</p>
-              </div>
-
-              {/* Bottom interaction row */}
-              <div className="border-t border-base-300 pt-3 flex items-center justify-between">
-                <div className="flex items-center gap-1 text-[10px] text-gray-400 font-bold max-w-[150px] min-w-0">
-                  <Lucide.MapPin size={12} className="text-primary shrink-0" />
-                  <span className="truncate">{t.locationText}</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={(e) => handleSupportToggle(t.feedbackId, e)}
-                    className={`btn btn-xs rounded-xl font-bold flex gap-1 ${
-                      isSupported ? 'btn-primary' : 'btn-ghost hover:bg-base-200'
-                    }`}
-                  >
-                    <Lucide.Heart size={12} fill={isSupported ? 'currentColor' : 'none'} className={isSupported ? 'scale-110' : ''} />
-                    <span>Hỗ trợ ({displaySupportCount})</span>
-                  </button>
-                </div>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr_320px] gap-6">
+        <aside className="hidden lg:block">
+          <div className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100 sticky top-20">
+            <h4 className="font-bold text-sm text-slate-900">Cộng đồng</h4>
+            <p className="text-xs text-slate-500 mt-2">Khám phá và tương tác với phản ánh từ cộng đồng.</p>
+            <div className="mt-4">
+              <button className="rounded-full border border-[#0b56d9] bg-[#0b56d9] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#0a4fb8]">Tạo phản ánh</button>
             </div>
-          );
-        })}
+          </div>
+        </aside>
+
+        <main>
+          <CommunityFeed />
+        </main>
+
+        <aside className="hidden lg:block">
+          <div className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100 sticky top-20">
+            <h4 className="font-bold text-sm text-slate-900">Xu hướng</h4>
+            <p className="text-xs text-slate-500 mt-2">Các phản ánh được hỗ trợ nhiều nhất.</p>
+          </div>
+        </aside>
       </div>
     </div>
   );

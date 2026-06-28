@@ -49,8 +49,6 @@ export const LoginPage = () => {
     setLoading(true);
     try {
       const user = await login(email, password);
-      console.log('LoginPage - login returned user', user);
-      console.log('LoginPage - auth context user after login', user);
       
       // If email not verified, redirect to verification
       if (!user?.isVerified) {
@@ -100,13 +98,10 @@ export const LoginPage = () => {
   );
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  console.log('LoginPage - VITE_GOOGLE_CLIENT_ID:', googleClientId);
   useGoogleIdentity(googleClientId, handleGoogleLoginCallback);
 
   const handleGoogleSignIn = () => {
-    const clientId = googleClientId;
-    console.log('handleGoogleSignIn - clientId:', clientId);
-    if (!clientId) {
+    if (!googleClientId) {
       setError('Google login not configured.');
       return;
     }
@@ -147,13 +142,16 @@ export const LoginPage = () => {
         {/* Inputs form */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="form-control space-y-1">
-            <label className="text-xs font-bold text-slate-500">Email hoặc số điện thoại</label>
+            <label htmlFor="login-email" className="text-xs font-bold text-slate-500">Email hoặc số điện thoại</label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400" aria-hidden="true">
                 <Lucide.AtSign size={16} />
               </span>
               <input 
+                id="login-email"
+                name="email"
                 type="text" 
+                autoComplete="username"
                 placeholder="name@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -163,30 +161,39 @@ export const LoginPage = () => {
           </div>
 
           <div className="form-control space-y-1">
-            <label className="text-xs font-bold text-slate-500">Mật khẩu</label>
+            <label htmlFor="login-password" className="text-xs font-bold text-slate-500">Mật khẩu</label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400" aria-hidden="true">
                 <Lucide.Lock size={16} />
               </span>
               <input 
+                id="login-password"
+                name="password"
                 type="password" 
+                autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input input-bordered w-full pl-10 pr-10 text-xs font-medium rounded-xl h-11 border-slate-300 focus:border-[#0052CC] focus:outline-none"
               />
-              <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 cursor-pointer">
+              <span className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400" aria-hidden="true">
                 <Lucide.Eye size={16} />
               </span>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-[11px] font-bold">
-            <label className="flex items-center gap-1.5 cursor-pointer text-slate-500">
-              <input type="checkbox" className="checkbox checkbox-primary checkbox-xs rounded" />
+            <label htmlFor="remember-login" className="flex items-center gap-1.5 cursor-pointer text-slate-500">
+              <input id="remember-login" type="checkbox" className="checkbox checkbox-primary checkbox-xs rounded" />
               <span>Ghi nhớ đăng nhập</span>
             </label>
-            <a href="#" className="text-[#0052CC] hover:underline">Quên mật khẩu?</a>
+            <button
+              type="button"
+              aria-label="Quên mật khẩu"
+              className="text-[#0052CC] hover:underline"
+            >
+              Quên mật khẩu?
+            </button>
           </div>
 
           <button 

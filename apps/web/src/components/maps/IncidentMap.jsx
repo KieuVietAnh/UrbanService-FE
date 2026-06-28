@@ -47,10 +47,10 @@ function AutoFitBounds({ incidents }) {
       map.fitBounds(validPositions, {
         padding: [40, 40],
         maxZoom: 15,
-        animate: false,
+        animate: true,
       });
     } else {
-      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: false });
+      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: true });
     }
   }, [map, validPositions]);
 
@@ -87,7 +87,7 @@ export const IncidentMap = ({ incidents }) => {
   }, [incidents]);
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 shadow-sm h-[550px]">
+    <div className="overflow-hidden rounded-3xl border border-slate-200 shadow-sm h-[550px] transition-shadow duration-200 ease-out map-interaction">
       <MapContainer
         center={DEFAULT_CENTER}
         zoom={DEFAULT_ZOOM}

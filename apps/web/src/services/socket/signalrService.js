@@ -10,14 +10,12 @@ class MockSignalRService {
   async start() {
     if (this.isConnected) return;
     // Simulate connection lag
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     this.isConnected = true;
-    console.log('[SignalR] Connected to hub.');
   }
 
   stop() {
     this.isConnected = false;
-    console.log('[SignalR] Disconnected from hub.');
   }
 
   on(event, callback) {

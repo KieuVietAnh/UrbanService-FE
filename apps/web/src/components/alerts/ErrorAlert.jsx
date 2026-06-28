@@ -12,9 +12,11 @@ export const ErrorAlert = ({ message, title = 'Lỗi', onClose, icon = true }) =
       {onClose && (
         <button 
           onClick={onClose}
+          aria-label="Đóng thông báo"
+          title="Đóng"
           className="btn btn-ghost btn-sm btn-circle"
         >
-          <Lucide.X size={16} />
+          <Lucide.X size={16} aria-hidden />
         </button>
       )}
     </div>
@@ -32,9 +34,11 @@ export const WarningAlert = ({ message, title = 'Cảnh báo', onClose, icon = t
       {onClose && (
         <button 
           onClick={onClose}
+          aria-label="Đóng thông báo"
+          title="Đóng"
           className="btn btn-ghost btn-sm btn-circle"
         >
-          <Lucide.X size={16} />
+          <Lucide.X size={16} aria-hidden />
         </button>
       )}
     </div>
@@ -52,9 +56,11 @@ export const InfoAlert = ({ message, title = 'Thông tin', onClose, icon = true 
       {onClose && (
         <button 
           onClick={onClose}
+          aria-label="Đóng thông báo"
+          title="Đóng"
           className="btn btn-ghost btn-sm btn-circle"
         >
-          <Lucide.X size={16} />
+          <Lucide.X size={16} aria-hidden />
         </button>
       )}
     </div>
@@ -72,9 +78,11 @@ export const SuccessAlert = ({ message, title = 'Thành công', onClose, icon = 
       {onClose && (
         <button 
           onClick={onClose}
+          aria-label="Đóng thông báo"
+          title="Đóng"
           className="btn btn-ghost btn-sm btn-circle"
         >
-          <Lucide.X size={16} />
+          <Lucide.X size={16} aria-hidden />
         </button>
       )}
     </div>

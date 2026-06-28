@@ -9,12 +9,10 @@ class NotificationRealtimeService {
   async start() {
     if (this.connected) return;
     this.connected = true;
-    console.log('[NotificationRealtime] placeholder started');
   }
 
   stop() {
     this.connected = false;
-    console.log('[NotificationRealtime] placeholder stopped');
   }
 
   on(eventName, callback) {

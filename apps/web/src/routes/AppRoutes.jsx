@@ -1,59 +1,66 @@
 // src/routes/AppRoutes.jsx
+import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ProtectedRoute } from '../guards/ProtectedRoute';
 import { RoleGuard } from '../guards/RoleGuard';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import LoadingSkeleton from '../components/design-system/LoadingSkeleton';
 
-// Pages
-import { LandingPage } from '../pages/LandingPage';
-import { LoginPage } from '../pages/auth/LoginPage';
-import { RegisterPage } from '../pages/auth/RegisterPage';
-import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
-import { Dashboard } from '../pages/dashboard/Dashboard';
-import { TicketListPage } from '../pages/tickets/TicketListPage';
-import { CreateTicketPage } from '../pages/tickets/CreateTicketPage';
-import { TicketDetailPage } from '../pages/tickets/TicketDetailPage';
-import { CommunityFeedPage } from '../pages/community/CommunityFeedPage';
-import { CommunityFeedbackDetailPage } from '../pages/community/CommunityFeedbackDetailPage';
-import { CommunityMapPage } from '../pages/community/CommunityMapPage';
-import { NotificationCenterPage } from '../pages/notifications/NotificationCenterPage';
-import { ProfilePage } from '../pages/profile/ProfilePage';
-import { SettingsPage } from '../pages/settings/SettingsPage';
+const LandingPage = lazy(() => import('../pages/LandingPage').then((m) => ({ default: m.LandingPage })));
+const LoginPage = lazy(() => import('../pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
+const RegisterPage = lazy(() => import('../pages/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })));
+const VerifyEmailPage = lazy(() => import('../pages/auth/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })));
+const Dashboard = lazy(() => import('../pages/dashboard/Dashboard').then((m) => ({ default: m.Dashboard })));
+const TicketListPage = lazy(() => import('../pages/tickets/TicketListPage').then((m) => ({ default: m.TicketListPage })));
+const CreateTicketPage = lazy(() => import('../pages/tickets/CreateTicketPage').then((m) => ({ default: m.CreateTicketPage })));
+const TicketDetailPage = lazy(() => import('../pages/tickets/TicketDetailPage').then((m) => ({ default: m.TicketDetailPage })));
+const CommunityFeedPage = lazy(() => import('../pages/community/CommunityFeedPage').then((m) => ({ default: m.CommunityFeedPage })));
+const CommunityFeedbackDetailPage = lazy(() => import('../pages/community/CommunityFeedbackDetailPage').then((m) => ({ default: m.CommunityFeedbackDetailPage })));
+const CommunityMapPage = lazy(() => import('../pages/community/CommunityMapPage').then((m) => ({ default: m.CommunityMapPage })));
+const NotificationCenterPage = lazy(() => import('../pages/notifications/NotificationCenterPage').then((m) => ({ default: m.NotificationCenterPage })));
+const ProfilePage = lazy(() => import('../pages/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const SettingsPage = lazy(() => import('../pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
-// Staff Specific Pages
-import { AIReviewDetail } from '../pages/tickets/AIReviewDetail';
-import { DuplicateDetection } from '../pages/tickets/DuplicateDetection';
-import { TicketAssignment } from '../pages/tickets/TicketAssignment';
-import { CompletedTicketReview } from '../pages/tickets/CompletedTicketReview';
-import { ManagementFeedbackListPage } from '../pages/staff/ManagementFeedbackListPage';
-import { ManagementFeedbackDetailPage } from '../pages/staff/ManagementFeedbackDetailPage';
+const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then((m) => ({ default: m.AIReviewDetail })));
+const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
+const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
+const CompletedTicketReview = lazy(() => import('../pages/tickets/CompletedTicketReview').then((m) => ({ default: m.CompletedTicketReview })));
+const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.ManagementFeedbackListPage })));
+const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
 
-// Service Provider (Operator) Page
-import { HelperWorkspacePage } from '../pages/community/HelperWorkspacePage';
+const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspacePage').then((m) => ({ default: m.HelperWorkspacePage })));
 
-// Analytics & Manager Pages
-import { SLAAnalytics } from '../pages/analytics/SLAAnalytics';
-import { SentimentDashboard } from '../pages/analytics/SentimentDashboard';
-import { HeatmapDashboard } from '../pages/analytics/HeatmapDashboard';
-import { AboutPage } from '../pages/AboutPage';
-import { InteractionHistoryMonitoring } from '../pages/analytics/InteractionHistoryMonitoring';
+const SLAAnalytics = lazy(() => import('../pages/analytics/SLAAnalytics').then((m) => ({ default: m.SLAAnalytics })));
+const SentimentDashboard = lazy(() => import('../pages/analytics/SentimentDashboard').then((m) => ({ default: m.SentimentDashboard })));
+const HeatmapDashboard = lazy(() => import('../pages/analytics/HeatmapDashboard').then((m) => ({ default: m.HeatmapDashboard })));
+const AboutPage = lazy(() => import('../pages/AboutPage').then((m) => ({ default: m.AboutPage })));
+const InteractionHistoryMonitoring = lazy(() => import('../pages/analytics/InteractionHistoryMonitoring').then((m) => ({ default: m.InteractionHistoryMonitoring })));
 
-// Administrator Configuration Pages
-import { UserManagement } from '../pages/management/UserManagement';
-import { RoleManagement } from '../pages/management/RoleManagement';
-import { CategoryManagement } from '../pages/management/CategoryManagement';
-import { SLAConfiguration } from '../pages/management/SLAConfiguration';
-import { IntegrationSettings } from '../pages/management/IntegrationSettings';
-import { AuditLog } from '../pages/admin/AuditLog';
-import { PerformanceDashboard } from '../pages/admin/PerformanceDashboard';
+const UserManagement = lazy(() => import('../pages/management/UserManagement').then((m) => ({ default: m.UserManagement })));
+const RoleManagement = lazy(() => import('../pages/management/RoleManagement').then((m) => ({ default: m.RoleManagement })));
+const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
+const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
+const IntegrationSettings = lazy(() => import('../pages/management/IntegrationSettings').then((m) => ({ default: m.IntegrationSettings })));
+const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ default: m.AuditLog })));
+const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
+
+const RouteFallback = () => (
+  <div className="min-h-[calc(100vh-12rem)] flex items-center justify-center p-6">
+    <div className="w-full max-w-4xl space-y-6 rounded-3xl bg-white border border-slate-200 p-6 shadow-sm">
+      <div className="h-6 w-1/3 rounded-full bg-slate-100 animate-pulse" />
+      <LoadingSkeleton rows={5} className="space-y-3" />
+    </div>
+  </div>
+);
 
 export const AppRoutes = () => {
   const { isAuthenticated, user } = useAuth();
   const authRedirect = user?.isVerified ? '/dashboard' : '/verify-email';
 
   return (
-    <Routes>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
       {/* Public Pages */}
       <Route path="/" element={isAuthenticated ? <Navigate to={authRedirect} replace /> : <LandingPage />} />
       <Route path="/login" element={isAuthenticated ? <Navigate to={authRedirect} replace /> : <LoginPage />} />
@@ -304,6 +311,7 @@ export const AppRoutes = () => {
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  </Suspense>
   );
 };
 

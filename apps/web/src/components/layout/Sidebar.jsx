@@ -110,8 +110,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
               <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">ECOSYSTEM</p>
             </div>
           </div>
-          <button onClick={onClose} className="btn btn-sm btn-ghost lg:hidden">
-            <Lucide.X size={20} />
+          <button onClick={onClose} aria-label="Đóng thanh điều hướng" title="Đóng menu" className="btn btn-sm btn-ghost lg:hidden">
+            <Lucide.X size={20} aria-hidden />
           </button>
         </div>
 

@@ -1,5 +1,6 @@
 // src/pages/management/RoleManagement.jsx
 import { Fragment, useState } from 'react';
+import { SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const RoleManagement = () => {
@@ -121,12 +122,20 @@ export const RoleManagement = () => {
     setMatrix(prev => ({ ...prev, [roleKey]: updated }));
   };
 
+  const [pageMessage, setPageMessage] = useState({ type: '', text: '' });
+
   const handleSave = () => {
-    alert('Đã cập nhật ma trận phân quyền vai trò trên hệ thống thành công!');
+    setPageMessage({ type: 'success', text: 'Đã cập nhật ma trận phân quyền vai trò trên hệ thống thành công!' });
   };
 
   return (
     <div className="space-y-6">
+      {pageMessage.type === 'success' && (
+        <SuccessAlert
+          message={pageMessage.text}
+          onClose={() => setPageMessage({ type: '', text: '' })}
+        />
+      )}
       <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
         <div className="relative p-6 sm:p-8">
           <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />

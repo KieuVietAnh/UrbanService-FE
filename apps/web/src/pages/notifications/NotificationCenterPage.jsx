@@ -178,7 +178,7 @@ export const NotificationCenterPage = () => {
 
   return (
     <div className="space-y-6 text-slate-800">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm fade-in-up visible">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Trung tâm thông báo</p>
@@ -201,7 +201,7 @@ export const NotificationCenterPage = () => {
             <button
               type="button"
               onClick={() => loadNotifications({ pageNumber: 1, pageSize: 50 })}
-              className="btn btn-sm btn-primary rounded-full"
+              className="btn btn-sm btn-primary rounded-full transition duration-200 ease-out hover:shadow-sm"
             >
               Cập nhật
             </button>
@@ -211,7 +211,7 @@ export const NotificationCenterPage = () => {
 
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm fade-in-up visible">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Tổng quan</p>
@@ -224,7 +224,7 @@ export const NotificationCenterPage = () => {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm fade-in-up visible fade-in-up visible">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Bộ lọc</p>
             <div className="mt-4 space-y-3">
               {filters.map((filter) => (
@@ -232,9 +232,9 @@ export const NotificationCenterPage = () => {
                   key={filter.id}
                   type="button"
                   onClick={() => setActiveFilter(filter.id)}
-                  className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
+                  className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm transition duration-200 ease-out ${
                     activeFilter === filter.id
-                      ? 'border-primary bg-primary/10 text-primary'
+                      ? 'border-primary bg-primary/10 text-primary shadow-sm'
                       : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100'
                   }`}
                 >
@@ -248,7 +248,7 @@ export const NotificationCenterPage = () => {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm fade-in-up visible">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Đơn vị ưu tiên</p>

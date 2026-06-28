@@ -17,6 +17,7 @@
     "@urbanmind/shared-api": "workspace:*",
     "@urbanmind/shared-types": "workspace:*",
     "@urbanmind/shared-ui": "workspace:*",
+    "@urbanmind/shared-utils": "workspace:*",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "axios": "^1.17.0",

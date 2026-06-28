@@ -156,9 +156,12 @@ export const VerifyEmailPage = () => {
         {otpSent && (
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-slate-600">Nhập Mã OTP</label>
+              <label htmlFor="verify-otp" className="text-sm font-bold text-slate-600">Nhập Mã OTP</label>
               <input
+                id="verify-otp"
+                name="otp"
                 type="text"
+                inputMode="numeric"
                 maxLength="6"
                 placeholder="000000"
                 value={otp}

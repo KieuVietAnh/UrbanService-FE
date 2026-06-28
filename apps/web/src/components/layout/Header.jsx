@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, NavLink } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { NotificationBell } from '../notifications/NotificationBell';
+import { ThemeToggle } from '../../components/design-system';
 
 export const Header = ({ onMenuToggle }) => {
   const { user, logout } = useAuth();
@@ -107,9 +108,9 @@ export const Header = ({ onMenuToggle }) => {
       {/* Left section: Brand Logo for Citizen or Hamburger for Staff */}
       <div className="flex items-center gap-4">
         {isCitizen ? (
-          <div className="flex items-center gap-2 mr-6 cursor-pointer" onClick={() => navigate('/dashboard')}>
+          <button aria-label="Trang chính" title="Trang chính" className="flex items-center gap-2 mr-6" onClick={() => navigate('/dashboard')}>
             <div className="p-1.5 rounded-lg bg-primary text-primary-content">
-              <Lucide.Cpu size={20} className="animate-pulse" />
+              <Lucide.Cpu size={20} className="animate-pulse" aria-hidden />
             </div>
             <div>
               <h1 className="font-extrabold text-base tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent leading-none">
@@ -117,11 +118,11 @@ export const Header = ({ onMenuToggle }) => {
               </h1>
               <p className="text-[8px] text-gray-500 uppercase tracking-widest font-semibold mt-0.5">CITIZEN PORTAL</p>
             </div>
-          </div>
+          </button>
         ) : (
           <>
-            <button onClick={onMenuToggle} className="btn btn-ghost btn-square lg:hidden">
-              <Lucide.Menu size={20} />
+            <button aria-label="Mở menu" title="Mở menu" onClick={onMenuToggle} className="btn btn-ghost btn-square lg:hidden">
+              <Lucide.Menu size={20} aria-hidden="true" />
             </button>
             <div className="hidden sm:flex items-center gap-1 text-sm font-semibold">
               {getBreadcrumbs()}
@@ -184,16 +185,17 @@ export const Header = ({ onMenuToggle }) => {
 
       {/* Right section: Notification, User Profile */}
       <div className="flex items-center gap-3">
+        <ThemeToggle className="mr-2" />
         <NotificationBell />
 
         {/* User avatar dropdown (specifically for Citizen role since they have no sidebar) */}
         {isCitizen && (
           <div className="dropdown dropdown-end">
-            <label tabIndex={0} className="btn btn-ghost btn-circle avatar ring-2 ring-primary ring-offset-base-100 ring-offset-2">
+            <button aria-label="Menu người dùng" title="Menu người dùng" tabIndex={0} className="btn btn-ghost btn-circle avatar ring-2 ring-primary ring-offset-base-100 ring-offset-2">
               <div className="w-8 rounded-full animate-fade-in">
                 <img src={user.avatarUrl} alt="User Avatar" />
               </div>
-            </label>
+            </button>
             <ul tabIndex={0} className="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52 mt-2 border border-base-300 z-50">
               <li className="menu-title px-4 py-2 text-xs font-bold text-slate-400 border-b border-slate-100">
                 {user.fullName}

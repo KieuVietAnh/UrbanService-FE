@@ -64,11 +64,14 @@ export const RegisterPage = () => {
         {/* Form */}
         <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="form-control md:col-span-2">
-            <label className="label">
+            <label htmlFor="register-fullname" className="label">
               <span className="label-text font-bold text-xs">Họ và tên *</span>
             </label>
             <input 
+              id="register-fullname"
+              name="fullName"
               type="text" 
+              autoComplete="name"
               placeholder="Nguyễn Văn A"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
@@ -78,11 +81,14 @@ export const RegisterPage = () => {
           </div>
 
           <div className="form-control">
-            <label className="label">
+            <label htmlFor="register-email" className="label">
               <span className="label-text font-bold text-xs">Email liên lạc *</span>
             </label>
             <input 
+              id="register-email"
+              name="email"
               type="email" 
+              autoComplete="email"
               placeholder="user@urbanmind.vn"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -92,10 +98,11 @@ export const RegisterPage = () => {
           </div>
 
           <div className="form-control">
-            <label className="label">
+            <label htmlFor="register-phone" className="label">
               <span className="label-text font-bold text-xs">Số điện thoại *</span>
             </label>
             <input 
+              id="register-phone"
               type="tel" 
               placeholder="09XXXXXXXX"
               value={phone}
@@ -106,11 +113,14 @@ export const RegisterPage = () => {
           </div>
 
           <div className="form-control md:col-span-2">
-            <label className="label">
+            <label htmlFor="register-password" className="label">
               <span className="label-text font-bold text-xs">Mật khẩu bảo mật *</span>
             </label>
             <input 
+              id="register-password"
+              name="password"
               type="password" 
+              autoComplete="new-password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

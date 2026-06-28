@@ -81,18 +81,18 @@ export const NotificationBell = () => {
 
   return (
     <div className="dropdown dropdown-end">
-      <label tabIndex={0} className="btn btn-ghost btn-circle relative">
+      <button aria-label="Thông báo" title="Thông báo" tabIndex={0} className="btn btn-ghost btn-circle relative transition duration-200 ease-out hover:bg-base-200">
         <div className="indicator">
-          <Lucide.Bell size={20} />
+          <Lucide.Bell size={20} aria-hidden="true" />
           {unreadCount > 0 && (
-            <span className="badge badge-xs badge-error indicator-item font-extrabold text-[8px] p-1">
+            <span className="badge badge-xs badge-error indicator-item font-extrabold text-[8px] p-1" aria-hidden>
               {unreadCount}
             </span>
           )}
         </div>
-      </label>
+      </button>
 
-      <div tabIndex={0} className="dropdown-content card card-compact w-96 shadow bg-base-100 border border-base-300 mt-2 z-50">
+      <div tabIndex={0} className="dropdown-content card card-compact w-96 shadow bg-base-100 border border-base-300 mt-2 z-50 transition-opacity duration-200 ease-out opacity-100">
         <div className="card-body p-0">
           <div className="flex items-center justify-between px-4 py-3 border-b border-base-300">
             <div>
@@ -135,8 +135,8 @@ export const NotificationBell = () => {
                     type="button"
                     key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`}
                     onClick={() => handleNotificationClick(notification)}
-                    className={`w-full text-left p-3 flex gap-3 items-start transition ${
-                      notification?.isRead === false ? 'bg-primary/5' : 'hover:bg-base-200'
+                    className={`w-full text-left p-3 flex gap-3 items-start rounded-3xl transition duration-200 ease-out ${
+                      notification?.isRead === false ? 'bg-primary/5 shadow-sm' : 'hover:bg-base-200'
                     }`}
                   >
                     <div className={`p-2 rounded-xl shrink-0 ${toneClasses}`}>

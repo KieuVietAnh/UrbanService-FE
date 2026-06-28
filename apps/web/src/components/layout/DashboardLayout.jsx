@@ -1,19 +1,22 @@
 // src/components/layout/DashboardLayout.jsx
 import { useState } from 'react';
+
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { Footer } from './Footer';
+import PageTransition from '../motion/PageTransition';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { useAuth } from '../../contexts/AuthContext';
-import { normalizeRole } from '../../utils/roleMap';
 
 export const DashboardLayout = ({ children }) => {
+  
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([
-    { sender: 'ai', text: 'Chào bạn! Tôi là Trợ lý Pháp lý & Giải quyết Sự cố Đô thị UrbanMind. Bạn có câu hỏi nào cần giải đáp về quy định đô thị hoặc quy trình tiếp nhận xử lý phản ánh không?' }
+    { sender: 'ai', text: 'Chào bạn! Tôi là UrbanMind Assist — trợ giúp bạn điều hướng quy trình phản ánh và giám sát vận hành đô thị. Bạn cần hỗ trợ gì hôm nay?' }
   ]);
   const [inputVal, setInputVal] = useState('');
   const [loadingReply, setLoadingReply] = useState(false);
@@ -41,41 +44,40 @@ export const DashboardLayout = ({ children }) => {
     setInputVal(question);
   };
 
-  const currentRole = normalizeRole(user?.role);
-
-  const shouldHideFooter =
-    currentRole === 'administrator' || currentRole === 'service-provider';
+  const showFooter = !user || user?.role === 'service-user';
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-base-300 text-base-content font-sans">
-      <div className="flex min-h-0 flex-1">
+    <div className="min-h-screen w-full flex-col bg-base-300 text-base-content font-sans">
+      <div className="flex min-h-screen w-full">
         {/* Sidebar navigation */}
         {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         {/* Main container */}
-        <div className="flex-1 flex flex-col w-full bg-base-100">
+        <div className="flex-1 flex flex-col w-full overflow-hidden bg-base-100">
           <Header onMenuToggle={toggleSidebar} />
 
-          {/* Main workspace */}
-          <main className="min-h-0 flex-1 overflow-x-hidden bg-base-200 p-6">
-            <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+          {/* Main scrollable workspace */}
+          <main className="min-h-[calc(100vh-120px)] flex-1 overflow-y-auto overflow-x-hidden bg-base-200 p-6">
+            <PageTransition className="max-w-7xl mx-auto space-y-6">
               {children}
-            </div>
+            </PageTransition>
           </main>
+
+          {showFooter && <Footer />}
         </div>
       </div>
-
-      {/* Footer */}
-      {!shouldHideFooter && <Footer />}
 
       {/* PERSISTENT AI COPILOT FLOATING BUTTON */}
       <button
         onClick={toggleChat}
+        aria-label="Mở trợ lý AI"
+        title="Mở trợ lý AI"
         className="fixed bottom-6 right-6 z-40 btn btn-circle btn-primary btn-lg shadow-xl shadow-primary/20 group hover:scale-105 transition-transform"
       >
-        <Lucide.Sparkles size={24} className="group-hover:rotate-12 transition-transform" />
+        <Lucide.Sparkles size={24} className="group-hover:rotate-12 transition-transform" aria-hidden />
       </button>
 
+     
       {/* AI COPILOT CHAT PANEL (Slide out Drawer) */}
       <div
         className={`fixed inset-y-0 right-0 z-50 w-96 bg-base-100 border-l border-base-300 shadow-2xl transform transition-transform duration-300 ${chatOpen ? 'translate-x-0' : 'translate-x-full'
@@ -91,8 +93,8 @@ export const DashboardLayout = ({ children }) => {
                 <p className="text-[10px] opacity-75">Tư vấn pháp lý & phản ánh đô thị</p>
               </div>
             </div>
-            <button onClick={toggleChat} className="btn btn-sm btn-ghost btn-circle text-primary-content hover:bg-primary-focus">
-              <Lucide.X size={18} />
+            <button aria-label="Đóng cửa sổ trợ lý" title="Đóng" onClick={toggleChat} className="btn btn-sm btn-ghost btn-circle text-primary-content hover:bg-primary-focus">
+              <Lucide.X size={18} aria-hidden="true" />
             </button>
           </div>
 
@@ -159,6 +161,7 @@ export const DashboardLayout = ({ children }) => {
             <input
               type="text"
               placeholder="Hỏi AI về luật, thủ tục phản ánh..."
+              aria-label="Hỏi AI"
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
@@ -166,6 +169,8 @@ export const DashboardLayout = ({ children }) => {
             />
             <button
               onClick={handleSendMessage}
+              aria-label="Gửi tin nhắn"
+              title="Gửi"
               className="btn btn-sm btn-primary btn-square rounded-xl"
               disabled={loadingReply}
             >
