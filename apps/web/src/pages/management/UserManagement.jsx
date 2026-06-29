@@ -1,6 +1,5 @@
 // src/pages/management/UserManagement.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api/userApi';
 import * as Lucide from 'lucide-react';
@@ -423,23 +422,23 @@ export const UserManagement = () => {
         )}
       </section>
 
-      {showCreateModal && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]"
-            onClick={() => setShowCreateModal(false)}
-            aria-label="Đóng modal tạo người dùng"
-          />
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-user-title"
+        >
+          <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]" />
 
-          <div className="relative z-[101] w-full max-w-2xl rounded-[24px] border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20">
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-slate-200 bg-white p-0 shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
               <div className="flex items-start gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
                   <Lucide.UserPlus size={20} />
                 </span>
                 <div>
-                  <h3 className="text-xl font-semibold text-slate-950">Tạo người dùng</h3>
+                  <h3 id="create-user-title" className="text-xl font-semibold text-slate-950">Tạo người dùng</h3>
                   <p className="mt-1 text-sm text-slate-500">Mật khẩu mặc định: 123456</p>
                 </div>
               </div>
@@ -552,8 +551,7 @@ export const UserManagement = () => {
               </div>
             </form>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
     </div>
   );

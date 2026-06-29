@@ -38,7 +38,8 @@ const AboutPage = lazy(() => import('../pages/AboutPage').then((m) => ({ default
 const InteractionHistoryMonitoring = lazy(() => import('../pages/analytics/InteractionHistoryMonitoring').then((m) => ({ default: m.InteractionHistoryMonitoring })));
 
 const UserManagement = lazy(() => import('../pages/management/UserManagement').then((m) => ({ default: m.UserManagement })));
-const RoleManagement = lazy(() => import('../pages/management/RoleManagement').then((m) => ({ default: m.RoleManagement })));
+const FeedbackManagement = lazy(() => import('../pages/management/FeedbackManagement').then((m) => ({ default: m.FeedbackManagement })));
+const BookingManagement = lazy(() => import('../pages/management/BookingManagement').then((m) => ({ default: m.BookingManagement })));
 const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
 const IntegrationSettings = lazy(() => import('../pages/management/IntegrationSettings').then((m) => ({ default: m.IntegrationSettings })));
@@ -253,11 +254,20 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/management/roles" element={
+      <Route path="/management/feedbacks" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={['administrator']}>
             <DashboardLayout>
-              <RoleManagement />
+              <FeedbackManagement />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/bookings" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['administrator']}>
+            <DashboardLayout>
+              <BookingManagement />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

@@ -955,21 +955,33 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   if (currentRole === 'administrator') {
     const storageUsageValue = stats.storageUsage?.split(' ')[0] || '0';
-    const recentTickets = Array.isArray(tickets) ? tickets.slice(0, 4) : [];
+    const adminTickets = Array.isArray(tickets) ? tickets : [];
+    const recentTickets = adminTickets.slice(0, 4);
+    const openFeedbackCount = adminTickets.filter((ticket) => !['Resolved', 'Closed'].includes(ticket.status)).length;
     const adminMetrics = [
       {
-        label: 'Tài khoản hoạt động',
+        label: 'Tài khoản',
         value: stats.totalUsers || 0,
         helper: 'Người dùng toàn hệ thống',
         icon: Lucide.Users,
         tone: 'bg-blue-50 text-blue-700 border-blue-100',
+        to: '/management/users',
       },
       {
-        label: 'Sức khỏe API',
-        value: '99.98%',
-        helper: 'Gateway đang ổn định',
-        icon: Lucide.Activity,
-        tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        label: 'Feedback đang mở',
+        value: openFeedbackCount,
+        helper: 'Cần theo dõi xử lý',
+        icon: Lucide.MessageSquare,
+        tone: 'bg-amber-50 text-amber-700 border-amber-100',
+        to: '/management/feedbacks',
+      },
+      {
+        label: 'Booking / hóa đơn',
+        value: 0,
+        helper: 'Chờ kết nối dữ liệu',
+        icon: Lucide.Receipt,
+        tone: 'bg-violet-50 text-violet-700 border-violet-100',
+        to: '/management/bookings',
       },
       {
         label: 'Dung lượng DB',
@@ -977,28 +989,28 @@ export const Dashboard = () => {
         helper: 'Theo thống kê hệ thống',
         icon: Lucide.Database,
         tone: 'bg-cyan-50 text-cyan-700 border-cyan-100',
-      },
-      {
-        label: 'Phân loại AI',
-        value: 'Đang bật',
-        helper: 'Luồng phân loại đang bật',
-        icon: Lucide.Bot,
-        tone: 'bg-violet-50 text-violet-700 border-violet-100',
+        to: '/admin/performance',
       },
     ];
 
     const adminQuickLinks = [
       {
         title: 'Quản lý người dùng',
-        description: 'Kiểm soát tài khoản, trạng thái và quyền truy cập.',
+        description: 'Theo dõi tài khoản, trạng thái và vai trò truy cập.',
         to: '/management/users',
         icon: Lucide.Users,
       },
       {
-        title: 'Cấu hình SLA',
-        description: 'Thiết lập ngưỡng xử lý cho từng nhóm phản ánh.',
-        to: '/management/sla',
-        icon: Lucide.Gauge,
+        title: 'Quản lý feedback',
+        description: 'Giám sát phản ánh, trạng thái và tiến độ xử lý.',
+        to: '/management/feedbacks',
+        icon: Lucide.MessageSquare,
+      },
+      {
+        title: 'Quản lý booking',
+        description: 'Chuẩn bị luồng hóa đơn, thanh toán và booking.',
+        to: '/management/bookings',
+        icon: Lucide.Receipt,
       },
       {
         title: 'Nhật ký hệ thống',
@@ -1064,9 +1076,9 @@ export const Dashboard = () => {
               >
                 <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-blue-500">
                   <Lucide.KeyRound size={14} />
-                  Phân quyền
+                  Tài khoản
                 </div>
-                <div className="mt-2 text-sm font-black">Quản lý quyền</div>
+                <div className="mt-2 text-sm font-black">Quản lý người dùng</div>
               </Link>
             </div>
           </div>
@@ -1077,21 +1089,19 @@ export const Dashboard = () => {
             const Icon = metric.icon;
 
             return (
-              <div key={metric.label} className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+              <Link key={metric.label} to={metric.to} className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
                 <div className="flex items-start justify-between gap-3">
                   <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${metric.tone}`}>
                     <Icon size={20} />
                   </div>
-                  <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    Theo dõi
-                  </span>
+                  <Lucide.ArrowUpRight size={16} className="text-slate-300 transition group-hover:text-blue-600" />
                 </div>
                 <div className="mt-5 space-y-1">
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">{metric.label}</p>
-                  <p className="text-2xl font-black text-slate-950">{metric.value}</p>
-                  <p className="text-xs font-semibold text-slate-500">{metric.helper}</p>
+                  <p className="text-xs font-semibold text-slate-500">{metric.label}</p>
+                  <p className="text-2xl font-semibold text-slate-950">{metric.value}</p>
+                  <p className="text-xs font-medium text-slate-400">{metric.helper}</p>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </section>
@@ -1218,8 +1228,8 @@ export const Dashboard = () => {
                 <h3 className="text-base font-black text-slate-950">Phản ánh mới nhất</h3>
                 <p className="text-xs font-semibold text-slate-500">Dữ liệu tổng hợp để Admin giám sát luồng vận hành.</p>
               </div>
-              <Link to="/admin/performance" className="inline-flex items-center gap-1 text-xs font-black text-blue-700 hover:underline">
-                Xem hiệu năng
+              <Link to="/management/feedbacks" className="inline-flex items-center gap-1 text-xs font-black text-blue-700 hover:underline">
+                Quản lý feedback
                 <Lucide.ArrowRight size={14} />
               </Link>
             </div>
@@ -1304,7 +1314,7 @@ export const Dashboard = () => {
                 <div>
                   <p className="text-xs font-black">Gợi ý kiểm tra định kỳ</p>
                   <p className="mt-1 text-[11px] font-semibold leading-5 text-amber-700">
-                    Xem log hệ thống và SLA sau mỗi phiên cấu hình để đảm bảo flow xử lý không bị lệch.
+                    Theo dõi feedback, booking và nhật ký hệ thống sau mỗi phiên cấu hình để tránh lệch luồng vận hành.
                   </p>
                 </div>
               </div>

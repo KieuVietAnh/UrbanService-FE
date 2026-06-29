@@ -93,21 +93,21 @@ export const Sidebar = ({ isOpen, onClose }) => {
   return (
     <>
       <aside
-      className={`fixed inset-y-0 left-0 z-40 h-screen w-64 flex-shrink-0 transform border-r border-base-300 bg-base-200 transition-transform duration-300 lg:sticky lg:top-0 lg:self-start lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
+      className={`fixed inset-y-0 left-0 z-40 h-screen w-64 flex-shrink-0 transform border-r border-slate-200 bg-white transition-transform duration-300 lg:sticky lg:top-0 lg:self-start lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
     >
       <div className="flex h-full min-h-0 flex-col">
         {/* Logo Section */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-base-300">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-primary text-primary-content">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
               <Lucide.Cpu size={24} className="animate-pulse" />
             </div>
             <div>
-              <h1 className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              <h1 className="text-lg font-semibold tracking-tight text-slate-950">
                 UrbanMind
               </h1>
-              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">ECOSYSTEM</p>
+              <p className="text-xs font-medium text-slate-500">Smart City</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Đóng thanh điều hướng" title="Đóng menu" className="btn btn-sm btn-ghost lg:hidden">
@@ -116,7 +116,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         </div>
 
         {/* User Card */}
-        <div className="flex items-center gap-3 border-b border-base-300 bg-base-100/50 px-6 py-4">
+        <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50/70 px-5 py-4">
           <div className={showAvatarImage ? 'avatar' : 'avatar placeholder'}>
             {showAvatarImage ? (
               <div className="w-10 rounded-full ring-2 ring-primary ring-offset-base-100 ring-offset-2">
@@ -127,36 +127,36 @@ export const Sidebar = ({ isOpen, onClose }) => {
                 />
               </div>
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-secondary/15 text-primary ring-2 ring-primary ring-offset-base-100 ring-offset-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-100">
                 <span className="text-sm font-extrabold leading-none tracking-tight">{userInitials}</span>
               </div>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h4 className="truncate text-sm font-bold">{displayName}</h4>
-            <div className="badge badge-primary badge-xs mt-1 px-2 py-2 text-[10px] font-bold uppercase">
+            <h4 className="truncate text-sm font-semibold text-slate-950">{displayName}</h4>
+            <div className="mt-1 inline-flex rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-100">
               {getRoleNameVietnamese(currentRole)}
             </div>
           </div>
         </div>
 
         {/* Navigation Menu */}
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-4 py-4">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {menuItems.map((item, index) => (
             <NavLink
               key={index}
               to={item.path}
               onClick={onClose}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 group ${isActive
-                  ? 'bg-primary text-primary-content shadow-lg shadow-primary/20'
-                  : 'text-base-content/75 hover:bg-base-300/80 hover:text-base-content'
+                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors group ${isActive
+                  ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-100'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  {renderIcon(item.icon, isActive ? 'text-primary-content' : 'text-gray-400 group-hover:text-primary transition-colors')}
+                  {renderIcon(item.icon, isActive ? 'text-blue-700' : 'text-slate-400 group-hover:text-slate-700 transition-colors')}
                   <span>{item.name}</span>
                 </>
               )}
@@ -165,14 +165,14 @@ export const Sidebar = ({ isOpen, onClose }) => {
         </nav>
 
         {/* Footer Actions */}
-        <div className="shrink-0 border-t border-base-300 p-4">
+        <div className="shrink-0 border-t border-slate-200 p-4">
           <button
             type="button"
             onClick={handleLogoutClick}
-            className="btn btn-error btn-outline w-full gap-2 rounded-xl"
+            className="btn btn-outline w-full gap-2 rounded-xl border-slate-200 text-slate-700 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
           >
             <Lucide.LogOut size={18} />
-            Đăng Xuất
+            Đăng xuất
           </button>
         </div>
       </div>
@@ -180,15 +180,15 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
       {isLogoutModalOpen && (
         <div className="modal modal-open">
-          <div className="modal-box max-w-md rounded-[1.75rem] border border-base-300 bg-base-100 p-0 shadow-2xl">
-            <div className="border-b border-base-300 p-6">
+          <div className="modal-box max-w-md rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl">
+            <div className="border-b border-slate-200 p-6">
               <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-error/10 text-error">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-700">
                   <Lucide.LogOut size={22} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-base-content">Xác nhận đăng xuất</h3>
-                  <p className="mt-2 text-sm font-medium leading-6 text-base-content/60">
+                  <h3 className="text-lg font-semibold text-slate-950">Xác nhận đăng xuất</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
                     Bạn sẽ rời khỏi phiên làm việc hiện tại và cần đăng nhập lại để tiếp tục sử dụng UrbanMind.
                   </p>
                 </div>

@@ -47,18 +47,18 @@ export const DashboardLayout = ({ children }) => {
   const showFooter = !user || user?.role === 'service-user';
 
   return (
-    <div className="min-h-screen w-full flex-col bg-base-300 text-base-content font-sans">
+    <div className="min-h-screen w-full flex-col bg-slate-100 font-sans text-slate-900">
       <div className="flex min-h-screen w-full">
         {/* Sidebar navigation */}
         {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         {/* Main container */}
-        <div className="flex-1 flex flex-col w-full overflow-hidden bg-base-100">
+        <div className="flex w-full flex-1 flex-col overflow-hidden bg-slate-50">
           <Header onMenuToggle={toggleSidebar} />
 
           {/* Main scrollable workspace */}
-          <main className="min-h-[calc(100vh-120px)] flex-1 overflow-y-auto overflow-x-hidden bg-base-200 p-6">
-            <PageTransition className="max-w-7xl mx-auto space-y-6">
+          <main className="min-h-[calc(100vh-64px)] flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-5 sm:p-6">
+            <PageTransition className="mx-auto max-w-7xl space-y-6">
               {children}
             </PageTransition>
           </main>
@@ -72,7 +72,7 @@ export const DashboardLayout = ({ children }) => {
         onClick={toggleChat}
         aria-label="Mở trợ lý AI"
         title="Mở trợ lý AI"
-        className="fixed bottom-6 right-6 z-40 btn btn-circle btn-primary btn-lg shadow-xl shadow-primary/20 group hover:scale-105 transition-transform"
+        className="btn btn-circle btn-primary btn-lg group fixed bottom-6 right-6 z-40 shadow-lg shadow-blue-600/15 transition-transform hover:scale-105"
       >
         <Lucide.Sparkles size={24} className="group-hover:rotate-12 transition-transform" aria-hidden />
       </button>

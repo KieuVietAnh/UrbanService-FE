@@ -23,7 +23,8 @@ export const Header = ({ onMenuToggle }) => {
 
       management: 'Cấu hình quản trị',
       users: 'Quản lý người dùng',
-      roles: 'Quản lý vai trò',
+      feedbacks: 'Quản lý feedback',
+      bookings: 'Quản lý booking',
       categories: 'Cấu hình danh mục',
       sla: 'Cấu hình SLA',
       integrations: 'Cấu hình tích hợp',
@@ -51,7 +52,7 @@ export const Header = ({ onMenuToggle }) => {
 
     if (location.pathname === '/dashboard') {
       return (
-        <span className="font-bold text-base-content">
+        <span className="font-semibold text-slate-950">
           Tổng quan hệ thống
         </span>
       );
@@ -72,7 +73,7 @@ export const Header = ({ onMenuToggle }) => {
       <div className="flex items-center gap-1.5">
         <Link
           to="/dashboard"
-          className="font-semibold text-base-content/45 transition-colors hover:text-primary"
+          className="font-medium text-slate-500 transition-colors hover:text-blue-700"
         >
           Tổng quan hệ thống
         </Link>
@@ -84,11 +85,11 @@ export const Header = ({ onMenuToggle }) => {
 
           return (
             <span key={`${path}-${idx}`} className="flex items-center gap-1.5">
-              <Lucide.ChevronRight size={14} className="text-base-content/30" />
+              <Lucide.ChevronRight size={14} className="text-slate-300" />
               <span
                 className={
                   idx === visiblePaths.length - 1
-                    ? 'font-bold text-base-content'
+                    ? 'font-semibold text-slate-950'
                     : 'font-semibold text-base-content/45'
                 }
               >
@@ -104,19 +105,19 @@ export const Header = ({ onMenuToggle }) => {
   const isCitizen = user?.role === 'service-user';
 
   return (
-    <header className="navbar bg-base-100 border-b border-base-300 px-6 py-3 h-16 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+    <header className="navbar sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
       {/* Left section: Brand Logo for Citizen or Hamburger for Staff */}
       <div className="flex items-center gap-4">
         {isCitizen ? (
           <button aria-label="Trang chính" title="Trang chính" className="flex items-center gap-2 mr-6" onClick={() => navigate('/dashboard')}>
-            <div className="p-1.5 rounded-lg bg-primary text-primary-content">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
               <Lucide.Cpu size={20} className="animate-pulse" aria-hidden />
             </div>
             <div>
-              <h1 className="font-extrabold text-base tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent leading-none">
+              <h1 className="text-base font-semibold tracking-tight text-slate-950 leading-none">
                 UrbanMind
               </h1>
-              <p className="text-[8px] text-gray-500 uppercase tracking-widest font-semibold mt-0.5">CITIZEN PORTAL</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-500">Citizen portal</p>
             </div>
           </button>
         ) : (
@@ -124,7 +125,7 @@ export const Header = ({ onMenuToggle }) => {
             <button aria-label="Mở menu" title="Mở menu" onClick={onMenuToggle} className="btn btn-ghost btn-square lg:hidden">
               <Lucide.Menu size={20} aria-hidden="true" />
             </button>
-            <div className="hidden sm:flex items-center gap-1 text-sm font-semibold">
+            <div className="hidden items-center gap-1 text-sm font-medium sm:flex">
               {getBreadcrumbs()}
             </div>
           </>
@@ -137,7 +138,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/dashboard"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-sm font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -146,7 +147,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/tickets/create"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-sm font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -156,7 +157,7 @@ export const Header = ({ onMenuToggle }) => {
             to="/tickets"
             end
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-sm font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -165,7 +166,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/community/feed"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-sm font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -174,7 +175,7 @@ export const Header = ({ onMenuToggle }) => {
           <NavLink
             to="/community/map"
             className={({ isActive }) =>
-              `px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'
+              `px-3 py-2 rounded-xl text-sm font-medium transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
               }`
             }
           >
@@ -184,7 +185,7 @@ export const Header = ({ onMenuToggle }) => {
       )}
 
       {/* Right section: Notification, User Profile */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <ThemeToggle className="mr-2" />
         <NotificationBell />
 
@@ -201,20 +202,20 @@ export const Header = ({ onMenuToggle }) => {
                 {user.fullName}
               </li>
               <li>
-                <button onClick={() => navigate('/profile')} className="py-2.5 text-xs font-bold flex gap-2 items-center">
+                <button onClick={() => navigate('/profile')} className="flex items-center gap-2 py-2.5 text-sm font-medium">
                   <Lucide.User size={14} />
                   Trang cá nhân
                 </button>
               </li>
               <li>
-                <button onClick={() => navigate('/settings')} className="py-2.5 text-xs font-bold flex gap-2 items-center">
+                <button onClick={() => navigate('/settings')} className="flex items-center gap-2 py-2.5 text-sm font-medium">
                   <Lucide.Settings size={14} />
                   Cài đặt
                 </button>
               </li>
               <div className="divider my-0"></div>
               <li>
-                <button onClick={async () => { await logout(); navigate('/login'); }} className="py-2.5 text-xs font-bold text-error flex gap-2 items-center">
+                <button onClick={async () => { await logout(); navigate('/login'); }} className="flex items-center gap-2 py-2.5 text-sm font-medium text-error">
                   <Lucide.LogOut size={14} />
                   Đăng xuất
                 </button>
