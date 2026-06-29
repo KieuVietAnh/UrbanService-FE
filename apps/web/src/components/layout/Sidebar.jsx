@@ -93,7 +93,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
   return (
     <>
       <aside
-      className={`fixed inset-y-0 left-0 z-40 h-screen w-64 flex-shrink-0 transform border-r border-base-300 bg-base-200 transition-transform duration-300 lg:static lg:inset-auto lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
+      className={`fixed inset-y-0 left-0 z-40 h-screen w-64 flex-shrink-0 transform border-r border-base-300 bg-base-200 transition-transform duration-300 lg:sticky lg:top-0 lg:self-start lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
     >
       <div className="flex h-full min-h-0 flex-col">
