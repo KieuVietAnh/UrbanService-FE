@@ -2,11 +2,12 @@
 export default [
   { name: 'Tổng Quan Hệ Thống', path: '/dashboard', icon: 'LayoutDashboard' },
   { name: 'Quản Lý Người Dùng', path: '/management/users', icon: 'Users2' },
-  { name: 'Quản Lý Vai Trò', path: '/management/roles', icon: 'ShieldCheck' },
+  { name: 'Quản Lý Feedback', path: '/management/feedbacks', icon: 'MessageSquare' },
+  { name: 'Quản Lý Booking', path: '/management/bookings', icon: 'Receipt' },
   { name: 'Cấu Hình Danh Mục', path: '/management/categories', icon: 'FolderKanban' },
   { name: 'Cấu Hình SLA', path: '/management/sla', icon: 'Clock' },
   { name: 'Cấu Hình Tích Hợp', path: '/management/integrations', icon: 'Link2' },
   { name: 'Nhật Ký Hệ Thống', path: '/admin/audit', icon: 'FileClock' },
   { name: 'Hiệu Năng & Logs', path: '/admin/performance', icon: 'Activity' },
-  { name: 'Cài Đặt', path: '/settings', icon: 'Settings' }
+  { name: 'Cài Đặt', path: '/settings', icon: 'Settings' },
 ];

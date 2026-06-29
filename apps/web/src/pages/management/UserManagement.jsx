@@ -2,41 +2,42 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api/userApi';
-import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 const ROLE_META = {
   'service-user': {
     label: 'Cư dân',
-    description: 'Gửi và theo dõi phản ánh',
-    className: 'bg-blue-50 text-blue-700 border-blue-200',
+    className: 'bg-blue-50 text-blue-700 ring-blue-100',
   },
   'system-staff': {
-    label: 'Nhân viên hệ thống',
-    description: 'Tiếp nhận và điều phối phản ánh',
-    className: 'bg-violet-50 text-violet-700 border-violet-200',
+    label: 'Nhân viên tiếp nhận',
+    className: 'bg-violet-50 text-violet-700 ring-violet-100',
   },
   'service-provider': {
     label: 'Đơn vị xử lý',
-    description: 'Cập nhật tiến độ xử lý hiện trường',
-    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    className: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
   },
   'interaction-manager': {
     label: 'Quản lý tương tác',
-    description: 'Theo dõi chất lượng tương tác',
-    className: 'bg-amber-50 text-amber-700 border-amber-200',
+    className: 'bg-amber-50 text-amber-700 ring-amber-100',
   },
   administrator: {
     label: 'Quản trị viên',
-    description: 'Quản trị toàn hệ thống',
-    className: 'bg-primary/10 text-primary border-primary/20',
+    className: 'bg-slate-100 text-slate-700 ring-slate-200',
   },
 };
 
+const roleOptions = [
+  { value: 'service-user', label: 'Cư dân' },
+  { value: 'system-staff', label: 'Nhân viên tiếp nhận' },
+  { value: 'service-provider', label: 'Đơn vị xử lý' },
+  { value: 'interaction-manager', label: 'Quản lý tương tác' },
+  { value: 'administrator', label: 'Quản trị viên' },
+];
+
 const getRoleMeta = (role) => ROLE_META[role] || {
   label: role || 'Không xác định',
-  description: 'Chưa có mô tả vai trò',
-  className: 'bg-base-200 text-base-content/70 border-base-300',
+  className: 'bg-slate-100 text-slate-600 ring-slate-200',
 };
 
 const getInitials = (name = '') => {
@@ -45,13 +46,67 @@ const getInitials = (name = '') => {
   return words.slice(-2).map((word) => word[0]).join('').toUpperCase();
 };
 
+const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate' }) => {
+  const toneClass = {
+    slate: 'bg-slate-100 text-slate-700 ring-slate-200',
+    blue: 'bg-blue-50 text-blue-700 ring-blue-100',
+    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    rose: 'bg-rose-50 text-rose-700 ring-rose-100',
+  }[tone];
+
+  return (
+    <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
+          {helper && <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>}
+        </div>
+        <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ${toneClass}`}>
+          <Icon size={20} />
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const ToastMessage = ({ type, text, onClose }) => {
+  if (!text) return null;
+
+  const isError = type === 'error';
+
+  return (
+    <div className="fixed right-6 top-20 z-50 w-[min(420px,calc(100vw-32px))]">
+      <div className={`rounded-2xl border bg-white p-4 shadow-2xl shadow-slate-900/10 ${isError ? 'border-rose-200' : 'border-emerald-200'}`}>
+        <div className="flex items-start gap-3">
+          <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isError ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+            {isError ? <Lucide.AlertCircle size={18} /> : <Lucide.CheckCircle2 size={18} />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-950">{isError ? 'Có lỗi xảy ra' : 'Thành công'}</p>
+            <p className="mt-1 text-sm leading-5 text-slate-500">{text}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Đóng thông báo"
+          >
+            <Lucide.X size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const UserManagement = () => {
   const { user: currentAdmin } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [searchTerm, setSearchTerm] = useState('');
 
-  // Form states to create user
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,8 +120,11 @@ export const UserManagement = () => {
     try {
       const res = await userApi.getUsers();
       setUsers(Array.isArray(res) ? res : []);
+      setMessage((prev) => (prev.type === 'error' ? { type: '', text: '' } : prev));
     } catch (err) {
       console.error(err);
+      setUsers([]);
+      setMessage({ type: 'error', text: 'Không thể tải danh sách người dùng.' });
     } finally {
       setLoading(false);
     }
@@ -80,33 +138,36 @@ export const UserManagement = () => {
     const total = users.length;
     const active = users.filter((item) => item.isActive).length;
     const locked = users.filter((item) => !item.isActive).length;
-    const adminCount = users.filter((item) => item.role === 'administrator').length;
     const operatorCount = users.filter((item) => item.role === 'service-provider').length;
 
-    return {
-      total,
-      active,
-      locked,
-      adminCount,
-      operatorCount,
-      activeRate: total > 0 ? Math.round((active / total) * 100) : 0,
-    };
+    return { total, active, locked, operatorCount };
   }, [users]);
 
-  const roleDistribution = useMemo(() => {
-    return Object.entries(ROLE_META).map(([roleKey, meta]) => ({
-      role: roleKey,
-      label: meta.label,
-      count: users.filter((item) => item.role === roleKey).length,
-      className: meta.className,
-    }));
-  }, [users]);
+  const filteredUsers = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return users;
+
+    return users.filter((item) => {
+      const roleMeta = getRoleMeta(item.role);
+      return [item.fullName, item.email, item.phoneNumber, roleMeta.label]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword));
+    });
+  }, [users, searchTerm]);
+
+  const resetCreateForm = () => {
+    setFullName('');
+    setEmail('');
+    setPhone('');
+    setRole('service-user');
+    setOperatorId('1');
+  };
 
   const handleToggleStatus = async (userId, currentActive) => {
     try {
       await userApi.updateUserStatus(userId, !currentActive, currentAdmin?.userId);
       fetchUsers();
-      setMessage({ type: 'success', text: 'Đã cập nhật trạng thái tài khoản thành công.' });
+      setMessage({ type: 'success', text: 'Đã cập nhật trạng thái tài khoản.' });
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: err?.message || 'Lỗi khi cập nhật trạng thái tài khoản.' });
@@ -116,6 +177,7 @@ export const UserManagement = () => {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!fullName || !email || !phone) return;
+
     setCreateLoading(true);
     try {
       await userApi.createUser({
@@ -123,18 +185,12 @@ export const UserManagement = () => {
         email,
         phoneNumber: phone,
         role,
-        operatorId: role === 'service-provider' ? Number(operatorId) : null
+        operatorId: role === 'service-provider' ? Number(operatorId) : null,
       }, currentAdmin?.userId);
 
-      setMessage({ type: 'success', text: 'Tạo người dùng mới thành công! Mật khẩu mặc định là: 123456' });
+      setMessage({ type: 'success', text: 'Tạo người dùng thành công. Mật khẩu mặc định: 123456.' });
       setShowCreateModal(false);
-
-      // Reset
-      setFullName('');
-      setEmail('');
-      setPhone('');
-      setRole('service-user');
-
+      resetCreateForm();
       fetchUsers();
     } catch (err) {
       setMessage({ type: 'error', text: err.message || 'Lỗi khi tạo tài khoản.' });
@@ -143,405 +199,328 @@ export const UserManagement = () => {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {message.type === 'success' && (
-        <SuccessAlert
-          message={message.text}
-          onClose={() => setMessage({ type: '', text: '' })}
-        />
-      )}
-      {message.type === 'error' && (
-        <ErrorAlert
-          message={message.text}
-          onClose={() => setMessage({ type: '', text: '' })}
-        />
-      )}
-      <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
-        <div className="relative p-6 sm:p-8">
-          <div className="absolute inset-y-0 right-0 hidden w-1/2 bg-gradient-to-l from-primary/10 via-primary/5 to-transparent lg:block" />
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
-                <Lucide.UsersRound size={14} />
-                Quản trị tài khoản
-              </div>
-              <div>
-                <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
-                  Quản lý người dùng
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-base-content/60">
-                  Theo dõi tài khoản, vai trò truy cập và trạng thái hoạt động của người dùng trong hệ thống UrbanMind.
-                </p>
-              </div>
-            </div>
+  const hasLoadError = message.type === 'error' && users.length === 0 && !loading;
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                type="button"
-                onClick={fetchUsers}
-                className="btn btn-outline rounded-2xl text-xs font-black"
-                disabled={loading}
-              >
-                <Lucide.RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
-                Làm mới
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(true)}
-                className="btn btn-primary rounded-2xl text-xs font-black shadow-lg shadow-primary/20"
-              >
-                <Lucide.UserPlus size={16} />
-                Tạo người dùng mới
-              </button>
+  return (
+    <div className="space-y-6 text-slate-700">
+      <ToastMessage
+        type={message.type}
+        text={message.text}
+        onClose={() => setMessage({ type: '', text: '' })}
+      />
+
+      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
+
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+              <Lucide.UsersRound size={22} />
             </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+                Quản lý người dùng
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                Quản lý tài khoản, vai trò và trạng thái truy cập trong hệ thống.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:self-center">
+            <button
+              type="button"
+              onClick={fetchUsers}
+              className="btn btn-outline h-11 rounded-xl border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              disabled={loading}
+            >
+              <Lucide.RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+              Làm mới
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="btn h-11 rounded-xl border-0 bg-blue-600 px-4 text-sm font-medium text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"
+            >
+              <Lucide.UserPlus size={16} />
+              Tạo người dùng
+            </button>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-[1.6rem] border border-base-300 bg-base-100 p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-base-content/45">Tổng tài khoản</p>
-              <p className="mt-3 text-3xl font-black text-base-content">{stats.total}</p>
-              <p className="mt-1 text-xs font-semibold text-base-content/50">Toàn bộ người dùng hệ thống</p>
-            </div>
-            <span className="rounded-2xl bg-primary/10 p-3 text-primary">
-              <Lucide.Users size={20} />
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-[1.6rem] border border-emerald-100 bg-emerald-50/60 p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700/70">Đang hoạt động</p>
-              <p className="mt-3 text-3xl font-black text-emerald-700">{stats.active}</p>
-              <p className="mt-1 text-xs font-semibold text-emerald-700/60">{stats.activeRate}% tài khoản khả dụng</p>
-            </div>
-            <span className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
-              <Lucide.UserCheck size={20} />
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-[1.6rem] border border-rose-100 bg-rose-50/60 p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-rose-700/70">Đã khóa</p>
-              <p className="mt-3 text-3xl font-black text-rose-700">{stats.locked}</p>
-              <p className="mt-1 text-xs font-semibold text-rose-700/60">Tài khoản đang bị vô hiệu hóa</p>
-            </div>
-            <span className="rounded-2xl bg-rose-100 p-3 text-rose-700">
-              <Lucide.UserX size={20} />
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-[1.6rem] border border-base-300 bg-base-100 p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-base-content/45">Quyền quản trị</p>
-              <p className="mt-3 text-3xl font-black text-base-content">{stats.adminCount}</p>
-              <p className="mt-1 text-xs font-semibold text-base-content/50">{stats.operatorCount} tài khoản đơn vị xử lý</p>
-            </div>
-            <span className="rounded-2xl bg-violet-50 p-3 text-violet-700">
-              <Lucide.ShieldCheck size={20} />
-            </span>
-          </div>
-        </div>
+        <StatCard icon={Lucide.Users} label="Tổng tài khoản" value={stats.total} helper="Tất cả người dùng" tone="blue" />
+        <StatCard icon={Lucide.UserCheck} label="Đang hoạt động" value={stats.active} helper="Có thể đăng nhập" tone="emerald" />
+        <StatCard icon={Lucide.UserX} label="Đã khóa" value={stats.locked} helper="Đang bị vô hiệu hóa" tone="rose" />
+        <StatCard icon={Lucide.Wrench} label="Đơn vị xử lý" value={stats.operatorCount} helper="Tài khoản vận hành" tone="slate" />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="overflow-hidden rounded-[1.8rem] border border-base-300 bg-base-100 shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-base-300 bg-base-100 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-lg font-black text-base-content">Danh sách tài khoản</h3>
-              <p className="mt-1 text-xs font-semibold text-base-content/55">
-                Kiểm soát trạng thái truy cập và vai trò của từng người dùng.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-base-300 bg-base-200 px-4 py-2 text-xs font-bold text-base-content/60">
-              {stats.total} tài khoản
-            </div>
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Danh sách tài khoản</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {loading ? 'Đang tải dữ liệu...' : `${filteredUsers.length}/${stats.total} tài khoản`}
+            </p>
           </div>
 
-          {loading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-24 text-base-content/60">
-              <span className="loading loading-spinner loading-lg text-primary"></span>
-              <p className="text-sm font-bold">Đang tải danh sách người dùng...</p>
+          <div className="relative w-full lg:w-80">
+            <Lucide.Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm tên, email, số điện thoại..."
+              className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm focus:border-blue-500 focus:bg-white focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-500">
+            <span className="loading loading-spinner loading-lg text-blue-600" />
+            <p className="text-sm font-medium">Đang tải danh sách...</p>
+          </div>
+        ) : hasLoadError ? (
+          <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
+              <Lucide.WifiOff size={28} />
             </div>
-          ) : users.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
-              <div className="rounded-3xl bg-base-200 p-5 text-base-content/50">
-                <Lucide.UsersRound size={34} />
-              </div>
-              <h3 className="mt-4 text-lg font-black text-base-content">Chưa có tài khoản nào</h3>
-              <p className="mt-2 max-w-md text-sm font-medium text-base-content/55">
-                Tạo người dùng mới để bắt đầu phân quyền truy cập hệ thống.
-              </p>
+            <h3 className="mt-4 text-lg font-semibold text-slate-950">Không thể tải danh sách</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+              Kiểm tra kết nối API hoặc thử làm mới dữ liệu.
+            </p>
+            <button
+              type="button"
+              onClick={fetchUsers}
+              className="btn btn-outline mt-5 rounded-xl text-sm font-medium"
+            >
+              <Lucide.RefreshCcw size={16} />
+              Thử lại
+            </button>
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 ring-1 ring-slate-200">
+              <Lucide.UsersRound size={28} />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-slate-950">
+              {searchTerm ? 'Không tìm thấy tài khoản' : 'Chưa có tài khoản'}
+            </h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+              {searchTerm ? 'Thử tìm bằng từ khóa khác.' : 'Tạo người dùng đầu tiên để bắt đầu phân quyền truy cập.'}
+            </p>
+            {!searchTerm && (
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="btn btn-primary mt-5 rounded-2xl text-xs font-black"
+                className="btn mt-5 rounded-xl border-0 bg-blue-600 text-sm font-medium text-white hover:bg-blue-700"
               >
                 <Lucide.UserPlus size={16} />
-                Tạo người dùng mới
+                Tạo người dùng
               </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="table w-full min-w-[860px] text-xs">
-                <thead>
-                  <tr className="border-b border-base-300 bg-base-200/70 text-[10px] font-black uppercase tracking-[0.18em] text-base-content/45">
-                    <th className="px-5 py-4">Người dùng</th>
-                    <th className="px-5 py-4">Liên hệ</th>
-                    <th className="px-5 py-4">Vai trò</th>
-                    <th className="px-5 py-4">Trạng thái</th>
-                    <th className="px-5 py-4 text-right">Hành động</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-base-300">
-                  {users.map((u) => {
-                    const roleMeta = getRoleMeta(u.role);
-                    const isCurrentAdmin = u.userId === currentAdmin?.userId;
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table w-full min-w-[880px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold text-slate-500">
+                  <th className="px-6 py-4">Người dùng</th>
+                  <th className="px-6 py-4">Vai trò</th>
+                  <th className="px-6 py-4">Trạng thái</th>
+                  <th className="px-6 py-4 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredUsers.map((u) => {
+                  const roleMeta = getRoleMeta(u.role);
+                  const isCurrentAdmin = u.userId === currentAdmin?.userId;
 
-                    return (
-                      <tr key={u.userId} className="transition-colors hover:bg-base-200/60">
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            {u.avatarUrl ? (
-                              <div className="avatar">
-                                <div className="h-11 w-11 rounded-2xl ring-1 ring-base-300">
-                                  <img src={u.avatarUrl} alt={u.fullName || 'Avatar'} />
-                                </div>
+                  return (
+                    <tr key={u.userId} className="transition-colors hover:bg-slate-50/80">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {u.avatarUrl ? (
+                            <div className="avatar">
+                              <div className="h-11 w-11 rounded-xl ring-1 ring-slate-200">
+                                <img src={u.avatarUrl} alt={u.fullName || 'Avatar'} />
                               </div>
-                            ) : (
-                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-sm font-black text-primary ring-1 ring-primary/10">
-                                {getInitials(u.fullName)}
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-black text-base-content">{u.fullName}</span>
-                                {isCurrentAdmin && (
-                                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-black uppercase text-primary">
-                                    Bạn
-                                  </span>
-                                )}
-                              </div>
-                              <span className="mt-1 block max-w-[260px] truncate text-[11px] font-semibold text-base-content/45">
-                                ID: {u.userId}
+                            </div>
+                          ) : (
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-sm font-semibold text-blue-700 ring-1 ring-blue-100">
+                              {getInitials(u.fullName)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-slate-950">{u.fullName || 'Chưa có tên'}</span>
+                              {isCurrentAdmin && (
+                                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">
+                                  Bạn
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
+                              <span className="inline-flex items-center gap-1.5">
+                                <Lucide.Mail size={14} />
+                                {u.email || 'Chưa có email'}
+                              </span>
+                              <span className="inline-flex items-center gap-1.5">
+                                <Lucide.Phone size={14} />
+                                {u.phoneNumber || 'Chưa có SĐT'}
                               </span>
                             </div>
                           </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="space-y-1.5 font-semibold text-base-content/60">
-                            <div className="flex items-center gap-2">
-                              <Lucide.Mail size={14} className="text-base-content/35" />
-                              <span className="max-w-[220px] truncate">{u.email || 'Chưa có email'}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Lucide.Phone size={14} className="text-base-content/35" />
-                              <span>{u.phoneNumber || 'Chưa có SĐT'}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className={`inline-flex max-w-[220px] items-center gap-2 rounded-2xl border px-3 py-2 ${roleMeta.className}`}>
-                            <Lucide.BadgeCheck size={14} />
-                            <div>
-                              <p className="text-[11px] font-black leading-none">{roleMeta.label}</p>
-                              <p className="mt-1 text-[10px] font-semibold opacity-70">{roleMeta.description}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-black uppercase ${u.isActive
-                              ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
-                              : 'bg-rose-50 text-rose-700 ring-1 ring-rose-100'
-                            }`}>
-                            <span className={`h-2 w-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                            {u.isActive ? 'Hoạt động' : 'Đã khóa'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          {isCurrentAdmin ? (
-                            <span className="text-[11px] font-bold text-base-content/40">Tài khoản hiện tại</span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStatus(u.userId, u.isActive)}
-                              className={`btn btn-sm rounded-xl text-[11px] font-black ${u.isActive ? 'btn-outline btn-error' : 'btn-primary'
-                                }`}
-                            >
-                              {u.isActive ? (
-                                <>
-                                  <Lucide.Lock size={14} />
-                                  Khóa
-                                </>
-                              ) : (
-                                <>
-                                  <Lucide.Unlock size={14} />
-                                  Mở khóa
-                                </>
-                              )}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <aside className="space-y-6">
-          <div className="rounded-[1.8rem] border border-base-300 bg-base-100 p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-black text-base-content">Phân bổ vai trò</h3>
-                <p className="mt-1 text-xs font-semibold text-base-content/50">Tổng quan cơ cấu tài khoản.</p>
-              </div>
-              <span className="rounded-2xl bg-primary/10 p-3 text-primary">
-                <Lucide.PieChart size={18} />
-              </span>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {roleDistribution.map((item) => (
-                <div key={item.role} className="rounded-2xl border border-base-300 bg-base-200/40 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-black text-base-content">{item.label}</span>
-                    <span className="text-sm font-black text-base-content">{item.count}</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-base-300">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${stats.total > 0 ? Math.max((item.count / stats.total) * 100, item.count > 0 ? 8 : 0) : 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${roleMeta.className}`}>
+                          {roleMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${u.isActive
+                          ? 'bg-emerald-50 text-emerald-700 ring-emerald-100'
+                          : 'bg-rose-50 text-rose-700 ring-rose-100'
+                        }`}>
+                          <span className={`h-2 w-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          {u.isActive ? 'Hoạt động' : 'Đã khóa'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {isCurrentAdmin ? (
+                          <span className="text-sm text-slate-400">Tài khoản hiện tại</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStatus(u.userId, u.isActive)}
+                            className={`btn btn-sm rounded-xl text-sm font-medium ${u.isActive ? 'btn-outline btn-error' : 'btn-primary'}`}
+                          >
+                            {u.isActive ? (
+                              <>
+                                <Lucide.Lock size={14} />
+                                Khóa
+                              </>
+                            ) : (
+                              <>
+                                <Lucide.Unlock size={14} />
+                                Mở khóa
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-
-          <div className="rounded-[1.8rem] border border-amber-200 bg-amber-50 p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <span className="rounded-2xl bg-amber-100 p-3 text-amber-700">
-                <Lucide.Info size={18} />
-              </span>
-              <div>
-                <h3 className="text-sm font-black text-amber-900">Lưu ý phân quyền</h3>
-                <p className="mt-2 text-xs font-semibold leading-5 text-amber-800/80">
-                  Tài khoản đơn vị xử lý cần được gắn đúng đơn vị vận hành để nhận nhiệm vụ phù hợp.
-                </p>
-              </div>
-            </div>
-          </div>
-        </aside>
+        )}
       </section>
 
-      {/* CREATE USER MODAL */}
       {showCreateModal && (
-        <div className="modal modal-open">
-          <div className="modal-box max-w-2xl rounded-[2rem] border border-base-300 p-0 shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-base-300 bg-base-100 p-6">
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-user-title"
+        >
+          <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]" />
+
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-slate-200 bg-white p-0 shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
               <div className="flex items-start gap-3">
-                <span className="rounded-2xl bg-primary/10 p-3 text-primary">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
                   <Lucide.UserPlus size={20} />
                 </span>
                 <div>
-                  <h3 className="text-lg font-black text-base-content">Tạo người dùng hệ thống</h3>
-                  <p className="mt-1 text-xs font-semibold text-base-content/55">
-                    Mật khẩu mặc định sau khi tạo tài khoản là 123456.
-                  </p>
+                  <h3 id="create-user-title" className="text-xl font-semibold text-slate-950">Tạo người dùng</h3>
+                  <p className="mt-1 text-sm text-slate-500">Mật khẩu mặc định: 123456</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
                 className="btn btn-ghost btn-sm btn-circle"
+                aria-label="Đóng"
               >
                 <Lucide.X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} className="space-y-5 p-6 text-xs">
+            <form onSubmit={handleCreateUser} className="space-y-5 p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="form-control sm:col-span-2">
                   <label className="label">
-                    <span className="label-text text-xs font-black">Họ và tên *</span>
+                    <span className="label-text text-sm font-medium text-slate-700">Họ và tên *</span>
                   </label>
                   <input
                     type="text"
                     placeholder="Ví dụ: Trần Quốc Toản"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="input input-bordered h-11 w-full rounded-2xl text-sm font-semibold"
+                    className="input input-bordered h-11 w-full rounded-xl text-sm"
                     required
                   />
                 </div>
 
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text text-xs font-black">Email đăng nhập *</span>
+                    <span className="label-text text-sm font-medium text-slate-700">Email *</span>
                   </label>
                   <input
                     type="email"
                     placeholder="account@urbanmind.vn"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="input input-bordered h-11 w-full rounded-2xl text-sm font-semibold"
+                    className="input input-bordered h-11 w-full rounded-xl text-sm"
                     required
                   />
                 </div>
 
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text text-xs font-black">Số điện thoại *</span>
+                    <span className="label-text text-sm font-medium text-slate-700">Số điện thoại *</span>
                   </label>
                   <input
                     type="tel"
                     placeholder="09XXXXXXXX"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="input input-bordered h-11 w-full rounded-2xl text-sm font-semibold"
+                    className="input input-bordered h-11 w-full rounded-xl text-sm"
                     required
                   />
                 </div>
 
                 <div className="form-control sm:col-span-2">
                   <label className="label">
-                    <span className="label-text text-xs font-black">Vai trò phân nhiệm *</span>
+                    <span className="label-text text-sm font-medium text-slate-700">Vai trò *</span>
                   </label>
                   <select
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
-                    className="select select-bordered h-11 rounded-2xl text-sm font-bold"
+                    className="select select-bordered h-11 rounded-xl text-sm"
                     required
                   >
-                    <option value="service-user">Resident (Người dân)</option>
-                    <option value="system-staff">System Staff (Nhân viên)</option>
-                    <option value="service-provider">Service Provider (Đội kỹ thuật)</option>
-                    <option value="interaction-manager">Interaction Manager (Quản lý)</option>
-                    <option value="administrator">Administrator (Quản trị viên)</option>
+                    {roleOptions.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
                   </select>
                 </div>
 
                 {role === 'service-provider' && (
                   <div className="form-control sm:col-span-2">
                     <label className="label">
-                      <span className="label-text text-xs font-black">Gắn đơn vị vận hành công ích</span>
+                      <span className="label-text text-sm font-medium text-slate-700">Đơn vị vận hành</span>
                     </label>
                     <select
                       value={operatorId}
                       onChange={(e) => setOperatorId(e.target.value)}
-                      className="select select-bordered h-11 rounded-2xl text-sm font-bold"
+                      className="select select-bordered h-11 rounded-xl text-sm"
                     >
                       <option value="1">Đơn vị Điện chiếu sáng</option>
                       <option value="2">Đơn vị Thu gom Rác thải</option>
@@ -553,24 +532,20 @@ export const UserManagement = () => {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-base-300 bg-base-200/60 p-4 text-xs font-semibold leading-5 text-base-content/60">
-                Sau khi tạo, Admin có thể khóa/mở khóa tài khoản trực tiếp trong danh sách người dùng.
-              </div>
-
-              <div className="flex flex-col-reverse gap-2 border-t border-base-300 pt-5 sm:flex-row sm:justify-end">
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="btn btn-ghost rounded-2xl text-xs font-black"
+                  className="btn btn-ghost rounded-xl text-sm font-medium"
                 >
-                  Hủy bỏ
+                  Hủy
                 </button>
                 <button
                   type="submit"
-                  className="btn btn-primary rounded-2xl text-xs font-black"
+                  className="btn rounded-xl border-0 bg-blue-600 text-sm font-medium text-white hover:bg-blue-700"
                   disabled={createLoading}
                 >
-                  {createLoading ? <span className="loading loading-spinner"></span> : <Lucide.UserPlus size={16} />}
+                  {createLoading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.UserPlus size={16} />}
                   Thêm tài khoản
                 </button>
               </div>
