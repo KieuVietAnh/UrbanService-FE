@@ -8,6 +8,8 @@ const validPassword = 'nguyenhuugiau';
 const invalidEmail = 'invalid@test.com';
 const invalidPassword = 'wrongpass';
 
+const logoutText = /đăng\s*xuất/i;
+
 test.describe('Authentication', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
@@ -30,36 +32,51 @@ test.describe('Authentication', () => {
   test('Logout', async ({ page }) => {
     const loginPage = new LoginPage(page);
     await loginPage.login(validEmail, validPassword);
-    await page.waitForURL('**/dashboard');
+    await expect(page).toHaveURL(/dashboard|\/tickets|\/staff\/queue|\/provider\/tasks|\/manager\/interactions|\/admin\/audit/);
 
-    const logoutButton = page.locator('button', { hasText: /đăng xuất/i }).first();
-    if (!(await logoutButton.isVisible())) {
-      const avatarToggle = page.locator('label.btn.btn-ghost.btn-circle.avatar').first();
-      if (await avatarToggle.isVisible()) {
-        await avatarToggle.click();
-      } else {
-        const sidebarLogout = page.locator('button', { hasText: /đăng xuất/i }).first();
-        // Try a DOM-eval fallback for cases where Playwright sees the button but it's not interactable (webkit)
-        const clicked = await page.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button'));
-          const b = btns.find(el => el.textContent && el.textContent.toLowerCase().includes('đăng xuất'));
-          if (b) {
-            b.click();
-            return true;
-          }
-          return false;
-        });
-        if (!clicked) {
-          await sidebarLogout.waitFor({ state: 'visible', timeout: 5000 });
-          await sidebarLogout.click();
+    const openUserMenuIfPresent = async () => {
+      const userMenuTriggers = [
+        page.getByRole('button', { name: /menu người dùng/i }),
+        page.locator('button[title="Menu người dùng"]').first(),
+        page.locator('button.avatar').first(),
+        page.locator('label.btn.btn-ghost.btn-circle.avatar').first(),
+      ];
+
+      for (const trigger of userMenuTriggers) {
+        if (await trigger.isVisible({ timeout: 500 }).catch(() => false)) {
+          await trigger.click();
+          return true;
         }
-        await expect(page).toHaveURL(/\/login/);
-        return;
       }
-      await logoutButton.waitFor({ state: 'visible', timeout: 5000 });
+
+      return false;
+    };
+
+    const clickVisibleLogout = async () => {
+      const logoutButton = page.getByRole('button', { name: logoutText }).last();
+
+      if (await logoutButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await logoutButton.click();
+        return true;
+      }
+
+      return false;
+    };
+
+    if (!(await clickVisibleLogout())) {
+      await openUserMenuIfPresent();
+      await expect(page.getByRole('button', { name: logoutText }).last()).toBeVisible({ timeout: 5000 });
+      await clickVisibleLogout();
     }
 
-    await logoutButton.click();
+    if (!/\/login/.test(page.url())) {
+      const confirmLogoutButton = page.getByRole('button', { name: /^đăng\s*xuất$/i }).last();
+
+      if (await confirmLogoutButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmLogoutButton.click();
+      }
+    }
+
     await expect(page).toHaveURL(/\/login/);
   });
 
