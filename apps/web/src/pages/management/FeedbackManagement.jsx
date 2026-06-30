@@ -4,18 +4,16 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi, toolsApi } from '@urbanmind/shared-api';
+import { managementTypes } from '@urbanmind/shared-types';
 
 const STATUS_META = {
-  Submitted: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
-  'AI Reviewed': { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
-  AIReviewed: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
-  AiReviewed: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
-  Verified: { label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
-  Assigned: { label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  Accepted: { label: 'Đã tiếp nhận', className: 'bg-cyan-50 text-cyan-700 ring-cyan-100' },
-  InProgress: { label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
-  Resolved: { label: 'Chờ nghiệm thu', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  Closed: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  [managementTypes.feedbackStatus.SUBMITTED]: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
+  [managementTypes.feedbackStatus.AI_REVIEWED]: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
+  [managementTypes.feedbackStatus.VERIFIED]: { label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
+  [managementTypes.feedbackStatus.ASSIGNED]: { label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  [managementTypes.feedbackStatus.IN_PROGRESS]: { label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
+  [managementTypes.feedbackStatus.RESOLVED]: { label: 'Chờ nghiệm thu', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  [managementTypes.feedbackStatus.CLOSED]: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
 };
 
 const PRIORITY_META = {
@@ -49,9 +47,9 @@ const normalizeFeedbackResponse = (response) => {
   return matchedArray || [];
 };
 
-const getCategoryName = (categoryId) => {
-  const categories = typeof toolsApi.getCategories === 'function' ? toolsApi.getCategories() : [];
-  return categories.find((category) => String(category.categoryId) === String(categoryId))?.categoryName || 'Chưa phân loại';
+const getCategoryName = (categoryId, categories = []) => {
+  const safeCategories = Array.isArray(categories) ? categories : [];
+  return safeCategories.find((category) => String(category.categoryId) === String(categoryId))?.categoryName || 'Chưa phân loại';
 };
 
 const formatFeedbackId = (feedbackId) => {
@@ -557,7 +555,7 @@ const AttachmentGallery = ({ attachments }) => {
     </div>
   );
 };
-const FeedbackDetailModal = ({ feedback, loadingDetail, detailError, onClose }) => {
+const FeedbackDetailModal = ({ feedback, loadingDetail, detailError, onClose, categories = [] }) => {
   if (!feedback || typeof document === 'undefined') return null;
 
   const feedbackId = feedback.feedbackId || feedback.id;
@@ -602,7 +600,7 @@ const FeedbackDetailModal = ({ feedback, loadingDetail, detailError, onClose }) 
 
         <div className="max-h-[70vh] overflow-y-auto p-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <DetailItem label="Danh mục" value={getCategoryName(feedback.categoryId)} />
+            <DetailItem label="Danh mục" value={getCategoryName(feedback.categoryId, categories)} />
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-medium text-slate-500">Ưu tiên</p>
               <div className="mt-2"><PriorityBadge priority={feedback.priority} /></div>
@@ -678,6 +676,7 @@ const FeedbackDetailModal = ({ feedback, loadingDetail, detailError, onClose }) 
 
 export const FeedbackManagement = () => {
   const [feedbacks, setFeedbacks] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -703,6 +702,18 @@ export const FeedbackManagement = () => {
 
   useEffect(() => {
     fetchFeedbacks();
+
+    const loadCategories = async () => {
+      try {
+        const fetchedCategories = await toolsApi.getCategories();
+        setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
+      } catch (err) {
+        console.warn('Failed to load categories for feedback management', err);
+        setCategories([]);
+      }
+    };
+
+    loadCategories();
   }, [fetchFeedbacks]);
 
   const handleOpenFeedbackDetail = useCallback(async (feedback) => {
@@ -728,9 +739,9 @@ export const FeedbackManagement = () => {
 
   const stats = useMemo(() => {
     const total = feedbacks.length;
-    const open = feedbacks.filter((item) => !['Resolved', 'Closed'].includes(item.status)).length;
-    const assigned = feedbacks.filter((item) => ['Assigned', 'Accepted', 'InProgress'].includes(item.status)).length;
-    const completed = feedbacks.filter((item) => ['Resolved', 'Closed'].includes(item.status)).length;
+    const open = feedbacks.filter((item) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(item.status)).length;
+    const assigned = feedbacks.filter((item) => [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(item.status)).length;
+    const completed = feedbacks.filter((item) => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(item.status)).length;
 
     return { total, open, assigned, completed };
   }, [feedbacks]);
@@ -749,7 +760,7 @@ export const FeedbackManagement = () => {
         item.locationText,
         item.address,
         getLocationText(item),
-        getCategoryName(item.categoryId),
+        getCategoryName(item.categoryId, categories),
         item.status,
         getStatusLabel(item.status),
         item.priority,
@@ -762,7 +773,7 @@ export const FeedbackManagement = () => {
 
       return matchesStatus && (!keyword || searchable.includes(keyword));
     });
-  }, [feedbacks, searchTerm, statusFilter]);
+  }, [feedbacks, categories, searchTerm, statusFilter]);
 
   return (
     <div className="space-y-6 text-slate-700">
@@ -893,7 +904,7 @@ export const FeedbackManagement = () => {
                         <p className="truncate text-sm font-semibold text-slate-900">{feedback.title || 'Không có tiêu đề'}</p>
                         <p className="mt-1 truncate text-xs text-slate-500">{getLocationText(feedback)}</p>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{getCategoryName(feedback.categoryId)}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{getCategoryName(feedback.categoryId, categories)}</td>
                       <td className="px-6 py-4"><PriorityBadge priority={feedback.priority} /></td>
                       <td className="px-6 py-4"><StatusBadge status={feedback.status} /></td>
                       <td className="px-6 py-4 text-sm text-slate-500">{formatDate(feedback.createdAt)}</td>
@@ -923,6 +934,7 @@ export const FeedbackManagement = () => {
         loadingDetail={selectedFeedbackLoading}
         detailError={selectedFeedbackError}
         onClose={() => setSelectedFeedback(null)}
+        categories={categories}
       />
     </div>
   );

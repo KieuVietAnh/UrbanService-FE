@@ -4,11 +4,20 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
+import { managementTypes } from '@urbanmind/shared-types';
+import { signalrService } from '../../services/socket/signalrService';
 
 export const CompletedTicketReview = () => {
   const { user } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
+
+  const beforeImage = Array.isArray(selectedTicket?.attachments)
+    ? selectedTicket.attachments[0]
+    : null;
+  const afterImage = Array.isArray(selectedTicket?.resolution?.attachments)
+    ? selectedTicket.resolution.attachments[0]
+    : null;
   
   // Review inputs
   const [reworkNote, setReworkNote] = useState('');
@@ -18,17 +27,14 @@ export const CompletedTicketReview = () => {
 
   const fetchResolved = async () => {
     try {
-      // Find tickets resolved but not closed yet, or specifically awaiting approval (which is Resolved status in mock db)
-      const res = await ticketApi.getTickets({ status: 'Resolved' });
-      // In our mock database, tickets resolved by operator are marked as 'Resolved'
-      // We filter out those that do NOT have review rating yet
-      const awaitingApproval = res.filter(t => t.reviews.length === 0);
+      const res = await ticketApi.getTickets({}, { role: 'system-staff' });
+      const reviewStatuses = [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED];
+      const awaitingApproval = (Array.isArray(res) ? res : [])
+        .filter((t) => reviewStatuses.includes(t?.status) && (Array.isArray(t?.reviews) ? t.reviews.length === 0 : true))
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+
       setTickets(awaitingApproval);
-      if (awaitingApproval.length > 0) {
-        setSelectedTicket(awaitingApproval[0]);
-      } else {
-        setSelectedTicket(null);
-      }
+      setSelectedTicket(awaitingApproval[0] || null);
     } catch (err) {
       console.error(err);
     }
@@ -38,25 +44,16 @@ export const CompletedTicketReview = () => {
     fetchResolved();
   }, []);
 
-  const handleApprove = async () => {
-    if (!selectedTicket) return;
-    setLoading(true);
-    try {
-      await ticketApi.reviewResolution(selectedTicket.feedbackId, user.userId, true);
-      setMessage({ type: 'success', text: 'Phê duyệt hoàn thành xuất sắc! Đã thông báo cho người dân đánh giá.' });
-      fetchResolved();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleRework = async () => {
     if (!selectedTicket || !reworkNote.trim()) return;
     setLoading(true);
     try {
-      await ticketApi.reviewResolution(selectedTicket.feedbackId, user.userId, false, reworkNote);
+      await ticketApi.reviewResolution(selectedTicket.feedbackId, user.userId, false, reworkNote, { role: user.role });
+        try {
+          signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, managementTypes.feedbackStatus.NEED_REWORK, user);
+        } catch (e) {
+          console.warn('SignalR notify failed', e);
+        }
       setMessage({ type: 'success', text: 'Yêu cầu làm lại thành công. Sự cố đã trả về tiến trình Đang Xử Lý.' });
       setShowReworkModal(false);
       setReworkNote('');
@@ -138,7 +135,7 @@ export const CompletedTicketReview = () => {
                   <div className="space-y-2">
                     <span className="badge badge-error badge-sm font-bold py-2.5 px-3 uppercase text-[9px]">Hình ảnh trước xử lý</span>
                     <div className="rounded-2xl overflow-hidden border border-base-300 aspect-video">
-                      <img src={selectedTicket.attachments[0] || 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=400&q=80'} alt="Before" className="w-full h-full object-cover" />
+                      <img src={beforeImage || 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=400&q=80'} alt="Before" className="w-full h-full object-cover" />
                     </div>
                     <p className="text-[11px] text-gray-500 font-semibold bg-base-200 p-3 rounded-xl">
                       Mô tả: "{selectedTicket.description}"
@@ -149,7 +146,7 @@ export const CompletedTicketReview = () => {
                   <div className="space-y-2">
                     <span className="badge badge-success badge-sm font-bold py-2.5 px-3 uppercase text-[9px]">Hình ảnh sau xử lý</span>
                     <div className="rounded-2xl overflow-hidden border border-base-300 aspect-video">
-                      <img src={selectedTicket.resolution?.attachments[0] || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=400&q=80'} alt="After" className="w-full h-full object-cover" />
+                      <img src={afterImage || 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=400&q=80'} alt="After" className="w-full h-full object-cover" />
                     </div>
                     <div className="text-[11px] text-gray-500 font-semibold bg-base-200 p-3 rounded-xl space-y-1">
                       <div>Tóm tắt: <span className="font-bold text-base-content">{selectedTicket.resolution?.resolutionSummary}</span></div>
@@ -175,7 +172,7 @@ export const CompletedTicketReview = () => {
                     Yêu Cầu Làm Lại
                   </button>
                   <button 
-                    onClick={handleApprove}
+                    onClick={() => window.location.assign(`/staff/review/${selectedTicket.feedbackId}/compare`)}
                     className="btn btn-primary flex-1 sm:flex-initial rounded-xl font-bold text-xs"
                     disabled={loading}
                   >

@@ -1,16 +1,20 @@
 // src/pages/analytics/SLAAnalytics.jsx
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { analyticsApi } from '../../services/api/analyticsApi';
+import { normalizeRole } from '../../utils/roleMap';
 import { SLAPerformanceChart, CategoryVolumeBarChart } from '../../components/charts/CustomCharts';
 
 export const SLAAnalytics = () => {
+  const { user } = useAuth();
+  const currentRole = normalizeRole(user?.role);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await analyticsApi.getSystemDashboardStats();
+        const res = await analyticsApi.getSystemDashboardStats(currentRole);
         setStats(res);
       } catch (err) {
         console.error(err);
@@ -19,7 +23,7 @@ export const SLAAnalytics = () => {
       }
     };
     fetchStats();
-  }, []);
+  }, [currentRole]);
 
   if (loading) {
     return (

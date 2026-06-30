@@ -5,21 +5,10 @@ import {
   normalizeTicketsResponse,
   normalizeCommentsResponse,
 } from './ticketApiHelpers.js';
-
-const getStoredUserRole = () => {
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem('urbanmind_auth_user');
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return normalizeRoleForFeedback(parsed?.role || null);
-  } catch {
-    return null;
-  }
-};
+import { managementTypes } from '@urbanmind/shared-types';
 
 const getTicketPath = (feedbackId, role) => {
-  const base = getFeedbackBasePath(role, getStoredUserRole());
+  const base = getFeedbackBasePath(role);
   return `${base}/${feedbackId}`;
 };
 
@@ -31,10 +20,7 @@ const updateFeedbackStatus = (feedbackId, statusData, options = {}) => {
 
 export const ticketApi = {
   async getTickets(filters = {}, options = {}) {
-    const response = await axiosClient.get(
-      getFeedbackBasePath(options.role, getStoredUserRole()),
-      { params: filters }
-    );
+    const response = await axiosClient.get(getFeedbackBasePath(options.role), { params: filters });
     return normalizeTicketsResponse(response);
   },
 
@@ -117,14 +103,14 @@ export const ticketApi = {
         }
       });
 
-      return axiosClient.post(getFeedbackBasePath(options.role, getStoredUserRole()), formData, {
+      return axiosClient.post(getFeedbackBasePath(options.role), formData, {
         headers: {
           'Content-Type': undefined,
         },
       });
     }
 
-    return axiosClient.post(getFeedbackBasePath(options.role, getStoredUserRole()), {
+    return axiosClient.post(getFeedbackBasePath(options.role), {
       userId,
       reporterName,
       ...ticketData,
@@ -192,7 +178,7 @@ export const ticketApi = {
   },
 
   async verifyAndApprove(feedbackId, staffUserId, updateData = {}, options = {}) {
-    const { note, status = 'Verified', ...feedbackUpdates } = updateData || {};
+    const { note, status = managementTypes.feedbackStatus.VERIFIED, ...feedbackUpdates } = updateData || {};
 
     if (Object.keys(feedbackUpdates).length > 0) {
       await this.updateTicket(feedbackId, feedbackUpdates, options);
@@ -221,7 +207,7 @@ export const ticketApi = {
 
   reviewResolution(feedbackId, staffUserId, isApproved, note, options = {}) {
     return updateFeedbackStatus(feedbackId, {
-      status: isApproved ? 'Approved' : 'NeedRework',
+      status: isApproved ? managementTypes.feedbackStatus.APPROVED : managementTypes.feedbackStatus.NEED_REWORK,
       note,
     }, options);
   },

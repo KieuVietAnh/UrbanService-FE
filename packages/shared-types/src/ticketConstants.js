@@ -1,25 +1,45 @@
+import { managementTypes } from './managementTypes.js';
+
 export const TICKET_STATUS_STEPS = [
-  { title: 'Đã gửi', sub: 'Submitted' },
-  { title: 'Kiểm duyệt', sub: 'AI Reviewed' },
-  { title: 'Điều phối', sub: 'Assigned' },
-  { title: 'Đang xử lý', sub: 'In Progress' },
-  { title: 'Đã xử lý', sub: 'Resolved' },
-  { title: 'Đã đóng', sub: 'Closed' }
+  { title: 'Đã gửi', sub: managementTypes.feedbackStatus.SUBMITTED },
+  { title: 'Kiểm duyệt', sub: managementTypes.feedbackStatus.AI_REVIEWED },
+  { title: 'Điều phối', sub: managementTypes.feedbackStatus.ASSIGNED },
+  { title: 'Đang xử lý', sub: managementTypes.feedbackStatus.IN_PROGRESS },
+  { title: 'Đã xử lý', sub: managementTypes.feedbackStatus.RESOLVED },
+  { title: 'Đã đóng', sub: managementTypes.feedbackStatus.CLOSED }
 ];
+
+export const getStatusLabel = (status, fallback = 'Không xác định') => {
+  const labels = {
+    [managementTypes.feedbackStatus.SUBMITTED]: 'Đã gửi',
+    [managementTypes.feedbackStatus.AI_REVIEWED]: 'Đang xem xét',
+    [managementTypes.feedbackStatus.VERIFIED]: 'Đã xác minh',
+    [managementTypes.feedbackStatus.ASSIGNED]: 'Đã phân công',
+    [managementTypes.feedbackStatus.IN_PROGRESS]: 'Đang xử lý',
+    [managementTypes.feedbackStatus.RESOLVED]: 'Đã xử lý',
+    [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: 'Chờ nghiệm thu',
+    [managementTypes.feedbackStatus.APPROVED]: 'Đã duyệt',
+    [managementTypes.feedbackStatus.NEED_REWORK]: 'Cần làm lại',
+    [managementTypes.feedbackStatus.REJECTED]: 'Bị từ chối',
+    [managementTypes.feedbackStatus.CLOSED]: 'Đã đóng',
+  };
+
+  return labels[status] || fallback;
+};
 
 export const getStatusStep = (status) => {
   switch (status) {
-    case 'Submitted':
+    case managementTypes.feedbackStatus.SUBMITTED:
       return 0;
-    case 'AI Reviewed':
+    case managementTypes.feedbackStatus.AI_REVIEWED:
       return 1;
-    case 'Assigned':
+    case managementTypes.feedbackStatus.ASSIGNED:
       return 2;
-    case 'InProgress':
+    case managementTypes.feedbackStatus.IN_PROGRESS:
       return 3;
-    case 'Resolved':
+    case managementTypes.feedbackStatus.RESOLVED:
       return 4;
-    case 'Closed':
+    case managementTypes.feedbackStatus.CLOSED:
       return 5;
     default:
       return 0;

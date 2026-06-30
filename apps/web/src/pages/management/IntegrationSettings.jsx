@@ -10,14 +10,26 @@ export const IntegrationSettings = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
-    // Read from shared tools API
-    setIntegrations(toolsApi.getIntegrations());
-    setLoading(false);
+    const loadIntegrations = async () => {
+      setLoading(true);
+      try {
+        const integrationsResult = await toolsApi.getIntegrations();
+        setIntegrations(integrationsResult || {});
+      } catch (err) {
+        console.warn('IntegrationSettings failed to load integrations', err);
+        setIntegrations({});
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadIntegrations();
   }, []);
 
   const handleToggle = (key) => {
     const updated = { ...integrations };
-    updated[key].enabled = !updated[key].enabled;
+    const current = updated[key] || {};
+    updated[key] = { ...current, enabled: !current.enabled };
     toolsApi.updateIntegrations(updated);
     setIntegrations(updated);
     setMessage({ type: 'success', text: 'Đã cập nhật cấu hình cổng tích hợp!' });
@@ -43,7 +55,7 @@ export const IntegrationSettings = () => {
       icon: 'Z',
       iconClassName: 'bg-blue-600 text-white',
       endpointLabel: 'Webhook URL',
-      endpointValue: integrations.zalo.webhookUrl,
+      endpointValue: integrations?.zalo?.webhookUrl || 'Chưa cấu hình',
     },
     {
       key: 'messenger',
@@ -52,7 +64,7 @@ export const IntegrationSettings = () => {
       icon: Lucide.MessageCircle,
       iconClassName: 'bg-indigo-500 text-white',
       endpointLabel: 'API Endpoint',
-      endpointValue: integrations.messenger.webhookUrl,
+      endpointValue: integrations?.messenger?.webhookUrl || 'Chưa cấu hình',
     },
     {
       key: 'hotline',
@@ -61,7 +73,7 @@ export const IntegrationSettings = () => {
       icon: Lucide.PhoneCall,
       iconClassName: 'bg-red-500 text-white',
       endpointLabel: 'Số điện thoại',
-      endpointValue: integrations.hotline.phone,
+      endpointValue: integrations?.hotline?.phone || 'Chưa cấu hình',
     },
     {
       key: 'webform',
@@ -82,7 +94,7 @@ export const IntegrationSettings = () => {
     );
   }
 
-  const enabledCount = integrationItems.filter(item => integrations[item.key].enabled).length;
+  const enabledCount = integrationItems.filter(item => integrations[item.key]?.enabled).length;
 
   return (
     <div className="space-y-6">
@@ -126,9 +138,10 @@ export const IntegrationSettings = () => {
 
       <section className="grid grid-cols-1 gap-5 md:grid-cols-2">
         {integrationItems.map((item) => {
-          const config = integrations[item.key];
+          const config = integrations[item.key] || {};
           const Icon = item.icon;
-          const statusLabel = config.enabled ? getStatusLabel(config.status) : 'Đã tắt';
+          const enabled = Boolean(config.enabled);
+          const statusLabel = enabled ? getStatusLabel(config.status) : 'Đã tắt';
 
           return (
             <div key={item.key} className="flex min-h-[220px] flex-col justify-between rounded-[2rem] border border-base-300 bg-base-100 p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
@@ -141,14 +154,14 @@ export const IntegrationSettings = () => {
                     <div className="min-w-0">
                       <h4 className="truncate text-sm font-extrabold text-base-content">{item.name}</h4>
                       <p className="mt-1 text-[11px] font-bold text-base-content/40">
-                        {config.enabled ? 'Kênh đang hoạt động' : 'Kênh đang tạm tắt'}
+                        {enabled ? 'Kênh đang hoạt động' : 'Kênh đang tạm tắt'}
                       </p>
                     </div>
                   </div>
 
                   <input
                     type="checkbox"
-                    checked={config.enabled}
+                    checked={enabled}
                     onChange={() => handleToggle(item.key)}
                     className="toggle toggle-primary toggle-sm shrink-0"
                   />

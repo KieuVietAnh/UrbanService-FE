@@ -68,6 +68,29 @@ html[data-theme="dark"] {
   --badge-radius: 9999px;
 }
 
+/* Align common slate utility backgrounds with the brand blue while keeping text colors unchanged */
+.bg-slate-900,
+.bg-slate-800,
+.bg-slate-700 {
+  background-color: var(--brand-primary) !important;
+}
+
+.bg-slate-950 {
+  background-color: var(--brand-primary-dark) !important;
+}
+
+.from-slate-900 {
+  --tw-gradient-from: var(--brand-primary) !important;
+}
+
+.via-slate-800 {
+  --tw-gradient-via: var(--brand-primary-dark) !important;
+}
+
+.to-slate-700 {
+  --tw-gradient-to: var(--brand-primary-dark) !important;
+}
+
 /* Page container centers content and provides consistent horizontal padding */
 .page-container {
   max-width: var(--content-max);

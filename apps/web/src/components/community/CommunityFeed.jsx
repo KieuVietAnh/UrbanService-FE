@@ -3,6 +3,10 @@ import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import CommunityFeedItem from './CommunityFeedItem';
 import CommentDrawer from './CommentDrawer';
 import { getCommunityFeed } from '../../services/api/feedApi';
+import { ticketApi } from '../../services/api/ticketApi';
+import { managementTypes } from '@urbanmind/shared-types';
+import { normalizeTicketsResponse } from '@urbanmind/shared-api';
+import { signalrService } from '../../services/socket/signalrService';
 
 export default function CommunityFeed({ initialTab = 'Latest' }) {
   const [items, setItems] = useState([]);
@@ -32,7 +36,8 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
       setError('');
       setLoading(true);
       const response = await getCommunityFeed({ page: p, tab: tab.toLowerCase() });
-      const { items: fetchedItems, pageNumber, totalPages } = response;
+      const { items: fetchedItemsRaw, pageNumber, totalPages } = response;
+      const fetchedItems = normalizeTicketsResponse(fetchedItemsRaw || []);
 
       if (!fetchedItems || fetchedItems.length === 0) {
         setHasMore(false);
@@ -45,11 +50,56 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
       setItems((prev) => {
         const merged = p === 1 ? fetchedItems : [...prev, ...fetchedItems];
         const deduped = dedupeFeedItems(merged);
-        if (deduped.length === prev.length && p !== 1) {
+        // Filter out statuses that should not be visible in the public feed
+        const filtered = deduped.filter((it) => {
+          // Defensive: only show public items
+          if (it?.isPublic === false) return false;
+          const vis = String(it?.visibility || it?.scope || '').toLowerCase();
+          if (vis === 'private' || vis === 'internal') return false;
+
+          const s = it?.status;
+          if (!s) return false;
+          if (s === managementTypes.feedbackStatus.SUBMITTED) return false;
+          if (s === managementTypes.feedbackStatus.AI_REVIEWED) return false;
+          return true;
+        });
+        if (filtered.length === prev.length && p !== 1) {
           setHasMore(false);
         }
-        return deduped;
+        return filtered;
       });
+
+      // If API returns only attachment counts (no attachment objects/urls),
+      // fetch ticket details for items that have attachments so we can show previews.
+      (async () => {
+        try {
+          const needs = fetchedItems.filter((it) => it?.attachmentCount > 0 && !(it.attachments && it.attachments.length));
+          if (needs.length === 0) return;
+
+          const lookups = await Promise.all(
+            needs.map(async (it) => {
+              try {
+                const detail = await ticketApi.getTicketById(it.feedbackId || it.id, { role: 'service-user' });
+                return { id: it.feedbackId || it.id, attachments: Array.isArray(detail?.attachments) ? detail.attachments : [] };
+              } catch (error) {
+                console.warn('Failed to fetch ticket detail for preview', it.feedbackId || it.id, error?.message || error);
+                return { id: it.feedbackId || it.id, attachments: [] };
+              }
+            })
+          );
+
+          const map = new Map(lookups.map((l) => [l.id, l.attachments]));
+          setItems((prev) => prev.map((it) => {
+            const id = it.feedbackId || it.id;
+            if (map.has(id) && (!it.attachments || it.attachments.length === 0)) {
+              return { ...it, attachments: map.get(id) };
+            }
+            return it;
+          }));
+        } catch (error) {
+          console.warn('Failed to fetch previews for feed items', error?.message || error);
+        }
+      })();
       setHasMore(pageNumber < totalPages);
     } catch (err) {
       console.error('CommunityFeed load error', err);
@@ -66,6 +116,86 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     setHasMore(true);
     loadPage(1);
   }, [tab, loadPage]);
+
+  // realtime updates for feed items
+  useEffect(() => {
+    signalrService.start();
+
+    const handleCommentAdded = (incomingFeedbackId) => {
+      setItems((prev) => prev.map((it) => {
+        const id = it.feedbackId || it.id;
+        if (id === incomingFeedbackId) {
+          const currentCount = it.commentCount ?? (Array.isArray(it.comments) ? it.comments.length : 0);
+          return { ...it, commentCount: currentCount + 1 };
+        }
+        return it;
+      }));
+    };
+
+    const handleSupportAdded = (incomingFeedbackId, payload) => {
+      setItems((prev) => prev.map((it) => {
+        const id = it.feedbackId || it.id;
+        if (id === incomingFeedbackId) {
+          return { ...it, supportCount: payload?.supportCount ?? (it.supportCount || 0) };
+        }
+        return it;
+      }));
+    };
+
+    const handleStatusChanged = async (incomingFeedbackId, payload) => {
+      setItems((prev) => prev.map((it) => {
+        const id = it.feedbackId || it.id;
+        if (id === incomingFeedbackId) {
+          // remove from public feed if status becomes Submitted or AI Reviewed
+          const newStatus = payload?.newStatus;
+          if (newStatus === managementTypes.feedbackStatus.SUBMITTED || newStatus === managementTypes.feedbackStatus.AI_REVIEWED) {
+            return null; // filtered out later
+          }
+          return { ...it, status: newStatus };
+        }
+        return it;
+      }).filter(Boolean));
+    };
+
+    const handleAssignment = async (incomingFeedbackId, payload) => {
+      setItems((prev) => prev.map((it) => (it.feedbackId === incomingFeedbackId || it.id === incomingFeedbackId) ? { ...it, assignment: payload } : it));
+    };
+
+    const handleResolutionRefresh = async (incomingFeedbackId) => {
+      try {
+        const detail = await ticketApi.getTicketById(incomingFeedbackId, { role: 'service-user' });
+        setItems((prev) => prev.map((it) => {
+          const id = it.feedbackId || it.id;
+          if (id === incomingFeedbackId) {
+            return { ...it, ...detail };
+          }
+          return it;
+        }));
+      } catch {
+        // ignore
+      }
+    };
+
+    signalrService.on('CommentAdded', handleCommentAdded);
+    signalrService.on('SupportAdded', handleSupportAdded);
+    signalrService.on('FeedbackStatusChanged', handleStatusChanged);
+    signalrService.on('AssignmentCreated', handleAssignment);
+    signalrService.on('AssignmentUpdated', handleAssignment);
+    signalrService.on('ResolutionSubmitted', handleResolutionRefresh);
+    signalrService.on('ResolutionApproved', handleResolutionRefresh);
+    signalrService.on('ResolutionRejected', handleResolutionRefresh);
+
+    return () => {
+      signalrService.off('CommentAdded', handleCommentAdded);
+      signalrService.off('SupportAdded', handleSupportAdded);
+      signalrService.off('FeedbackStatusChanged', handleStatusChanged);
+      signalrService.off('AssignmentCreated', handleAssignment);
+      signalrService.off('AssignmentUpdated', handleAssignment);
+      signalrService.off('ResolutionSubmitted', handleResolutionRefresh);
+      signalrService.off('ResolutionApproved', handleResolutionRefresh);
+      signalrService.off('ResolutionRejected', handleResolutionRefresh);
+    };
+  }, []);
 
   // infinite scroll sentinel
   useEffect(() => {
@@ -114,10 +244,11 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
         {loading && (
           <div className="space-y-4">
-            {Array.from({length:3}).map((_,i)=> (
+            {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="animate-pulse bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <div className="h-44 bg-slate-100 rounded-lg mb-3" />
-                <div className="h-4 bg-slate-100 rounded w-3/4 mb-2" />
+                <div className="h-40 sm:h-56 bg-slate-100 rounded-lg mb-3" />
+                <div className="h-4 bg-slate-100 rounded w-5/6 mb-2" />
+                <div className="h-3 bg-slate-100 rounded w-3/4" />
               </div>
             ))}
           </div>

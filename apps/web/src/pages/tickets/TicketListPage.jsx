@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
+import { getStatusLabel, managementTypes } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
 import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
@@ -15,6 +16,8 @@ export const TicketListPage = () => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [categories, setCategories] = useState([]);
+  const getCategoryName = (id) => categories.find((c) => c.categoryId === id)?.categoryName || '';
   const [dateRange, setDateRange] = useState(''); // mock filter
   const [sortKey, setSortKey] = useState('newest');
   const [loading, setLoading] = useState(true);
@@ -52,7 +55,7 @@ export const TicketListPage = () => {
       if (user?.role === 'service-user') {
         filters.userId = user.userId;
       }
-      const res = await ticketApi.getTickets(filters);
+      const res = await ticketApi.getTickets(filters, { role: 'service-user' });
       setTickets(res);
     } catch (err) {
       console.error(err);
@@ -66,6 +69,25 @@ export const TicketListPage = () => {
   }, [fetchTickets]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadCategories = async () => {
+      try {
+        const fetched = await toolsApi.getCategories();
+        if (!isMounted) return;
+        setCategories(Array.isArray(fetched) ? fetched : []);
+      } catch (err) {
+        console.warn('TicketListPage failed to load categories', err);
+        if (isMounted) setCategories([]);
+      }
+    };
+
+    loadCategories();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     setCurrentPage(1);
   }, [search, status, categoryId, dateRange]);
 
@@ -75,7 +97,7 @@ export const TicketListPage = () => {
     const fetchAllCitizenTickets = async () => {
       if (user?.userId) {
         try {
-          const res = await ticketApi.getTickets({ userId: user.userId });
+          const res = await ticketApi.getTickets({ userId: user.userId }, { role: 'service-user' });
           setAllCitizenTickets(res);
         } catch (e) {
           console.error(e);
@@ -86,26 +108,26 @@ export const TicketListPage = () => {
   }, [user, loading]);
 
   const countAll = allCitizenTickets.length;
-  const countInProgress = allCitizenTickets.filter(t => ['Submitted', 'AI Reviewed', 'Assigned', 'InProgress'].includes(t.status)).length;
-  const countResolved = allCitizenTickets.filter(t => ['Resolved', 'Closed'].includes(t.status)).length;
-  const countAwaitingReview = allCitizenTickets.filter(t => t.status === 'Resolved').length;
+  const countInProgress = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED, managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(t.status)).length;
+  const countResolved = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(t.status)).length;
+  const countAwaitingReview = allCitizenTickets.filter(t => t.status === managementTypes.feedbackStatus.RESOLVED).length;
 
   const renderProgressStage = (s) => {
     switch (s) {
-      case 'Submitted':
+      case managementTypes.feedbackStatus.SUBMITTED:
         return { label: 'Mới nhận', tone: 'bg-blue-50 text-blue-600', icon: <Lucide.Mail className="text-blue-600" size={14} /> };
-      case 'AI Reviewed':
+      case managementTypes.feedbackStatus.AI_REVIEWED:
         return { label: 'Đang phân loại', tone: 'bg-purple-50 text-purple-600', icon: <Lucide.Cpu className="text-purple-600" size={14} /> };
-      case 'Assigned':
+      case managementTypes.feedbackStatus.ASSIGNED:
         return { label: 'Đã phân công', tone: 'bg-indigo-50 text-indigo-600', icon: <Lucide.Users className="text-indigo-600" size={14} /> };
-      case 'InProgress':
+      case managementTypes.feedbackStatus.IN_PROGRESS:
         return { label: 'Đang xử lý', tone: 'bg-amber-50 text-amber-600', icon: <Lucide.Wrench className="text-amber-600" size={14} /> };
-      case 'Resolved':
+      case managementTypes.feedbackStatus.RESOLVED:
         return { label: 'Hoàn thành', tone: 'bg-emerald-50 text-emerald-600', icon: <Lucide.CheckCircle2 className="text-emerald-600" size={14} /> };
-      case 'Closed':
+      case managementTypes.feedbackStatus.CLOSED:
         return { label: 'Đã đóng', tone: 'bg-slate-100 text-slate-600', icon: <Lucide.Lock className="text-slate-600" size={14} /> };
       default:
-        return { label: 'Chờ xử lý', tone: 'bg-slate-50 text-slate-500', icon: <Lucide.Clock className="text-slate-500" size={14} /> };
+        return { label: getStatusLabel(s, 'Chờ xử lý'), tone: 'bg-slate-50 text-slate-500', icon: <Lucide.Clock className="text-slate-500" size={14} /> };
     }
   };
 
@@ -162,12 +184,12 @@ export const TicketListPage = () => {
       }
       if (sortKey === 'status') {
         const statusOrder = {
-          Submitted: 1,
-          'AI Reviewed': 2,
-          Assigned: 3,
-          InProgress: 4,
-          Resolved: 5,
-          Closed: 6,
+          [managementTypes.feedbackStatus.SUBMITTED]: 1,
+          [managementTypes.feedbackStatus.AI_REVIEWED]: 2,
+          [managementTypes.feedbackStatus.ASSIGNED]: 3,
+          [managementTypes.feedbackStatus.IN_PROGRESS]: 4,
+          [managementTypes.feedbackStatus.RESOLVED]: 5,
+          [managementTypes.feedbackStatus.CLOSED]: 6,
         };
         return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
       }
@@ -183,7 +205,7 @@ export const TicketListPage = () => {
 
   const openEditModal = async (ticket) => {
     try {
-      const detailResponse = await ticketApi.getTicketById(ticket.feedbackId);
+      const detailResponse = await ticketApi.getTicketById(ticket.feedbackId, { role: user?.role || 'service-user' });
 
       const detail =
         detailResponse?.data ||
@@ -305,9 +327,9 @@ export const TicketListPage = () => {
     try {
       setAttachmentLoading(true);
 
-      await ticketApi.addAttachments(editTarget.feedbackId, selectedFiles);
+      await ticketApi.addAttachments(editTarget.feedbackId, selectedFiles, { role: user?.role || 'service-user' });
 
-      const detailResponse = await ticketApi.getTicketById(editTarget.feedbackId);
+      const detailResponse = await ticketApi.getTicketById(editTarget.feedbackId, { role: user?.role || 'service-user' });
 
       const detail =
         detailResponse?.data ||
@@ -515,10 +537,16 @@ export const TicketListPage = () => {
           <h2 className="text-2xl font-black text-slate-900">Phản ánh đã gửi</h2>
           <p className="text-xs text-slate-500 font-semibold mt-1">Theo dõi tiến độ, cập nhật hội thoại và đánh giá chất lượng xử lý các sự cố đô thị.</p>
         </div>
-        <Link to="/tickets/create" className="btn btn-primary rounded-xl text-xs font-bold gap-1.5 h-10 px-4 min-h-0">
-          <Lucide.Plus size={16} />
-          Gửi phản ánh mới
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/tickets/archive" className="btn btn-outline rounded-xl text-xs font-bold gap-1.5 h-10 px-4 min-h-0">
+            <Lucide.Archive size={16} />
+            Kho lưu trữ
+          </Link>
+          <Link to="/tickets/create" className="btn btn-primary rounded-xl text-xs font-bold gap-1.5 h-10 px-4 min-h-0">
+            <Lucide.Plus size={16} />
+            Gửi phản ánh mới
+          </Link>
+        </div>
       </div>
 
       {/* 4 Counter Cards */}
@@ -535,22 +563,22 @@ export const TicketListPage = () => {
             label: 'Đang xử lý',
             count: countInProgress,
             icon: <Lucide.Clock size={18} />,
-            active: status === 'InProgress',
-            onClick: () => setStatus('InProgress'),
+            active: status === managementTypes.feedbackStatus.IN_PROGRESS,
+            onClick: () => setStatus(managementTypes.feedbackStatus.IN_PROGRESS),
           },
           {
             label: 'Đã xử lý',
             count: countResolved,
             icon: <Lucide.CheckCircle2 size={18} />,
-            active: status === 'Resolved',
-            onClick: () => setStatus('Resolved'),
+            active: status === managementTypes.feedbackStatus.RESOLVED,
+            onClick: () => setStatus(managementTypes.feedbackStatus.RESOLVED),
           },
           {
             label: 'Chờ đánh giá',
             count: countAwaitingReview,
             icon: <Lucide.Star size={18} />,
-            active: status === 'Resolved',
-            onClick: () => setStatus('Resolved'),
+            active: status === managementTypes.feedbackStatus.RESOLVED,
+            onClick: () => setStatus(managementTypes.feedbackStatus.RESOLVED),
           },
         ].map((card) => (
           <button
@@ -602,7 +630,7 @@ export const TicketListPage = () => {
               className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
             >
               <option value="">Tất cả danh mục</option>
-              {toolsApi.getCategories().map((c) => (
+              {categories.map((c) => (
                 <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
               ))}
             </select>
@@ -617,12 +645,12 @@ export const TicketListPage = () => {
               className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
             >
               <option value="">Tất cả trạng thái</option>
-              <option value="Submitted">Đã gửi</option>
-              <option value="AI Reviewed">Đang xem xét</option>
-              <option value="Assigned">Đã phân công</option>
-              <option value="InProgress">Đang xử lý</option>
-              <option value="Resolved">Đã xử lý</option>
-              <option value="Closed">Đã đóng</option>
+              <option value={managementTypes.feedbackStatus.SUBMITTED}>Đã gửi</option>
+              <option value={managementTypes.feedbackStatus.AI_REVIEWED}>Đang xem xét</option>
+              <option value={managementTypes.feedbackStatus.ASSIGNED}>Đã phân công</option>
+              <option value={managementTypes.feedbackStatus.IN_PROGRESS}>Đang xử lý</option>
+              <option value={managementTypes.feedbackStatus.RESOLVED}>Đã xử lý</option>
+              <option value={managementTypes.feedbackStatus.CLOSED}>Đã đóng</option>
             </select>
           </div>
 
@@ -660,7 +688,7 @@ export const TicketListPage = () => {
       {/* Status Shortcut Pills Row */}
       <div className="flex flex-wrap gap-2 items-center text-xs">
         <span className="font-bold text-slate-400 mr-1">Sắp xếp nhanh:</span>
-        {['', 'Submitted', 'AI Reviewed', 'Assigned', 'InProgress', 'Resolved', 'Closed'].map((value) => (
+        {[ '', managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED, managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS, managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED ].map((value) => (
           <button
             key={value || 'all'}
             type="button"
@@ -668,7 +696,7 @@ export const TicketListPage = () => {
             aria-pressed={status === value}
             className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition duration-200 ease-out ${status === value ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'}`}
           >
-            {value === '' ? 'Tất cả' : value === 'AI Reviewed' ? 'Đang xem xét' : value === 'InProgress' ? 'Đang xử lý' : value === 'Resolved' ? 'Đã xử lý' : value}
+            {value === '' ? 'Tất cả' : getStatusLabel(value, value)}
           </button>
         ))}
       </div>
@@ -696,7 +724,7 @@ export const TicketListPage = () => {
                         <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
                           <span>{formatTicketId(ticket.feedbackId)}</span>
                           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-slate-300"></span>
-                          <span>{toolsApi.getCategories().find((c) => c.categoryId === ticket.categoryId)?.categoryName}</span>
+                          <span>{getCategoryName(ticket.categoryId)}</span>
                         </div>
                         <h3 className="text-base font-black text-slate-950 leading-tight">
                           {ticket.title}
@@ -739,7 +767,7 @@ export const TicketListPage = () => {
                       <div className="flex flex-wrap gap-2 text-xs text-slate-500">
                         <span className="inline-flex items-center gap-1 font-semibold">
                           <Lucide.Tag size={14} />
-                          {toolsApi.getCategories().find((c) => c.categoryId === ticket.categoryId)?.categoryName}
+                          {getCategoryName(ticket.categoryId)}
                         </span>
                         <span className="inline-flex items-center gap-1 font-semibold">
                           <Lucide.Megaphone size={14} />
@@ -911,7 +939,8 @@ export const TicketListPage = () => {
                     }
                     className="select select-bordered rounded-2xl text-sm h-12"
                   >
-                    {toolsApi.getCategories().map((c) => (
+                    <option value="">Chọn danh mục</option>
+                    {categories.map((c) => (
                       <option key={c.categoryId} value={c.categoryId}>
                         {c.categoryName}
                       </option>

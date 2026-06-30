@@ -12,6 +12,8 @@ import MotionCard from '../../components/motion/MotionCard';
 import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
 import CelebrationBadge from '../../components/delight/CelebrationBadge';
 import { normalizeRole } from '../../utils/roleMap';
+import { managementTypes } from '@urbanmind/shared-types';
+import { signalrService } from '../../services/socket/signalrService';
 
 export const Dashboard = () => {
   const { user } = useAuth();
@@ -20,6 +22,7 @@ export const Dashboard = () => {
 
   const [stats, setStats] = useState(null);
   const [tickets, setTickets] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,8 +31,12 @@ export const Dashboard = () => {
     const loadDashboardContent = async () => {
       setLoading(true);
       try {
-        const resStats = await analyticsApi.getSystemDashboardStats();
+        const [resStats, fetchedCategories] = await Promise.all([
+          analyticsApi.getSystemDashboardStats(currentRole),
+          toolsApi.getCategories().catch(() => []),
+        ]);
         setStats(resStats);
+        setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
 
         let resTickets = [];
         if (currentRole === 'service-user') {
@@ -50,6 +57,40 @@ export const Dashboard = () => {
     };
 
     loadDashboardContent();
+  }, [user, currentRole]);
+
+  // realtime updates: refresh dashboard when tickets change
+  useEffect(() => {
+    if (!user) return;
+    signalrService.start();
+    const reload = async () => {
+      try {
+        const [resStats, fetchedCategories] = await Promise.all([
+          analyticsApi.getSystemDashboardStats(currentRole),
+          toolsApi.getCategories().catch(() => []),
+        ]);
+        setStats(resStats);
+        setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
+        let resTickets = [];
+        if (currentRole === 'service-user') {
+          resTickets = await ticketApi.getTickets({ userId: user.userId }, { role: currentRole });
+        } else if (currentRole === 'service-provider') {
+          resTickets = await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
+        } else {
+          resTickets = await ticketApi.getTickets({}, { role: currentRole });
+        }
+        setTickets(Array.isArray(resTickets) ? resTickets : []);
+      } catch (e) {
+        console.warn('Dashboard realtime reload failed', e);
+      }
+    };
+
+    const relevantEvents = ['FeedbackStatusChanged', 'CommentAdded', 'SupportAdded', 'AssignmentCreated', 'AssignmentUpdated', 'ResolutionApproved', 'ResolutionSubmitted', 'ResolutionRejected', 'NotificationReceived'];
+    relevantEvents.forEach((ev) => signalrService.on(ev, reload));
+
+    return () => {
+      relevantEvents.forEach((ev) => signalrService.off(ev, reload));
+    };
   }, [user, currentRole]);
 
   if (loading || !stats) {
@@ -79,17 +120,17 @@ export const Dashboard = () => {
   // Convert ticket status to Figma status bubble
   const renderStatusBadge = (s) => {
     switch (s) {
-      case 'Submitted':
+      case managementTypes.feedbackStatus.SUBMITTED:
         return <span className="circle-status-review">Cần review AI</span>;
-      case 'AI Reviewed':
+      case managementTypes.feedbackStatus.AI_REVIEWED:
         return <span className="circle-status-pending">Chờ phân công</span>;
-      case 'Assigned':
+      case managementTypes.feedbackStatus.ASSIGNED:
         return <span className="circle-status-pending">Đã phân công</span>;
-      case 'InProgress':
+      case managementTypes.feedbackStatus.IN_PROGRESS:
         return <span className="circle-status-pending">Đang xử lý</span>;
-      case 'Resolved':
+      case managementTypes.feedbackStatus.RESOLVED:
         return <span className="circle-status-review">Chờ duyệt KQ</span>;
-      case 'Closed':
+      case managementTypes.feedbackStatus.CLOSED:
         return <span className="circle-status-pending">Đã đóng</span>;
       default:
         return <span className="circle-status-pending">Chờ xử lý</span>;
@@ -116,13 +157,13 @@ export const Dashboard = () => {
   };
 
   const getCategoryName = (categoryId) => {
-    return toolsApi.getCategories().find((category) => category.categoryId === categoryId)?.categoryName || 'Khác';
+    return categories.find((category) => category.categoryId === categoryId)?.categoryName || 'Khác';
   };
 
   const residentTickets = Array.isArray(tickets) ? tickets : [];
-  const residentOpenTickets = residentTickets.filter((t) => !['Resolved', 'Closed'].includes(t.status)).length;
-  const residentInProgress = residentTickets.filter((t) => ['Assigned', 'Accepted', 'On the way', 'InProgress'].includes(t.status)).length;
-  const residentResolved = residentTickets.filter((t) => ['Resolved', 'Closed'].includes(t.status)).length;
+  const residentOpenTickets = residentTickets.filter((t) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(t.status)).length;
+  const residentInProgress = residentTickets.filter((t) => [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(t.status)).length;
+  const residentResolved = residentTickets.filter((t) => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(t.status)).length;
   const residentReportedThisMonth = residentTickets.filter((t) => {
     const created = new Date(t.createdAt);
     const now = new Date();
@@ -604,9 +645,9 @@ export const Dashboard = () => {
                       {new Date(t.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}, {new Date(t.createdAt).toLocaleDateString([], {day: '2-digit', month: '2-digit'})}
                     </td>
                     <td className="text-right py-3.5">
-                      {t.status === 'Submitted' ? (
+                      {t.status === managementTypes.feedbackStatus.SUBMITTED ? (
                         <Link to="/staff/queue" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
-                      ) : t.status === 'Resolved' ? (
+                      ) : t.status === managementTypes.feedbackStatus.RESOLVED ? (
                         <Link to="/staff/review" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                       ) : (
                         <Link to={`/tickets/${t.feedbackId}`} className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
@@ -626,10 +667,10 @@ export const Dashboard = () => {
   // 3. SERVICE PROVIDER DASHBOARD (service-provider)
   // ----------------------------------------------------
   if (currentRole === 'service-provider') {
-    const activeStatuses = ['Assigned', 'Accepted', 'On the way', 'InProgress'];
-    const waitingStatuses = ['Assigned'];
-    const inProgressStatuses = ['Accepted', 'On the way', 'InProgress'];
-    const reviewStatuses = ['Resolved'];
+    const activeStatuses = [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS];
+    const waitingStatuses = [managementTypes.feedbackStatus.ASSIGNED];
+    const inProgressStatuses = [managementTypes.feedbackStatus.IN_PROGRESS];
+    const reviewStatuses = [managementTypes.feedbackStatus.RESOLVED];
 
     const assigned = tickets.filter(t => activeStatuses.includes(t.status));
     const waitingTasks = tickets.filter(t => waitingStatuses.includes(t.status));
@@ -639,17 +680,13 @@ export const Dashboard = () => {
 
     const getOperatorStatusLabel = status => {
       switch (status) {
-        case 'Assigned':
+        case managementTypes.feedbackStatus.ASSIGNED:
           return 'Chờ tiếp nhận';
-        case 'Accepted':
-          return 'Đã tiếp nhận';
-        case 'On the way':
-          return 'Đang di chuyển';
-        case 'InProgress':
+        case managementTypes.feedbackStatus.IN_PROGRESS:
           return 'Đang xử lý';
-        case 'Resolved':
+        case managementTypes.feedbackStatus.RESOLVED:
           return 'Chờ nghiệm thu';
-        case 'Closed':
+        case managementTypes.feedbackStatus.CLOSED:
           return 'Hoàn tất';
         default:
           return 'Chờ xử lý';
@@ -657,7 +694,7 @@ export const Dashboard = () => {
     };
 
     const getCategoryName = categoryId => {
-      return toolsApi.getCategories().find(c => c.categoryId === categoryId)?.categoryName || 'Chưa phân loại';
+      return categories.find(c => c.categoryId === categoryId)?.categoryName || 'Chưa phân loại';
     };
 
     const operatorStats = [
@@ -957,7 +994,7 @@ export const Dashboard = () => {
     const storageUsageValue = stats.storageUsage?.split(' ')[0] || '0';
     const adminTickets = Array.isArray(tickets) ? tickets : [];
     const recentTickets = adminTickets.slice(0, 4);
-    const openFeedbackCount = adminTickets.filter((ticket) => !['Resolved', 'Closed'].includes(ticket.status)).length;
+    const openFeedbackCount = adminTickets.filter((ticket) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
     const adminMetrics = [
       {
         label: 'Tài khoản',
@@ -1263,7 +1300,7 @@ export const Dashboard = () => {
                           <div className="flex items-center gap-1.5 font-bold text-slate-700">
                             {renderCategoryIcon(ticket.categoryId)}
                             <span className="truncate">
-                              {toolsApi.getCategories().find(c => c.categoryId === ticket.categoryId)?.categoryName || 'Chưa phân loại'}
+                              {getCategoryName(ticket.categoryId)}
                             </span>
                           </div>
                         </td>

@@ -4,37 +4,25 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
+import { managementTypes } from '@urbanmind/shared-types';
+import { signalrService } from '../../services/socket/signalrService';
 
 const STATUS_META = {
-  Assigned: {
+  [managementTypes.feedbackStatus.ASSIGNED]: {
     label: 'Chờ tiếp nhận',
     badge: 'badge-warning',
     tone: 'text-warning',
     bg: 'bg-warning/10',
     icon: Lucide.Clock3,
   },
-  Accepted: {
-    label: 'Đã tiếp nhận',
-    badge: 'badge-info',
-    tone: 'text-info',
-    bg: 'bg-info/10',
-    icon: Lucide.Handshake,
-  },
-  'On the way': {
-    label: 'Đang di chuyển',
-    badge: 'badge-info',
-    tone: 'text-info',
-    bg: 'bg-info/10',
-    icon: Lucide.Truck,
-  },
-  InProgress: {
+  [managementTypes.feedbackStatus.IN_PROGRESS]: {
     label: 'Đang xử lý',
     badge: 'badge-primary',
     tone: 'text-primary',
     bg: 'bg-primary/10',
     icon: Lucide.Wrench,
   },
-  Resolved: {
+  [managementTypes.feedbackStatus.RESOLVED]: {
     label: 'Chờ nghiệm thu',
     badge: 'badge-success',
     tone: 'text-success',
@@ -50,7 +38,7 @@ const PRIORITY_META = {
   Low: { label: 'Thấp', className: 'badge-info' },
 };
 
-const STATUS_FLOW = ['Assigned', 'Accepted', 'On the way', 'InProgress', 'Resolved'];
+const STATUS_FLOW = [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS, managementTypes.feedbackStatus.RESOLVED];
 
 const getStatusMeta = status => {
   return STATUS_META[status] || {
@@ -106,8 +94,8 @@ export const HelperWorkspacePage = () => {
     if (!operatorId) return;
 
     try {
-      const res = await ticketApi.getTickets({ operatorId });
-      const active = Array.isArray(res) ? res.filter(ticket => ticket.status !== 'Closed') : [];
+      const res = await ticketApi.getTickets({ operatorId }, { role: 'service-provider' });
+      const active = Array.isArray(res) ? res.filter(ticket => ticket.status !== managementTypes.feedbackStatus.CLOSED) : [];
 
       setTickets(active);
       setSelectedTicket(currentTicket => {
@@ -139,11 +127,11 @@ export const HelperWorkspacePage = () => {
     return tickets.reduce(
       (acc, ticket) => {
         acc.total += 1;
-        if (ticket.status === 'Assigned') acc.waiting += 1;
-        if (ticket.status === 'Accepted' || ticket.status === 'On the way' || ticket.status === 'InProgress') {
+        if (ticket.status === managementTypes.feedbackStatus.ASSIGNED) acc.waiting += 1;
+        if (ticket.status === managementTypes.feedbackStatus.IN_PROGRESS) {
           acc.processing += 1;
         }
-        if (ticket.status === 'Resolved') acc.resolved += 1;
+        if (ticket.status === managementTypes.feedbackStatus.RESOLVED) acc.resolved += 1;
         return acc;
       },
       { total: 0, waiting: 0, processing: 0, resolved: 0 }
@@ -155,10 +143,10 @@ export const HelperWorkspacePage = () => {
   const SelectedStatusIcon = selectedStatusMeta.icon;
   const selectedPriorityMeta = getPriorityMeta(selectedTicket?.priority);
 
-  const canAccept = selectedTicket?.status === 'Assigned';
-  const canMove = selectedTicket?.status === 'Accepted' || selectedTicket?.status === 'Assigned';
-  const canStart = selectedTicket?.status === 'On the way' || selectedTicket?.status === 'Accepted';
-  const canComplete = selectedTicket?.status === 'InProgress' || selectedTicket?.status === 'On the way';
+  const canAccept = selectedTicket?.status === managementTypes.feedbackStatus.ASSIGNED;
+  const canMove = selectedTicket?.status === managementTypes.feedbackStatus.ASSIGNED;
+  const canStart = selectedTicket?.status === managementTypes.feedbackStatus.IN_PROGRESS;
+  const canComplete = selectedTicket?.status === managementTypes.feedbackStatus.IN_PROGRESS;
 
   const handleUpdateStatus = async status => {
     if (!selectedTicket || !user?.userId) return;
@@ -166,6 +154,11 @@ export const HelperWorkspacePage = () => {
     setLoading(true);
     try {
       await ticketApi.updateOperatorStatus(selectedTicket.feedbackId, user.userId, status, '');
+      try {
+        signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, status, user);
+      } catch (e) {
+        console.warn('SignalR notify failed', e);
+      }
       await fetchTasks();
       setNotice({ type: 'success', message: `Đã cập nhật trạng thái: ${getStatusMeta(status).label}` });
     } catch (err) {
@@ -185,7 +178,12 @@ export const HelperWorkspacePage = () => {
       // Mock Base64 Resolution Image
       const resolutionPhoto = 'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=400&q=80';
 
-      await ticketApi.updateOperatorStatus(selectedTicket.feedbackId, user.userId, 'Resolved', resSummary, [resolutionPhoto]);
+      await ticketApi.updateOperatorStatus(selectedTicket.feedbackId, user.userId, managementTypes.feedbackStatus.RESOLVED, resSummary, [resolutionPhoto]);
+      try {
+        signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, managementTypes.feedbackStatus.RESOLVED, user);
+      } catch (e) {
+        console.warn('SignalR notify failed', e);
+      }
       setShowCompletionModal(false);
       setResSummary('');
       await fetchTasks();
@@ -495,7 +493,7 @@ export const HelperWorkspacePage = () => {
                 <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <button
                     type="button"
-                    onClick={() => handleUpdateStatus('Accepted')}
+                    onClick={() => handleUpdateStatus(managementTypes.feedbackStatus.IN_PROGRESS)}
                     disabled={!canAccept || loading}
                     className="btn btn-outline rounded-2xl"
                   >
@@ -504,7 +502,7 @@ export const HelperWorkspacePage = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleUpdateStatus('On the way')}
+                    onClick={() => handleUpdateStatus(managementTypes.feedbackStatus.IN_PROGRESS)}
                     disabled={!canMove || loading}
                     className="btn btn-outline rounded-2xl"
                   >
@@ -513,7 +511,7 @@ export const HelperWorkspacePage = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleUpdateStatus('InProgress')}
+                    onClick={() => handleUpdateStatus(managementTypes.feedbackStatus.IN_PROGRESS)}
                     disabled={!canStart || loading}
                     className="btn btn-outline rounded-2xl"
                   >

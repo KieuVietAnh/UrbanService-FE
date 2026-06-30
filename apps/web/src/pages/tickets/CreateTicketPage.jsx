@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
+import { slaApi } from '../../services/api/slaApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import * as Lucide from 'lucide-react';
@@ -36,6 +37,8 @@ export const CreateTicketPage = () => {
   const [attachments, setAttachments] = useState([]);
   const [submitError, setSubmitError] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
 
   // AI Simulation States
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -96,6 +99,36 @@ export const CreateTicketPage = () => {
     }
   };
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadCategories = async () => {
+      setCategoriesLoading(true);
+      try {
+        let fetchedCategories = [];
+        try {
+          fetchedCategories = await slaApi.getCategories();
+        } catch (apiErr) {
+          console.warn('CreateTicketPage slaApi.getCategories failed, falling back to toolsApi', apiErr);
+          fetchedCategories = await toolsApi.getCategories();
+        }
+
+        if (isMounted) {
+          setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
+        }
+      } catch (err) {
+        console.warn('CreateTicketPage failed to load categories', err);
+        if (isMounted) setCategories([]);
+      } finally {
+        if (isMounted) setCategoriesLoading(false);
+      }
+    };
+
+    loadCategories();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleSubmit = async () => {
     setSubmitError('');
     if (!latitude || !longitude || !locationText) {
@@ -120,7 +153,8 @@ export const CreateTicketPage = () => {
       attachments: attachments.map((item) => item.file),
     };
     try {
-      await ticketApi.createTicket(user.userId, user.fullName, payload);
+      const role = user?.role || 'service-user';
+      await ticketApi.createTicket(user.userId, user.fullName, payload, { role });
       setStep(5); // Success step
         setShowToast(true);
     } catch (err) {
@@ -218,10 +252,16 @@ export const CreateTicketPage = () => {
                 required
               >
                 <option value="">-- Chọn danh mục --</option>
-                {toolsApi.getCategories().map(c => (
+                {categories.map((c) => (
                   <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
                 ))}
               </select>
+              {categoriesLoading && (
+                <p className="text-[11px] text-slate-500 mt-2">Đang tải danh mục...</p>
+              )}
+              {!categoriesLoading && categories.length === 0 && (
+                <p className="text-[11px] text-red-500 mt-2">Chưa có danh mục nào. Vui lòng liên hệ quản trị hoặc thử lại sau.</p>
+              )}
             </div>
             <div className="form-control space-y-1">
               <label className="label py-0">
@@ -441,7 +481,7 @@ export const CreateTicketPage = () => {
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Tiêu đề:</span> <span className="font-bold text-slate-700">{title}</span></div>
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Mô tả:</span> <span className="font-semibold text-slate-600 line-clamp-2">{description}</span></div>
-              <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Danh mục:</span> <span className="font-bold text-slate-700">{toolsApi.getCategories().find(c => c.categoryId === categoryId)?.categoryName}</span></div>
+              <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Danh mục:</span> <span className="font-bold text-slate-700">{categories.find((c) => c.categoryId === categoryId)?.categoryName || 'Chưa chọn danh mục'}</span></div>
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Vị trí sự cố:</span> <span className="font-bold text-slate-700">{locationText}</span></div>
             </div>
           </div>

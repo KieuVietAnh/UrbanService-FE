@@ -21,10 +21,10 @@ export const SLAConfiguration = () => {
     setLoading(true);
     try {
       const res = await slaApi.getSlaConfig();
-      setCriticalHours(res.Critical.hours);
-      setHighHours(res.High.hours);
-      setMediumHours(res.Medium.hours);
-      setLowHours(res.Low.hours);
+      setCriticalHours(res?.Critical?.hours ?? '');
+      setHighHours(res?.High?.hours ?? '');
+      setMediumHours(res?.Medium?.hours ?? '');
+      setLowHours(res?.Low?.hours ?? '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -40,10 +40,10 @@ export const SLAConfiguration = () => {
     e.preventDefault();
     setSaveLoading(true);
     try {
-      await slaApi.updateSlaConfig('Critical', criticalHours, user.userId);
-      await slaApi.updateSlaConfig('High', highHours, user.userId);
-      await slaApi.updateSlaConfig('Medium', mediumHours, user.userId);
-      await slaApi.updateSlaConfig('Low', lowHours, user.userId);
+      await slaApi.updateSlaConfig({ level: 'Critical', hours: criticalHours, updatedBy: user.userId });
+      await slaApi.updateSlaConfig({ level: 'High', hours: highHours, updatedBy: user.userId });
+      await slaApi.updateSlaConfig({ level: 'Medium', hours: mediumHours, updatedBy: user.userId });
+      await slaApi.updateSlaConfig({ level: 'Low', hours: lowHours, updatedBy: user.userId });
       setPageMessage({ type: 'success', text: 'Đã cập nhật cấu hình thời hạn SLA thành công!' });
       fetchSla();
     } catch (err) {

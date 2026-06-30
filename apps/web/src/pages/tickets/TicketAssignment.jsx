@@ -1,11 +1,21 @@
 // src/pages/tickets/TicketAssignment.jsx
 import { useState, useEffect } from 'react';
+
+const FALLBACK_CATEGORIES = [
+  { categoryId: 1, categoryName: 'Vệ sinh môi trường' },
+  { categoryId: 2, categoryName: 'Đường sá' },
+  { categoryId: 3, categoryName: 'Cấp thoát nước' },
+  { categoryId: 4, categoryName: 'Điện chiếu sáng' },
+  { categoryId: 5, categoryName: 'Cây xanh' },
+  { categoryId: 6, categoryName: 'An toàn giao thông' },
+];
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { assignmentApi } from '../../services/api/assignmentApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
+import { signalrService } from '../../services/socket/signalrService';
 import * as Lucide from 'lucide-react';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,20 +30,28 @@ export const TicketAssignment = () => {
   const [ticket, setTicket] = useState(null);
   const [operators, setOperators] = useState([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState('');
+  const [manualOperatorId, setManualOperatorId] = useState('');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [assignLoading, setAssignLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
 
   useEffect(() => {
     const loadDetails = async () => {
       try {
-        const resTicket = await ticketApi.getTicketById(id);
+        const role = user?.role || 'system-staff';
+        const resTicket = await ticketApi.getTicketById(id, { role });
         const resOps = await assignmentApi.getOperators(resTicket?.categoryId);
+        const categoryResponse = await toolsApi.getCategories();
+        const normalizedCategories = Array.isArray(categoryResponse) && categoryResponse.length > 0
+          ? categoryResponse
+          : FALLBACK_CATEGORIES;
 
         setTicket(resTicket);
-        setOperators(resOps);
+        setOperators(Array.isArray(resOps) ? resOps : []);
+        setCategories(normalizedCategories);
         if (resOps.length > 0) {
           setSelectedOperatorId(resOps[0].operatorId);
         }
@@ -45,26 +63,29 @@ export const TicketAssignment = () => {
       }
     };
 
-    loadDetails();
-  }, [id, navigate]);
+    if (user?.role) {
+      loadDetails();
+    }
+  }, [id, navigate, user?.role]);
 
   const handleAssign = async (e) => {
     e.preventDefault();
     setError('');
-    if (!selectedOperatorId) {
-      setError('Vui lòng chọn đơn vị xử lý.');
+    const resolvedOperatorId = selectedOperatorId || manualOperatorId;
+    if (!resolvedOperatorId) {
+      setError('Vui lòng chọn hoặc nhập mã đơn vị xử lý.');
       return;
     }
 
-    const operatorId = Number(selectedOperatorId);
+    const operatorId = Number(resolvedOperatorId);
     if (!Number.isInteger(operatorId) || operatorId <= 0) {
       setError('Đơn vị xử lý không hợp lệ.');
       return;
     }
 
     const selectedOperator = operators.find((op) => Number(op.operatorId) === operatorId);
-    if (!selectedOperator) {
-      setError('Đơn vị xử lý đã chọn không tồn tại. Vui lòng tải lại trang.');
+    if (!selectedOperator && operators.length > 0) {
+      setError('Đơn vị xử lý đã chọn không tồn tại. Vui lòng kiểm tra lại mã hoặc tải lại trang.');
       return;
     }
 
@@ -93,7 +114,9 @@ export const TicketAssignment = () => {
         note,
       };
       await assignmentApi.assignTicket(assignmentPayload);
-      navigate('/dashboard');
+      signalrService.notifyAssignmentUpdated(feedbackId, operatorId, selectedOperator?.operatorName || selectedOperator?.fullName || '', user);
+      setMessage({ type: 'success', text: 'Phân công thành công. Trạng thái đã được cập nhật cho người xử lý.' });
+      navigate(`/tickets/${feedbackId}`);
     } catch (err) {
       console.error(err);
       setError(err.message || 'Không thể phân công phản ánh. Vui lòng thử lại.');
@@ -157,7 +180,7 @@ export const TicketAssignment = () => {
           <div className="flex gap-2 text-xs font-bold pt-2">
             <span className="badge badge-sm badge-info uppercase py-2 px-2.5">Priority: {ticket.priority}</span>
               <span className="badge badge-sm badge-outline uppercase py-2 px-2.5">
-              Category: {toolsApi.getCategories().find(c => c.categoryId === ticket.categoryId)?.categoryName}
+              Category: {categories.find((c) => Number(c.categoryId) === Number(ticket.categoryId))?.categoryName || 'Không rõ'}
             </span>
           </div>
         </div>
@@ -193,10 +216,13 @@ export const TicketAssignment = () => {
               {operators.length > 0 ? (
                 <select 
                   value={selectedOperatorId} 
-                  onChange={(e) => setSelectedOperatorId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedOperatorId(e.target.value);
+                    if (e.target.value) setManualOperatorId('');
+                  }}
                   className="select select-bordered select-sm rounded-xl font-bold"
-                  required
                 >
+                  <option value="">-- Chọn từ danh sách đơn vị xử lý --</option>
                   {operators.map((op) => (
                     <option key={op.operatorId} value={op.operatorId}>
                       {op.operatorName} ({op.contactPhone})
@@ -204,13 +230,24 @@ export const TicketAssignment = () => {
                   ))}
                 </select>
               ) : (
-                <select 
-                  disabled
-                  className="select select-bordered select-sm rounded-xl font-bold opacity-50"
-                >
-                  <option>-- Không có đơn vị xử lý (Cần quyền Admin) --</option>
-                </select>
+                <div className="text-[11px] text-gray-500">Không thể tải danh sách từ hệ thống. Bạn có thể nhập trực tiếp mã đơn vị xử lý bên dưới.</div>
               )}
+            </div>
+
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text font-bold text-xs">Hoặc nhập mã đơn vị xử lý</span>
+              </label>
+              <input
+                type="text"
+                value={manualOperatorId}
+                onChange={(e) => {
+                  setManualOperatorId(e.target.value);
+                  if (e.target.value) setSelectedOperatorId('');
+                }}
+                placeholder="VD: 123"
+                className="input input-bordered input-sm rounded-xl font-semibold"
+              />
             </div>
 
             <div className="bg-warning/10 border border-warning/20 p-4 rounded-2xl space-y-1 text-[11px] text-gray-600">
@@ -246,7 +283,7 @@ export const TicketAssignment = () => {
               <button 
                 type="submit" 
                 className="btn btn-sm btn-primary flex-1 rounded-xl font-bold disabled:opacity-50"
-                disabled={assignLoading || !selectedOperatorId || operators.length === 0}
+                disabled={assignLoading || (!selectedOperatorId && !manualOperatorId)}
               >
                 {assignLoading ? <span className="loading loading-spinner"></span> : 'Xác Nhận Phân Công'}
               </button>

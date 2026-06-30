@@ -91,7 +91,7 @@ export const CommunityFeedbackDetailPage = () => {
       setLoading(true);
       setError('');
 
-      const detailResponse = await ticketApi.getTicketById(feedbackId);
+      const detailResponse = await ticketApi.getTicketById(feedbackId, { role: 'service-user' });
       const detail = normalizeDetail(detailResponse);
 
       setTicket(detail);
@@ -138,9 +138,9 @@ export const CommunityFeedbackDetailPage = () => {
 
     try {
       if (nextSupported) {
-        await ticketApi.supportTicket(feedbackId);
+        await ticketApi.supportTicket(feedbackId, { role: 'service-user' });
       } else {
-        await ticketApi.unsupportTicket(feedbackId);
+        await ticketApi.unsupportTicket(feedbackId, { role: 'service-user' });
       }
     } catch (err) {
       console.error('Không thể cập nhật hỗ trợ:', err);
@@ -191,7 +191,8 @@ export const CommunityFeedbackDetailPage = () => {
         userId,
         userName,
         userRole,
-        content
+        content,
+        { role: 'service-user' }
       );
 
       const createdComment = normalizeDetail(response);

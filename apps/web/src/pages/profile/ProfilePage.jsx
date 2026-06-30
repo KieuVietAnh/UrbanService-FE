@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRoleLabel } from '../../utils/roleMap';
+import { managementTypes } from '@urbanmind/shared-types';
 import { ticketApi } from '../../services/api/ticketApi';
 
 const ROLE_LABELS = {
@@ -126,8 +127,8 @@ export const ProfilePage = () => {
 
   const userTickets = Array.isArray(tickets) ? tickets : [];
   const totalTickets = userTickets.length;
-  const resolvedTickets = userTickets.filter(ticket => ['Resolved', 'Closed'].includes(ticket.status)).length;
-  const openTickets = userTickets.filter(ticket => !['Resolved', 'Closed'].includes(ticket.status)).length;
+  const resolvedTickets = userTickets.filter(ticket => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
+  const openTickets = userTickets.filter(ticket => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
   const reportedThisMonth = userTickets.filter(ticket => {
     if (!ticket.createdAt) return false;
     const created = new Date(ticket.createdAt);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { notificationApi } from '../services/api/notificationApi';
+import { signalrService } from '../services/socket/signalrService';
 
 export function useNotifications(userId) {
   const [notifications, setNotifications] = useState([]);
@@ -69,6 +70,19 @@ export function useNotifications(userId) {
     if (!userId) return;
     loadNotifications();
   }, [userId, loadNotifications]);
+
+  useEffect(() => {
+    // subscribe to realtime notifications
+    signalrService.start();
+    const handleNotification = async () => {
+      // simple approach: reload notification list
+      await loadNotifications();
+    };
+    signalrService.on('NotificationReceived', handleNotification);
+    return () => {
+      signalrService.off('NotificationReceived', handleNotification);
+    };
+  }, [loadNotifications]);
 
   return {
     notifications,

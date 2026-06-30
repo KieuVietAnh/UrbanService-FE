@@ -1,5 +1,4 @@
 import { axiosClient } from './axiosClient.js';
-import { mockDb } from './mockStore.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OPERATOR_ROLE_NAMES = ['ServiceProvider', 'ServiceOperator'];
@@ -31,6 +30,11 @@ export const assignmentApi = {
       PageSize: 100,
       IsActive: true,
     };
+
+    const shouldSkipOperatorLookup = typeof window !== 'undefined' && window.location?.pathname?.includes('/staff/feedbacks');
+    if (shouldSkipOperatorLookup) {
+      return [];
+    }
 
     const operators = [];
     let permissionError = null;
@@ -73,10 +77,7 @@ export const assignmentApi = {
       return [];
     }
 
-    // Only use mock data if there was a different error (not permission) or as development fallback
-    const normalizedOperators = operators.length > 0
-      ? operators.map(normalizeOperator)
-      : mockDb.getOperators().map(normalizeOperator);
+    const normalizedOperators = operators.map(normalizeOperator);
 
     if (categoryId != null && categoryId !== '' && normalizedOperators.some((op) => op.categoryId !== undefined)) {
       return normalizedOperators.filter((op) => Number(op.categoryId) === Number(categoryId));
