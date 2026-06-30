@@ -1,5 +1,5 @@
-export { getInternalRole, getRoleLabel, ROLE_MAP } from '@urbanmind/shared-types';
-export const normalizeRole = role => {
+export { APP_ROLES, getInternalRole, getRoleLabel, ROLE_MAP } from '@urbanmind/shared-types';
+export const normalizeRole = (role) => {
   const rawRole = String(role || '').trim();
 
   const normalizedRole = rawRole

@@ -33,16 +33,21 @@ export const CategoryManagement = () => {
   const [catDesc, setCatDesc] = useState('');
   const [createLoading, setCreateLoading] = useState(false);
 
-  const operators = useMemo(() => toolsApi.getOperators(), []);
+  const [operators, setOperators] = useState([]);
 
   const fetchCats = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await slaApi.getCategories();
-      setCategories(Array.isArray(res) ? res : []);
+      const [resCategories, resOperators] = await Promise.all([
+        slaApi.getCategories(),
+        toolsApi.getOperators(),
+      ]);
+      setCategories(Array.isArray(resCategories) ? resCategories : []);
+      setOperators(Array.isArray(resOperators) ? resOperators : []);
     } catch (err) {
       console.error(err);
       setCategories([]);
+      setOperators([]);
     } finally {
       setLoading(false);
     }

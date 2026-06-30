@@ -19,7 +19,7 @@ out/
 .output/
 .next/
 .nuxt/
-
+swagger.json
 # ──────────────────────────────────
 # Environment Variables
 # !! NEVER commit .env files !!

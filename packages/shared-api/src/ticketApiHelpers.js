@@ -1,3 +1,5 @@
+import { managementTypes } from '@urbanmind/shared-types';
+
 const FEEDBACK_ROLES_MANAGEMENT = new Set([
   'system-staff',
   'interaction-manager',
@@ -27,8 +29,8 @@ const normalizeRole = (role) => {
   }
 };
 
-export const getFeedbackBasePath = (role, storedRole) => {
-  const resolvedRole = normalizeRole(role || storedRole);
+export const getFeedbackBasePath = (role) => {
+  const resolvedRole = normalizeRole(role || null);
   if (FEEDBACK_ROLES_MANAGEMENT.has(resolvedRole)) {
     return '/api/management/feedbacks';
   }
@@ -38,11 +40,51 @@ export const getFeedbackBasePath = (role, storedRole) => {
 export const normalizeRoleForFeedback = normalizeRole;
 
 export const normalizeTicketsResponse = (response) => {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.data)) return response.data;
-  if (Array.isArray(response?.content)) return response.content;
-  if (Array.isArray(response?.items)) return response.items;
-  return [];
+  const arr =
+    Array.isArray(response) ? response
+      : Array.isArray(response?.data) ? response.data
+      : Array.isArray(response?.content) ? response.content
+      : Array.isArray(response?.items) ? response.items
+      : [];
+
+  // Normalize status variants to canonical managementTypes values
+  const normalizeStatus = (s) => {
+    if (!s && s !== 0) return s;
+    const raw = String(s).trim();
+    const key = raw.replace(/[-_\s]/g, '').toLowerCase();
+    switch (key) {
+      case 'submitted': return managementTypes.feedbackStatus.SUBMITTED;
+      case 'aireviewed':
+      case 'aireview':
+        return managementTypes.feedbackStatus.AI_REVIEWED;
+      case 'verified': return managementTypes.feedbackStatus.VERIFIED;
+      case 'assigned': return managementTypes.feedbackStatus.ASSIGNED;
+      case 'inprogress':
+      case 'in progress':
+      case 'on the way':
+      case 'accepted':
+        return managementTypes.feedbackStatus.IN_PROGRESS;
+      case 'resolved':
+      case 'completed':
+        return managementTypes.feedbackStatus.RESOLVED;
+      case 'submittedforapproval':
+      case 'submittedforapproval':
+        return managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL;
+      case 'approved': return managementTypes.feedbackStatus.APPROVED;
+      case 'rejected': return managementTypes.feedbackStatus.REJECTED;
+      case 'needrework': return managementTypes.feedbackStatus.NEED_REWORK;
+      case 'closed': return managementTypes.feedbackStatus.CLOSED;
+      case 'cancelled': return managementTypes.feedbackStatus.CANCELLED;
+      default:
+        return raw;
+    }
+  };
+
+  return arr.map((item) => ({
+    ...(item || {}),
+    status: normalizeStatus(item?.status),
+    assignment: item?.assignment ? { ...item.assignment, status: normalizeStatus(item.assignment.status) } : item?.assignment,
+  }));
 };
 
 export const normalizeCommentsResponse = (resp) => {

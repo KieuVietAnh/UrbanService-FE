@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ticketApi } from '../services/api/ticketApi';
 import { signalrService } from '../services/socket/signalrService';
 
@@ -17,28 +17,40 @@ export function useTicketDetail(feedbackId, user) {
 
   const chatEndRef = useRef(null);
 
-  const fetchDetails = useCallback(async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const resTicket = await ticketApi.getTicketById(feedbackId);
-      const ticketData = resTicket;
-      if (!ticketData) throw new Error('Empty ticket data received');
-      setTicket(ticketData);
-      setComments(Array.isArray(ticketData.comments) ? ticketData.comments.filter(Boolean) : []);
-      setHistory(Array.isArray(ticketData.statusHistories) ? ticketData.statusHistories.filter(Boolean) : []);
-    } catch (err) {
-      console.error('Failed to load ticket details', err);
-      setError('Unable to load feedback details.');
-      setTicket(null);
-      setComments([]);
-      setHistory([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [feedbackId]);
-
   useEffect(() => {
+    const fetchDetails = async () => {
+      setError('');
+      setLoading(true);
+      try {
+        const resolveRole = (r) => {
+          if (!r) return undefined;
+          const raw = String(r || '').toLowerCase();
+          if (raw.includes('service-user') || raw.includes('serviceuser') || raw.includes('citizen') || raw.includes('user')) return 'service-user';
+          if (raw.includes('service-provider') || raw.includes('serviceprovider') || raw.includes('operator')) return 'service-provider';
+          if (raw.includes('system-staff') || raw.includes('systemstaff') || raw.includes('staff')) return 'system-staff';
+          if (raw.includes('administrator') || raw.includes('admin')) return 'administrator';
+          if (raw.includes('interaction-manager') || raw.includes('interactionmanager')) return 'interaction-manager';
+          return undefined;
+        };
+
+        const role = resolveRole(user?.role);
+        const resTicket = await ticketApi.getTicketById(feedbackId, { role });
+        const ticketData = resTicket;
+        if (!ticketData) throw new Error('Empty ticket data received');
+        setTicket(ticketData);
+        setComments(Array.isArray(ticketData.comments) ? ticketData.comments.filter(Boolean) : []);
+        setHistory(Array.isArray(ticketData.statusHistories) ? ticketData.statusHistories.filter(Boolean) : []);
+      } catch (err) {
+        console.error('Failed to load ticket details', err);
+        setError('Unable to load feedback details.');
+        setTicket(null);
+        setComments([]);
+        setHistory([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     const load = async () => await fetchDetails();
     load();
 
@@ -47,12 +59,55 @@ export function useTicketDetail(feedbackId, user) {
       if (incomingFeedbackId === feedbackId) setComments((prev) => [...prev, comment]);
     };
     signalrService.on('ReceiveChatMessage', handleReceiveMessage);
+    signalrService.on('CommentAdded', handleReceiveMessage);
+
+    const handleStatusChange = async (incomingFeedbackId) => {
+      if (incomingFeedbackId === feedbackId) {
+        // refresh details to pick up status, history and related changes
+        await fetchDetails();
+      }
+    };
+    signalrService.on('FeedbackStatusChanged', handleStatusChange);
+    signalrService.on('FeedbackStatusChangedNotificationReceived', handleStatusChange);
+
+    const handleAssignment = async (incomingFeedbackId) => {
+      if (incomingFeedbackId === feedbackId) {
+        await fetchDetails();
+      }
+    };
+    signalrService.on('AssignmentUpdated', handleAssignment);
+    signalrService.on('AssignmentCreated', handleAssignment);
+
+    const handleSupport = (incomingFeedbackId, payload) => {
+      if (incomingFeedbackId === feedbackId) {
+        setTicket((prev) => ({ ...(prev || {}), supportCount: payload?.supportCount ?? (prev?.supportCount || 0) }));
+      }
+    };
+    signalrService.on('SupportAdded', handleSupport);
+
+    const handleResolutionEvents = async (incomingFeedbackId) => {
+      if (incomingFeedbackId === feedbackId) {
+        await fetchDetails();
+      }
+    };
+    signalrService.on('ResolutionSubmitted', handleResolutionEvents);
+    signalrService.on('ResolutionApproved', handleResolutionEvents);
+    signalrService.on('ResolutionRejected', handleResolutionEvents);
 
     return () => {
       signalrService.off('ReceiveChatMessage', handleReceiveMessage);
+      signalrService.off('CommentAdded', handleReceiveMessage);
+      signalrService.off('FeedbackStatusChanged', handleStatusChange);
+      signalrService.off('FeedbackStatusChangedNotificationReceived', handleStatusChange);
+      signalrService.off('AssignmentUpdated', handleAssignment);
+      signalrService.off('AssignmentCreated', handleAssignment);
+      signalrService.off('SupportAdded', handleSupport);
+      signalrService.off('ResolutionSubmitted', handleResolutionEvents);
+      signalrService.off('ResolutionApproved', handleResolutionEvents);
+      signalrService.off('ResolutionRejected', handleResolutionEvents);
       signalrService.stop();
     };
-  }, [fetchDetails, feedbackId]);
+  }, [feedbackId, user?.role]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,7 +119,8 @@ export function useTicketDetail(feedbackId, user) {
     const text = chatInput;
     setChatInput('');
     await signalrService.sendChatMessage(feedbackId, user, text);
-    const resHist = await ticketApi.getHistory(feedbackId);
+    const role = (user && (String(user.role || '').toLowerCase().includes('staff') || String(user.role || '').toLowerCase().includes('service-provider'))) ? String(user.role) : undefined;
+    const resHist = await ticketApi.getHistory(feedbackId, { role });
     setHistory(Array.isArray(resHist) ? resHist : []);
   };
 
@@ -72,8 +128,41 @@ export function useTicketDetail(feedbackId, user) {
     if (e && e.preventDefault) e.preventDefault();
     setRatingLoading(true);
     try {
-      await ticketApi.submitReview(feedbackId, user.userId, rating, satisfied, reviewComment);
-      await fetchDetails();
+      const role = user?.role || 'service-user';
+      await ticketApi.submitReview(feedbackId, user.userId, rating, satisfied, reviewComment, { role });
+      const refresh = async () => {
+        setError('');
+        setLoading(true);
+        try {
+          const resolveRole = (r) => {
+            if (!r) return undefined;
+            const raw = String(r || '').toLowerCase();
+            if (raw.includes('service-user') || raw.includes('serviceuser') || raw.includes('citizen') || raw.includes('user')) return 'service-user';
+            if (raw.includes('service-provider') || raw.includes('serviceprovider') || raw.includes('operator')) return 'service-provider';
+            if (raw.includes('system-staff') || raw.includes('systemstaff') || raw.includes('staff')) return 'system-staff';
+            if (raw.includes('administrator') || raw.includes('admin')) return 'administrator';
+            if (raw.includes('interaction-manager') || raw.includes('interactionmanager')) return 'interaction-manager';
+            return undefined;
+          };
+
+          const role = resolveRole(user?.role);
+          const resTicket = await ticketApi.getTicketById(feedbackId, { role });
+          const ticketData = resTicket;
+          if (!ticketData) throw new Error('Empty ticket data received');
+          setTicket(ticketData);
+          setComments(Array.isArray(ticketData.comments) ? ticketData.comments.filter(Boolean) : []);
+          setHistory(Array.isArray(ticketData.statusHistories) ? ticketData.statusHistories.filter(Boolean) : []);
+        } catch (err) {
+          console.error('Failed to load ticket details', err);
+          setError('Unable to load feedback details.');
+          setTicket(null);
+          setComments([]);
+          setHistory([]);
+        } finally {
+          setLoading(false);
+        }
+      };
+      await refresh();
     } catch (err) {
       console.error(err);
     } finally {

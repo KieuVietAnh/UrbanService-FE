@@ -4,7 +4,7 @@ import { Fragment, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import useTicketDetail from '../../hooks/useTicketDetail';
-import { TICKET_STATUS_STEPS, getStatusStep, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
+import { TICKET_STATUS_STEPS, getStatusStep, getStatusLabel, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES, managementTypes } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
 import PageTransition from '../../components/motion/PageTransition';
 import MotionCard from '../../components/motion/MotionCard';
@@ -43,7 +43,7 @@ export const TicketDetailPage = () => {
   const resolvedShownRef = useRef(false);
 
   useEffect(() => {
-    if (ticket?.status === 'Resolved' && !resolvedShownRef.current) {
+    if (ticket?.status === managementTypes.feedbackStatus.RESOLVED && !resolvedShownRef.current) {
       resolvedShownRef.current = true;
       setResolvedToastOpen(true);
       // auto-close after a while handled by DelightToast
@@ -97,17 +97,17 @@ export const TicketDetailPage = () => {
 
   const statusDescription = (status) => {
     switch (status) {
-      case 'Submitted':
+      case managementTypes.feedbackStatus.SUBMITTED:
         return 'Phản ánh đã gửi và đang chờ kiểm duyệt.';
-      case 'AI Reviewed':
+      case managementTypes.feedbackStatus.AI_REVIEWED:
         return 'Đơn vị đang phân loại và xác định phương án xử lý.';
-      case 'Assigned':
+      case managementTypes.feedbackStatus.ASSIGNED:
         return 'Đã phân công đơn vị xử lý và chuẩn bị triển khai.';
-      case 'InProgress':
+      case managementTypes.feedbackStatus.IN_PROGRESS:
         return 'Đang tiến hành xử lý tại hiện trường.';
-      case 'Resolved':
+      case managementTypes.feedbackStatus.RESOLVED:
         return 'Đã xử lý xong. Vui lòng đánh giá chất lượng.';
-      case 'Closed':
+      case managementTypes.feedbackStatus.CLOSED:
         return 'Phản ánh đã đóng sau khi hoàn tất các bước.';
       default:
         return 'Tiến trình xử lý đang được cập nhật.';
@@ -175,12 +175,35 @@ export const TicketDetailPage = () => {
           <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${PRIORITY_BADGE_CLASSES[ticket.priority] || PRIORITY_BADGE_CLASSES.Medium}`}>
             Ưu tiên: {ticket.priority || 'Không xác định'}
           </span>
-          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default} ${ticket.status === 'Resolved' && resolvedToastOpen ? 'ring-2 ring-emerald-100' : ''}`}>
-            Trạng thái: {ticket.status || 'Không xác định'}
+          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default} ${ticket.status === managementTypes.feedbackStatus.RESOLVED && resolvedToastOpen ? 'ring-2 ring-emerald-100' : ''}`}>
+            Trạng thái: {getStatusLabel(ticket.status, ticket.status || 'Không xác định')}
           </span>
           <div className="rounded-3xl bg-slate-50 px-4 py-3 text-[11px] text-slate-600 border border-slate-200">
             {statusDescription(ticket.status)}
           </div>
+          {(ticket.status === managementTypes.feedbackStatus.RESOLVED || ticket.status === managementTypes.feedbackStatus.NEED_REWORK || ticket.status === managementTypes.feedbackStatus.REJECTED) && user?.role === 'service-user' && (
+            <div className="flex flex-wrap gap-2">
+              {ticket.status === managementTypes.feedbackStatus.NEED_REWORK || ticket.status === managementTypes.feedbackStatus.REJECTED ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/tickets/${feedbackId}/rework`)}
+                  className="btn btn-warning rounded-2xl px-4 py-2 text-[11px] font-black"
+                >
+                  <Lucide.RefreshCw size={14} className="mr-2" />
+                  Rework Center
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/tickets/${feedbackId}/result`)}
+                  className="btn btn-primary rounded-2xl px-4 py-2 text-[11px] font-black"
+                >
+                  <Lucide.Sparkles size={14} className="mr-2" />
+                  Xem kết quả xử lý
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -211,8 +234,21 @@ export const TicketDetailPage = () => {
         </div>
 
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100 bg-slate-50 p-5">
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 mb-4">Quy trình</div>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[10px] uppercase tracking-[0.3em] font-bold text-slate-500 mb-4">
+            <span>Quy trình</span>
+            <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold normal-case tracking-normal text-slate-600">Bước hiện tại: {getStatusLabel(ticket.status, 'Đang cập nhật')}</span>
+          </div>
           <TimelineProgress percent={progressPercent} className="mb-4" />
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Đơn vị xử lý</div>
+              <div className="mt-2 font-semibold text-slate-800">{ticket.assignment?.operatorName || ticket.assignment?.staffName || 'Chưa phân công'}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Nghiệm thu / phê duyệt</div>
+              <div className="mt-2 font-semibold text-slate-800">{ticket.resolution?.isApproved ? 'Đã duyệt' : ticket.status === managementTypes.feedbackStatus.RESOLVED ? 'Chờ nghiệm thu' : 'Chưa có kết quả phê duyệt'}</div>
+            </div>
+          </div>
           <div className="flex items-center gap-4 overflow-x-auto pb-3">
             {steps.map((step, idx) => {
               const isComplete = currentStep > idx;
@@ -295,7 +331,7 @@ export const TicketDetailPage = () => {
             </div>
 
             {/* SLA countdown info */}
-            {ticket.dueDate && ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
+            {ticket.dueDate && ticket.status !== managementTypes.feedbackStatus.RESOLVED && ticket.status !== managementTypes.feedbackStatus.CLOSED && (
               <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 flex items-center justify-between text-xs text-slate-700">
                 <div className="flex items-center gap-2 text-amber-700 font-bold">
                   <Lucide.Clock size={16} />
@@ -335,7 +371,7 @@ export const TicketDetailPage = () => {
         <div className="space-y-6">
 
           {/* Rating Form block (Flow 4: CSAT review) */}
-          {ticket.status === 'Resolved' && user?.role === 'service-user' && (
+          {ticket.status === managementTypes.feedbackStatus.RESOLVED && user?.role === 'service-user' && (
             <div className="card bg-white border border-[color:var(--brand-primary)]/30 shadow-md p-6 rounded-3xl space-y-4 ring-2 ring-[color:var(--brand-primary)]/5">
               <div className="text-center space-y-1">
                 <div className="w-10 h-10 rounded-full bg-[color:var(--color-info-bg)] text-[color:var(--color-info)] flex items-center justify-center mx-auto" aria-hidden>

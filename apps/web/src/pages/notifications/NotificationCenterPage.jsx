@@ -4,45 +4,12 @@ import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../hooks/useNotifications';
 
-const notificationTypeConfig = {
-  assignment: {
-    label: 'Phân công',
-    badge: 'Cao',
-    tone: 'error',
-    icon: Lucide.UserCheck,
-  },
-  alert: {
-    label: 'Cảnh báo',
-    badge: 'Nguy cấp',
-    tone: 'warning',
-    icon: Lucide.AlertTriangle,
-  },
-  update: {
-    label: 'Cập nhật',
-    badge: 'Thông tin',
-    tone: 'info',
-    icon: Lucide.RefreshCcw,
-  },
-  reminder: {
-    label: 'Nhắc nhở',
-    badge: 'Trung bình',
-    tone: 'accent',
-    icon: Lucide.Clock,
-  },
-  default: {
-    label: 'Thông báo',
-    badge: 'Thông tin',
-    tone: 'secondary',
-    icon: Lucide.Bell,
-  },
-};
-
-const filters = [
-  { id: 'all', label: 'Tất cả', icon: Lucide.ListChecks },
-  { id: 'unread', label: 'Chưa đọc', icon: Lucide.Mail },
-  { id: 'assignment', label: 'Phân công', icon: Lucide.UserCheck },
-  { id: 'alert', label: 'Cảnh báo', icon: Lucide.AlertTriangle },
-  { id: 'update', label: 'Cập nhật', icon: Lucide.RefreshCcw },
+const categoryFilters = [
+  { id: 'all', label: 'Tất cả', icon: Lucide.Inbox, accent: 'bg-slate-100 text-slate-700' },
+  { id: 'status', label: 'Cập nhật trạng thái', icon: Lucide.CircleDot, accent: 'bg-sky-100 text-sky-700' },
+  { id: 'rework', label: 'Yêu cầu làm lại', icon: Lucide.RefreshCcw, accent: 'bg-amber-100 text-amber-700' },
+  { id: 'resolution', label: 'Kết quả xử lý', icon: Lucide.CheckCircle2, accent: 'bg-emerald-100 text-emerald-700' },
+  { id: 'community', label: 'Hoạt động cộng đồng', icon: Lucide.Users, accent: 'bg-violet-100 text-violet-700' },
 ];
 
 const formatRelativeTime = (value) => {
@@ -65,13 +32,68 @@ const formatRelativeTime = (value) => {
   }
 };
 
-const getNotificationType = (type) => {
-  const normalized = (type || '').toLowerCase();
-  if (normalized.includes('assign')) return 'assignment';
-  if (normalized.includes('alert') || normalized.includes('warning')) return 'alert';
-  if (normalized.includes('update') || normalized.includes('status')) return 'update';
-  if (normalized.includes('remind')) return 'reminder';
-  return 'default';
+const getCategory = (notification) => {
+  const text = `${notification?.title || ''} ${notification?.message || ''} ${notification?.type || ''}`.toLowerCase();
+  if (text.includes('rework') || text.includes('làm lại') || text.includes('bổ sung') || text.includes('request info') || text.includes('yêu cầu thêm')) {
+    return 'rework';
+  }
+  if (text.includes('resolution') || text.includes('result') || text.includes('resolved') || text.includes('hoàn tất') || text.includes('approved') || text.includes('phê duyệt')) {
+    return 'resolution';
+  }
+  if (text.includes('community') || text.includes('comment') || text.includes('support') || text.includes('cộng đồng') || text.includes('bình luận')) {
+    return 'community';
+  }
+  return 'status';
+};
+
+const getPriority = (notification) => {
+  const text = `${notification?.title || ''} ${notification?.message || ''}`.toLowerCase();
+  if (text.includes('urgent') || text.includes('nguy') || text.includes('cấp') || text.includes('rework') || text.includes('làm lại')) {
+    return { label: 'Cao', tone: 'bg-rose-100 text-rose-700 border-rose-200' };
+  }
+  if (text.includes('update') || text.includes('cập nhật') || text.includes('status')) {
+    return { label: 'Trung bình', tone: 'bg-sky-100 text-sky-700 border-sky-200' };
+  }
+  return { label: 'Thông tin', tone: 'bg-slate-100 text-slate-700 border-slate-200' };
+};
+
+const getCategoryConfig = (category) => {
+  const base = categoryFilters.find((item) => item.id === category) || categoryFilters[0];
+  return {
+    label: base.label,
+    icon: base.icon,
+    accent: base.accent,
+  };
+};
+
+const getRelatedFeedback = (notification) => {
+  const values = [
+    notification?.feedbackId,
+    notification?.ticketId,
+    notification?.data?.feedbackId,
+    notification?.data?.ticketId,
+    notification?.relatedFeedbackId,
+  ];
+
+  for (const value of values) {
+    if (value) return `Feedback #${value}`;
+  }
+
+  const targetUrl = notification?.targetUrl || notification?.data?.targetUrl || '';
+  const match = targetUrl.match(/\/tickets\/([^/]+)/i);
+  if (match?.[1]) return `Feedback #${match[1]}`;
+  return 'Thông báo chung';
+};
+
+const getActionRoute = (notification, category) => {
+  const feedbackId = notification?.feedbackId || notification?.ticketId || notification?.data?.feedbackId || notification?.data?.ticketId || notification?.relatedFeedbackId;
+  if (feedbackId) {
+    if (category === 'rework') return `/tickets/${feedbackId}/rework`;
+    if (category === 'resolution') return `/tickets/${feedbackId}/result`;
+    return `/tickets/${feedbackId}`;
+  }
+  if (notification?.targetUrl) return notification.targetUrl;
+  return '/tickets';
 };
 
 const getSectionLabel = (date) => {
@@ -100,7 +122,8 @@ const groupByDate = (items) => {
 export const NotificationCenterPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const {
@@ -123,11 +146,9 @@ export const NotificationCenterPage = () => {
 
     return notifications
       .filter((notification) => {
-        if (activeFilter === 'unread') return notification?.isRead === false;
-        if (activeFilter === 'assignment') return getNotificationType(notification?.type) === 'assignment';
-        if (activeFilter === 'alert') return getNotificationType(notification?.type) === 'alert';
-        if (activeFilter === 'update') return getNotificationType(notification?.type) === 'update';
-        return true;
+        if (showUnreadOnly && notification?.isRead !== false) return false;
+        if (activeCategory === 'all') return true;
+        return getCategory(notification) === activeCategory;
       })
       .filter((notification) => {
         if (!searchQuery.trim()) return true;
@@ -137,244 +158,195 @@ export const NotificationCenterPage = () => {
           .some((value) => value.toLowerCase().includes(term));
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }, [notifications, activeFilter, searchQuery]);
+  }, [notifications, activeCategory, showUnreadOnly, searchQuery]);
 
-  const groupedNotifications = useMemo(
-    () => groupByDate(filteredNotifications),
-    [filteredNotifications]
-  );
+  const groupedNotifications = useMemo(() => groupByDate(filteredNotifications), [filteredNotifications]);
 
   const summaryCounts = useMemo(() => {
-    const summary = {
-      all: Array.isArray(notifications) ? notifications.length : 0,
-      unread: Array.isArray(notifications) ? notifications.filter((item) => !item.isRead).length : 0,
-      assignment: Array.isArray(notifications)
-        ? notifications.filter((item) => getNotificationType(item?.type) === 'assignment').length
-        : 0,
-      alert: Array.isArray(notifications)
-        ? notifications.filter((item) => getNotificationType(item?.type) === 'alert').length
-        : 0,
-      update: Array.isArray(notifications)
-        ? notifications.filter((item) => getNotificationType(item?.type) === 'update').length
-        : 0,
+    const items = Array.isArray(notifications) ? notifications : [];
+    return {
+      all: items.length,
+      unread: items.filter((item) => !item.isRead).length,
+      status: items.filter((item) => getCategory(item) === 'status').length,
+      rework: items.filter((item) => getCategory(item) === 'rework').length,
+      resolution: items.filter((item) => getCategory(item) === 'resolution').length,
+      community: items.filter((item) => getCategory(item) === 'community').length,
     };
-
-    return summary;
   }, [notifications]);
 
-  const handleOpenNotification = async (notification) => {
-    if (!notification) return;
+  const actionableCount = useMemo(() => {
+    return filteredNotifications.filter((item) => item?.isRead === false).length;
+  }, [filteredNotifications]);
 
+  const handleMarkRead = async (notification) => {
+    if (!notification?.notificationId) return;
     try {
       await markAsRead(notification.notificationId);
     } catch (err) {
       console.warn('NotificationCenterPage markAsRead failed', err);
     }
-
-    if (notification?.targetUrl) {
-      navigate(notification.targetUrl);
-    }
   };
 
   return (
-    <div className="space-y-6 text-slate-800">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm fade-in-up visible">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-2">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Trung tâm thông báo</p>
-            <h1 className="text-2xl font-extrabold tracking-tight">Hộp thư thông báo</h1>
-            <p className="max-w-2xl text-sm text-slate-500">
-              Xem, sắp xếp và quản lý thông báo quan trọng của bạn. Các thông báo chưa đọc được nhóm rõ ràng
-              để bạn tập trung vào điều cần xử lý nhanh.
-            </p>
+    <div className="space-y-4 text-slate-800">
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 p-5 text-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.7)] sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] backdrop-blur">
+              <Lucide.Inbox size={14} />
+              Service-user action inbox
+            </div>
+            <div>
+              <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Thông báo được chuyển thành nhiệm vụ rõ ràng</h1>
+              <p className="mt-2 text-sm leading-7 text-slate-300 sm:text-base">
+                Mỗi thông báo đều có thể mở trực tiếp, được phân loại theo loại việc cần làm và giúp bạn phản hồi nhanh hơn.
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => markAllAsRead()}
-              disabled={loading || unreadCount === 0}
-              className="btn btn-sm btn-outline btn-primary rounded-full"
-            >
+            <button type="button" onClick={() => markAllAsRead()} disabled={loading || unreadCount === 0} className="btn btn-sm rounded-full border-white/20 bg-white/15 text-white hover:bg-white/25">
+              <Lucide.CheckCheck size={14} />
               Đánh dấu tất cả đã đọc
             </button>
-            <button
-              type="button"
-              onClick={() => loadNotifications({ pageNumber: 1, pageSize: 50 })}
-              className="btn btn-sm btn-primary rounded-full transition duration-200 ease-out hover:shadow-sm"
-            >
-              Cập nhật
+            <button type="button" onClick={() => loadNotifications({ pageNumber: 1, pageSize: 50 })} className="btn btn-sm rounded-full border-white/20 bg-white text-slate-800 hover:bg-slate-100">
+              <Lucide.RefreshCw size={14} />
+              Làm mới
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm fade-in-up visible">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Tổng quan</p>
-                <p className="text-3xl font-extrabold text-slate-900">{summaryCounts.unread}</p>
-                <p className="text-sm text-slate-500">Thông báo chưa đọc trong hộp thư</p>
-              </div>
-              <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
-                <Lucide.Bell size={24} />
-              </div>
-            </div>
-          </div>
+      <section className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-[1.4rem] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Chưa đọc</div>
+          <div className="mt-2 text-2xl font-black text-slate-900">{summaryCounts.unread}</div>
+          <div className="text-sm text-slate-500">Thông báo cần xử lý ngay</div>
+        </div>
+        <div className="rounded-[1.4rem] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Cần hành động</div>
+          <div className="mt-2 text-2xl font-black text-slate-900">{actionableCount}</div>
+          <div className="text-sm text-slate-500">Thông báo chưa đọc và có CTA</div>
+        </div>
+        <div className="rounded-[1.4rem] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Danh mục</div>
+          <div className="mt-2 text-2xl font-black text-slate-900">{summaryCounts.rework + summaryCounts.resolution + summaryCounts.community + summaryCounts.status}</div>
+          <div className="text-sm text-slate-500">Được sắp xếp theo mục tiêu hành động</div>
+        </div>
+      </section>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm fade-in-up visible fade-in-up visible">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Bộ lọc</p>
-            <div className="mt-4 space-y-3">
-              {filters.map((filter) => (
+      <section className="rounded-[1.6rem] border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {categoryFilters.map((filter) => {
+              const isActive = activeCategory === filter.id;
+              return (
                 <button
                   key={filter.id}
                   type="button"
-                  onClick={() => setActiveFilter(filter.id)}
-                  className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm transition duration-200 ease-out ${
-                    activeFilter === filter.id
-                      ? 'border-primary bg-primary/10 text-primary shadow-sm'
-                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100'
-                  }`}
+                  onClick={() => setActiveCategory(filter.id)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition ${isActive ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <filter.icon size={16} />
-                    <span>{filter.label}</span>
-                  </div>
-                  <span className="text-xs font-semibold text-slate-500">{summaryCounts[filter.id] ?? 0}</span>
+                  <filter.icon size={14} />
+                  <span>{filter.label}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] ${isActive ? 'bg-white/20 text-white' : filter.accent}`}>
+                    {summaryCounts[filter.id] ?? 0}
+                  </span>
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
+          <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={showUnreadOnly} onChange={() => setShowUnreadOnly((prev) => !prev)} className="checkbox checkbox-sm border-slate-300 checked:border-slate-900 checked:bg-slate-900" />
+            Chỉ chưa đọc
+          </label>
+        </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm fade-in-up visible">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Đơn vị ưu tiên</p>
-                <p className="text-sm font-semibold text-slate-700">Tổng quan nhanh</p>
-              </div>
-              <Lucide.Clock className="text-slate-400" size={20} />
-            </div>
-            <div className="mt-4 space-y-3">
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Cao</p>
-                <p className="mt-2 text-sm text-slate-700">Phân công và cảnh báo cần phản hồi nhanh.</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Thông tin</p>
-                <p className="mt-2 text-sm text-slate-700">Cập nhật tiến trình và trạng thái xử lý.</p>
-              </div>
-            </div>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-[320px]">
+            <Lucide.Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Tìm theo tiêu đề hoặc tin nhắn..."
+              className="input input-sm w-full rounded-full border-slate-200 bg-slate-50 pl-9 text-sm"
+            />
           </div>
-        </aside>
+          <div className="text-sm text-slate-500">{filteredNotifications.length} thông báo phù hợp</div>
+        </div>
+      </section>
 
-        <section className="space-y-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Danh sách</p>
-              <h2 className="text-xl font-bold">Thông báo mới nhất</h2>
-              <p className="text-sm text-slate-500">{summaryCounts.all} thông báo · {unreadCount} chưa đọc</p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative">
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Tìm thông báo..."
-                  className="input input-sm input-bordered w-full min-w-[220px] rounded-full pr-10"
-                />
-                <Lucide.Search size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              </div>
-              <button
-                type="button"
-                onClick={() => loadNotifications({ pageNumber: 1, pageSize: 50 })}
-                className="btn btn-sm btn-outline rounded-full"
-              >
-                Làm mới
-              </button>
-            </div>
+      <section className="space-y-4">
+        {loading ? (
+          <div className="rounded-[1.6rem] border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+            Đang tải hộp thư...
           </div>
+        ) : error ? (
+          <div className="rounded-[1.6rem] border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm">
+            {error}
+          </div>
+        ) : filteredNotifications.length === 0 ? (
+          <div className="rounded-[1.6rem] border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+            Không có thông báo phù hợp với bộ lọc hiện tại.
+          </div>
+        ) : (
+          groupedNotifications.map((group) => (
+            <div key={group.label} className="space-y-3">
+              <div className="flex items-center justify-between gap-3 px-1">
+                <h2 className="text-sm font-black uppercase tracking-[0.24em] text-slate-500">{group.label}</h2>
+                <span className="text-xs text-slate-400">{group.values.length} mục</span>
+              </div>
+              <div className="space-y-3">
+                {group.values.map((notification) => {
+                  const category = getCategory(notification);
+                  const categoryConfig = getCategoryConfig(category);
+                  const priority = getPriority(notification);
+                  const Icon = categoryConfig.icon;
+                  const relatedFeedback = getRelatedFeedback(notification);
 
-          <div className="space-y-6">
-            {loading ? (
-              <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">
-                Đang tải thông báo...
-              </div>
-            ) : error ? (
-              <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-sm text-red-700 shadow-sm">
-                {error}
-              </div>
-            ) : filteredNotifications.length === 0 ? (
-              <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">
-                Không tìm thấy thông báo phù hợp với bộ lọc hiện tại.
-              </div>
-            ) : (
-              groupedNotifications.map((group) => (
-                <div key={group.label} className="space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">{group.label}</h3>
-                    <span className="text-xs text-slate-400">{group.values.length} mục</span>
-                  </div>
-                  <div className="space-y-3">
-                    {group.values.map((notification) => {
-                      const typeKey = getNotificationType(notification?.type);
-                      const typeData = notificationTypeConfig[typeKey] || notificationTypeConfig.default;
-                      const Icon = typeData.icon;
-
-                      return (
-                        <button
-                          key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`}
-                          type="button"
-                          onClick={() => handleOpenNotification(notification)}
-                          className={`w-full rounded-3xl border p-4 text-left transition ${
-                            notification?.isRead === false ? 'border-primary bg-primary/5 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className={`flex h-11 w-11 items-center justify-center rounded-3xl bg-${typeData.tone}-100 text-${typeData.tone}-600`}>
-                              <Icon size={18} />
+                  return (
+                    <article key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`} className={`rounded-[1.5rem] border p-4 shadow-sm transition ${notification?.isRead === false ? 'border-slate-900 bg-slate-50' : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow'}`}>
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 flex-1 gap-3">
+                          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${categoryConfig.accent}`}>
+                            <Icon size={18} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-base font-black text-slate-900">{notification?.title || 'Thông báo mới'}</h3>
+                              {notification?.isRead === false && <span className="rounded-full bg-rose-500 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white">Mới</span>}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-sm font-semibold text-slate-900 truncate">
-                                      {notification?.title || 'Thông báo mới'}
-                                    </span>
-                                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                                      {typeData.label}
-                                    </span>
-                                    {notification?.isRead === false && (
-                                      <span className="rounded-full bg-primary text-primary-content px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]">
-                                        Mới
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="mt-2 text-sm leading-6 text-slate-600 line-clamp-2">
-                                    {notification?.message || 'Nội dung thông báo chưa có.'}
-                                  </p>
-                                </div>
-                                <div className="shrink-0 text-right text-xs text-slate-400">
-                                  <p>{formatRelativeTime(notification?.createdAt)}</p>
-                                  <p className="mt-2 rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                                    {typeData.badge}
-                                  </p>
-                                </div>
-                              </div>
+                            <p className="mt-2 text-sm leading-7 text-slate-600">{notification?.message || 'Nội dung thông báo chưa có.'}</p>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                              <span className={`rounded-full border px-2.5 py-1 font-semibold ${priority.tone}`}>{priority.label}</span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600">{categoryConfig.label}</span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600">{relatedFeedback}</span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-500">{formatRelativeTime(notification?.createdAt)}</span>
                             </div>
                           </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-      </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 sm:justify-end">
+                          <button type="button" onClick={() => navigate(getActionRoute(notification, category))} className="btn btn-sm rounded-full border-slate-200 bg-slate-900 text-white hover:bg-slate-700">
+                            <Lucide.ExternalLink size={14} />
+                            Mở phản ánh
+                          </button>
+                          <button type="button" onClick={() => handleMarkRead(notification)} className="btn btn-sm rounded-full border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                            <Lucide.MailCheck size={14} />
+                            Đánh dấu đã đọc
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
     </div>
   );
 };

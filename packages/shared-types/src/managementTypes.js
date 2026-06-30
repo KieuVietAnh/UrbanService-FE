@@ -1,6 +1,7 @@
 export const managementTypes = {
   feedbackStatus: {
     SUBMITTED: 'Submitted',
+    AI_REVIEWED: 'AI Reviewed',
     VERIFIED: 'Verified',
     ASSIGNED: 'Assigned',
     IN_PROGRESS: 'InProgress',
@@ -14,7 +15,8 @@ export const managementTypes = {
   },
 
   statusFlow: {
-    'Submitted': ['Verified', 'Rejected'],
+    'Submitted': ['AI Reviewed', 'Rejected'],
+    'AI Reviewed': ['Verified', 'Rejected'],
     'Verified': ['Assigned', 'Rejected'],
     'Assigned': ['InProgress', 'Rejected'],
     'InProgress': ['SubmittedForApproval', 'NeedRework'],

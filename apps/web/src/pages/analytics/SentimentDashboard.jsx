@@ -1,17 +1,21 @@
 // src/pages/analytics/SentimentDashboard.jsx
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import { analyticsApi } from '../../services/api/analyticsApi';
+import { normalizeRole } from '../../utils/roleMap';
 import { SentimentDonutChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 
 export const SentimentDashboard = () => {
+  const { user } = useAuth();
+  const currentRole = normalizeRole(user?.role);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await analyticsApi.getSystemDashboardStats();
+        const res = await analyticsApi.getSystemDashboardStats(currentRole);
         setStats(res);
       } catch (err) {
         console.error(err);
@@ -20,7 +24,7 @@ export const SentimentDashboard = () => {
       }
     };
     fetchStats();
-  }, []);
+  }, [currentRole]);
 
   if (loading) {
     return (

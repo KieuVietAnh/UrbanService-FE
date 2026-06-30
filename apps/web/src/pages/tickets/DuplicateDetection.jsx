@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
+import { managementTypes } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
 
 export const DuplicateDetection = () => {
@@ -18,39 +19,43 @@ export const DuplicateDetection = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
-    // Read all submitted / active tickets to show potential duplicates
-    const all = toolsApi.getTickets().filter(t => t.status !== 'Closed');
-    
-    // Group tickets by proximity to mock duplication queue (e.g. group tickets in same category and near coordinates)
-    const groups = [];
-    const visited = new Set();
+    const loadDuplicates = async () => {
+      const tickets = await toolsApi.getTickets();
+      const all = Array.isArray(tickets) ? tickets.filter((t) => t.status !== managementTypes.feedbackStatus.CLOSED) : [];
 
-    for (let i = 0; i < all.length; i++) {
-      if (visited.has(all[i].feedbackId)) continue;
-      const group = [all[i]];
-      visited.add(all[i].feedbackId);
+      // Group tickets by proximity to mock duplication queue (e.g. group tickets in same category and near coordinates)
+      const groups = [];
+      const visited = new Set();
 
-      for (let j = i + 1; j < all.length; j++) {
-        if (visited.has(all[j].feedbackId)) continue;
-        // Check same category and proximity
-        const distLat = Math.abs(all[i].latitude - all[j].latitude);
-        const distLng = Math.abs(all[i].longitude - all[j].longitude);
-        if (all[i].categoryId === all[j].categoryId && distLat < 0.008 && distLng < 0.008) {
-          group.push(all[j]);
-          visited.add(all[j].feedbackId);
+        for (let i = 0; i < all.length; i++) {
+        if (visited.has(all[i].feedbackId)) continue;
+        const group = [all[i]];
+        visited.add(all[i].feedbackId);
+
+        for (let j = i + 1; j < all.length; j++) {
+          if (visited.has(all[j].feedbackId)) continue;
+          // Check same category and proximity
+          const distLat = Math.abs(all[i].latitude - all[j].latitude);
+          const distLng = Math.abs(all[i].longitude - all[j].longitude);
+          if (all[i].categoryId === all[j].categoryId && distLat < 0.008 && distLng < 0.008) {
+            group.push(all[j]);
+            visited.add(all[j].feedbackId);
+          }
+        }
+
+        if (group.length > 1) {
+          groups.push(group);
         }
       }
 
-      if (group.length > 1) {
-        groups.push(group);
+      setTickets(groups);
+      if (groups.length > 0) {
+        setSelectedGroup(groups[0]);
+        setMasterId(groups[0][0].feedbackId);
       }
-    }
+    };
 
-    setTickets(groups);
-    if (groups.length > 0) {
-      setSelectedGroup(groups[0]);
-      setMasterId(groups[0][0].feedbackId);
-    }
+    loadDuplicates();
   }, [success]);
 
   const handleMerge = async () => {

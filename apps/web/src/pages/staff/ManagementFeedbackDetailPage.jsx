@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { assignmentApi, toolsApi } from '@urbanmind/shared-api';
 import { managementTypes, STATUS_BADGE_CLASSES, PRIORITY_BADGE_CLASSES } from '@urbanmind/shared-types';
+import { signalrService } from '../../services/socket/signalrService';
 import { LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import IncidentMap from '../../components/maps/IncidentMap';
@@ -42,6 +43,7 @@ export const ManagementFeedbackDetailPage = () => {
 
   // Preview attachment
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [selectedTimelineEventId, setSelectedTimelineEventId] = useState(null);
 
   // Load feedback details
   useEffect(() => {
@@ -50,24 +52,26 @@ export const ManagementFeedbackDetailPage = () => {
       setError('');
       try {
         const feedbackRes = await managementFeedbackApi.getFeedbackById(feedbackId);
-        const [categoriesRes, operatorsRes] = await Promise.all([
+        const [categoriesRes, operatorsRes] = await Promise.allSettled([
           toolsApi.getCategories(),
           assignmentApi.getOperators(feedbackRes?.categoryId),
         ]);
 
-        setCategories(Array.isArray(categoriesRes) ? categoriesRes : []);
-        setOperators(Array.isArray(operatorsRes) ? operatorsRes : []);
+        setCategories(Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
+        setOperators(Array.isArray(operatorsRes.value) ? operatorsRes.value : []);
 
         setFeedback(feedbackRes);
         setEditForm({
-          categoryId: feedbackRes?.categoryId || '',
+          categoryId: feedbackRes?.categoryId ?? '',
           title: feedbackRes?.title || '',
           description: feedbackRes?.description || '',
           locationText: feedbackRes?.locationText || '',
-          latitude: feedbackRes?.latitude || '',
-          longitude: feedbackRes?.longitude || '',
+          latitude: feedbackRes?.latitude ?? '',
+          longitude: feedbackRes?.longitude ?? '',
           priority: feedbackRes?.priority || '',
           dueDate: feedbackRes?.dueDate || '',
+          status: feedbackRes?.status || '',
+          statusNote: '',
         });
       } catch (err) {
         console.error('Failed to load feedback details', err);
@@ -86,8 +90,15 @@ export const ManagementFeedbackDetailPage = () => {
   const handleEdit = async () => {
     setEditLoading(true);
     try {
-      await managementFeedbackApi.updateFeedback(feedbackId, editForm);
-      setFeedback(prev => ({ ...prev, ...editForm }));
+      const payload = {
+        ...editForm,
+        categoryId: editForm.categoryId === '' ? null : editForm.categoryId,
+        latitude: editForm.latitude === '' ? null : editForm.latitude,
+        longitude: editForm.longitude === '' ? null : editForm.longitude,
+      };
+
+      await managementFeedbackApi.updateFeedback(feedbackId, payload);
+      setFeedback(prev => ({ ...prev, ...payload }));
       setIsEditing(false);
     } catch (err) {
       console.error('Failed to update feedback', err);
@@ -106,6 +117,11 @@ export const ManagementFeedbackDetailPage = () => {
         note: statusForm.note,
       });
       setFeedback(prev => ({ ...prev, status: statusForm.status }));
+      try {
+        signalrService.notifyStatusChanged(feedbackId, feedback?.status, statusForm.status, user);
+      } catch (e) {
+        console.warn('SignalR notify failed', e);
+      }
       setStatusModal(false);
       setStatusForm({ status: '', note: '' });
     } catch (err) {
@@ -121,7 +137,7 @@ export const ManagementFeedbackDetailPage = () => {
     setVerifyLoading(true);
     try {
       await managementFeedbackApi.verifyFeedback(feedbackId);
-      setFeedback(prev => ({ ...prev, status: 'Verified' }));
+      setFeedback(prev => ({ ...prev, status: managementTypes.feedbackStatus.VERIFIED }));
     } catch (err) {
       console.error('Failed to verify feedback', err);
       setPageMessage({ type: 'error', text: err?.message || 'Không thể xác minh phản ánh.' });
@@ -170,7 +186,13 @@ export const ManagementFeedbackDetailPage = () => {
       };
 
       await managementFeedbackApi.assignToOperator(payload);
-      setFeedback(prev => ({ ...prev, status: 'Assigned' }));
+      setFeedback(prev => ({ ...prev, status: managementTypes.feedbackStatus.ASSIGNED }));
+      try {
+        signalrService.notifyAssignmentUpdated(feedbackId, operatorId, selectedOperator.operatorName, user);
+        signalrService.notifyStatusChanged(feedbackId, feedback?.status, managementTypes.feedbackStatus.ASSIGNED, user);
+      } catch (e) {
+        console.warn('SignalR notify failed', e);
+      }
       setAssignModal(false);
       setAssignForm({ operatorId: '', note: '' });
     } catch (err) {
@@ -183,17 +205,17 @@ export const ManagementFeedbackDetailPage = () => {
 
   const getStatusLabel = (s) => {
     const labels = {
-      'Submitted': 'Đã gửi',
-      'Verified': 'Đã xác minh',
-      'Assigned': 'Đã giao',
-      'InProgress': 'Đang xử lý',
-      'Resolved': 'Hoàn thành',
-      'SubmittedForApproval': 'Chờ duyệt',
-      'Approved': 'Đã duyệt',
-      'Rejected': 'Bị từ chối',
-      'NeedRework': 'Cần sửa lại',
-      'Closed': 'Đã đóng',
-      'Cancelled': 'Đã hủy',
+      [managementTypes.feedbackStatus.SUBMITTED]: 'Đã gửi',
+      [managementTypes.feedbackStatus.VERIFIED]: 'Đã xác minh',
+      [managementTypes.feedbackStatus.ASSIGNED]: 'Đã giao',
+      [managementTypes.feedbackStatus.IN_PROGRESS]: 'Đang xử lý',
+      [managementTypes.feedbackStatus.RESOLVED]: 'Hoàn thành',
+      [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: 'Chờ duyệt',
+      [managementTypes.feedbackStatus.APPROVED]: 'Đã duyệt',
+      [managementTypes.feedbackStatus.REJECTED]: 'Bị từ chối',
+      [managementTypes.feedbackStatus.NEED_REWORK]: 'Cần sửa lại',
+      [managementTypes.feedbackStatus.CLOSED]: 'Đã đóng',
+      [managementTypes.feedbackStatus.CANCELLED]: 'Đã hủy',
     };
     return labels[s] || s;
   };
@@ -231,8 +253,8 @@ export const ManagementFeedbackDetailPage = () => {
 
   const nextStatusOptions = managementTypes.statusFlow[feedback?.status] || [];
 
-  const canVerify = feedback?.status === 'Submitted';
-  const canAssign = feedback?.status === 'Verified';
+  const canVerify = [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED].includes(feedback?.status);
+  const canAssign = feedback?.status === managementTypes.feedbackStatus.VERIFIED;
   const canUpdateStatus = nextStatusOptions.length > 0;
 
   const attachments = Array.isArray(feedback?.attachments) ? feedback.attachments : [];
@@ -245,6 +267,166 @@ export const ManagementFeedbackDetailPage = () => {
     () => [...statusHistories].sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt)),
     [statusHistories]
   );
+
+  const timelineEvents = useMemo(() => {
+    const events = [];
+    const statusMeta = {
+      [managementTypes.feedbackStatus.SUBMITTED]: {
+        title: 'Đã gửi',
+        subtitle: 'Phản ánh được tiếp nhận',
+        accent: 'blue',
+        icon: 'Send',
+      },
+      [managementTypes.feedbackStatus.AI_REVIEWED]: {
+        title: 'AI đã xem xét',
+        subtitle: 'Tự động phân loại và kiểm tra',
+        accent: 'violet',
+        icon: 'Sparkles',
+      },
+      [managementTypes.feedbackStatus.VERIFIED]: {
+        title: 'Đã xác minh',
+        subtitle: 'Thông tin được kiểm chứng',
+        accent: 'sky',
+        icon: 'BadgeCheck',
+      },
+      [managementTypes.feedbackStatus.ASSIGNED]: {
+        title: 'Đã phân công',
+        subtitle: 'Đơn vị xử lý được chỉ định',
+        accent: 'indigo',
+        icon: 'UserRoundCheck',
+      },
+      [managementTypes.feedbackStatus.IN_PROGRESS]: {
+        title: 'Đang xử lý',
+        subtitle: 'Đội xử lý đã bắt đầu công việc',
+        accent: 'amber',
+        icon: 'Wrench',
+      },
+      [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: {
+        title: 'Đã nộp duyệt',
+        subtitle: 'Kết quả sẵn sàng chờ phê duyệt',
+        accent: 'teal',
+        icon: 'FileCheck2',
+      },
+      [managementTypes.feedbackStatus.APPROVED]: {
+        title: 'Đã duyệt',
+        subtitle: 'Kết quả được chấp thuận',
+        accent: 'emerald',
+        icon: 'CheckCircle2',
+      },
+      [managementTypes.feedbackStatus.REJECTED]: {
+        title: 'Đã từ chối',
+        subtitle: 'Yêu cầu cần điều chỉnh',
+        accent: 'rose',
+        icon: 'XCircle',
+      },
+      [managementTypes.feedbackStatus.NEED_REWORK]: {
+        title: 'Yêu cầu làm lại',
+        subtitle: 'Bổ sung thông tin hoặc chỉnh sửa',
+        accent: 'orange',
+        icon: 'RefreshCw',
+      },
+      [managementTypes.feedbackStatus.CLOSED]: {
+        title: 'Đã đóng',
+        subtitle: 'Hồ sơ đã hoàn tất',
+        accent: 'slate',
+        icon: 'Archive',
+      },
+    };
+
+    const pushEvent = (item) => {
+      if (!item) return;
+      events.push({
+        id: item.id,
+        type: item.type || 'status',
+        title: item.title,
+        subtitle: item.subtitle,
+        actor: item.actor || 'Hệ thống',
+        timestamp: item.timestamp,
+        note: item.note || '',
+        accent: item.accent || 'slate',
+        icon: item.icon || 'CircleDot',
+      });
+    };
+
+    if (feedback?.createdAt) {
+      pushEvent({
+        id: 'creation',
+        type: 'status',
+        title: 'Đã gửi',
+        subtitle: 'Phản ánh được tạo và nhập vào hệ thống',
+        actor: feedback?.submittedByName || feedback?.submittedBy || 'Công dân',
+        timestamp: feedback.createdAt,
+        note: feedback?.description || 'Phản ánh đã được ghi nhận trong hệ thống.',
+        accent: 'blue',
+        icon: 'Send',
+      });
+    }
+
+    sortedStatusHistories.forEach((history, index) => {
+      const meta = statusMeta[history.newStatus] || {
+        title: getStatusLabel(history.newStatus),
+        subtitle: 'Cập nhật trạng thái',
+        accent: 'slate',
+        icon: 'CircleDot',
+      };
+      const eventType = history.newStatus === managementTypes.feedbackStatus.ASSIGNED || history.newStatus === managementTypes.feedbackStatus.IN_PROGRESS
+        ? 'assignment'
+        : history.newStatus === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL || history.newStatus === managementTypes.feedbackStatus.APPROVED || history.newStatus === managementTypes.feedbackStatus.REJECTED || history.newStatus === managementTypes.feedbackStatus.NEED_REWORK
+          ? 'approval'
+          : 'status';
+
+      pushEvent({
+        id: `history-${index}`,
+        type: eventType,
+        title: meta.title,
+        subtitle: meta.subtitle,
+        actor: history.changedByUserName || 'Hệ thống',
+        timestamp: history.changedAt,
+        note: history.note || '',
+        accent: meta.accent,
+        icon: meta.icon,
+      });
+    });
+
+    if (feedback?.assignment?.operatorName) {
+      const hasAssignmentEvent = events.some((event) => event.title === 'Đã phân công' || event.title === 'Đang xử lý');
+      if (!hasAssignmentEvent) {
+        pushEvent({
+          id: 'assignment',
+          type: 'assignment',
+          title: 'Thay đổi phân công',
+          subtitle: `Đã giao cho ${feedback.assignment.operatorName}`,
+          actor: feedback.assignment.assignedByName || 'Hệ thống',
+          timestamp: feedback.assignment.assignedAt || feedback.updatedAt || feedback.createdAt,
+          note: feedback.assignment.note || 'Đơn vị xử lý đã được cập nhật.',
+          accent: 'indigo',
+          icon: 'UserRoundCheck',
+        });
+      }
+    }
+
+    if (feedback?.resolution?.resolutionSummary || feedback?.resolution?.notes) {
+      pushEvent({
+        id: 'resolution',
+        type: 'approval',
+        title: 'Kết quả xử lý',
+        subtitle: 'Đơn vị xử lý đã nộp kết quả',
+        actor: feedback?.assignment?.operatorName || 'Đơn vị xử lý',
+        timestamp: feedback?.resolution?.submittedAt || feedback?.updatedAt || feedback?.createdAt,
+        note: feedback?.resolution?.resolutionSummary || feedback?.resolution?.notes || '',
+        accent: 'emerald',
+        icon: 'FileCheck2',
+      });
+    }
+
+    return events;
+  }, [feedback, sortedStatusHistories]);
+
+  useEffect(() => {
+    if (timelineEvents.length > 0 && !selectedTimelineEventId) {
+      setSelectedTimelineEventId(timelineEvents[0].id);
+    }
+  }, [timelineEvents, selectedTimelineEventId]);
 
   if (loading) {
     return (
@@ -440,7 +622,7 @@ export const ManagementFeedbackDetailPage = () => {
                     type="number"
                     step="0.0001"
                     value={editForm.latitude}
-                    onChange={(e) => setEditForm(p => ({ ...p, latitude: parseFloat(e.target.value) }))}
+                    onChange={(e) => setEditForm(p => ({ ...p, latitude: e.target.value === '' ? '' : parseFloat(e.target.value) }))}
                     className="input input-bordered w-full text-xs h-10 rounded-lg"
                   />
                 </div>
@@ -450,8 +632,43 @@ export const ManagementFeedbackDetailPage = () => {
                     type="number"
                     step="0.0001"
                     value={editForm.longitude}
-                    onChange={(e) => setEditForm(p => ({ ...p, longitude: parseFloat(e.target.value) }))}
+                    onChange={(e) => setEditForm(p => ({ ...p, longitude: e.target.value === '' ? '' : parseFloat(e.target.value) }))}
                     className="input input-bordered w-full text-xs h-10 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Trạng thái</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm(p => ({ ...p, status: e.target.value }))}
+                    className="select select-bordered w-full text-xs h-10 rounded-lg"
+                  >
+                    <option value="">Giữ nguyên</option>
+                    <option value="Submitted">Đã gửi</option>
+                    <option value="AI Reviewed">Đã xem xét AI</option>
+                    <option value="Verified">Đã xác minh</option>
+                    <option value="Assigned">Đã phân công</option>
+                    <option value="InProgress">Đang xử lý</option>
+                    <option value="Resolved">Đã xử lý</option>
+                    <option value="SubmittedForApproval">Chờ nghiệm thu</option>
+                    <option value="Approved">Đã duyệt</option>
+                    <option value="Rejected">Bị từ chối</option>
+                    <option value="NeedRework">Cần làm lại</option>
+                    <option value="Closed">Đã đóng</option>
+                    <option value="Cancelled">Đã hủy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">Ghi chú trạng thái</label>
+                  <input
+                    type="text"
+                    value={editForm.statusNote}
+                    onChange={(e) => setEditForm(p => ({ ...p, statusNote: e.target.value }))}
+                    className="input input-bordered w-full text-xs h-10 rounded-lg"
+                    placeholder="Nhập ghi chú nếu có"
                   />
                 </div>
               </div>
@@ -582,35 +799,116 @@ export const ManagementFeedbackDetailPage = () => {
           </div>
 
           {/* Timeline */}
-          {sortedStatusHistories.length > 0 && (
-            <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
-              <h3 className="font-bold text-slate-900">Lịch sử trạng thái</h3>
-              <div className="space-y-4">
-                {sortedStatusHistories.map((history, idx) => (
-                  <div key={idx} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <div className="w-3 h-3 rounded-full bg-[#0052CC] border-4 border-white"></div>
-                      {idx < statusHistories.length - 1 && (
-                        <div className="w-0.5 h-8 bg-slate-200 my-1"></div>
-                      )}
-                    </div>
-                    <div className="flex-1 pt-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900">
-                          {history.oldStatus} → {history.newStatus}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        {history.changedByUserName} • {formatDate(history.changedAt)}
-                      </div>
-                      {history.note && (
-                        <div className="text-xs text-slate-700 mt-2 bg-slate-50 p-2 rounded border border-slate-200">
-                          {history.note}
+          {timelineEvents.length > 0 && (
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Case tracking</div>
+                  <h3 className="mt-1 text-lg font-black text-slate-900">Theo dõi hồ sơ từ đầu đến cuối</h3>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  {timelineEvents.length} mốc thời gian
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+                <div className="space-y-3">
+                  {timelineEvents.map((event) => {
+                    const Icon = Lucide[event.icon] || Lucide.CircleDot;
+                    const isActive = event.id === selectedTimelineEventId;
+                    const accentClass = event.accent === 'blue'
+                      ? 'border-blue-200 bg-blue-50 text-blue-700'
+                      : event.accent === 'violet'
+                        ? 'border-violet-200 bg-violet-50 text-violet-700'
+                        : event.accent === 'sky'
+                          ? 'border-sky-200 bg-sky-50 text-sky-700'
+                          : event.accent === 'indigo'
+                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                            : event.accent === 'amber'
+                              ? 'border-amber-200 bg-amber-50 text-amber-700'
+                              : event.accent === 'teal'
+                                ? 'border-teal-200 bg-teal-50 text-teal-700'
+                                : event.accent === 'emerald'
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : event.accent === 'rose'
+                                    ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                    : event.accent === 'orange'
+                                      ? 'border-orange-200 bg-orange-50 text-orange-700'
+                                      : 'border-slate-200 bg-slate-50 text-slate-700';
+
+                    return (
+                      <button
+                        key={event.id}
+                        type="button"
+                        onClick={() => setSelectedTimelineEventId(event.id)}
+                        className={`flex w-full items-start gap-3 rounded-[1.25rem] border p-4 text-left transition ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+                      >
+                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${isActive ? 'border-white/20 bg-white/10 text-white' : accentClass}`}>
+                          <Icon size={18} />
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className={`text-sm font-black ${isActive ? 'text-white' : 'text-slate-900'}`}>{event.title}</div>
+                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                              {event.type === 'assignment' ? 'Assignment' : event.type === 'approval' ? 'Approval' : 'Status'}
+                            </span>
+                          </div>
+                          <div className={`mt-1 text-sm ${isActive ? 'text-slate-200' : 'text-slate-500'}`}>{event.subtitle}</div>
+                          <div className={`mt-2 text-xs ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>{event.actor} • {formatDate(event.timestamp)}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  {(() => {
+                    const activeEvent = timelineEvents.find((event) => event.id === selectedTimelineEventId) || timelineEvents[0];
+                    if (!activeEvent) return null;
+                    const ActiveIcon = Lucide[activeEvent.icon] || Lucide.CircleDot;
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Selected milestone</div>
+                            <div className="mt-1 text-xl font-black text-slate-900">{activeEvent.title}</div>
+                          </div>
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700">
+                            <ActiveIcon size={18} />
+                          </div>
+                        </div>
+
+                        <div className="rounded-[1.25rem] border border-slate-200 bg-white p-4">
+                          <div className="text-sm font-semibold text-slate-900">{activeEvent.subtitle}</div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">{activeEvent.actor}</span>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">{formatDate(activeEvent.timestamp)}</span>
+                          </div>
+                          {activeEvent.note ? (
+                            <div className="mt-3 rounded-[1rem] border border-slate-200 bg-slate-50 p-3 text-sm leading-7 text-slate-600">
+                              {activeEvent.note}
+                            </div>
+                          ) : (
+                            <div className="mt-3 rounded-[1rem] border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                              Không có ghi chú chi tiết cho bước này.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-[1rem] border border-slate-200 bg-white p-3 text-sm">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Actor</div>
+                            <div className="mt-1 font-semibold text-slate-700">{activeEvent.actor}</div>
+                          </div>
+                          <div className="rounded-[1rem] border border-slate-200 bg-white p-3 text-sm">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Timestamp</div>
+                            <div className="mt-1 font-semibold text-slate-700">{formatDate(activeEvent.timestamp)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           )}
@@ -618,6 +916,55 @@ export const ManagementFeedbackDetailPage = () => {
 
         {/* Sidebar */}
         <div className="col-span-1 space-y-6">
+          {/* Timeline Progress */}
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-black text-slate-900">Case progress</h3>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                Live
+              </span>
+            </div>
+            {(() => {
+              const TIMELINE_ORDER = [
+                managementTypes.feedbackStatus.SUBMITTED,
+                managementTypes.feedbackStatus.AI_REVIEWED,
+                managementTypes.feedbackStatus.VERIFIED,
+                managementTypes.feedbackStatus.ASSIGNED,
+                managementTypes.feedbackStatus.IN_PROGRESS,
+                managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+                managementTypes.feedbackStatus.APPROVED,
+                managementTypes.feedbackStatus.CLOSED,
+              ];
+
+              const currentIndex = TIMELINE_ORDER.indexOf(feedback.status);
+
+              return (
+                <div className="mt-4 space-y-3">
+                  {TIMELINE_ORDER.map((step, idx) => {
+                    const done = currentIndex > idx;
+                    const current = currentIndex === idx;
+                    const history = sortedStatusHistories.find(h => h.newStatus === step) || null;
+                    const timeLabel = history ? formatDate(history.changedAt) : (step === managementTypes.feedbackStatus.SUBMITTED ? formatDate(feedback.createdAt) : '');
+
+                    return (
+                      <div key={step} className="flex items-start gap-3">
+                        <div className="flex flex-col items-center">
+                          <div className={`h-3 w-3 rounded-full border-4 border-white ${done || current ? 'bg-[#0052CC]' : 'bg-slate-200'}`}></div>
+                          {idx < TIMELINE_ORDER.length - 1 && (
+                            <div className={`mt-1 w-[2px] flex-1 ${done ? 'bg-[#0052CC]' : 'bg-slate-200'}`} style={{ minHeight: 28 }}></div>
+                          )}
+                        </div>
+                        <div className="flex-1 rounded-[1rem] border border-slate-100 bg-slate-50 px-3 py-2">
+                          <div className={`text-sm font-bold ${current ? 'text-slate-900' : 'text-slate-700'}`}>{getStatusLabel(step)}</div>
+                          <div className="mt-1 text-xs text-slate-500">{timeLabel || 'Đang chờ cập nhật'}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
           <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
             <h3 className="font-bold text-slate-900">Hành động tiếp theo</h3>
             <p className="text-sm text-slate-600">
@@ -649,6 +996,20 @@ export const ManagementFeedbackDetailPage = () => {
                   Phân công đơn vị xử lý
                 </button>
               )}
+              <button
+                onClick={() => navigate(`/staff/feedbacks/${feedbackId}/request-info`)}
+                className="btn btn-sm w-full btn-outline rounded-lg"
+              >
+                <Lucide.MessageSquarePlus size={14} />
+                Yêu cầu thêm thông tin
+              </button>
+              <button
+                onClick={() => navigate(`/staff/feedbacks/${feedbackId}/history`)}
+                className="btn btn-sm w-full btn-outline rounded-lg"
+              >
+                <Lucide.History size={14} />
+                Xem lịch sử phân công
+              </button>
               {nextStatusOptions.length > 0 && (
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-xs text-slate-500 font-bold mb-2">Trạng thái tiếp theo</div>
@@ -701,8 +1062,8 @@ export const ManagementFeedbackDetailPage = () => {
 
       {/* Status Update Modal */}
       {statusModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="card bg-white rounded-2xl p-6 max-w-md w-full space-y-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden">
+          <div className="card fixed left-1/2 top-1/2 z-[10000] w-[min(100%,28rem)] -translate-x-1/2 [--tw-translate-y:calc(calc(2*100%)*-1)] space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="font-bold text-lg text-slate-900">Cập nhật trạng thái</h3>
             
             <div>
@@ -751,8 +1112,8 @@ export const ManagementFeedbackDetailPage = () => {
 
       {/* Assign Modal */}
       {assignModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="card bg-white rounded-2xl p-6 max-w-md w-full space-y-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden">
+          <div className="card fixed left-1/2 top-1/2 z-[10000] w-[min(100%,28rem)] -translate-x-1/2 [--tw-translate-y:calc(calc(2.5*100%)*-1)] space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="font-bold text-lg text-slate-900">Giao việc cho nhân viên xử lý</h3>
             
             {operators.length === 0 ? (

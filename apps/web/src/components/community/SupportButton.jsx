@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Lucide from 'lucide-react';
+import { signalrService } from '../../services/socket/signalrService';
 
 export default function SupportButton({ feedbackId, initialCount = 0, initialSupported = false, className = '', onChange }) {
   const [isSupported, setIsSupported] = useState(Boolean(initialSupported));
@@ -29,6 +30,11 @@ export default function SupportButton({ feedbackId, initialCount = 0, initialSup
       const resp = await fetch(url, { method: next ? 'POST' : 'DELETE', credentials: 'include', headers });
       if (!resp.ok) throw new Error('Network response was not ok');
       onChange && onChange({ isSupported: next, count });
+      try {
+        signalrService.notifySupportAdded(feedbackId, count, null);
+      } catch {
+        // ignore
+      }
     } catch (err) {
       // rollback
       setIsSupported(!next);

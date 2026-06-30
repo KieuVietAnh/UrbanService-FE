@@ -1,3 +1,11 @@
+export const APP_ROLES = Object.freeze({
+  SERVICE_USER: 'service-user',
+  SYSTEM_STAFF: 'system-staff',
+  SERVICE_PROVIDER: 'service-provider',
+  INTERACTION_MANAGER: 'interaction-manager',
+  ADMINISTRATOR: 'administrator',
+});
+
 export const ROLE_MAP = {
   ServiceUser: 'Resident',
   SystemStaff: 'System Staff',
@@ -9,13 +17,13 @@ export const ROLE_MAP = {
 };
 
 const BACKEND_TO_INTERNAL = {
-  ServiceUser: 'service-user',
-  SystemStaff: 'system-staff',
-  ServiceOperator: 'service-provider',
-  ServiceProvider: 'service-provider',
-  InteractionManager: 'interaction-manager',
-  SystemAdmin: 'administrator',
-  Administrator: 'administrator',
+  ServiceUser: APP_ROLES.SERVICE_USER,
+  SystemStaff: APP_ROLES.SYSTEM_STAFF,
+  ServiceOperator: APP_ROLES.SERVICE_PROVIDER,
+  ServiceProvider: APP_ROLES.SERVICE_PROVIDER,
+  InteractionManager: APP_ROLES.INTERACTION_MANAGER,
+  SystemAdmin: APP_ROLES.ADMINISTRATOR,
+  Administrator: APP_ROLES.ADMINISTRATOR,
 };
 
 const INTERNAL_TO_BACKEND = Object.fromEntries(
@@ -35,6 +43,8 @@ export const getInternalRole = (role) => {
       return 'system-staff';
     case 'serviceprovider':
     case 'serviceoperator':
+    case 'serviceproviderstaff':
+    case 'serviceoperatorstaff':
       return 'service-provider';
     case 'interactionmanager':
       return 'interaction-manager';
@@ -43,6 +53,9 @@ export const getInternalRole = (role) => {
     case 'admin':
       return 'administrator';
     default:
+      if (normalized.includes('serviceprovider') || normalized.includes('serviceoperator')) {
+        return 'service-provider';
+      }
       return role;
   }
 };

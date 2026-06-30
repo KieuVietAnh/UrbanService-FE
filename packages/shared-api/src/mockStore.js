@@ -105,6 +105,8 @@ const defaultIntegrations = {
   webform: { enabled: true, status: 'Operational' }
 };
 
+import { managementTypes } from '@urbanmind/shared-types';
+
 const defaultTickets = [
   {
     feedbackId: 'fb-2026-001',
@@ -117,7 +119,7 @@ const defaultTickets = [
     latitude: 10.7725,
     longitude: 106.6980,
     priority: 'Medium',
-    status: 'Assigned',
+    status: managementTypes.feedbackStatus.ASSIGNED,
     dueDate: '2026-06-04T12:00:00Z',
     isMasterTicket: false,
     parentTicketId: null,
@@ -129,7 +131,7 @@ const defaultTickets = [
       operatorName: 'Công ty Cổ phần Chiếu sáng Đô Thị TP. HCM',
       assignedBy: 'u-102',
       assignedAt: '2026-06-03T09:00:00Z',
-      status: 'Assigned',
+      status: managementTypes.feedbackStatus.ASSIGNED,
       note: 'Điều phối đội kỹ thuật điện kiểm tra hỏng chấn lưu hoặc cháy bóng.'
     },
     sentiment: 'Negative',
@@ -149,7 +151,7 @@ const defaultTickets = [
     latitude: 10.7742,
     longitude: 106.7018,
     priority: 'High',
-    status: 'Submitted',
+    status: managementTypes.feedbackStatus.SUBMITTED,
     dueDate: null,
     isMasterTicket: false,
     parentTicketId: null,
@@ -174,7 +176,7 @@ const defaultTickets = [
     latitude: 10.7681,
     longitude: 106.6995,
     priority: 'Critical',
-    status: 'Resolved',
+    status: managementTypes.feedbackStatus.RESOLVED,
     dueDate: '2026-06-03T20:00:00Z',
     isMasterTicket: false,
     parentTicketId: null,
@@ -186,7 +188,7 @@ const defaultTickets = [
       operatorName: 'Tổng Công ty Cấp nước Sài Gòn (SAWACO)',
       assignedBy: 'u-102',
       assignedAt: '2026-06-03T11:00:00Z',
-      status: 'Completed',
+      status: managementTypes.feedbackStatus.RESOLVED,
       note: 'Thay thế nắp đúc gang mới ngay lập tức.'
     },
     sentiment: 'Negative',
@@ -215,7 +217,7 @@ const defaultTickets = [
     latitude: 10.7712,
     longitude: 106.7029,
     priority: 'High',
-    status: 'Closed',
+    status: managementTypes.feedbackStatus.CLOSED,
     dueDate: '2026-06-02T12:00:00Z',
     isMasterTicket: false,
     parentTicketId: null,
@@ -227,7 +229,7 @@ const defaultTickets = [
       operatorName: 'Khu Quản lý Giao thông Đô thị Số 1',
       assignedBy: 'u-102',
       assignedAt: '2026-06-01T10:00:00Z',
-      status: 'Completed',
+      status: managementTypes.feedbackStatus.RESOLVED,
       note: 'Dậm vá thảm nhựa lại khu vực sụt lún vỉa hè đường.'
     },
     sentiment: 'Negative',
@@ -292,6 +294,11 @@ const defaultAuditLogs = [
 
 export const mockDb = {
   init() {
+    // Only initialize the in-memory mock store in development when explicitly enabled.
+    // This prevents accidental seeding of localStorage or inclusion of dev data in prod builds.
+    const useMock = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_USE_MOCK === 'true');
+    if (!useMock) return;
+
     if (!localStorage.getItem(KEY_USERS)) {
       localStorage.setItem(KEY_USERS, JSON.stringify(defaultUsers));
       localStorage.setItem(KEY_CATEGORIES, JSON.stringify(defaultCategories));
@@ -307,11 +314,16 @@ export const mockDb = {
   },
 
   get(key) {
+    // Only attempt to initialize or read mock data when mocks are enabled.
+    const useMock = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_USE_MOCK === 'true');
+    if (!useMock) return null;
     this.init();
     return JSON.parse(localStorage.getItem(key));
   },
 
   set(key, data) {
+    const useMock = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_USE_MOCK === 'true');
+    if (!useMock) return;
     localStorage.setItem(key, JSON.stringify(data));
   },
 
@@ -385,10 +397,12 @@ export const mockDb = {
   },
 
   checkDuplicates(categoryId, lat, lng) {
-    const tickets = this.getTickets();
-    return tickets.filter(t => 
-      t.categoryId === categoryId &&
-      t.status !== 'Closed' &&
+    const tickets = this.getTickets() || [];
+    return tickets.filter((t) =>
+      t?.categoryId === categoryId &&
+      t?.status !== managementTypes.feedbackStatus.CLOSED &&
+      typeof t?.latitude === 'number' &&
+      typeof t?.longitude === 'number' &&
       Math.abs(t.latitude - lat) < 0.005 &&
       Math.abs(t.longitude - lng) < 0.005
     );

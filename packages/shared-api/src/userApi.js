@@ -1,27 +1,72 @@
-import { mockDb } from './mockStore.js';
+import { axiosClient } from './axiosClient.js';
 
 export const userApi = {
   async getProfile(userId) {
-    const users = mockDb.getUsers();
-    const user = users.find((u) => u.userId === userId);
-    if (!user) throw new Error('User not found.');
-    return user;
+    try {
+      const response = await axiosClient.get(`/api/user/profile/${userId}`);
+      return response?.data || response || null;
+    } catch (error) {
+      console.warn('userApi.getProfile failed, returning null', error);
+      return null;
+    }
   },
 
   async updateProfile(userId, data) {
-    const users = mockDb.getUsers();
-    const userIndex = users.findIndex((u) => u.userId === userId);
-    if (userIndex < 0) throw new Error('User not found.');
+    try {
+      const response = await axiosClient.put(`/api/user/profile/${userId}`, data);
+      return response?.data || response || null;
+    } catch (error) {
+      console.warn('userApi.updateProfile failed', error);
+      throw error;
+    }
+  },
 
-    const updatedUser = { ...users[userIndex], ...data, updatedAt: new Date().toISOString() };
-    users[userIndex] = updatedUser;
-    mockDb.updateUsers(users);
-    mockDb.addAudit(userId, 'Update Profile', 'User', userId, users[userIndex], updatedUser);
-    return updatedUser;
+  async getUsers() {
+    try {
+      const response = await axiosClient.get('/api/admin/users', { params: { pageSize: 1000 } });
+      return Array.isArray(response?.items)
+        ? response.items
+        : Array.isArray(response)
+        ? response
+        : response?.data || [];
+    } catch (error) {
+      console.warn('userApi.getUsers failed, returning empty list', error);
+      return [];
+    }
+  },
+
+  async updateUserStatus(userId, isActive, updatedBy) {
+    try {
+      const response = await axiosClient.patch(`/api/admin/users/${userId}/status`, {
+        isActive,
+        updatedBy,
+      });
+      return response?.data || response || null;
+    } catch (error) {
+      console.warn('userApi.updateUserStatus failed', error);
+      throw error;
+    }
+  },
+
+  async createUser(data, createdBy) {
+    try {
+      const payload = { ...data, createdBy };
+      const response = await axiosClient.post('/api/admin/users', payload);
+      return response?.data || response || payload;
+    } catch (error) {
+      console.warn('userApi.createUser failed', error);
+      throw error;
+    }
   },
 
   async getUserRoles() {
-    const users = mockDb.getUsers();
-    return users.map((u) => ({ userId: u.userId, role: u.role }));
+    try {
+      const response = await axiosClient.get('/api/admin/users', { params: { pageSize: 1000 } });
+      const items = Array.isArray(response?.items) ? response.items : Array.isArray(response) ? response : [];
+      return items.map((u) => ({ userId: u.userId, role: u.role }));
+    } catch (error) {
+      console.warn('userApi.getUserRoles failed', error);
+      return [];
+    }
   }
 };

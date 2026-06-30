@@ -1,12 +1,14 @@
+import { managementTypes } from '@urbanmind/shared-types';
+
 export default function StatusBadge({ status }) {
   const label = status || 'Unknown';
   const cls = {
-    Submitted: 'badge badge-info',
-    'AI Reviewed': 'badge badge-warning',
-    Assigned: 'badge badge-primary',
-    InProgress: 'badge badge-accent',
-    Resolved: 'badge badge-success',
-    Closed: 'badge badge-neutral'
+    [managementTypes.feedbackStatus.SUBMITTED]: 'badge badge-info',
+    [managementTypes.feedbackStatus.AI_REVIEWED]: 'badge badge-warning',
+    [managementTypes.feedbackStatus.ASSIGNED]: 'badge badge-primary',
+    [managementTypes.feedbackStatus.IN_PROGRESS]: 'badge badge-accent',
+    [managementTypes.feedbackStatus.RESOLVED]: 'badge badge-success',
+    [managementTypes.feedbackStatus.CLOSED]: 'badge badge-neutral',
   }[status] || 'badge';
 
   return <span className={`${cls} text-[10px] font-bold`}>{label}</span>;

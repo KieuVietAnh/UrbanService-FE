@@ -3,14 +3,27 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
+import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
+import { managementTypes } from '@urbanmind/shared-types';
+import { signalrService } from '../../services/socket/signalrService';
 import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
+
+const FALLBACK_CATEGORIES = [
+  { categoryId: 1, categoryName: 'Vệ sinh môi trường' },
+  { categoryId: 2, categoryName: 'Đường sá' },
+  { categoryId: 3, categoryName: 'Cấp thoát nước' },
+  { categoryId: 4, categoryName: 'Điện chiếu sáng' },
+  { categoryId: 5, categoryName: 'Cây xanh' },
+  { categoryId: 6, categoryName: 'An toàn giao thông' },
+];
 
 export const AIReviewDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
+  const [categories, setCategories] = useState([]);
   
   // Edit variables
   const [editCategoryId, setEditCategoryId] = useState('');
@@ -18,27 +31,41 @@ export const AIReviewDetail = () => {
   const [loading, setLoading] = useState(false);
 
   const handleSelectTicket = (t) => {
+    const detectedCategoryId = t?.analysisResult?.detectedCategoryId || t?.detectedCategoryId || t?.categoryId;
     setSelectedTicket(t);
-    setEditCategoryId(t.categoryId);
-    setEditPriority(t.priority);
+    setEditCategoryId(detectedCategoryId || '');
+    setEditPriority(t.priority || 'Medium');
   };
 
   useEffect(() => {
     const loadQueue = async () => {
       try {
-        const res = await ticketApi.getTickets({ status: 'Submitted' });
-        setTickets(res);
-        if (res.length > 0) {
-          handleSelectTicket(res[0]);
+        const res = await managementFeedbackApi.getAiReviewedFeedbacks({ pageSize: 50 });
+        const normalized = Array.isArray(res) ? res : [];
+        setTickets(normalized);
+        if (normalized.length > 0) {
+          handleSelectTicket(normalized[0]);
         } else {
           setSelectedTicket(null);
         }
       } catch (err) {
-        console.error(err);
+        console.error('Failed to load AI reviewed queue', err);
+      }
+    };
+
+    const loadCategories = async () => {
+      try {
+        const res = await toolsApi.getCategories();
+        const resolved = Array.isArray(res) && res.length > 0 ? res : FALLBACK_CATEGORIES;
+        setCategories(resolved);
+      } catch (err) {
+        console.error('Failed to load categories', err);
+        setCategories(FALLBACK_CATEGORIES);
       }
     };
 
     loadQueue();
+    loadCategories();
   }, []);
 
   const handleApprove = async () => {
@@ -48,7 +75,13 @@ export const AIReviewDetail = () => {
       await ticketApi.verifyAndApprove(selectedTicket.feedbackId, user.userId, {
         categoryId: editCategoryId,
         priority: editPriority
-      });
+      }, { role: user.role });
+      // Notify listeners that status changed (Submitted -> Verified)
+      try {
+        signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, managementTypes.feedbackStatus.VERIFIED, user);
+      } catch (e) {
+        console.warn('SignalR notify failed', e);
+      }
       // Redirect to assignment page for this ticket
       navigate(`/tickets/assign/${selectedTicket.feedbackId}`);
     } catch (err) {
@@ -127,7 +160,7 @@ export const AIReviewDetail = () => {
                 {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
                   <div className="space-y-2 text-xs">
                     <span className="font-bold text-gray-500">Ảnh đính kèm:</span>
-                    <img src={selectedTicket.attachments[0]} alt="Evidence" className="w-full aspect-video object-cover rounded-2xl border border-base-300" />
+                    <img src={selectedTicket.attachments?.[0]} alt="Evidence" className="w-full aspect-video object-cover rounded-2xl border border-base-300" />
                   </div>
                 )}
               </div>
@@ -142,9 +175,9 @@ export const AIReviewDetail = () => {
                 <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl space-y-3 text-xs">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-gray-500">Tóm tắt sự cố (AI):</span>
-                    <span className="badge badge-primary badge-xs py-1.5 px-2 text-[8px] font-bold uppercase">Confidence: {Math.round(selectedTicket.confidenceScore * 100)}%</span>
+                    <span className="badge badge-primary badge-xs py-1.5 px-2 text-[8px] font-bold uppercase">Confidence: {Math.round((selectedTicket.confidenceScore || 0) * 100)}%</span>
                   </div>
-                  <p className="font-medium text-primary italic">"{selectedTicket.description ? toolsApi.aiClassify(selectedTicket.title, selectedTicket.description).summary : ''}"</p>
+                  <p className="font-medium text-primary italic">"{selectedTicket.summary || selectedTicket.description || 'Không có tóm tắt từ AI.'}"</p>
                 </div>
 
                 <div className="space-y-3 text-xs">
@@ -157,7 +190,7 @@ export const AIReviewDetail = () => {
                       onChange={(e) => setEditCategoryId(Number(e.target.value))}
                       className="select select-bordered select-sm rounded-xl font-bold"
                     >
-                      {toolsApi.getCategories().map(c => (
+                      {categories.map((c) => (
                         <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
                       ))}
                     </select>
@@ -181,8 +214,8 @@ export const AIReviewDetail = () => {
                 </div>
 
                 <div className="bg-base-200 p-3.5 rounded-xl border border-base-300 text-[10px] font-bold text-gray-500 space-y-1">
-                  <div>Phân tích cảm xúc: <span className="text-error">{selectedTicket.sentiment} (Tiêu cực)</span></div>
-                  <div>Trùng lặp gần đây: <span>{toolsApi.checkDuplicates(Number(editCategoryId), selectedTicket.latitude, selectedTicket.longitude).length} vé nghi trùng</span></div>
+                  <div>Phân tích cảm xúc: <span className="text-error">{selectedTicket.sentiment || 'Unknown'}</span></div>
+                  <div>Danh mục AI đề xuất: <span>{selectedTicket.detectedCategoryName || 'Chưa rõ'}</span></div>
                 </div>
 
                 <button 

@@ -15,6 +15,9 @@ const Dashboard = lazy(() => import('../pages/dashboard/Dashboard').then((m) => 
 const TicketListPage = lazy(() => import('../pages/tickets/TicketListPage').then((m) => ({ default: m.TicketListPage })));
 const CreateTicketPage = lazy(() => import('../pages/tickets/CreateTicketPage').then((m) => ({ default: m.CreateTicketPage })));
 const TicketDetailPage = lazy(() => import('../pages/tickets/TicketDetailPage').then((m) => ({ default: m.TicketDetailPage })));
+const ResolutionResultPage = lazy(() => import('../pages/tickets/ResolutionResultPage').then((m) => ({ default: m.ResolutionResultPage })));
+const ReworkCenterPage = lazy(() => import('../pages/tickets/ReworkCenterPage').then((m) => ({ default: m.ReworkCenterPage })));
+const ClosedFeedbackArchivePage = lazy(() => import('../pages/tickets/ClosedFeedbackArchivePage').then((m) => ({ default: m.ClosedFeedbackArchivePage })));
 const CommunityFeedPage = lazy(() => import('../pages/community/CommunityFeedPage').then((m) => ({ default: m.CommunityFeedPage })));
 const CommunityFeedbackDetailPage = lazy(() => import('../pages/community/CommunityFeedbackDetailPage').then((m) => ({ default: m.CommunityFeedbackDetailPage })));
 const CommunityMapPage = lazy(() => import('../pages/community/CommunityMapPage').then((m) => ({ default: m.CommunityMapPage })));
@@ -26,8 +29,11 @@ const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then
 const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const CompletedTicketReview = lazy(() => import('../pages/tickets/CompletedTicketReview').then((m) => ({ default: m.CompletedTicketReview })));
-const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.ManagementFeedbackListPage })));
+const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
+const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
+const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
+const ResolutionReviewComparisonPage = lazy(() => import('../pages/staff/ResolutionReviewComparisonPage').then((m) => ({ default: m.ResolutionReviewComparisonPage })));
 
 const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspacePage').then((m) => ({ default: m.HelperWorkspacePage })));
 
@@ -44,6 +50,7 @@ const CategoryManagement = lazy(() => import('../pages/management/CategoryManage
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
 const IntegrationSettings = lazy(() => import('../pages/management/IntegrationSettings').then((m) => ({ default: m.IntegrationSettings })));
 const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ default: m.AuditLog })));
+const StaffAuditTrailPage = lazy(() => import('../pages/staff/StaffAuditTrailPage').then((m) => ({ default: m.StaffAuditTrailPage })));
 const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
 
 const RouteFallback = () => (
@@ -98,6 +105,33 @@ export const AppRoutes = () => {
           <DashboardLayout>
             <TicketDetailPage />
           </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/tickets/:feedbackId/result" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['service-user']}>
+            <DashboardLayout>
+              <ResolutionResultPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/tickets/:feedbackId/rework" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['service-user']}>
+            <DashboardLayout>
+              <ReworkCenterPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/tickets/archive" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['service-user']}>
+            <DashboardLayout>
+              <ClosedFeedbackArchivePage />
+            </DashboardLayout>
+          </RoleGuard>
         </ProtectedRoute>
       } />
       <Route path="/community/feed" element={
@@ -163,6 +197,42 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={['system-staff']}>
             <DashboardLayout>
               <ManagementFeedbackDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/feedbacks/:feedbackId/request-info" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['system-staff']}>
+            <DashboardLayout>
+              <RequestInfoWorkspacePage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/feedbacks/:feedbackId/history" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['system-staff']}>
+            <DashboardLayout>
+              <AssignmentHistoryPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/audit" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['system-staff']}>
+            <DashboardLayout>
+              <StaffAuditTrailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/review/:feedbackId/compare" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={['system-staff']}>
+            <DashboardLayout>
+              <ResolutionReviewComparisonPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
