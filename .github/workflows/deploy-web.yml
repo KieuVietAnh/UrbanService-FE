@@ -99,11 +99,11 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" '
             if [ "$(id -u)" -eq 0 ]; then
-              mkdir -p /var/www/urban-service-web
-              chown -R "$USER:$USER" /var/www/urban-service-web
+              mkdir -p /var/www/urban-service-fe
+              chown -R "$USER:$USER" /var/www/urban-service-fe
             else
-              sudo mkdir -p /var/www/urban-service-web
-              sudo chown -R "$USER:$USER" /var/www/urban-service-web
+              sudo mkdir -p /var/www/urban-service-fe
+              sudo chown -R "$USER:$USER" /var/www/urban-service-fe
             fi
           '
 
@@ -115,7 +115,7 @@ jobs:
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key" \
             apps/web/dist/ \
-            "$VPS_USER@$VPS_HOST:/var/www/urban-service-web/"
+            "$VPS_USER@$VPS_HOST:/var/www/urban-service-fe/"
 
       - name: Reload Nginx
         env:
