@@ -10,7 +10,7 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
   }[tone];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+    <div className="admin-stat-card p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
@@ -45,19 +45,19 @@ const workflowItems = [
 
 export const BookingManagement = () => {
   return (
-    <div className="space-y-6 text-slate-700">
-      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+    <div className="admin-page-shell space-y-6">
+      <section className="admin-page-hero">
         <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-violet-100/70 blur-3xl" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+            <div className="admin-hero-icon">
               <Lucide.Receipt size={22} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+              <h1 className="admin-hero-title">
                 Quản lý booking
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              <p className="admin-hero-description">
                 Chuẩn bị khu vực quản lý booking, hóa đơn và thanh toán cho Admin.
               </p>
             </div>
@@ -103,7 +103,7 @@ export const BookingManagement = () => {
             {workflowItems.map((item) => {
               const Icon = item.icon;
               return (
-                <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div key={item.title} className="admin-inset-panel p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm">
                       <Icon size={18} />

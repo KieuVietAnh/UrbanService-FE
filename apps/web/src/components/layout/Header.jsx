@@ -105,7 +105,7 @@ export const Header = ({ onMenuToggle }) => {
   const isCitizen = user?.role === 'service-user';
 
   return (
-    <header className="navbar sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6 py-3 shadow-sm">
+    <header className="admin-topbar navbar sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-slate-200/70 bg-sky-50/75 px-6 py-3 shadow-[0_10px_30px_rgba(30,64,175,0.045)] backdrop-blur-xl supports-[backdrop-filter]:bg-sky-50/68">
       {/* Left section: Brand Logo for Citizen or Hamburger for Staff */}
       <div className="flex items-center gap-4">
         {isCitizen ? (
