@@ -202,27 +202,27 @@ export const UserManagement = () => {
   const hasLoadError = message.type === 'error' && users.length === 0 && !loading;
 
   return (
-    <div className="space-y-6 text-slate-700">
+    <div className="admin-page-shell space-y-6">
       <ToastMessage
         type={message.type}
         text={message.text}
         onClose={() => setMessage({ type: '', text: '' })}
       />
 
-      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+      <section className="admin-page-hero">
         <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
 
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+            <div className="admin-hero-icon">
               <Lucide.UsersRound size={22} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+              <h1 className="admin-hero-title">
                 Quản lý người dùng
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              <p className="admin-hero-description">
                 Quản lý tài khoản, vai trò và trạng thái truy cập trong hệ thống.
               </p>
             </div>

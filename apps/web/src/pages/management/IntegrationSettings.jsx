@@ -1,8 +1,74 @@
 // src/pages/management/IntegrationSettings.jsx
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
+
+const getStatusLabel = (status) => {
+  const statusMap = {
+    Active: 'Đang bật',
+    Connected: 'Đã kết nối',
+    Ready: 'Sẵn sàng',
+    Disabled: 'Đã tắt',
+    Inactive: 'Tạm ngưng',
+  };
+
+  return statusMap[status] || status || 'Chưa rõ';
+};
+
+const getIntegrationItems = (integrations) => ([
+  {
+    key: 'zalo',
+    name: 'Zalo Mini App & OA',
+    description: 'Tiếp nhận tin nhắn phản ánh từ Zalo OA và tạo phiếu kèm vị trí GPS tương ứng.',
+    icon: 'Z',
+    iconClassName: 'bg-blue-600 text-white',
+    endpointLabel: 'Webhook URL',
+    endpointValue: integrations?.zalo?.webhookUrl || 'Chưa cấu hình',
+  },
+  {
+    key: 'messenger',
+    name: 'Facebook Messenger Bot',
+    description: 'Đồng bộ hội thoại để cư dân gửi định vị và hình ảnh trực tiếp qua Fanpage.',
+    icon: Lucide.MessageCircle,
+    iconClassName: 'bg-indigo-500 text-white',
+    endpointLabel: 'API Endpoint',
+    endpointValue: integrations?.messenger?.webhookUrl || 'Chưa cấu hình',
+  },
+  {
+    key: 'hotline',
+    name: 'Tổng đài Hotline đô thị',
+    description: 'Ghi nhận cuộc gọi, chuyển hóa nội dung thành văn bản và hỗ trợ tạo phản ánh.',
+    icon: Lucide.PhoneCall,
+    iconClassName: 'bg-red-500 text-white',
+    endpointLabel: 'Số điện thoại',
+    endpointValue: integrations?.hotline?.phone || 'Chưa cấu hình',
+  },
+  {
+    key: 'webform',
+    name: 'Cổng thông tin Web Form',
+    description: 'Đồng bộ biểu mẫu góp ý từ website chính quyền vào hệ thống UrbanMind.',
+    icon: Lucide.Globe,
+    iconClassName: 'bg-teal-500 text-white',
+    endpointLabel: 'Tích hợp',
+    endpointValue: 'Sẵn sàng kết nối qua Iframe API',
+  },
+]);
+
+const StatCard = ({ label, value, description, icon: Icon, toneClass }) => (
+  <div className="admin-stat-card p-5">
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-xs font-semibold text-slate-400">{label}</p>
+        <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+      </div>
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneClass}`}>
+        <Icon size={20} />
+      </div>
+    </div>
+  </div>
+);
 
 export const IntegrationSettings = () => {
   const [integrations, setIntegrations] = useState(null);
@@ -26,8 +92,12 @@ export const IntegrationSettings = () => {
     loadIntegrations();
   }, []);
 
+  const integrationItems = useMemo(() => getIntegrationItems(integrations), [integrations]);
+  const enabledCount = useMemo(() => integrationItems.filter((item) => integrations?.[item.key]?.enabled).length, [integrationItems, integrations]);
+  const configuredCount = useMemo(() => integrationItems.filter((item) => item.endpointValue !== 'Chưa cấu hình').length, [integrationItems]);
+
   const handleToggle = (key) => {
-    const updated = { ...integrations };
+    const updated = { ...(integrations || {}) };
     const current = updated[key] || {};
     updated[key] = { ...current, enabled: !current.enabled };
     toolsApi.updateIntegrations(updated);
@@ -35,105 +105,56 @@ export const IntegrationSettings = () => {
     setMessage({ type: 'success', text: 'Đã cập nhật cấu hình cổng tích hợp!' });
   };
 
-  const getStatusLabel = (status) => {
-    const statusMap = {
-      Active: 'Đang bật',
-      Connected: 'Đã kết nối',
-      Ready: 'Sẵn sàng',
-      Disabled: 'Đã tắt',
-      Inactive: 'Tạm ngưng',
-    };
-
-    return statusMap[status] || status || 'Chưa rõ';
-  };
-
-  const integrationItems = [
-    {
-      key: 'zalo',
-      name: 'Zalo Mini App & OA',
-      description: 'Tự động bắt tin nhắn báo lỗi của người dân qua Zalo OA và tạo phiếu phản ánh GPS tương ứng.',
-      icon: 'Z',
-      iconClassName: 'bg-blue-600 text-white',
-      endpointLabel: 'Webhook URL',
-      endpointValue: integrations?.zalo?.webhookUrl || 'Chưa cấu hình',
-    },
-    {
-      key: 'messenger',
-      name: 'Facebook Messenger Bot',
-      description: 'Đồng bộ hội thoại, cho phép cư dân gửi định vị và ảnh chụp trực tiếp qua Chatbot Fanpage.',
-      icon: Lucide.MessageCircle,
-      iconClassName: 'bg-indigo-500 text-white',
-      endpointLabel: 'API Endpoint',
-      endpointValue: integrations?.messenger?.webhookUrl || 'Chưa cấu hình',
-    },
-    {
-      key: 'hotline',
-      name: 'Tổng Đài Hotline Đô Thị',
-      description: 'Nhận diện cuộc gọi ghi âm, sử dụng mô hình Speech-to-Text để chuyển hóa ý kiến thành văn bản.',
-      icon: Lucide.PhoneCall,
-      iconClassName: 'bg-red-500 text-white',
-      endpointLabel: 'Số điện thoại',
-      endpointValue: integrations?.hotline?.phone || 'Chưa cấu hình',
-    },
-    {
-      key: 'webform',
-      name: 'Cổng Thông Tin Web Form',
-      description: 'Tích hợp form gửi ý kiến trên website chính quyền thành phố, đồng bộ trường dữ liệu UrbanMind.',
-      icon: Lucide.Globe,
-      iconClassName: 'bg-teal-500 text-white',
-      endpointLabel: 'Tích hợp',
-      endpointValue: 'Sẵn sàng kết nối qua Iframe API',
-    },
-  ];
-
   if (loading || !integrations) {
     return (
-      <div className="flex justify-center rounded-[2rem] border border-base-300 bg-base-100 py-20 shadow-sm">
-        <span className="loading loading-spinner loading-lg text-primary"></span>
+      <div className="admin-panel flex min-h-[360px] items-center justify-center py-20">
+        <div className="text-center">
+          <span className="loading loading-spinner loading-lg text-blue-700" />
+          <p className="mt-3 text-sm text-slate-500">Đang tải cấu hình tích hợp...</p>
+        </div>
       </div>
     );
   }
 
-  const enabledCount = integrationItems.filter(item => integrations[item.key]?.enabled).length;
-
   return (
-    <div className="space-y-6">
+    <div className="admin-page-shell space-y-6">
       {message.type === 'success' && (
-        <SuccessAlert
-          message={message.text}
-          onClose={() => setMessage({ type: '', text: '' })}
-        />
+        <SuccessAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />
       )}
-      <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
-        <div className="relative p-6 sm:p-8">
-          <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute bottom-0 right-28 h-28 w-28 rounded-full bg-secondary/10 blur-3xl" />
 
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-3xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
-                <Lucide.PlugZap size={14} />
-                Cổng tích hợp
-              </div>
-              <div>
-                <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
-                  Cấu Hình Tích Hợp Đa Kênh
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-base-content/60">
-                  Quản lý kết nối tiếp nhận phản ánh từ Zalo, Messenger, hotline và biểu mẫu web trong cùng một khu vực cấu hình.
-                </p>
-              </div>
+      <section className="admin-page-hero">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
+
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="admin-hero-icon">
+              <Lucide.PlugZap size={22} />
             </div>
+            <div className="min-w-0">
+              <h2 className="admin-hero-title">
+                Cấu hình tích hợp đa kênh
+              </h2>
+              <p className="admin-hero-description">
+                Quản lý kết nối tiếp nhận phản ánh từ Zalo, Messenger, hotline và biểu mẫu web trên cùng một màn hình.
+              </p>
+            </div>
+          </div>
 
-            <div className="rounded-2xl border border-base-300 bg-base-100/80 px-4 py-3 shadow-sm">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-base-content/40">Đang bật</p>
-              <div className="mt-1 flex items-end gap-1 text-base-content">
-                <span className="text-2xl font-black">{enabledCount}</span>
-                <span className="pb-1 text-xs font-bold text-base-content/45">/ {integrationItems.length} kênh</span>
-              </div>
+          <div className="shrink-0 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+            <p className="text-xs font-semibold text-slate-400">Trạng thái tổng quan</p>
+            <div className="mt-1 flex items-center gap-2 whitespace-nowrap">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(34,197,94,0.12)]" />
+              <span className="text-sm font-semibold text-slate-950">{enabledCount}/{integrationItems.length} kênh đang bật</span>
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <StatCard label="Tổng kênh" value={integrationItems.length} description="Nguồn tiếp nhận có thể cấu hình." icon={Lucide.Share2} toneClass="bg-blue-50 text-blue-700" />
+        <StatCard label="Đang bật" value={enabledCount} description="Kênh đang nhận dữ liệu." icon={Lucide.RadioTower} toneClass="bg-emerald-50 text-emerald-700" />
+        <StatCard label="Đã cấu hình" value={configuredCount} description="Có endpoint hoặc thông tin kết nối." icon={Lucide.Settings2} toneClass="bg-blue-50 text-blue-700" />
       </section>
 
       <section className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -144,16 +165,16 @@ export const IntegrationSettings = () => {
           const statusLabel = enabled ? getStatusLabel(config.status) : 'Đã tắt';
 
           return (
-            <div key={item.key} className="flex min-h-[220px] flex-col justify-between rounded-[2rem] border border-base-300 bg-base-100 p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+            <article key={item.key} className="flex min-h-[230px] flex-col justify-between rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_36px_rgba(15,23,42,0.05)] transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-6">
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-xs font-black ${item.iconClassName}`}>
-                      {typeof Icon === 'string' ? Icon : <Icon size={18} />}
+                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold ${item.iconClassName}`}>
+                      {typeof Icon === 'string' ? Icon : <Icon size={19} />}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="truncate text-sm font-extrabold text-base-content">{item.name}</h4>
-                      <p className="mt-1 text-[11px] font-bold text-base-content/40">
+                      <h4 className="truncate text-base font-semibold text-slate-950">{item.name}</h4>
+                      <p className="mt-1 text-xs text-slate-400">
                         {enabled ? 'Kênh đang hoạt động' : 'Kênh đang tạm tắt'}
                       </p>
                     </div>
@@ -164,25 +185,26 @@ export const IntegrationSettings = () => {
                     checked={enabled}
                     onChange={() => handleToggle(item.key)}
                     className="toggle toggle-primary toggle-sm shrink-0"
+                    aria-label={`Bật tắt ${item.name}`}
                   />
                 </div>
 
-                <p className="text-xs font-semibold leading-6 text-base-content/55">{item.description}</p>
+                <p className="text-sm leading-6 text-slate-500">{item.description}</p>
               </div>
 
-              <div className="mt-5 rounded-2xl border border-base-300 bg-base-200/60 p-3 text-[10px] font-bold text-base-content/45">
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <span>{item.endpointLabel}</span>
-                  <span className="break-all font-mono text-primary">{item.endpointValue}</span>
+                  <span className="text-slate-400">{item.endpointLabel}</span>
+                  <span className="break-all font-mono text-xs font-semibold text-blue-700">{item.endpointValue}</span>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <span>Trạng thái</span>
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${config.enabled ? 'bg-success/10 text-success' : 'bg-base-300 text-base-content/45'}`}>
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                  <span className="text-slate-400">Trạng thái</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                     {statusLabel}
                   </span>
                 </div>
               </div>
-            </div>
+            </article>
           );
         })}
       </section>

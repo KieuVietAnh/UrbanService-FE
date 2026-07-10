@@ -230,7 +230,7 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
   }[tone];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)]">
+    <div className="admin-stat-card p-5 transition-all hover:-translate-y-0.5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
@@ -246,7 +246,7 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
 };
 
 const DetailItem = ({ label, value }) => (
-  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+  <div className="admin-inset-panel p-4">
     <p className="text-xs font-medium text-slate-500">{label}</p>
     <p className="mt-1 text-sm font-semibold text-slate-900">{value || '—'}</p>
   </div>
@@ -577,7 +577,7 @@ const FeedbackDetailModal = ({ feedback, loadingDetail, detailError, onClose, ca
       <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+            <div className="admin-hero-icon">
               <Lucide.MessageSquare size={22} />
             </div>
             <div className="min-w-0">
@@ -601,11 +601,11 @@ const FeedbackDetailModal = ({ feedback, loadingDetail, detailError, onClose, ca
         <div className="max-h-[70vh] overflow-y-auto p-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <DetailItem label="Danh mục" value={getCategoryName(feedback.categoryId, categories)} />
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="admin-inset-panel p-4">
               <p className="text-xs font-medium text-slate-500">Ưu tiên</p>
               <div className="mt-2"><PriorityBadge priority={feedback.priority} /></div>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="admin-inset-panel p-4">
               <p className="text-xs font-medium text-slate-500">Trạng thái</p>
               <div className="mt-2"><StatusBadge status={feedback.status} /></div>
             </div>
@@ -776,20 +776,20 @@ export const FeedbackManagement = () => {
   }, [feedbacks, categories, searchTerm, statusFilter]);
 
   return (
-    <div className="space-y-6 text-slate-700">
-      <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+    <div className="admin-page-shell space-y-6">
+      <section className="admin-page-hero">
         <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+            <div className="admin-hero-icon">
               <Lucide.MessageSquare size={22} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+              <h1 className="admin-hero-title">
                 Quản lý feedback
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              <p className="admin-hero-description">
                 Theo dõi phản ánh, trạng thái xử lý và các điểm cần điều phối.
               </p>
             </div>

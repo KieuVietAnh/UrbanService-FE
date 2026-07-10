@@ -1,5 +1,5 @@
 // src/pages/dashboard/Dashboard.jsx
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
@@ -15,15 +15,63 @@ import { normalizeRole } from '../../utils/roleMap';
 import { managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 
+const SAFE_DASHBOARD_STATS = {
+  totalUsers: 0,
+  processingRate: 0,
+  csatScore: 0,
+  avgResolutionTimeHours: 0,
+  slaBreaches: 0,
+  apiStatus: 'Ổn định',
+  aiStatus: 'Đang bật',
+  storageUsage: '0 KB',
+  sentimentTrend: {
+    Positive: 0,
+    Neutral: 0,
+    Negative: 0,
+  },
+  categoryDistribution: [],
+};
+
+const normalizeDashboardStats = (rawStats) => ({
+  ...SAFE_DASHBOARD_STATS,
+  ...(rawStats && typeof rawStats === 'object' ? rawStats : {}),
+  sentimentTrend: {
+    ...SAFE_DASHBOARD_STATS.sentimentTrend,
+    ...(rawStats?.sentimentTrend && typeof rawStats.sentimentTrend === 'object' ? rawStats.sentimentTrend : {}),
+  },
+  categoryDistribution: Array.isArray(rawStats?.categoryDistribution)
+    ? rawStats.categoryDistribution
+    : SAFE_DASHBOARD_STATS.categoryDistribution,
+});
+
 export const Dashboard = () => {
   const { user } = useAuth();
   const currentRole = normalizeRole(user?.role);
   const navigate = useNavigate();
 
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState(SAFE_DASHBOARD_STATS);
   const [tickets, setTickets] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
+
+  const fetchScopedTickets = useCallback(async () => {
+    try {
+      if (!user) return [];
+
+      if (currentRole === 'service-user') {
+        return await ticketApi.getTickets({ userId: user.userId }, { role: currentRole });
+      }
+
+      if (currentRole === 'service-provider') {
+        return await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
+      }
+
+      return await ticketApi.getTickets({}, { role: currentRole });
+    } catch (err) {
+      console.warn('Dashboard ticket loading failed, using empty list', err);
+      return [];
+    }
+  }, [currentRole, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -35,29 +83,25 @@ export const Dashboard = () => {
           analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
         ]);
-        setStats(resStats);
+        setStats(normalizeDashboardStats(resStats));
         setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
 
-        let resTickets = [];
-        if (currentRole === 'service-user') {
-          resTickets = await ticketApi.getTickets({ userId: user.userId }, { role: currentRole });
-        } else if (currentRole === 'service-provider') {
-          resTickets = await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
-        } else {
-          resTickets = await ticketApi.getTickets({}, { role: currentRole });
-        }
+        const resTickets = await fetchScopedTickets();
 
         // dashboard data loaded
         setTickets(Array.isArray(resTickets) ? resTickets : []);
       } catch (err) {
         console.error(err);
+        setStats(SAFE_DASHBOARD_STATS);
+        setCategories([]);
+        setTickets([]);
       } finally {
         setLoading(false);
       }
     };
 
     loadDashboardContent();
-  }, [user, currentRole]);
+  }, [user, currentRole, fetchScopedTickets]);
 
   // realtime updates: refresh dashboard when tickets change
   useEffect(() => {
@@ -69,16 +113,9 @@ export const Dashboard = () => {
           analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
         ]);
-        setStats(resStats);
+        setStats(normalizeDashboardStats(resStats));
         setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
-        let resTickets = [];
-        if (currentRole === 'service-user') {
-          resTickets = await ticketApi.getTickets({ userId: user.userId }, { role: currentRole });
-        } else if (currentRole === 'service-provider') {
-          resTickets = await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
-        } else {
-          resTickets = await ticketApi.getTickets({}, { role: currentRole });
-        }
+        const resTickets = await fetchScopedTickets();
         setTickets(Array.isArray(resTickets) ? resTickets : []);
       } catch (e) {
         console.warn('Dashboard realtime reload failed', e);
@@ -91,9 +128,9 @@ export const Dashboard = () => {
     return () => {
       relevantEvents.forEach((ev) => signalrService.off(ev, reload));
     };
-  }, [user, currentRole]);
+  }, [user, currentRole, fetchScopedTickets]);
 
-  if (loading || !stats) {
+  if (!stats) {
     return (
       <div className="flex justify-center py-20 bg-white rounded-3xl border border-slate-200">
         <span className="loading loading-spinner loading-lg text-primary"></span>
@@ -184,337 +221,337 @@ export const Dashboard = () => {
   if (currentRole === 'service-user') {
     return (
       <PageTransition>
-      <div className="page-container space-y-8 text-slate-800">
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_360px]">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-              <div className="space-y-4">
-                <div className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.26em] text-blue-700">
-                  Dashboard Cư dân
-                </div>
-                <div className="space-y-3">
-                    <h2 className="heading-1">Chào, {user?.fullName || 'Bạn'}!</h2>
-                  <p className="lead max-w-2xl">
-                    Theo dõi tiến trình phản ánh, xem hoạt động cộng đồng và nắm bắt niềm tin vào dịch vụ đô thị một cách trực quan.
-                  </p>
-                </div>
-                {residentReportedThisMonth >= 3 && (
-                  <div className="mt-3">
-                    <CelebrationBadge title="Người đóng góp tích cực" subtitle={`Bạn đã gửi ${residentReportedThisMonth} báo cáo tháng này`} />
+        <div className="page-container space-y-8 text-slate-800">
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_360px]">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                <div className="space-y-4">
+                  <div className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.26em] text-blue-700">
+                    Dashboard Cư dân
                   </div>
-                )}
-              </div>
+                  <div className="space-y-3">
+                    <h2 className="heading-1">Chào, {user?.fullName || 'Bạn'}!</h2>
+                    <p className="lead max-w-2xl">
+                      Theo dõi tiến trình phản ánh, xem hoạt động cộng đồng và nắm bắt niềm tin vào dịch vụ đô thị một cách trực quan.
+                    </p>
+                  </div>
+                  {residentReportedThisMonth >= 3 && (
+                    <div className="mt-3">
+                      <CelebrationBadge title="Người đóng góp tích cực" subtitle={`Bạn đã gửi ${residentReportedThisMonth} báo cáo tháng này`} />
+                    </div>
+                  )}
+                </div>
 
                 {residentTickets.length === 0 ? (
                   <OnboardingEmpty />
                 ) : (
-                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Số báo cáo của bạn</p>
-                <p className="mt-3 metric-number">{residentTickets.length}</p>
-                <p className="mt-2 metric-label">{residentReportedThisMonth} báo cáo trong tháng</p>
-              </div>
+                  <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Số báo cáo của bạn</p>
+                    <p className="mt-3 metric-number">{residentTickets.length}</p>
+                    <p className="mt-2 metric-label">{residentReportedThisMonth} báo cáo trong tháng</p>
+                  </div>
                 )}
-            </div>
+              </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
-                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Mở</p>
-                <p className="mt-3 text-3xl font-black text-slate-950">{residentOpenTickets}</p>
-                <p className="mt-2 text-xs font-semibold text-slate-500">Đang chờ giải quyết</p>
-              </div>
-              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
-                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Đang xử lý</p>
-                <p className="mt-3 text-3xl font-black text-slate-950">{residentInProgress}</p>
-                <p className="mt-2 text-xs font-semibold text-slate-500">Đơn vị đang xử lý</p>
-              </div>
-              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
-                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Hoàn thành</p>
-                <p className="mt-3 text-3xl font-black text-slate-950">{residentResolved}</p>
-                <p className="mt-2 text-xs font-semibold text-slate-500">Kết quả đã đóng</p>
-              </div>
-              <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
-                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Tốc độ xử lý</p>
-                <p className="mt-3 text-3xl font-black text-slate-950">{stats.processingRate}%</p>
-                <p className="mt-2 text-xs font-semibold text-slate-500">Mức độ hoàn thành toàn thành phố</p>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Niềm tin dịch vụ</p>
-                  <p className="mt-2 text-2xl font-black text-slate-950">{stats.csatScore}/5</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">Chỉ số hài lòng cư dân</p>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Mở</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950">{residentOpenTickets}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">Đang chờ giải quyết</p>
                 </div>
-                <div className="rounded-3xl bg-emerald-50 px-4 py-3 text-emerald-700">
-                  <Lucide.ThumbsUp size={24} />
+                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Đang xử lý</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950">{residentInProgress}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">Đơn vị đang xử lý</p>
+                </div>
+                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Hoàn thành</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950">{residentResolved}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">Kết quả đã đóng</p>
+                </div>
+                <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Tốc độ xử lý</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950">{stats.processingRate}%</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-500">Mức độ hoàn thành toàn thành phố</p>
                 </div>
               </div>
 
-              <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${Math.min(stats.csatScore * 20, 100)}%` }} />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-500">
-                <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm">
-                  <Lucide.Clock3 size={14} className="text-slate-400" />
-                  Trung bình {stats.avgResolutionTimeHours} giờ xử lý
-                </span>
-                <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm">
-                  <Lucide.Server size={14} className="text-slate-400" />
-                  API: {stats.apiStatus}
-                </span>
+              <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Niềm tin dịch vụ</p>
+                    <p className="mt-2 text-2xl font-black text-slate-950">{stats.csatScore}/5</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Chỉ số hài lòng cư dân</p>
+                  </div>
+                  <div className="rounded-3xl bg-emerald-50 px-4 py-3 text-emerald-700">
+                    <Lucide.ThumbsUp size={24} />
+                  </div>
+                </div>
+
+                <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500" style={{ width: `${Math.min(stats.csatScore * 20, 100)}%` }} />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-slate-500">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm">
+                    <Lucide.Clock3 size={14} className="text-slate-400" />
+                    Trung bình {stats.avgResolutionTimeHours} giờ xử lý
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 shadow-sm">
+                    <Lucide.Server size={14} className="text-slate-400" />
+                    API: {stats.apiStatus}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <aside className="space-y-6">
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="heading-3">Thông báo</h3>
+            <aside className="space-y-6">
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="heading-3">Thông báo</h3>
                     <p className="text-xs muted">Cập nhật mới nhất để bạn luôn nắm được.</p>
+                  </div>
+                  <span className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">Mới</span>
                 </div>
-                <span className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">Mới</span>
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Sự cố hạ tầng</p>
+                    <p className="mt-2 text-sm font-bold text-slate-950">Cải tạo vỉa hè gần chợ Phú Nhuận</p>
+                    <p className="mt-1 text-xs text-slate-500">Dự kiến hoàn thành trong 2 ngày.</p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Chỉ số cộng đồng</p>
+                    <p className="mt-2 text-sm font-bold text-slate-950">Khối lượng phản ánh giảm 8%/tuần</p>
+                    <p className="mt-1 text-xs text-slate-500">Thể hiện khả năng phối hợp dịch vụ tốt hơn.</p>
+                  </div>
+                  <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Tin tức</p>
+                    <p className="mt-2 text-sm font-bold text-slate-950">Chương trình bảo trì đèn đường sắp diễn ra</p>
+                    <p className="mt-1 text-xs text-slate-500">Cập nhật lịch và khu vực thi công.</p>
+                  </div>
+                </div>
               </div>
-              <div className="mt-5 space-y-4">
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Sự cố hạ tầng</p>
-                  <p className="mt-2 text-sm font-bold text-slate-950">Cải tạo vỉa hè gần chợ Phú Nhuận</p>
-                  <p className="mt-1 text-xs text-slate-500">Dự kiến hoàn thành trong 2 ngày.</p>
+
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-950">Hoạt động cộng đồng</h3>
+                    <p className="text-xs font-semibold text-slate-500">Những vấn đề nổi bật tại khu vực chung.</p>
+                  </div>
+                  <Lucide.Activity size={20} className="text-slate-400" />
                 </div>
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Chỉ số cộng đồng</p>
-                  <p className="mt-2 text-sm font-bold text-slate-950">Khối lượng phản ánh giảm 8%/tuần</p>
-                  <p className="mt-1 text-xs text-slate-500">Thể hiện khả năng phối hợp dịch vụ tốt hơn.</p>
+                <div className="mt-5 space-y-4">
+                  {neighborhoodTopCategories.length > 0 ? (
+                    neighborhoodTopCategories.map((category, idx) => (
+                      <MotionCard key={category.categoryId} index={idx} className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                              {renderCategoryIcon(category.categoryId)}
+                            </span>
+                            <div>
+                              <p className="text-sm font-black text-slate-950">{category.categoryName}</p>
+                              <p className="text-xs font-semibold text-slate-500">{category.count} phản ánh</p>
+                            </div>
+                          </div>
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">
+                            Ưu tiên
+                          </span>
+                        </div>
+                      </MotionCard>
+                    ))
+                  ) : (
+                    <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                      Dữ liệu hoạt động cộng đồng đang được cập nhật.
+                    </div>
+                  )}
                 </div>
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Tin tức</p>
-                  <p className="mt-2 text-sm font-bold text-slate-950">Chương trình bảo trì đèn đường sắp diễn ra</p>
-                  <p className="mt-1 text-xs text-slate-500">Cập nhật lịch và khu vực thi công.</p>
+              </div>
+            </aside>
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-3">
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-black text-slate-950">Báo cáo của bạn</h3>
+              <p className="mt-2 text-xs font-semibold text-slate-500">Trạng thái hiện tại của các phản ánh bạn đã gửi.</p>
+              <div className="mt-5 grid gap-4">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Chờ xử lý</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950">{residentOpenTickets}</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Đang xử lý</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950">{residentInProgress}</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Đã giải quyết</p>
+                  <p className="mt-3 text-3xl font-black text-slate-950">{residentResolved}</p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-black text-slate-950">Hoạt động cộng đồng</h3>
-                  <p className="text-xs font-semibold text-slate-500">Những vấn đề nổi bật tại khu vực chung.</p>
+                  <h3 className="text-sm font-black text-slate-950">Sức khỏe đô thị</h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Chỉ số tổng quan phản ánh thành phố.</p>
                 </div>
-                <Lucide.Activity size={20} className="text-slate-400" />
+                <Lucide.ShieldCheck size={20} className="text-emerald-500" />
+              </div>
+              <div className="mt-5 grid gap-3">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Vi phạm SLA</p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">{stats.slaBreaches}</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Độ ổn định API</p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">{stats.apiStatus}</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Trạng thái AI</p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">{stats.aiStatus}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-950">Sự cố gần bạn</h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Các phản ánh gần đây được ghi nhận tại địa chỉ của bạn.</p>
+                </div>
+                <Lucide.MapPin size={20} className="text-slate-400" />
               </div>
               <div className="mt-5 space-y-4">
-                  {neighborhoodTopCategories.length > 0 ? (
-                  neighborhoodTopCategories.map((category, idx) => (
-                    <MotionCard key={category.categoryId} index={idx} className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                {nearbyIncidents.length > 0 ? (
+                  nearbyIncidents.map((incident) => (
+                    <div key={incident.feedbackId} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                            {renderCategoryIcon(category.categoryId)}
-                          </span>
-                          <div>
-                            <p className="text-sm font-black text-slate-950">{category.categoryName}</p>
-                            <p className="text-xs font-semibold text-slate-500">{category.count} phản ánh</p>
-                          </div>
+                        <div>
+                          <p className="text-sm font-black text-slate-950 truncate">{incident.title}</p>
+                          <p className="mt-1 text-[11px] font-semibold text-slate-500">{incident.locationText || 'Địa chỉ chưa rõ'}</p>
                         </div>
                         <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">
-                          Ưu tiên
+                          {renderCategoryIcon(incident.categoryId)}
                         </span>
                       </div>
-                    </MotionCard>
+                      <p className="mt-3 text-[11px] text-slate-500">{renderStatusBadge(incident.status)}</p>
+                    </div>
                   ))
                 ) : (
-                  <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-                    Dữ liệu hoạt động cộng đồng đang được cập nhật.
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                    Chưa có sự cố địa phương có địa chỉ rõ ràng.
                   </div>
                 )}
               </div>
             </div>
-          </aside>
-        </section>
+          </section>
 
-        <section className="grid gap-6 xl:grid-cols-3">
-          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-black text-slate-950">Báo cáo của bạn</h3>
-            <p className="mt-2 text-xs font-semibold text-slate-500">Trạng thái hiện tại của các phản ánh bạn đã gửi.</p>
-            <div className="mt-5 grid gap-4">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Chờ xử lý</p>
-                <p className="mt-3 text-3xl font-black text-slate-950">{residentOpenTickets}</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Đang xử lý</p>
-                <p className="mt-3 text-3xl font-black text-slate-950">{residentInProgress}</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Đã giải quyết</p>
-                <p className="mt-3 text-3xl font-black text-slate-950">{residentResolved}</p>
-              </div>
+          <section className="grid gap-6 xl:grid-cols-3">
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <CategoryVolumeBarChart data={stats.categoryDistribution} />
             </div>
-          </div>
-
-          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-black text-slate-950">Sức khỏe đô thị</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Chỉ số tổng quan phản ánh thành phố.</p>
-              </div>
-              <Lucide.ShieldCheck size={20} className="text-emerald-500" />
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <SentimentDonutChart
+                positive={stats.sentimentTrend.Positive}
+                neutral={stats.sentimentTrend.Neutral}
+                negative={stats.sentimentTrend.Negative}
+              />
             </div>
-            <div className="mt-5 grid gap-3">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Vi phạm SLA</p>
-                <p className="mt-2 text-2xl font-black text-slate-950">{stats.slaBreaches}</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Độ ổn định API</p>
-                <p className="mt-2 text-2xl font-black text-slate-950">{stats.apiStatus}</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Trạng thái AI</p>
-                <p className="mt-2 text-2xl font-black text-slate-950">{stats.aiStatus}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-black text-slate-950">Sự cố gần bạn</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Các phản ánh gần đây được ghi nhận tại địa chỉ của bạn.</p>
-              </div>
-              <Lucide.MapPin size={20} className="text-slate-400" />
-            </div>
-            <div className="mt-5 space-y-4">
-              {nearbyIncidents.length > 0 ? (
-                nearbyIncidents.map((incident) => (
-                  <div key={incident.feedbackId} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-black text-slate-950 truncate">{incident.title}</p>
-                        <p className="mt-1 text-[11px] font-semibold text-slate-500">{incident.locationText || 'Địa chỉ chưa rõ'}</p>
-                      </div>
-                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">
-                        {renderCategoryIcon(incident.categoryId)}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-[11px] text-slate-500">{renderStatusBadge(incident.status)}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-                  Chưa có sự cố địa phương có địa chỉ rõ ràng.
+            <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-950">Hiệu năng SLA</h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Nhìn nhanh tiến độ xử lý theo tuần.</p>
                 </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-3">
-          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <CategoryVolumeBarChart data={stats.categoryDistribution} />
-          </div>
-          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <SentimentDonutChart
-              positive={stats.sentimentTrend.Positive}
-              neutral={stats.sentimentTrend.Neutral}
-              negative={stats.sentimentTrend.Negative}
-            />
-          </div>
-          <div className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-black text-slate-950">Hiệu năng SLA</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Nhìn nhanh tiến độ xử lý theo tuần.</p>
+                <Lucide.Clock3 size={20} className="text-slate-400" />
               </div>
-              <Lucide.Clock3 size={20} className="text-slate-400" />
-            </div>
-            <div className="mt-5">
-              <SLAPerformanceChart />
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-black text-slate-950">Phản ánh gần đây</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Xem lại các báo cáo mới nhất của bạn.</p>
+              <div className="mt-5">
+                <SLAPerformanceChart />
               </div>
-              <Link to="/tickets" className="text-xs font-black text-blue-700 hover:underline flex items-center gap-1">
-                Xem tất cả
-                <Lucide.ArrowRight size={14} />
-              </Link>
             </div>
-            <div className="mt-5 overflow-x-auto">
-              <table className="table w-full text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-black uppercase tracking-[0.18em]">
-                    <th className="py-3">Mã</th>
-                    <th className="py-3">Nội dung</th>
-                    <th className="py-3">Trạng thái</th>
-                    <th className="py-3">Ngày</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {residentTickets.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="py-8 text-center text-slate-400 font-bold">Bạn chưa có phản ánh gần đây.</td>
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-black text-slate-950">Phản ánh gần đây</h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Xem lại các báo cáo mới nhất của bạn.</p>
+                </div>
+                <Link to="/tickets" className="text-xs font-black text-blue-700 hover:underline flex items-center gap-1">
+                  Xem tất cả
+                  <Lucide.ArrowRight size={14} />
+                </Link>
+              </div>
+              <div className="mt-5 overflow-x-auto">
+                <table className="table w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-400 font-black uppercase tracking-[0.18em]">
+                      <th className="py-3">Mã</th>
+                      <th className="py-3">Nội dung</th>
+                      <th className="py-3">Trạng thái</th>
+                      <th className="py-3">Ngày</th>
                     </tr>
-                  ) : (
-                    residentTickets.slice(0, 4).map((ticket) => (
-                      <tr key={ticket.feedbackId} className="hover:bg-slate-50/70">
-                        <td className="py-3.5 font-black text-blue-700">{formatTicketId(ticket.feedbackId)}</td>
-                        <td className="py-3.5 font-semibold text-slate-700 truncate max-w-[220px]">{ticket.title}</td>
-                        <td className="py-3.5">{renderStatusBadge(ticket.status)}</td>
-                        <td className="py-3.5 font-semibold text-slate-400">{new Date(ticket.createdAt).toLocaleDateString()}</td>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {residentTickets.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="py-8 text-center text-slate-400 font-bold">Bạn chưa có phản ánh gần đây.</td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      residentTickets.slice(0, 4).map((ticket) => (
+                        <tr key={ticket.feedbackId} className="hover:bg-slate-50/70">
+                          <td className="py-3.5 font-black text-blue-700">{formatTicketId(ticket.feedbackId)}</td>
+                          <td className="py-3.5 font-semibold text-slate-700 truncate max-w-[220px]">{ticket.title}</td>
+                          <td className="py-3.5">{renderStatusBadge(ticket.status)}</td>
+                          <td className="py-3.5 font-semibold text-slate-400">{new Date(ticket.createdAt).toLocaleDateString()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
 
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-100 text-slate-700">
-                <Lucide.Lightbulb size={20} />
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-100 text-slate-700">
+                  <Lucide.Lightbulb size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-950">Tiện ích & Hỗ trợ</h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Những gợi ý giúp bạn gửi phản ánh hiệu quả hơn.</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-black text-slate-950">Tiện ích & Hỗ trợ</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Những gợi ý giúp bạn gửi phản ánh hiệu quả hơn.</p>
+              <div className="mt-6 space-y-4 text-sm text-slate-600">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-black">Định vị thông minh</p>
+                  <p className="mt-2 text-xs text-slate-500">Khai báo vị trí chính xác để đội ngũ xử lý đến nhanh hơn.</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-black">Ảnh minh họa</p>
+                  <p className="mt-2 text-xs text-slate-500">Chụp nhiều góc, đặc biệt là cả cảnh chung quanh để xác định phạm vi sự cố.</p>
+                </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="font-black">Đánh giá kết quả</p>
+                  <p className="mt-2 text-xs text-slate-500">Sau khi sự cố đóng, hãy cho biết chất lượng xử lý để cải thiện dịch vụ.</p>
+                </div>
               </div>
             </div>
-            <div className="mt-6 space-y-4 text-sm text-slate-600">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-black">Định vị thông minh</p>
-                <p className="mt-2 text-xs text-slate-500">Khai báo vị trí chính xác để đội ngũ xử lý đến nhanh hơn.</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-black">Ảnh minh họa</p>
-                <p className="mt-2 text-xs text-slate-500">Chụp nhiều góc, đặc biệt là cả cảnh chung quanh để xác định phạm vi sự cố.</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <p className="font-black">Đánh giá kết quả</p>
-                <p className="mt-2 text-xs text-slate-500">Sau khi sự cố đóng, hãy cho biết chất lượng xử lý để cải thiện dịch vụ.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </PageTransition>
+          </section>
+        </div>
+      </PageTransition>
     );
   }
 
   // ----------------------------------------------------
   // 2. SYSTEM STAFF DASHBOARD (Figma: Không gian làm việc - Nhân viên.png)
   // ----------------------------------------------------
-  if (currentRole=== 'system-staff') {
+  if (currentRole === 'system-staff') {
     return (
       <div className="page-container space-y-6 text-slate-800">
-        
+
         {/* Header Greeting */}
         <div className="space-y-1">
           <h2 className="text-2xl font-black text-slate-900">Không gian làm việc</h2>
@@ -642,7 +679,7 @@ export const Dashboard = () => {
                       {renderStatusBadge(t.status)}
                     </td>
                     <td className="font-bold text-slate-400 py-3.5">
-                      {new Date(t.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}, {new Date(t.createdAt).toLocaleDateString([], {day: '2-digit', month: '2-digit'})}
+                      {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, {new Date(t.createdAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' })}
                     </td>
                     <td className="text-right py-3.5">
                       {t.status === managementTypes.feedbackStatus.SUBMITTED ? (
@@ -973,7 +1010,7 @@ export const Dashboard = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1">
-            <SentimentDonutChart 
+            <SentimentDonutChart
               positive={stats.sentimentTrend.Positive}
               neutral={stats.sentimentTrend.Neutral}
               negative={stats.sentimentTrend.Negative}
@@ -993,8 +1030,11 @@ export const Dashboard = () => {
   if (currentRole === 'administrator') {
     const storageUsageValue = stats.storageUsage?.split(' ')[0] || '0';
     const adminTickets = Array.isArray(tickets) ? tickets : [];
-    const recentTickets = adminTickets.slice(0, 4);
+    const recentTickets = adminTickets.slice(0, 5);
     const openFeedbackCount = adminTickets.filter((ticket) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
+    const resolvedFeedbackCount = adminTickets.filter((ticket) => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
+    const inProgressFeedbackCount = adminTickets.filter((ticket) => [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(ticket.status)).length;
+
     const adminMetrics = [
       {
         label: 'Tài khoản',
@@ -1013,12 +1053,12 @@ export const Dashboard = () => {
         to: '/management/feedbacks',
       },
       {
-        label: 'Booking / hóa đơn',
-        value: 0,
-        helper: 'Chờ kết nối dữ liệu',
-        icon: Lucide.Receipt,
-        tone: 'bg-violet-50 text-violet-700 border-violet-100',
-        to: '/management/bookings',
+        label: 'Đang xử lý',
+        value: inProgressFeedbackCount,
+        helper: 'Đã phân công / đang thực hiện',
+        icon: Lucide.RefreshCw,
+        tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        to: '/management/feedbacks',
       },
       {
         label: 'Dung lượng DB',
@@ -1033,28 +1073,46 @@ export const Dashboard = () => {
     const adminQuickLinks = [
       {
         title: 'Quản lý người dùng',
-        description: 'Theo dõi tài khoản, trạng thái và vai trò truy cập.',
+        description: 'Tài khoản, trạng thái hoạt động và phân quyền truy cập.',
         to: '/management/users',
         icon: Lucide.Users,
       },
       {
         title: 'Quản lý feedback',
-        description: 'Giám sát phản ánh, trạng thái và tiến độ xử lý.',
+        description: 'Giám sát phản ánh, trạng thái, mức ưu tiên và dữ liệu media.',
         to: '/management/feedbacks',
         icon: Lucide.MessageSquare,
       },
       {
         title: 'Quản lý booking',
-        description: 'Chuẩn bị luồng hóa đơn, thanh toán và booking.',
+        description: 'Khung quản trị booking, hóa đơn và thanh toán chờ kết nối API.',
         to: '/management/bookings',
         icon: Lucide.Receipt,
       },
       {
+        title: 'Cấu hình SLA',
+        description: 'Thiết lập ngưỡng xử lý và tiêu chuẩn phản hồi theo danh mục.',
+        to: '/management/sla',
+        icon: Lucide.TimerReset,
+      },
+      {
+        title: 'Danh mục phản ánh',
+        description: 'Quản lý nhóm sự cố, biểu tượng và mức độ ưu tiên mặc định.',
+        to: '/management/categories',
+        icon: Lucide.Tags,
+      },
+      {
         title: 'Nhật ký hệ thống',
-        description: 'Theo dõi lịch sử thao tác và sự kiện quan trọng.',
+        description: 'Theo dõi thao tác quản trị và các sự kiện quan trọng.',
         to: '/admin/audit',
         icon: Lucide.FileClock,
       },
+    ];
+
+    const healthItems = [
+      { label: 'Feedback đã xử lý', value: resolvedFeedbackCount, helper: 'Bao gồm đã đóng và đã giải quyết', icon: Lucide.CheckCircle2 },
+      { label: 'Booking', value: 'Sẵn sàng', helper: 'Giao diện đã chuẩn bị, chờ API dữ liệu', icon: Lucide.CalendarCheck2 },
+      { label: 'Tích hợp', value: 'Ổn định', helper: 'Các kênh tiếp nhận đang hoạt động', icon: Lucide.Radio },
     ];
 
     const integrations = [
@@ -1065,57 +1123,44 @@ export const Dashboard = () => {
 
     const categoryDistribution = Array.isArray(stats.categoryDistribution)
       ? stats.categoryDistribution.map((item, index) => ({
-          id: Number(item.categoryId ?? item.id ?? index + 1),
-          name: item.categoryName || item.name || item.label || `Danh mục ${index + 1}`,
-          count: Number(item.count ?? item.value ?? item.total ?? 0),
-        }))
+        id: Number(item.categoryId ?? item.id ?? index + 1),
+        name: item.categoryName || item.name || item.label || `Danh mục ${index + 1}`,
+        count: Number(item.count ?? item.value ?? item.total ?? 0),
+      }))
       : [];
     const totalCategoryTickets = categoryDistribution.reduce((sum, item) => sum + item.count, 0);
     const maxCategoryCount = Math.max(...categoryDistribution.map(item => item.count), 1);
     const hasLowCategoryData = totalCategoryTickets > 0 && totalCategoryTickets <= 5;
 
     return (
-      <div className="space-y-6 text-slate-800">
-        <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-blue-100/70 blur-3xl" />
-          <div className="absolute bottom-0 left-10 h-32 w-32 rounded-full bg-emerald-100/60 blur-3xl" />
+      <div className="admin-page-shell space-y-6">
+        <section className="admin-page-hero">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
 
-          <div className="relative flex flex-col gap-5 p-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.18em] text-blue-700">
-                <Lucide.ShieldCheck size={14} />
-                Trung tâm quản trị
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="admin-hero-icon">
+                <Lucide.LayoutDashboard size={22} />
               </div>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-black tracking-tight text-slate-950 lg:text-3xl">
-                  Tổng quan quản trị hệ thống
+              <div className="min-w-0">
+                <h2 className="admin-hero-title">
+                  Tổng quan hệ thống
                 </h2>
-                <p className="max-w-xl text-sm font-semibold leading-6 text-slate-500">
-                  Theo dõi sức khỏe nền tảng, tài nguyên máy chủ, tích hợp tiếp nhận đa kênh và dữ liệu vận hành đô thị trong một màn hình.
+                <p className="admin-hero-description">
+                  Một màn hình để Admin theo dõi tài khoản, feedback, booking, tích hợp và tình trạng vận hành của UrbanMind.
                 </p>
               </div>
             </div>
 
-            <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
-              <Link
-                to="/admin/performance"
-                className="rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-white/70">
-                  <Lucide.Server size={14} />
-                  Vận hành
-                </div>
-                <div className="mt-2 text-sm font-black">Hiệu năng & Nhật ký</div>
+            <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
+              <Link to="/management/feedbacks" className="admin-primary-action btn rounded-xl px-5 text-sm font-semibold normal-case">
+                <Lucide.MessageSquare size={17} />
+                Quản lý feedback
               </Link>
-              <Link
-                to="/management/users"
-                className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-blue-800 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-blue-500">
-                  <Lucide.KeyRound size={14} />
-                  Tài khoản
-                </div>
-                <div className="mt-2 text-sm font-black">Quản lý người dùng</div>
+              <Link to="/management/bookings" className="admin-secondary-action btn rounded-xl px-5 text-sm font-semibold normal-case">
+                <Lucide.Receipt size={17} />
+                Booking / hóa đơn
               </Link>
             </div>
           </div>
@@ -1126,7 +1171,7 @@ export const Dashboard = () => {
             const Icon = metric.icon;
 
             return (
-              <Link key={metric.label} to={metric.to} className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
+              <Link key={metric.label} to={metric.to} className="admin-stat-card group p-5 transition-all hover:-translate-y-0.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${metric.tone}`}>
                     <Icon size={20} />
@@ -1134,9 +1179,9 @@ export const Dashboard = () => {
                   <Lucide.ArrowUpRight size={16} className="text-slate-300 transition group-hover:text-blue-600" />
                 </div>
                 <div className="mt-5 space-y-1">
-                  <p className="text-xs font-semibold text-slate-500">{metric.label}</p>
+                  <p className="text-xs font-medium text-slate-500">{metric.label}</p>
                   <p className="text-2xl font-semibold text-slate-950">{metric.value}</p>
-                  <p className="text-xs font-medium text-slate-400">{metric.helper}</p>
+                  <p className="text-xs text-slate-400">{metric.helper}</p>
                 </div>
               </Link>
             );
@@ -1144,36 +1189,36 @@ export const Dashboard = () => {
         </section>
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="xl:col-span-2 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="admin-panel p-5 xl:col-span-2">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-black text-slate-950">Phân bổ phản ánh theo danh mục</h3>
-                <p className="text-xs font-semibold text-slate-500">Tổng hợp khối lượng phản ánh để Admin theo dõi cấu hình danh mục.</p>
+                <h3 className="admin-section-title">Phân bổ phản ánh theo danh mục</h3>
+                <p className="admin-section-description">Tổng hợp khối lượng phản ánh để Admin kiểm tra cấu hình danh mục.</p>
               </div>
-              <Link to="/management/categories" className="inline-flex items-center gap-1 text-xs font-black text-blue-700 hover:underline">
+              <Link to="/management/categories" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
                 Cấu hình danh mục
                 <Lucide.ArrowRight size={14} />
               </Link>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="admin-inset-panel p-4">
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Tổng phản ánh</p>
-                  <p className="mt-1 text-2xl font-black text-slate-950">{totalCategoryTickets}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Tổng phản ánh</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-950">{totalCategoryTickets}</p>
                 </div>
-                <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${hasLowCategoryData ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${hasLowCategoryData ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
                   <span className="h-2 w-2 rounded-full bg-current" />
                   {hasLowCategoryData ? 'Dữ liệu còn ít' : 'Đang cập nhật'}
                 </span>
               </div>
 
               {categoryDistribution.length === 0 ? (
-                <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white text-center">
+                <div className="admin-empty-panel flex min-h-[220px] flex-col items-center justify-center text-center">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                     <Lucide.BarChart3 size={22} />
                   </div>
-                  <p className="mt-3 text-sm font-black text-slate-700">Chưa có dữ liệu danh mục</p>
-                  <p className="mt-1 max-w-sm text-xs font-semibold leading-5 text-slate-400">
+                  <p className="mt-3 text-sm font-semibold text-slate-700">Chưa có dữ liệu danh mục</p>
+                  <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
                     Khi có phản ánh mới, hệ thống sẽ tự động tổng hợp theo từng danh mục.
                   </p>
                 </div>
@@ -1190,11 +1235,11 @@ export const Dashboard = () => {
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50">
                               {renderCategoryIcon(category.id)}
                             </div>
-                            <span className="truncate text-xs font-black text-slate-800">{category.name}</span>
+                            <span className="truncate text-xs font-semibold text-slate-800">{category.name}</span>
                           </div>
-                          <span className="shrink-0 text-sm font-black text-slate-950">
+                          <span className="shrink-0 text-sm font-semibold text-slate-950">
                             {category.count}
-                            <span className="ml-1 text-[10px] font-bold text-slate-400">phiếu</span>
+                            <span className="ml-1 text-[10px] font-medium text-slate-400">phiếu</span>
                           </span>
                         </div>
                         <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
@@ -1210,117 +1255,151 @@ export const Dashboard = () => {
               )}
 
               {hasLowCategoryData && (
-                <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-[11px] font-semibold leading-5 text-amber-700">
-                  Dữ liệu hiện còn ít nên hệ thống ưu tiên hiển thị dạng danh sách để tránh biểu đồ bị phóng đại. Khi số lượng phản ánh tăng, phần này vẫn phản ánh đúng tỷ trọng từng danh mục.
+                <div className="admin-warning-note mt-4 p-3 text-[11px] leading-5">
+                  Dữ liệu hiện còn ít nên hệ thống ưu tiên hiển thị dạng danh sách để tránh biểu đồ bị phóng đại.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-black text-slate-950">Tích hợp đa kênh</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Các kênh tiếp nhận phản ánh đang hoạt động.</p>
+          <div className="space-y-6">
+            <div className="admin-panel p-5">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="admin-section-title">Sức khỏe vận hành</h3>
+                  <p className="mt-1 admin-section-description">Các điểm Admin nên kiểm tra định kỳ.</p>
+                </div>
+                <div className="rounded-2xl bg-emerald-50 p-2 text-emerald-600">
+                  <Lucide.Activity size={18} />
+                </div>
               </div>
-              <div className="rounded-2xl bg-emerald-50 p-2 text-emerald-600">
-                <Lucide.CheckCircle2 size={18} />
-              </div>
-            </div>
+              <div className="space-y-3">
+                {healthItems.map((item) => {
+                  const Icon = item.icon;
 
-            <div className="space-y-3">
-              {integrations.map((integration) => {
-                const Icon = integration.icon;
-
-                return (
-                  <div key={integration.name} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
+                  return (
+                    <div key={item.label} className="admin-inset-panel flex items-start gap-3 p-3">
+                      <div className="admin-mini-icon">
                         <Icon size={16} />
                       </div>
-                      <span className="truncate text-xs font-black text-slate-700">{integration.name}</span>
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800">{item.label}</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-950">{item.value}</p>
+                        <p className="mt-1 text-[11px] leading-4 text-slate-500">{item.helper}</p>
+                      </div>
                     </div>
-                    <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">
-                      {integration.status}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
 
-            <Link
-              to="/management/integrations"
-              className="mt-4 flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-700 transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-            >
-              Quản lý tích hợp
-              <Lucide.ArrowRight size={14} />
-            </Link>
+            <div className="admin-panel p-5">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="admin-section-title">Tích hợp đa kênh</h3>
+                  <p className="mt-1 admin-section-description">Các kênh tiếp nhận phản ánh đang hoạt động.</p>
+                </div>
+                <div className="rounded-2xl bg-blue-50 p-2 text-blue-600">
+                  <Lucide.Network size={18} />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {integrations.map((integration) => {
+                  const Icon = integration.icon;
+
+                  return (
+                    <div key={integration.name} className="admin-inset-panel flex items-center justify-between gap-3 px-3 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="admin-mini-icon">
+                          <Icon size={16} />
+                        </div>
+                        <span className="truncate text-xs font-semibold text-slate-700">{integration.name}</span>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
+                        {integration.status}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <Link
+                to="/management/integrations"
+                className="admin-secondary-link mt-4 flex items-center justify-center gap-2 px-4 py-3 text-xs font-semibold transition-all"
+              >
+                Quản lý tích hợp
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
           </div>
         </section>
 
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
+          <div className="admin-panel p-5 xl:col-span-2">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-base font-black text-slate-950">Phản ánh mới nhất</h3>
-                <p className="text-xs font-semibold text-slate-500">Dữ liệu tổng hợp để Admin giám sát luồng vận hành.</p>
+                <h3 className="admin-section-title">Phản ánh mới nhất</h3>
+                <p className="admin-section-description">Dữ liệu tổng hợp để Admin giám sát luồng vận hành.</p>
               </div>
-              <Link to="/management/feedbacks" className="inline-flex items-center gap-1 text-xs font-black text-blue-700 hover:underline">
+              <Link to="/management/feedbacks" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
                 Quản lý feedback
                 <Lucide.ArrowRight size={14} />
               </Link>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="table w-full text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    <th className="py-3">Mã</th>
-                    <th className="py-3">Nội dung</th>
-                    <th className="py-3">Danh mục</th>
-                    <th className="py-3">Ưu tiên</th>
-                    <th className="py-3">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {recentTickets.length === 0 ? (
-                    <tr>
-                      <td colSpan="5" className="py-8 text-center text-xs font-bold text-slate-400">
-                        Chưa có dữ liệu phản ánh để hiển thị.
-                      </td>
+            <div className="admin-table-wrap overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="table w-full text-xs">
+                  <thead>
+                    <tr className="admin-table-head border-b text-[10px] font-semibold uppercase tracking-wider">
+                      <th className="py-3">Mã</th>
+                      <th className="py-3">Nội dung</th>
+                      <th className="py-3">Danh mục</th>
+                      <th className="py-3">Ưu tiên</th>
+                      <th className="py-3">Trạng thái</th>
                     </tr>
-                  ) : (
-                    recentTickets.map((ticket) => (
-                      <tr key={ticket.feedbackId} className="hover:bg-slate-50/70">
-                        <td className="py-3.5 font-black text-blue-700">{formatTicketId(ticket.feedbackId)}</td>
-                        <td className="max-w-[240px] py-3.5 font-bold text-slate-700">
-                          <div className="truncate">{ticket.title}</div>
+                  </thead>
+                  <tbody className="admin-table-body divide-y">
+                    {recentTickets.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="py-8 text-center text-xs font-medium text-slate-400">
+                          Chưa có dữ liệu phản ánh để hiển thị.
                         </td>
-                        <td className="py-3.5">
-                          <div className="flex items-center gap-1.5 font-bold text-slate-700">
-                            {renderCategoryIcon(ticket.categoryId)}
-                            <span className="truncate">
-                              {getCategoryName(ticket.categoryId)}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3.5">{renderPriorityBadge(ticket.priority)}</td>
-                        <td className="py-3.5">{renderStatusBadge(ticket.status)}</td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      recentTickets.map((ticket) => (
+                        <tr key={ticket.feedbackId} className="admin-table-row">
+                          <td className="py-3.5 font-semibold text-blue-700">{formatTicketId(ticket.feedbackId)}</td>
+                          <td className="max-w-[240px] py-3.5 font-medium text-slate-700">
+                            <div className="truncate">{ticket.title}</div>
+                          </td>
+                          <td className="py-3.5">
+                            <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                              {renderCategoryIcon(ticket.categoryId)}
+                              <span className="truncate">
+                                {getCategoryName(ticket.categoryId)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3.5">{renderPriorityBadge(ticket.priority)}</td>
+                          <td className="py-3.5">{renderStatusBadge(ticket.status)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="admin-panel p-5">
             <div className="mb-4">
-              <h3 className="text-base font-black text-slate-950">Lối tắt quản trị</h3>
-              <p className="mt-1 text-xs font-semibold text-slate-500">Các flow Admin thường cần kiểm tra.</p>
+              <h3 className="admin-section-title">Lối tắt quản trị</h3>
+              <p className="mt-1 admin-section-description">Các flow Admin thường cần kiểm tra.</p>
             </div>
 
-            <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               {adminQuickLinks.map((item) => {
                 const Icon = item.icon;
 
@@ -1328,33 +1407,21 @@ export const Dashboard = () => {
                   <Link
                     key={item.title}
                     to={item.to}
-                    className="group flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 transition-all hover:border-blue-200 hover:bg-blue-50"
+                    className="admin-quick-link group flex items-start gap-3 p-3 transition-all"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm group-hover:text-blue-700">
+                    <div className="admin-mini-icon h-10 w-10 group-hover:text-blue-700">
                       <Icon size={17} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <h4 className="text-xs font-black text-slate-800">{item.title}</h4>
+                        <h4 className="text-xs font-semibold text-slate-800">{item.title}</h4>
                         <Lucide.ArrowRight size={14} className="shrink-0 text-slate-300 group-hover:text-blue-700" />
                       </div>
-                      <p className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">{item.description}</p>
+                      <p className="mt-1 text-[11px] leading-5 text-slate-500">{item.description}</p>
                     </div>
                   </Link>
                 );
               })}
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-800">
-              <div className="flex items-start gap-3">
-                <Lucide.AlertTriangle size={18} className="mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs font-black">Gợi ý kiểm tra định kỳ</p>
-                  <p className="mt-1 text-[11px] font-semibold leading-5 text-amber-700">
-                    Theo dõi feedback, booking và nhật ký hệ thống sau mỗi phiên cấu hình để tránh lệch luồng vận hành.
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
         </section>

@@ -52,15 +52,17 @@ export const SettingsPage = () => {
   const themeOptions = [
     {
       value: 'corporate',
-      name: 'Corporate',
-      description: 'Giao diện sáng, rõ ràng, phù hợp môi trường quản trị.',
+      name: 'Sáng chuyên nghiệp',
+      description: 'Nền sáng, dễ đọc, phù hợp thao tác quản trị ban ngày.',
       icon: Lucide.Sun,
+      preview: 'from-blue-500 to-cyan-400',
     },
     {
       value: 'dark',
-      name: 'Dark mode',
-      description: 'Giao diện tối, giảm chói khi làm việc lâu.',
+      name: 'Tối tập trung',
+      description: 'Nền tối, giảm chói khi theo dõi dashboard trong thời gian dài.',
       icon: Lucide.Moon,
+      preview: 'from-slate-800 to-slate-600',
     },
   ];
 
@@ -68,7 +70,7 @@ export const SettingsPage = () => {
     {
       id: 'push-notifications',
       title: 'Thông báo đẩy',
-      description: 'Nhận cập nhật trạng thái sự cố trực tiếp trên trình duyệt.',
+      description: 'Nhận cập nhật trạng thái phản ánh trực tiếp trên trình duyệt.',
       enabled: pushNotifs,
       onChange: setPushNotifs,
       icon: Lucide.BellRing,
@@ -76,7 +78,7 @@ export const SettingsPage = () => {
     {
       id: 'email-notifications',
       title: 'Email thông báo',
-      description: 'Gửi email định kỳ tóm tắt tiến trình xử lý sự cố.',
+      description: 'Nhận email tóm tắt tiến độ xử lý và những thay đổi quan trọng.',
       enabled: emailNotifs,
       onChange: setEmailNotifs,
       icon: Lucide.Mail,
@@ -84,176 +86,215 @@ export const SettingsPage = () => {
   ];
 
   const activeTheme = themeOptions.find(item => item.value === theme) || themeOptions[0];
+  const ActiveThemeIcon = activeTheme.icon;
 
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-[2rem] border border-base-300 bg-base-100 shadow-sm">
-        <div className="relative p-6 sm:p-8">
-          <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute bottom-0 right-28 h-28 w-28 rounded-full bg-secondary/10 blur-3xl" />
+    <div className="admin-page-shell space-y-6">
+      <section className="admin-page-hero">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
 
-          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-3xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-primary">
-                <Lucide.Settings2 size={14} />
-                Cấu hình cá nhân
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="admin-hero-icon">
+              <Lucide.Settings2 size={22} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="admin-hero-title">
+                Cài đặt hệ thống
+              </h2>
+              <p className="admin-hero-description">
+                Tùy biến giao diện và kênh nhận thông báo theo cách bạn vận hành UrbanMind hằng ngày.
+              </p>
+            </div>
+          </div>
+
+          <div className="shrink-0 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                <ActiveThemeIcon size={20} />
               </div>
               <div>
-                <h2 className="text-2xl font-black tracking-tight text-base-content sm:text-3xl">
-                  Cài đặt hệ thống
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-base-content/60">
-                  Tùy biến giao diện, kênh nhận thông báo và các thiết lập hiển thị phù hợp với cách bạn vận hành UrbanMind.
+                <p className="text-xs font-semibold text-slate-400">Đang sử dụng</p>
+                <p className="mt-0.5 whitespace-nowrap text-sm font-semibold text-slate-950">{activeTheme.name}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-6">
+          <section className="admin-panel p-5">
+            <div className="flex flex-col gap-2 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+                  <Lucide.Palette size={18} className="text-blue-600" />
+                  Giao diện ứng dụng
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Chọn bộ giao diện phù hợp với môi trường làm việc. Hệ thống không thay đổi dữ liệu nghiệp vụ.
                 </p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-base-300 bg-base-100/80 px-4 py-3 shadow-sm backdrop-blur">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/40">
-                Giao diện hiện tại
-              </p>
-              <div className="mt-1 flex items-center gap-2 text-sm font-extrabold text-primary">
-                <activeTheme.icon size={16} />
-                {activeTheme.name}
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {themeOptions.map((option) => {
+                const Icon = option.icon;
+                const isActive = theme === option.value;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => handleThemeChange(option.value)}
+                    className={`group rounded-3xl border p-4 text-left transition-all ${
+                      isActive
+                        ? 'border-blue-200 bg-blue-50 shadow-sm'
+                        : 'border-slate-200 bg-slate-50 hover:border-blue-200 hover:bg-white hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="mb-4 h-24 overflow-hidden rounded-2xl border border-white/70 bg-white shadow-inner">
+                      <div className={`h-full bg-gradient-to-br ${option.preview} p-3`}>
+                        <div className="h-3 w-20 rounded-full bg-white/80" />
+                        <div className="mt-6 grid grid-cols-3 gap-2">
+                          <div className="h-10 rounded-xl bg-white/80" />
+                          <div className="h-10 rounded-xl bg-white/60" />
+                          <div className="h-10 rounded-xl bg-white/40" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                        isActive ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 shadow-sm'
+                      }`}>
+                        <Icon size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-950">{option.name}</p>
+                          {isActive && (
+                            <span className="rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                              Đang chọn
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          {option.description}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="admin-panel p-5">
+            <div className="flex flex-col gap-2 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-semibold text-slate-950">
+                  <Lucide.BellRing size={18} className="text-blue-600" />
+                  Kênh nhận thông báo
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Bật hoặc tắt các kênh thông báo phục vụ quá trình theo dõi phản ánh đô thị.
+                </p>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[1.5rem] border border-base-300 bg-base-100 p-5 shadow-sm lg:col-span-2">
-          <div className="flex items-start justify-between gap-4 border-b border-base-300 pb-4">
-            <div>
-              <h3 className="flex items-center gap-2 text-sm font-black text-base-content">
-                <Lucide.Palette size={17} className="text-primary" />
-                Giao diện ứng dụng
-              </h3>
-              <p className="mt-1 text-xs font-medium leading-5 text-base-content/55">
-                Chọn bộ màu đang được hệ thống hỗ trợ. Thiết lập sẽ được lưu trên trình duyệt hiện tại.
-              </p>
-            </div>
-          </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {notificationOptions.map((option) => {
+                const Icon = option.icon;
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {themeOptions.map((option) => {
-              const Icon = option.icon;
-              const isActive = theme === option.value;
-
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => handleThemeChange(option.value)}
-                  className={`group rounded-2xl border p-4 text-left transition-all ${
-                    isActive
-                      ? 'border-primary bg-primary/10 shadow-sm shadow-primary/10'
-                      : 'border-base-300 bg-base-200/70 hover:border-primary/40 hover:bg-base-100'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
-                      isActive ? 'bg-primary text-primary-content' : 'bg-base-100 text-primary'
-                    }`}>
-                      <Icon size={18} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-black text-base-content">{option.name}</p>
-                        {isActive && (
-                          <span className="badge badge-primary badge-sm font-bold">Đang chọn</span>
-                        )}
+                return (
+                  <label
+                    key={option.id}
+                    className="flex cursor-pointer items-start justify-between gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-200 hover:bg-white hover:shadow-sm"
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm">
+                        <Icon size={18} />
                       </div>
-                      <p className="mt-1 text-xs font-medium leading-5 text-base-content/55">
-                        {option.description}
-                      </p>
+                      <div>
+                        <span className="block text-sm font-semibold text-slate-950">{option.title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">
+                          {option.description}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-[1.5rem] border border-base-300 bg-base-100 p-5 shadow-sm">
-          <h3 className="flex items-center gap-2 text-sm font-black text-base-content">
-            <Lucide.Info size={17} className="text-primary" />
-            Ghi chú cài đặt
-          </h3>
-          <div className="mt-4 space-y-3 text-xs font-medium leading-5 text-base-content/60">
-            <div className="rounded-2xl bg-base-200/70 p-4">
-              Các thay đổi giao diện được áp dụng ngay trên thiết bị hiện tại.
+                    <input
+                      type="checkbox"
+                      checked={option.enabled}
+                      onChange={(e) => option.onChange(e.target.checked)}
+                      className="checkbox checkbox-primary checkbox-sm mt-1"
+                    />
+                  </label>
+                );
+              })}
             </div>
-            <div className="rounded-2xl bg-base-200/70 p-4">
-              Cài đặt thông báo được lưu trên trình duyệt hiện tại, chưa thay đổi luồng API hiện có.
+          </section>
+        </div>
+
+        <aside className="space-y-6">
+          <section className="admin-panel p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <Lucide.Info size={19} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-950">Ghi chú cài đặt</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Những thiết lập này đang lưu cục bộ trên trình duyệt, chưa gọi API cấu hình tài khoản.
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
+
+            <div className="mt-5 space-y-3">
+              <div className="admin-inset-panel p-4">
+                <p className="text-xs font-semibold text-slate-800">Giao diện</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Áp dụng ngay sau khi chọn, không cần tải lại trang.</p>
+              </div>
+              <div className="admin-inset-panel p-4">
+                <p className="text-xs font-semibold text-slate-800">Thông báo</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Lưu trạng thái bật/tắt để UI có thể dùng lại ở phiên sau.</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-slate-950 p-5 text-white shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Trạng thái</p>
+                <h3 className="mt-2 text-lg font-semibold">Sẵn sàng lưu</h3>
+                <p className="mt-2 text-xs leading-5 text-white/60">
+                  Kiểm tra lại lựa chọn rồi bấm lưu để đồng bộ trạng thái vào localStorage.
+                </p>
+              </div>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
+                <Lucide.Save size={18} />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveSettings}
+              className="btn mt-5 w-full rounded-2xl border-0 bg-white text-xs font-semibold normal-case text-slate-950 hover:bg-slate-100"
+            >
+              <Lucide.Save size={17} />
+              Lưu cài đặt
+            </button>
+          </section>
+        </aside>
       </section>
-
-      <section className="rounded-[1.5rem] border border-base-300 bg-base-100 p-5 shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-base-300 pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="flex items-center gap-2 text-sm font-black text-base-content">
-              <Lucide.BellRing size={17} className="text-primary" />
-              Kênh nhận thông báo
-            </h3>
-            <p className="mt-1 text-xs font-medium leading-5 text-base-content/55">
-              Bật hoặc tắt các kênh thông báo phục vụ quá trình theo dõi phản ánh đô thị.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {notificationOptions.map((option) => {
-            const Icon = option.icon;
-
-            return (
-              <label
-                key={option.id}
-                className="flex cursor-pointer items-start justify-between gap-4 rounded-2xl border border-base-300 bg-base-200/70 p-4 transition-colors hover:border-primary/30 hover:bg-base-100"
-              >
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Icon size={18} />
-                  </div>
-                  <div>
-                    <span className="block text-sm font-black text-base-content">{option.title}</span>
-                    <span className="mt-1 block text-xs font-medium leading-5 text-base-content/55">
-                      {option.description}
-                    </span>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={option.enabled}
-                  onChange={(e) => option.onChange(e.target.checked)}
-                  className="checkbox checkbox-primary checkbox-sm mt-1"
-                />
-              </label>
-            );
-          })}
-        </div>
-      </section>
-
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSaveSettings}
-          className="btn btn-primary rounded-2xl px-6 text-xs font-black shadow-lg shadow-primary/20"
-        >
-          <Lucide.Save size={17} />
-          Lưu cài đặt
-        </button>
-      </div>
 
       {saveNotice && (
         <div className="toast toast-end toast-bottom z-50">
-          <div className="alert border border-success/20 bg-success text-success-content shadow-xl">
+          <div className="alert border border-emerald-200 bg-emerald-50 text-emerald-800 shadow-xl">
             <Lucide.CheckCircle2 size={18} />
             <div>
-              <p className="text-sm font-black">{saveNotice.title}</p>
-              <p className="text-xs font-semibold opacity-85">{saveNotice.description}</p>
+              <p className="text-sm font-semibold">{saveNotice.title}</p>
+              <p className="text-xs leading-5 text-emerald-700">{saveNotice.description}</p>
             </div>
           </div>
         </div>

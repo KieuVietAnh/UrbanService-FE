@@ -47,17 +47,17 @@ export const DashboardLayout = ({ children }) => {
   const showFooter = !user || user?.role === 'service-user';
 
   return (
-    <div className="min-h-screen w-full flex-col bg-slate-100 font-sans text-slate-900">
-      <div className="flex min-h-screen w-full">
+    <div className="h-screen w-full overflow-hidden flex-col bg-slate-100 font-sans text-slate-900">
+      <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}
         {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         {/* Main container */}
-        <div className="flex w-full flex-1 flex-col overflow-hidden bg-slate-50">
+        <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden bg-slate-50">
           <Header onMenuToggle={toggleSidebar} />
 
           {/* Main scrollable workspace */}
-          <main className="min-h-[calc(100vh-64px)] flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-5 sm:p-6">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-5 sm:p-6">
             <PageTransition className="mx-auto max-w-7xl space-y-6">
               {children}
             </PageTransition>
