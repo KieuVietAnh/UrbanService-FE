@@ -1241,7 +1241,7 @@ export const ManagementFeedbackDetailPage = () => {
 
       {/* Attachment Preview Modal */}
       {previewAttachment && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[99999]">
           <div className="relative max-w-4xl w-full">
             <button
               onClick={() => setPreviewAttachment(null)}
