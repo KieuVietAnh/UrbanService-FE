@@ -35,7 +35,11 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     try {
       setError('');
       setLoading(true);
-      const response = await getCommunityFeed({ page: p, tab: tab.toLowerCase() });
+      const response = await getCommunityFeed({
+        PageNumber: p,
+        PageSize: 10,
+        Status: tab === 'Resolved' ? 'Resolved' : undefined,
+      });
       const { items: fetchedItemsRaw, pageNumber, totalPages } = response;
       const fetchedItems = normalizeTicketsResponse(fetchedItemsRaw || []);
 

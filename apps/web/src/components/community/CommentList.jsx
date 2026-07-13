@@ -23,7 +23,14 @@ export default function CommentList({ feedbackId }) {
           throw new Error('Comments API returned non-JSON');
         }
         const data = await res.json();
-        if (mounted) setComments(data || []);
+        const normalizedComments = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data?.comments)
+              ? data.comments
+              : [];
+        if (mounted) setComments(normalizedComments);
       } catch (err) {
         console.error(err);
       } finally {
@@ -45,7 +52,7 @@ export default function CommentList({ feedbackId }) {
           <div className="flex-1">
             <div className="text-sm font-semibold">{c.userName || 'Người dùng'}</div>
             <div className="text-xs text-slate-400">{new Date(c.createdAt||c.createdDate).toLocaleString()}</div>
-            <div className="mt-1 text-sm text-slate-700">{c.message}</div>
+            <div className="mt-1 text-sm text-slate-700">{c.content ?? c.message}</div>
           </div>
         </div>
       ))}

@@ -8,11 +8,48 @@ const getAuthToken = () => {
   return localStorage.getItem('urbanmind_auth_token') || localStorage.getItem('token');
 };
 
+const normalizeFeedParams = (params = {}) => {
+  const normalized = {};
+  const pageNumber = Number(params?.PageNumber ?? params?.pageNumber ?? params?.page ?? 1);
+  const pageSize = Number(params?.PageSize ?? params?.pageSize ?? 10);
+  const status = params?.Status ?? params?.status ?? params?.tab;
+  const categoryId = params?.CategoryId ?? params?.categoryId;
+  const search = params?.Search ?? params?.search;
+
+  if (Number.isFinite(pageNumber) && pageNumber > 0) {
+    normalized.PageNumber = pageNumber;
+  }
+
+  if (Number.isFinite(pageSize) && pageSize > 0) {
+    normalized.PageSize = pageSize;
+  }
+
+  if (typeof status === 'string' && status.trim()) {
+    const trimmed = status.trim();
+    const lowered = trimmed.toLowerCase();
+    if (lowered === 'resolved') {
+      normalized.Status = 'Resolved';
+    } else if (!['latest', 'trending', 'nearby'].includes(lowered)) {
+      normalized.Status = trimmed;
+    }
+  }
+
+  if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
+    normalized.CategoryId = categoryId;
+  }
+
+  if (typeof search === 'string' && search.trim()) {
+    normalized.Search = search.trim();
+  }
+
+  return normalized;
+};
+
 export const getCommunityFeed = async (params = {}) => {
   const baseUrl = getBaseUrl();
   const endpoint = `${baseUrl}/api/user/feedbacks/feed`;
   const url = new URL(endpoint);
-  Object.entries(params || {}).forEach(([key, value]) => {
+  Object.entries(normalizeFeedParams(params)).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       url.searchParams.set(key, value);
     }

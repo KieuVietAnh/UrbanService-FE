@@ -4,6 +4,7 @@ import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import PageTransition from '../../components/motion/PageTransition';
+import { managementTypes } from '@urbanmind/shared-types';
 
 const TEMPLATE_OPTIONS = [
   {
@@ -104,7 +105,7 @@ export const RequestInfoWorkspacePage = () => {
     setSending(true);
     try {
       await managementFeedbackApi.updateStatus(feedbackId, {
-        status: 'Submitted',
+        status: managementTypes.feedbackStatus.SUBMITTED,
         note: messageText,
       });
       setMessage({ type: 'success', text: 'Đã gửi yêu cầu thông tin cho người dân.' });

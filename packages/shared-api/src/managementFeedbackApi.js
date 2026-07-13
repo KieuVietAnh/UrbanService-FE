@@ -27,6 +27,46 @@ export const normalizeAiReviewedPayload = (payload = {}) => {
   });
 };
 
+export const normalizeFeedbackListParams = (params = {}) => {
+  const normalized = {};
+  const pageNumber = Number(params?.PageNumber ?? params?.pageNumber ?? params?.pageIndex ?? params?.page ?? 1);
+  const pageSize = Number(params?.PageSize ?? params?.pageSize ?? 10);
+  const status = params?.Status ?? params?.status;
+  const categoryId = params?.CategoryId ?? params?.categoryId;
+  const search = params?.Search ?? params?.search;
+
+  if (Number.isFinite(pageNumber) && pageNumber > 0) {
+    normalized.PageNumber = params?.pageIndex !== undefined && params?.pageNumber === undefined && params?.PageNumber === undefined
+      ? pageNumber + 1
+      : pageNumber;
+  }
+
+  if (Number.isFinite(pageSize) && pageSize > 0) {
+    normalized.PageSize = pageSize;
+  }
+
+  if (status !== undefined && status !== null && status !== '') {
+    normalized.Status = status;
+  }
+
+  if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
+    normalized.CategoryId = categoryId;
+  }
+
+  if (search !== undefined && search !== null && search !== '') {
+    normalized.Search = search;
+  }
+
+  return normalized;
+};
+
+export const normalizeCommentPayload = (payload = {}) => {
+  const content = payload?.content ?? payload?.message ?? payload?.comment ?? '';
+  return {
+    content: typeof content === 'string' ? content : String(content ?? ''),
+  };
+};
+
 export const normalizeStaffFeedbackUpdatePayload = (updateData = {}) => {
   const payload = {};
 
@@ -104,7 +144,9 @@ export const normalizeStaffFeedbackUpdatePayload = (updateData = {}) => {
 export const managementFeedbackApi = {
   // Get all feedbacks with pagination and filters
   async getFeedbacks(params = {}) {
-    const response = await axiosClient.get('/api/management/feedbacks', { params });
+    const response = await axiosClient.get('/api/management/feedbacks', {
+      params: normalizeFeedbackListParams(params),
+    });
     return response;
   },
 
@@ -128,6 +170,71 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  async getProviderReports(feedbackId) {
+    const candidates = [
+      `/api/management/feedbacks/${feedbackId}/provider-reports`,
+      `/api/management/feedbacks/${feedbackId}/provider-report`,
+      `/api/management/feedbacks/${feedbackId}/provider`,
+    ];
+
+    for (const endpoint of candidates) {
+      try {
+        return await axiosClient.get(endpoint);
+      } catch (error) {
+        if (endpoint === candidates[candidates.length - 1]) {
+          return [];
+        }
+      }
+    }
+
+    return [];
+  },
+
+  // Get provider candidates for a feedback (Swagger: /api/management/feedbacks/{feedbackId}/provider-candidates)
+  async getProviderCandidates(feedbackId) {
+    const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}/provider-candidates`);
+    return response;
+  },
+
+  // Get a single provider report by its id
+  async getProviderReportById(providerReportId) {
+    const response = await axiosClient.get(`/api/management/provider-reports/${providerReportId}`);
+    return response;
+  },
+
+  async getProviderReportContactLogs(providerReportId) {
+    const response = await axiosClient.get(`/api/management/provider-reports/${providerReportId}/contact-logs`);
+    return response;
+  },
+
+  async createProviderReportContactLog(providerReportId, payload) {
+    const response = await axiosClient.post(
+      `/api/management/provider-reports/${providerReportId}/contact-logs`,
+      payload
+    );
+    return response;
+  },
+
+  async getCompletionDocuments(feedbackId) {
+    const candidates = [
+      `/api/management/feedbacks/${feedbackId}/completion-documents`,
+      `/api/management/feedbacks/${feedbackId}/documents`,
+      `/api/management/feedbacks/${feedbackId}/provider-reports/documents`,
+    ];
+
+    for (const endpoint of candidates) {
+      try {
+        return await axiosClient.get(endpoint);
+      } catch (error) {
+        if (endpoint === candidates[candidates.length - 1]) {
+          return [];
+        }
+      }
+    }
+
+    return [];
+  },
+
   // Verify feedback
   async verifyFeedback(feedbackId, verifyData = {}) {
     const response = await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`, verifyData);
@@ -148,7 +255,9 @@ export const managementFeedbackApi = {
 
   // Get feedbacks that have already been reviewed by AI
   async getAiReviewedFeedbacks(params = {}) {
-    const response = await axiosClient.get('/api/management/feedbacks/ai-reviewed', { params });
+    const response = await axiosClient.get('/api/management/feedbacks/ai-reviewed', {
+      params: normalizeFeedbackListParams(params),
+    });
     return normalizeAiReviewedPayload(response);
   },
 

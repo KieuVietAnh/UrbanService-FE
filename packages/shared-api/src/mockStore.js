@@ -1,7 +1,6 @@
 // src/mockStore.js
 
 const KEY_USERS = 'urbanmind_users';
-const KEY_CATEGORIES = 'urbanmind_categories';
 const KEY_OPERATORS = 'urbanmind_operators';
 const KEY_TICKETS = 'urbanmind_tickets';
 const KEY_COMMENTS = 'urbanmind_comments';
@@ -75,13 +74,13 @@ const defaultUsers = [
   }
 ];
 
-const defaultCategories = [
-  { categoryId: 1, categoryName: 'Vệ sinh & Rác thải', description: 'Báo cáo rác thải bừa bãi, cống rãnh ứ đọng rác, thu gom chậm', isActive: true, createdAt: '2026-05-01T00:00:00Z' },
-  { categoryId: 2, categoryName: 'Điện chiếu sáng', description: 'Đèn đường hỏng, mất điện chiếu sáng khu phố, rò rỉ điện', isActive: true, createdAt: '2026-05-01T00:00:00Z' },
-  { categoryId: 3, categoryName: 'Cấp thoát nước', description: 'Vỡ đường ống nước, ngập úng khi mưa, nắp hố ga hỏng', isActive: true, createdAt: '2026-05-01T00:00:00Z' },
-  { categoryId: 4, categoryName: 'Giao thông & Đường sá', description: 'Ổ gà ổ voi hiểm họa, sụt lún vỉa hè, biển báo gãy hỏng', isActive: true, createdAt: '2026-05-01T00:00:00Z' },
-  { categoryId: 5, categoryName: 'Cây xanh đô thị', description: 'Cây xanh gãy đổ đè đường dây, cành cây khô che khuất tầm nhìn', isActive: true, createdAt: '2026-05-01T00:00:00Z' }
-];
+const categoryNamesById = {
+  1: 'Vệ sinh & Rác thải',
+  2: 'Điện chiếu sáng',
+  3: 'Cấp thoát nước',
+  4: 'Giao thông & Đường sá',
+  5: 'Cây xanh đô thị',
+};
 
 const defaultOperators = [
   { operatorId: 1, categoryId: 2, operatorName: 'Công ty Cổ phần Chiếu sáng Đô thị TP. HCM', contactEmail: 'lighting@urbanservice.vn', contactPhone: '19001082', address: '12 Trương Định, Quận 3', isActive: true },
@@ -301,7 +300,7 @@ export const mockDb = {
 
     if (!localStorage.getItem(KEY_USERS)) {
       localStorage.setItem(KEY_USERS, JSON.stringify(defaultUsers));
-      localStorage.setItem(KEY_CATEGORIES, JSON.stringify(defaultCategories));
+
       localStorage.setItem(KEY_OPERATORS, JSON.stringify(defaultOperators));
       localStorage.setItem(KEY_TICKETS, JSON.stringify(defaultTickets));
       localStorage.setItem(KEY_COMMENTS, JSON.stringify(defaultComments));
@@ -328,7 +327,6 @@ export const mockDb = {
   },
 
   getUsers() { return this.get(KEY_USERS); },
-  getCategories() { return this.get(KEY_CATEGORIES); },
   getOperators() { return this.get(KEY_OPERATORS); },
   getTickets() { return this.get(KEY_TICKETS); },
   getComments() { return this.get(KEY_COMMENTS); },
@@ -340,7 +338,6 @@ export const mockDb = {
   updateTickets(tickets) { this.set(KEY_TICKETS, tickets); },
   updateNotifications(notifs) { this.set(KEY_NOTIFICATIONS, notifs); },
   updateComments(comments) { this.set(KEY_COMMENTS, comments); },
-  updateCategories(cats) { this.set(KEY_CATEGORIES, cats); },
   updateUsers(users) { this.set(KEY_USERS, users); },
   updateSlaConfig(sla) { this.set(KEY_SLA_CONFIG, sla); },
   updateIntegrations(integrations) { this.set(KEY_INTEGRATIONS, integrations); },
@@ -392,7 +389,7 @@ export const mockDb = {
       sentiment,
       urgencyLevel,
       confidenceScore,
-      summary: `Hệ thống ghi nhận thông tin sự cố liên quan đến nhóm [${defaultCategories.find(c => c.categoryId === categoryId).categoryName}] cần khắc phục gấp tại khu vực đường của cư dân báo.`
+      summary: `Hệ thống ghi nhận thông tin sự cố liên quan đến nhóm [${categoryNamesById[categoryId] || 'khác'}] cần khắc phục gấp tại khu vực đường của cư dân báo.`
     };
   },
 

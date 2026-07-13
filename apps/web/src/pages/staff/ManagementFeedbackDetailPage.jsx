@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { assignmentApi, toolsApi } from '@urbanmind/shared-api';
+import { toolsApi } from '@urbanmind/shared-api';
 import { managementTypes, STATUS_BADGE_CLASSES, PRIORITY_BADGE_CLASSES } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { LoadingSpinner } from '@urbanmind/shared-ui';
@@ -21,7 +21,9 @@ export const ManagementFeedbackDetailPage = () => {
   const [error, setError] = useState('');
   const [pageMessage, setPageMessage] = useState({ type: '', text: '' });
   const [categories, setCategories] = useState([]);
-  const [operators, setOperators] = useState([]);
+  const [candidates, setCandidates] = useState([]);
+  const [candidateSearch, setCandidateSearch] = useState('');
+  const [candidatesLoadError, setCandidatesLoadError] = useState('');
 
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
@@ -50,15 +52,21 @@ export const ManagementFeedbackDetailPage = () => {
     const loadFeedback = async () => {
       setLoading(true);
       setError('');
+      setCandidatesLoadError('');
       try {
         const feedbackRes = await managementFeedbackApi.getFeedbackById(feedbackId);
-        const [categoriesRes, operatorsRes] = await Promise.allSettled([
+        const [categoriesRes, candidatesRes] = await Promise.allSettled([
           toolsApi.getCategories(),
-          assignmentApi.getOperators(feedbackRes?.categoryId),
+          managementFeedbackApi.getProviderCandidates(feedbackRes?.feedbackId || feedbackId),
         ]);
 
         setCategories(Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
-        setOperators(Array.isArray(operatorsRes.value) ? operatorsRes.value : []);
+        if (candidatesRes.status === 'fulfilled') {
+          setCandidates(Array.isArray(candidatesRes.value) ? candidatesRes.value : []);
+        } else {
+          setCandidates([]);
+          setCandidatesLoadError(candidatesRes.reason?.message || 'Không thể tải danh sách đơn vị xử lý.');
+        }
 
         setFeedback(feedbackRes);
         setEditForm({
@@ -160,8 +168,8 @@ export const ManagementFeedbackDetailPage = () => {
       return;
     }
 
-    const selectedOperator = operators.find((op) => Number(op.operatorId) === operatorId);
-    if (!selectedOperator) {
+    const selectedCandidate = candidates.find((c) => Number(c.coordinatorId) === operatorId);
+    if (!selectedCandidate) {
       setError('Đơn vị xử lý đã chọn không tồn tại. Vui lòng tải lại trang.');
       return;
     }
@@ -180,7 +188,7 @@ export const ManagementFeedbackDetailPage = () => {
     try {
       const payload = {
         feedbackId,
-        operatorId,
+        coordinatorId: operatorId,
         staffUserId: user.userId,
         note: assignForm.note,
       };
@@ -188,7 +196,7 @@ export const ManagementFeedbackDetailPage = () => {
       await managementFeedbackApi.assignToOperator(payload);
       setFeedback(prev => ({ ...prev, status: managementTypes.feedbackStatus.ASSIGNED }));
       try {
-        signalrService.notifyAssignmentUpdated(feedbackId, operatorId, selectedOperator.operatorName, user);
+        signalrService.notifyAssignmentUpdated(feedbackId, operatorId, selectedCandidate.coordinatorName || selectedCandidate.providerName, user);
         signalrService.notifyStatusChanged(feedbackId, feedback?.status, managementTypes.feedbackStatus.ASSIGNED, user);
       } catch (e) {
         console.warn('SignalR notify failed', e);
@@ -200,6 +208,23 @@ export const ManagementFeedbackDetailPage = () => {
       setError(err.message || 'Không thể phân công phản ánh. Vui lòng thử lại.');
     } finally {
       setAssignLoading(false);
+    }
+  };
+
+  // Open provider report workspace for this feedback
+  const openProviderReportWorkspace = async () => {
+    try {
+      const reports = await managementFeedbackApi.getProviderReports(feedbackId);
+      const report = Array.isArray(reports) ? reports[0] : (reports && typeof reports === 'object' ? reports : null);
+      const providerReportId = report?.providerReportId || report?.id || report?.providerReport?.providerReportId || report?.providerReportId;
+      if (providerReportId) {
+        navigate(`/staff/provider-reports/${providerReportId}`);
+      } else {
+        setPageMessage({ type: 'error', text: 'Không tìm thấy báo cáo nhà thầu cho phản ánh này.' });
+      }
+    } catch (err) {
+      console.error('Failed to open provider report workspace', err);
+      setPageMessage({ type: 'error', text: 'Không thể mở báo cáo nhà thầu.' });
     }
   };
 
@@ -1010,6 +1035,13 @@ export const ManagementFeedbackDetailPage = () => {
                 <Lucide.History size={14} />
                 Xem lịch sử phân công
               </button>
+              <button
+                onClick={openProviderReportWorkspace}
+                className="btn btn-sm w-full btn-outline rounded-lg"
+              >
+                <Lucide.FileText size={14} />
+                Mở báo cáo nhà thầu
+              </button>
               {nextStatusOptions.length > 0 && (
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-xs text-slate-500 font-bold mb-2">Trạng thái tiếp theo</div>
@@ -1116,30 +1148,44 @@ export const ManagementFeedbackDetailPage = () => {
           <div className="card fixed left-1/2 top-1/2 z-[10000] w-[min(100%,28rem)] -translate-x-1/2 [--tw-translate-y:calc(calc(2.5*100%)*-1)] space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="font-bold text-lg text-slate-900">Giao việc cho nhân viên xử lý</h3>
             
-            {operators.length === 0 ? (
+            {candidates.length === 0 ? (
               <div className="card bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-3">
                 <div className="flex gap-2">
                   <Lucide.AlertTriangle className="text-amber-600 flex-shrink-0" size={16} />
                   <div className="space-y-2 text-xs">
-                    <p className="font-bold text-amber-900">Không thể tải danh sách đơn vị xử lý</p>
-                    <p className="text-amber-800">Tài khoản của bạn không có quyền truy cập danh sách này. Quyền Admin được yêu cầu.</p>
-                    <p className="text-amber-700 italic">Vui lòng liên hệ với Admin để được cấp quyền hoặc sử dụng tài khoản Admin.</p>
+                    <p className="font-bold text-amber-900">Không có đơn vị xử lý phù hợp</p>
+                    <p className="text-amber-800">Không tìm thấy nhà cung cấp phù hợp với khu vực hoặc hạng mục của phản ánh này.</p>
+                    {candidatesLoadError ? (
+                      <p className="text-amber-700 italic">Lỗi: {candidatesLoadError}</p>
+                    ) : (
+                      <p className="text-amber-700 italic">Vui lòng kiểm tra lại sau hoặc liên hệ với quản trị viên nếu bạn nghĩ có sai sót.</p>
+                    )}
                   </div>
                 </div>
               </div>
             ) : (
               <>
                 <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Chọn nhân viên</label>
+                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Tìm nhà cung cấp</label>
+                  <input
+                    placeholder="Tìm theo tên nhà cung cấp hoặc điều phối viên..."
+                    value={candidateSearch}
+                    onChange={(e) => setCandidateSearch(e.target.value)}
+                    className="input input-bordered w-full text-xs h-10 rounded-lg mb-2"
+                  />
                   <select
                     value={assignForm.operatorId}
                     onChange={(e) => setAssignForm(p => ({ ...p, operatorId: e.target.value }))}
                     className="select select-bordered w-full text-xs h-10 rounded-lg"
                   >
-                    <option value="">-- Chọn đơn vị xử lý --</option>
-                    {operators.map(op => (
-                      <option key={op.operatorId} value={op.operatorId}>
-                        {op.operatorName || op.fullName || `Đơn vị ${op.operatorId}`}
+                    <option value="">-- Chọn nhà cung cấp --</option>
+                    {candidates.filter(c => {
+                      const q = candidateSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return (c.providerName || '').toLowerCase().includes(q) || (c.coordinatorName || '').toLowerCase().includes(q);
+                    }).map(c => (
+                      <option key={c.coordinatorId} value={c.coordinatorId}>
+                        {`${c.providerName || `Nhà thầu ${c.coordinatorId}`} — ${c.coordinatorName || 'Điều phối viên'}`}
                       </option>
                     ))}
                   </select>
@@ -1155,6 +1201,22 @@ export const ManagementFeedbackDetailPage = () => {
                     rows="3"
                   />
                 </div>
+
+                {/* Selected candidate details */}
+                {assignForm.operatorId && (
+                  (() => {
+                    const sel = candidates.find(c => String(c.coordinatorId) === String(assignForm.operatorId));
+                    if (!sel) return null;
+                    return (
+                      <div className="card bg-base-100 border p-3 rounded-lg mt-3 text-xs">
+                        <div className="font-bold">{sel.providerName || 'Không có tên nhà cung cấp'}</div>
+                        <div className="text-muted">Điều phối viên: {sel.coordinatorName || '—'}</div>
+                        <div className="mt-2">Area Match: {sel.areaMatch ?? sel.note ?? 'Không có dữ liệu'}</div>
+                        <div>Category Match: {sel.categoryMatch ?? (sel.priorityOrder !== undefined ? `priority ${sel.priorityOrder}` : 'Không có dữ liệu')}</div>
+                      </div>
+                    );
+                  })()
+                )}
               </>
             )}
 
@@ -1167,7 +1229,7 @@ export const ManagementFeedbackDetailPage = () => {
               </button>
               <button
                 onClick={handleAssign}
-                disabled={assignLoading || !assignForm.operatorId || operators.length === 0}
+                disabled={assignLoading || !assignForm.operatorId || candidates.length === 0}
                 className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none flex-1 rounded-lg text-xs disabled:opacity-50"
               >
                 {assignLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Giao việc'}

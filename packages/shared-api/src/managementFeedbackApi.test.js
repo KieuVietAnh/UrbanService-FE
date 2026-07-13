@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeAiReviewedPayload, normalizeStaffFeedbackUpdatePayload } from './managementFeedbackApi.js';
+import {
+  normalizeAiReviewedPayload,
+  normalizeStaffFeedbackUpdatePayload,
+  normalizeFeedbackListParams,
+  normalizeCommentPayload,
+} from './managementFeedbackApi.js';
 
 test('normalizeAiReviewedPayload maps ai-reviewed payloads to queue-ready items', () => {
   const normalized = normalizeAiReviewedPayload({
@@ -54,4 +59,35 @@ test('normalizeStaffFeedbackUpdatePayload converts edit values to backend-safe t
     priority: 'High',
     status: 'InProgress',
   });
+});
+
+test('normalizeFeedbackListParams maps UI pagination to swagger query parameters', () => {
+  const normalized = normalizeFeedbackListParams({
+    pageIndex: 2,
+    pageSize: 20,
+    status: 'SubmittedForApproval',
+    search: 'water',
+    categoryId: 4,
+  });
+
+  assert.deepEqual(normalized, {
+    PageNumber: 3,
+    PageSize: 20,
+    Status: 'SubmittedForApproval',
+    Search: 'water',
+    CategoryId: 4,
+  });
+});
+
+test('normalizeCommentPayload keeps only the swagger-accepted content field', () => {
+  const normalized = normalizeCommentPayload({
+    userId: 'u-1',
+    userName: 'Ada',
+    userRole: 'service-user',
+    content: 'hello',
+    message: 'ignored',
+    rating: 5,
+  });
+
+  assert.deepEqual(normalized, { content: 'hello' });
 });
