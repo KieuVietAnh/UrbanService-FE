@@ -48,13 +48,12 @@ export const TicketListPage = () => {
     setLoading(true);
     try {
       const filters = {
-        search,
-        status,
-        categoryId
+        pageNumber: 1,
+        pageSize: 100,
+        search: search || undefined,
+        status: status || undefined,
+        categoryId: categoryId || undefined,
       };
-      if (user?.role === 'service-user') {
-        filters.userId = user.userId;
-      }
       const res = await ticketApi.getTickets(filters, { role: 'service-user' });
       setTickets(res);
     } catch (err) {
@@ -62,7 +61,7 @@ export const TicketListPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, search, status, categoryId]);
+  }, [search, status, categoryId]);
 
   useEffect(() => {
     fetchTickets();
@@ -97,7 +96,7 @@ export const TicketListPage = () => {
     const fetchAllCitizenTickets = async () => {
       if (user?.userId) {
         try {
-          const res = await ticketApi.getTickets({ userId: user.userId }, { role: 'service-user' });
+          const res = await ticketApi.getTickets({ pageNumber: 1, pageSize: 100 }, { role: 'service-user' });
           setAllCitizenTickets(res);
         } catch (e) {
           console.error(e);
@@ -109,8 +108,8 @@ export const TicketListPage = () => {
 
   const countAll = allCitizenTickets.length;
   const countInProgress = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED, managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(t.status)).length;
-  const countResolved = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(t.status)).length;
-  const countAwaitingReview = allCitizenTickets.filter(t => t.status === managementTypes.feedbackStatus.RESOLVED).length;
+  const countPendingApproval = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL].includes(t.status)).length;
+  const countAwaitingReview = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.APPROVED, managementTypes.feedbackStatus.RESOLVED].includes(t.status)).length;
 
   const renderProgressStage = (s) => {
     switch (s) {
@@ -123,7 +122,10 @@ export const TicketListPage = () => {
       case managementTypes.feedbackStatus.IN_PROGRESS:
         return { label: 'Đang xử lý', tone: 'bg-amber-50 text-amber-600', icon: <Lucide.Wrench className="text-amber-600" size={14} /> };
       case managementTypes.feedbackStatus.RESOLVED:
-        return { label: 'Hoàn thành', tone: 'bg-emerald-50 text-emerald-600', icon: <Lucide.CheckCircle2 className="text-emerald-600" size={14} /> };
+      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL:
+        return { label: 'Chờ duyệt', tone: 'bg-amber-50 text-amber-700', icon: <Lucide.Clock3 className="text-amber-700" size={14} /> };
+      case managementTypes.feedbackStatus.APPROVED:
+        return { label: 'Chờ đánh giá', tone: 'bg-emerald-50 text-emerald-600', icon: <Lucide.CheckCircle2 className="text-emerald-600" size={14} /> };
       case managementTypes.feedbackStatus.CLOSED:
         return { label: 'Đã đóng', tone: 'bg-slate-100 text-slate-600', icon: <Lucide.Lock className="text-slate-600" size={14} /> };
       default:
@@ -567,18 +569,18 @@ export const TicketListPage = () => {
             onClick: () => setStatus(managementTypes.feedbackStatus.IN_PROGRESS),
           },
           {
-            label: 'Đã xử lý',
-            count: countResolved,
+            label: 'Chờ Manager duyệt',
+            count: countPendingApproval,
             icon: <Lucide.CheckCircle2 size={18} />,
-            active: status === managementTypes.feedbackStatus.RESOLVED,
-            onClick: () => setStatus(managementTypes.feedbackStatus.RESOLVED),
+            active: status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+            onClick: () => setStatus(managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL),
           },
           {
             label: 'Chờ đánh giá',
             count: countAwaitingReview,
             icon: <Lucide.Star size={18} />,
-            active: status === managementTypes.feedbackStatus.RESOLVED,
-            onClick: () => setStatus(managementTypes.feedbackStatus.RESOLVED),
+            active: status === managementTypes.feedbackStatus.APPROVED,
+            onClick: () => setStatus(managementTypes.feedbackStatus.APPROVED),
           },
         ].map((card) => (
           <button
@@ -590,7 +592,7 @@ export const TicketListPage = () => {
           >
             <div className="flex justify-between items-center gap-4">
               <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{card.label}</span>
-              <div className={card.label === 'Đã xử lý' ? 'p-2 rounded-xl bg-emerald-50 text-emerald-600' : card.label === 'Chờ đánh giá' ? 'p-2 rounded-xl bg-red-50 text-red-500' : card.label === 'Đang xử lý' ? 'p-2 rounded-xl bg-slate-100 text-slate-600' : 'p-2 rounded-xl bg-blue-50 text-blue-600'}>
+              <div className={card.label === 'Chờ Manager duyệt' ? 'p-2 rounded-xl bg-emerald-50 text-emerald-600' : card.label === 'Chờ đánh giá' ? 'p-2 rounded-xl bg-red-50 text-red-500' : card.label === 'Đang xử lý' ? 'p-2 rounded-xl bg-slate-100 text-slate-600' : 'p-2 rounded-xl bg-blue-50 text-blue-600'}>
                 {card.icon}
               </div>
             </div>
@@ -649,7 +651,8 @@ export const TicketListPage = () => {
               <option value={managementTypes.feedbackStatus.AI_REVIEWED}>Đang xem xét</option>
               <option value={managementTypes.feedbackStatus.ASSIGNED}>Đã phân công</option>
               <option value={managementTypes.feedbackStatus.IN_PROGRESS}>Đang xử lý</option>
-              <option value={managementTypes.feedbackStatus.RESOLVED}>Đã xử lý</option>
+              <option value={managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL}>Chờ Manager duyệt</option>
+              <option value={managementTypes.feedbackStatus.APPROVED}>Chờ đánh giá</option>
               <option value={managementTypes.feedbackStatus.CLOSED}>Đã đóng</option>
             </select>
           </div>
@@ -688,7 +691,7 @@ export const TicketListPage = () => {
       {/* Status Shortcut Pills Row */}
       <div className="flex flex-wrap gap-2 items-center text-xs">
         <span className="font-bold text-slate-400 mr-1">Sắp xếp nhanh:</span>
-        {[ '', managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED, managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS, managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED ].map((value) => (
+        {[ '', managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED, managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS, managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL, managementTypes.feedbackStatus.APPROVED, managementTypes.feedbackStatus.CLOSED ].map((value) => (
           <button
             key={value || 'all'}
             type="button"

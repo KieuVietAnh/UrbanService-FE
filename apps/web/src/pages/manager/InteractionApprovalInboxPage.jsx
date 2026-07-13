@@ -3,9 +3,43 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { managementTypes, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
-import { EmptyState } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import { getApprovalQueueTitle } from './approvalQueueUtils';
+import {
+  ManagerEmptyState,
+  ManagerMetricCard,
+  ManagerPageHeader,
+  ManagerSectionHeader,
+} from '../../components/manager/ManagerPageElements';
+
+const priorityLabels = {
+  Low: 'Thấp',
+  Medium: 'Trung bình',
+  High: 'Cao',
+  Critical: 'Khẩn cấp',
+};
+
+const formatDateTime = (value) => {
+  if (!value) return 'Chưa có dữ liệu';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Không xác định';
+  return date.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+const getWaitingTime = (value) => {
+  if (!value) return 'Chưa xác định';
+  const createdAt = new Date(value).getTime();
+  if (Number.isNaN(createdAt)) return 'Chưa xác định';
+  const hours = Math.max(0, Math.floor((Date.now() - createdAt) / 36e5));
+  if (hours < 1) return 'Dưới 1 giờ';
+  if (hours < 24) return `${hours} giờ`;
+  return `${Math.floor(hours / 24)} ngày`;
+};
 
 export const InteractionApprovalInboxPage = () => {
   const navigate = useNavigate();
@@ -18,7 +52,11 @@ export const InteractionApprovalInboxPage = () => {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
 
-  const loadItems = useCallback(async (requestedPage = 0, requestedPageSize = pageSize, requestedSearch = search) => {
+  const loadItems = useCallback(async (
+    requestedPage = pageIndex,
+    requestedPageSize = pageSize,
+    requestedSearch = search
+  ) => {
     setLoading(true);
     setError('');
     try {
@@ -39,164 +77,230 @@ export const InteractionApprovalInboxPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [pageSize, search]);
+  }, [pageIndex, pageSize, search]);
 
   useEffect(() => {
-    const refreshQueue = async () => {
-      setPageIndex(0);
-      await loadItems(0, pageSize, search);
-    };
-
-    refreshQueue();
-  }, [search, pageSize, location.state?.refreshKey, loadItems]);
+    loadItems();
+  }, [loadItems, location.state?.refreshKey]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const pageLabel = totalCount === 0 ? '0' : `${pageIndex + 1}/${totalPages}`;
+  const highPriorityCount = useMemo(() => items.filter((item) => ['High', 'Critical'].includes(item?.priority)).length, [items]);
+  const oldestItem = useMemo(() => (
+    [...items].sort((a, b) => new Date(a?.updatedAt || a?.createdAt || 0) - new Date(b?.updatedAt || b?.createdAt || 0))[0] || null
+  ), [items]);
 
-  const summary = useMemo(() => ({
-    pending: totalCount,
-  }), [totalCount]);
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    setPageIndex(0);
+    loadItems(0, pageSize, search);
+  };
 
-  const getStatusLabel = (status) => ({
-    [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: 'Chờ duyệt',
-  }[status] || status);
-
-  const getPriorityLabel = (priority) => ({ Low: 'Thấp', Medium: 'Trung bình', High: 'Cao', Critical: 'Khẩn cấp' }[priority] || priority);
+  const handlePageSizeChange = (event) => {
+    const nextPageSize = Number(event.target.value);
+    setPageIndex(0);
+    setPageSize(nextPageSize);
+  };
 
   if (loading && items.length === 0) {
     return (
-      <div className="space-y-4 p-4">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="h-5 w-32 animate-pulse rounded-full bg-slate-100" />
-          <div className="mt-4 h-8 w-2/3 animate-pulse rounded-2xl bg-slate-100" />
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {Array.from({ length: 2 }).map((_, index) => (
-            <div key={index} className="h-24 animate-pulse rounded-[1.4rem] border border-slate-200 bg-white" />
+      <article className="admin-page-shell space-y-6" aria-busy="true" aria-label="Đang tải hàng đợi duyệt">
+        <header className="admin-page-hero animate-pulse">
+          <span className="block h-5 w-40 rounded-full bg-slate-100" />
+          <span className="mt-4 block h-9 w-2/3 rounded-2xl bg-slate-100" />
+          <span className="mt-3 block h-4 w-1/2 rounded-full bg-slate-100" />
+        </header>
+        <section className="grid gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <article key={index} className="admin-stat-card h-28 animate-pulse" />
           ))}
-        </div>
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-4">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={index} className="mt-3 h-16 animate-pulse rounded-[1.2rem] bg-slate-100" />
-          ))}
-        </div>
-      </div>
+        </section>
+        <section className="admin-panel h-96 animate-pulse" />
+      </article>
     );
   }
 
   return (
-    <div className="space-y-6 p-4">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700">
-              <Lucide.GitPullRequestArrow size={14} />
-              Approval Queue
-            </div>
-            <h1 className="mt-3 text-2xl font-black text-slate-900">Pending manager approval</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">Review feedback that is waiting for your final approval decision.</p>
-          </div>
-          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Total Pending</div>
-            <div className="mt-1 text-xl font-black text-slate-900">{summary.pending}</div>
-          </div>
-        </div>
-      </div>
+    <article className="admin-page-shell space-y-6">
+      <ManagerPageHeader
+        title="Hàng đợi duyệt kết quả"
+        description="Kiểm tra kết quả xử lý, bằng chứng hoàn thành và lịch sử phối hợp trước khi phê duyệt hoặc yêu cầu làm lại."
+        icon={Lucide.GitPullRequestArrow}
+        statusLabel="Đang chờ quyết định"
+        statusValue={`${totalCount} phản ánh`}
+      />
 
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <label className="input input-bordered flex flex-1 items-center gap-2 rounded-2xl border-slate-200 bg-slate-50">
-            <Lucide.Search size={16} className="text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search feedback" className="grow bg-transparent text-sm" />
-          </label>
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-slate-500">Rows</label>
-            <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="select select-bordered rounded-2xl border-slate-200 bg-slate-50 text-sm">
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
+      <section className="grid gap-4 md:grid-cols-3" aria-label="Tóm tắt hàng đợi duyệt">
+        <ManagerMetricCard
+          label="Chờ duyệt"
+          value={totalCount}
+          description="Tổng phản ánh cần quyết định."
+          icon={Lucide.Inbox}
+          toneClass="bg-blue-50 text-blue-700"
+        />
+        <ManagerMetricCard
+          label="Ưu tiên cao"
+          value={highPriorityCount}
+          description="Phản ánh mức High hoặc Critical trên trang hiện tại."
+          icon={Lucide.TriangleAlert}
+          toneClass="bg-amber-50 text-amber-700"
+        />
+        <ManagerMetricCard
+          label="Chờ lâu nhất"
+          value={oldestItem ? getWaitingTime(oldestItem.updatedAt || oldestItem.createdAt) : '—'}
+          description="Thời gian chờ của hồ sơ cũ nhất đang hiển thị."
+          icon={Lucide.Clock3}
+          toneClass="bg-emerald-50 text-emerald-700"
+        />
+      </section>
+
+      <section className="admin-panel overflow-hidden" aria-labelledby="approval-queue-title">
+        <ManagerSectionHeader
+          id="approval-queue-title"
+          title="Danh sách cần duyệt"
+          description="Ưu tiên hồ sơ khẩn cấp, hồ sơ chờ lâu và trường hợp có nhiều lần gửi lại kết quả."
+          icon={Lucide.ListChecks}
+          actions={(
+            <form className="flex flex-col gap-3 sm:flex-row sm:items-center" role="search" onSubmit={handleSearchSubmit}>
+              <label className="input input-bordered flex h-11 min-w-[260px] items-center gap-2 rounded-2xl bg-white text-sm">
+                <Lucide.Search size={16} className="text-slate-400" aria-hidden="true" />
+                <span className="sr-only">Tìm kiếm phản ánh</span>
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="grow"
+                  placeholder="Tìm mã, tiêu đề, địa điểm..."
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-500">
+                <span>Số dòng</span>
+                <select
+                  value={pageSize}
+                  onChange={handlePageSizeChange}
+                  className="select select-bordered h-11 rounded-2xl text-sm"
+                  aria-label="Số dòng mỗi trang"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+              </label>
+            </form>
+          )}
+        />
 
         {error ? (
-          <div className="mt-4">
+          <aside className="px-5 pt-5 sm:px-6" aria-live="polite">
             <ErrorAlert title="Lỗi tải hàng đợi" message={error} onClose={() => setError('')} />
-          </div>
+          </aside>
         ) : null}
 
-        <div className="mt-5 overflow-hidden rounded-[1.4rem] border border-slate-200">
-          {loading ? (
-            <div className="space-y-2 bg-slate-50/60 p-3">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="h-14 animate-pulse rounded-[1rem] bg-slate-200" />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <EmptyState title="No feedback is waiting for approval" description="There are no items that match the current queue filters." />
-          ) : (
+        {items.length === 0 ? (
+          <ManagerEmptyState
+            icon={Lucide.BadgeCheck}
+            title="Không có phản ánh đang chờ duyệt"
+            description="Khi System Staff gửi kết quả xử lý, hồ sơ sẽ xuất hiện tại đây để Interaction Manager đánh giá."
+          />
+        ) : (
+          <section className="admin-table-wrap m-5 overflow-hidden sm:m-6">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Feedback ID</th>
-                    <th className="px-4 py-3">Title</th>
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Created Date</th>
-                    <th className="px-4 py-3">Priority</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Action</th>
+              <table className="table w-full">
+                <caption className="sr-only">Danh sách phản ánh đang chờ Interaction Manager duyệt</caption>
+                <thead className="admin-table-head">
+                  <tr className="text-[10px] font-semibold uppercase tracking-[0.16em]">
+                    <th scope="col">Phản ánh</th>
+                    <th scope="col">Phân loại</th>
+                    <th scope="col">Mức ưu tiên</th>
+                    <th scope="col">Thời gian chờ</th>
+                    <th scope="col">Trạng thái</th>
+                    <th scope="col" className="text-right">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {items.map((item) => (
-                    <tr key={item.feedbackId || item.id} className="hover:bg-slate-50/80">
-                      <td className="px-4 py-3 font-semibold text-slate-700">{item.feedbackId || item.id}</td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{getApprovalQueueTitle(item)}</div>
-                        <div className="mt-1 text-xs text-slate-500">{item?.description || 'No description'}</div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{item?.categoryName || item?.category?.name || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600">{item?.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${PRIORITY_BADGE_CLASSES[item?.priority] || 'bg-slate-100 text-slate-700'}`}>
-                          {getPriorityLabel(item?.priority)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_BADGE_CLASSES[item?.status] || 'bg-slate-100 text-slate-700'}`}>
-                          {getStatusLabel(item?.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button type="button" onClick={() => navigate(`/manager/approvals/${item.feedbackId || item.id}`)} className="btn btn-sm rounded-2xl btn-outline">
-                          Review
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className="admin-table-body divide-y divide-slate-100">
+                  {items.map((item) => {
+                    const feedbackId = item.feedbackId || item.id;
+                    const createdAt = item.updatedAt || item.createdAt;
+                    return (
+                      <tr key={feedbackId} className="admin-table-row align-top">
+                        <th scope="row" className="min-w-[280px] font-normal">
+                          <article>
+                            <header className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-[11px] font-semibold text-blue-700">{feedbackId}</span>
+                              <time className="text-[11px] text-slate-400" dateTime={createdAt || undefined}>{formatDateTime(createdAt)}</time>
+                            </header>
+                            <h3 className="mt-2 text-sm font-semibold text-slate-950">{item.title || 'Không có tiêu đề'}</h3>
+                            <address className="mt-1 flex items-center gap-1.5 not-italic text-xs text-slate-500">
+                              <Lucide.MapPin size={13} aria-hidden="true" />
+                              {item.locationText || item.areaName || 'Chưa có vị trí'}
+                            </address>
+                          </article>
+                        </th>
+                        <td>
+                          <span className="text-sm font-medium text-slate-700">{item.categoryName || 'Chưa phân loại'}</span>
+                        </td>
+                        <td>
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${PRIORITY_BADGE_CLASSES[item.priority] || PRIORITY_BADGE_CLASSES.Medium}`}>
+                            {priorityLabels[item.priority] || item.priority || 'Trung bình'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                            <Lucide.Clock3 size={14} className="text-slate-400" aria-hidden="true" />
+                            {getWaitingTime(createdAt)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE_CLASSES[item.status] || STATUS_BADGE_CLASSES.SubmittedForApproval}`}>
+                            Chờ duyệt
+                          </span>
+                        </td>
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/manager/approvals/${feedbackId}`)}
+                            className="btn btn-sm admin-primary-action rounded-xl"
+                            aria-label={`Xem và duyệt phản ánh ${item.title || feedbackId}`}
+                          >
+                            <Lucide.FileSearch size={15} aria-hidden="true" />
+                            Xem hồ sơ
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </section>
+        )}
 
-        {totalCount > 0 ? (
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <div>Showing {items.length} of {totalCount}</div>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => { const nextPage = Math.max(0, pageIndex - 1); setPageIndex(nextPage); loadItems(nextPage, pageSize, search); }} disabled={pageIndex === 0} className="btn btn-sm rounded-2xl">
-                Previous
-              </button>
-              <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-700">{pageLabel}</span>
-              <button type="button" onClick={() => { const nextPage = Math.min(totalPages - 1, pageIndex + 1); setPageIndex(nextPage); loadItems(nextPage, pageSize, search); }} disabled={pageIndex >= totalPages - 1} className="btn btn-sm rounded-2xl">
-                Next
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
+        <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p className="text-slate-500">
+            Trang <strong className="text-slate-800">{totalCount === 0 ? 0 : pageIndex + 1}</strong> / {totalCount === 0 ? 0 : totalPages} · {totalCount} hồ sơ
+          </p>
+          <nav className="flex items-center gap-2" aria-label="Phân trang hàng đợi duyệt">
+            <button
+              type="button"
+              className="btn btn-sm admin-secondary-action rounded-xl"
+              disabled={pageIndex === 0 || loading}
+              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+            >
+              <Lucide.ChevronLeft size={15} aria-hidden="true" />
+              Trước
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm admin-secondary-action rounded-xl"
+              disabled={pageIndex >= totalPages - 1 || loading || totalCount === 0}
+              onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
+            >
+              Sau
+              <Lucide.ChevronRight size={15} aria-hidden="true" />
+            </button>
+          </nav>
+        </footer>
+      </section>
+    </article>
   );
 };

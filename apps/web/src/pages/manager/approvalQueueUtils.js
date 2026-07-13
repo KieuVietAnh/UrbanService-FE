@@ -5,6 +5,9 @@ export const getApprovalQueueStatus = (item = {}) => {
   if (status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL) {
     return 'awaiting';
   }
+  if (status === managementTypes.feedbackStatus.NEED_REWORK) {
+    return 'rework';
+  }
   return 'other';
 };
 

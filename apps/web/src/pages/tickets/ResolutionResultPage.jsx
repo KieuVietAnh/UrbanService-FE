@@ -97,15 +97,48 @@ export const ResolutionResultPage = () => {
       ticket?.resolution?.imageUrls,
     ];
 
-    const parsed = resolutionAttachments
+    return resolutionAttachments
       .flatMap((entry) => normalizeImageList(entry))
       .map(getAttachmentUrl)
       .filter(Boolean);
+  }, [ticket]);
 
-    return parsed.length > 0 ? parsed : beforeImages;
-  }, [beforeImages, ticket]);
+  const latestResolutionHistory = useMemo(() => {
+    const histories = Array.isArray(ticket?.statusHistories)
+      ? [...ticket.statusHistories]
+      : [];
+    const relevantStatuses = new Set([
+      managementTypes.feedbackStatus.RESOLVED,
+      managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+      managementTypes.feedbackStatus.APPROVED,
+      managementTypes.feedbackStatus.CLOSED,
+    ]);
 
-  const resolutionDate = ticket?.resolution?.resolvedAt || ticket?.updatedAt || ticket?.resolvedAt || ticket?.createdAt;
+    return histories
+      .filter((item) => relevantStatuses.has(item?.newStatus || item?.status))
+      .sort((a, b) => new Date(b?.changedAt || 0) - new Date(a?.changedAt || 0))[0] || null;
+  }, [ticket]);
+
+  const resolutionDate = (
+    ticket?.resolution?.resolvedAt ||
+    latestResolutionHistory?.changedAt ||
+    ticket?.updatedAt ||
+    ticket?.resolvedAt ||
+    ticket?.createdAt
+  );
+  const resolutionSummary = (
+    ticket?.resolution?.resolutionSummary ||
+    ticket?.resolution?.summary ||
+    latestResolutionHistory?.note ||
+    'Kết quả đã được phê duyệt. API người dân hiện chưa trả về phần mô tả chi tiết của resolution.'
+  );
+  const resultNote = (
+    ticket?.resolution?.resultNote ||
+    ticket?.resolution?.notes ||
+    ticket?.resolution?.note ||
+    latestResolutionHistory?.note ||
+    'Chưa có ghi chú chi tiết trong dữ liệu người dân được phép xem.'
+  );
   const processingDuration = useMemo(() => formatDuration(ticket?.createdAt, resolutionDate), [ticket, resolutionDate]);
 
   const timelineItems = useMemo(() => {
@@ -132,12 +165,15 @@ export const ResolutionResultPage = () => {
 
   const handleSubmitRating = async (event) => {
     event.preventDefault();
-    if (!feedbackId || !user?.userId) return;
+    if (!feedbackId) return;
 
     setRatingLoading(true);
     try {
-      await ticketApi.submitReview(feedbackId, user.userId, rating, satisfied, reviewComment, { role: user.role });
-      setMessage({ type: 'success', text: 'Cảm ơn bạn đã đánh giá kết quả xử lý.' });
+      await ticketApi.submitReview(feedbackId, user?.userId, rating, satisfied, reviewComment, { role: user?.role || 'service-user' });
+      const refreshed = await ticketApi.getTicketById(feedbackId, { role: 'service-user' });
+      const refreshedTicket = refreshed?.data || refreshed?.item || refreshed?.result || refreshed;
+      setTicket((current) => ({ ...(refreshedTicket || current), status: managementTypes.feedbackStatus.CLOSED }));
+      setMessage({ type: 'success', text: 'Cảm ơn bạn đã đánh giá. Phản ánh đã được đóng.' });
     } catch (err) {
       console.error('Failed to submit review', err);
       setMessage({ type: 'error', text: err?.message || 'Không thể gửi đánh giá lúc này.' });
@@ -178,6 +214,10 @@ export const ResolutionResultPage = () => {
   const statusLabel = getStatusLabel(ticket.status, ticket.status || 'Đang cập nhật');
   const statusTone = STATUS_BADGE_CLASSES[ticket.status] || 'bg-slate-100 text-slate-700';
   const priorityTone = PRIORITY_BADGE_CLASSES[ticket.priority] || PRIORITY_BADGE_CLASSES.Medium;
+  const canSubmitReview = [
+    managementTypes.feedbackStatus.APPROVED,
+    managementTypes.feedbackStatus.RESOLVED, // backward compatibility
+  ].includes(ticket.status);
 
   return (
     <PageTransition>
@@ -248,7 +288,7 @@ export const ResolutionResultPage = () => {
                 Tóm tắt kết quả xử lý
               </div>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                {ticket.resolution?.resolutionSummary || ticket.resolution?.summary || 'Đơn vị xử lý đã cập nhật kết quả xử lý cho phản ánh này.'}
+                {resolutionSummary}
               </p>
             </div>
           </div>
@@ -260,7 +300,7 @@ export const ResolutionResultPage = () => {
             </div>
             <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm leading-7 text-slate-600">
-                {ticket.resolution?.notes || ticket.resolution?.note || 'Đơn vị xử lý chưa gửi ghi chú chi tiết.'}
+                {resultNote}
               </p>
             </div>
             <div className="mt-4 grid gap-3 text-sm text-slate-600">
@@ -403,41 +443,49 @@ export const ResolutionResultPage = () => {
             </div>
             <p className="mt-2 text-sm text-slate-500">Cảm nhận của bạn giúp hệ thống cải thiện trải nghiệm và chất lượng dịch vụ.</p>
 
-            <form onSubmit={handleSubmitRating} className="mt-6 space-y-4">
-              <div className="flex flex-col items-start gap-2 rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                <span className="text-sm font-semibold text-slate-700">Mức độ hài lòng</span>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4, 5].map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setRating(value)}
-                      className={`rounded-full p-2 ${rating >= value ? 'text-amber-500' : 'text-slate-300'}`}
-                      aria-label={`Đánh giá ${value} sao`}
-                    >
-                      <Lucide.Star size={20} fill="currentColor" />
-                    </button>
-                  ))}
+            {canSubmitReview ? (
+              <form onSubmit={handleSubmitRating} className="mt-6 space-y-4">
+                <div className="flex flex-col items-start gap-2 rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
+                  <span className="text-sm font-semibold text-slate-700">Mức độ hài lòng</span>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setRating(value)}
+                        className={`rounded-full p-2 ${rating >= value ? 'text-amber-500' : 'text-slate-300'}`}
+                        aria-label={`Đánh giá ${value} sao`}
+                      >
+                        <Lucide.Star size={20} fill="currentColor" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                <label className="flex cursor-pointer items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+                  <span>Tôi hài lòng với kết quả này</span>
+                  <input type="checkbox" checked={satisfied} onChange={(event) => setSatisfied(event.target.checked)} className="checkbox checkbox-primary checkbox-sm" />
+                </label>
+
+                <textarea
+                  rows="4"
+                  value={reviewComment}
+                  onChange={(event) => setReviewComment(event.target.value)}
+                  placeholder="Để lại nhận xét về sự rõ ràng, thời gian xử lý và chất lượng kết quả..."
+                  className="textarea textarea-bordered w-full rounded-[1.2rem] border-slate-200 bg-white text-sm"
+                />
+
+                <button type="submit" disabled={ratingLoading} className="btn btn-primary w-full rounded-[1.1rem] font-black">
+                  {ratingLoading ? <span className="loading loading-spinner" /> : 'Gửi đánh giá và đóng phản ánh'}
+                </button>
+              </form>
+            ) : (
+              <div className="mt-6 rounded-[1.2rem] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+                {ticket.status === managementTypes.feedbackStatus.CLOSED
+                  ? 'Bạn đã hoàn tất đánh giá và phản ánh này đã được đóng.'
+                  : 'Kết quả cần được Manager phê duyệt trước khi bạn có thể đánh giá.'}
               </div>
-
-              <label className="flex cursor-pointer items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
-                <span>Tôi hài lòng với kết quả này</span>
-                <input type="checkbox" checked={satisfied} onChange={(event) => setSatisfied(event.target.checked)} className="checkbox checkbox-primary checkbox-sm" />
-              </label>
-
-              <textarea
-                rows="4"
-                value={reviewComment}
-                onChange={(event) => setReviewComment(event.target.value)}
-                placeholder="Để lại nhận xét về sự rõ ràng, thời gian xử lý và chất lượng kết quả..."
-                className="textarea textarea-bordered w-full rounded-[1.2rem] border-slate-200 bg-white text-sm"
-              />
-
-              <button type="submit" disabled={ratingLoading} className="btn btn-primary w-full rounded-[1.1rem] font-black">
-                {ratingLoading ? <span className="loading loading-spinner" /> : 'Gửi đánh giá và đóng phản ánh'}
-              </button>
-            </form>
+            )}
           </div>
         </section>
       </div>

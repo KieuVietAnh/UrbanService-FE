@@ -14,6 +14,7 @@ import CelebrationBadge from '../../components/delight/CelebrationBadge';
 import { normalizeRole } from '../../utils/roleMap';
 import { APP_ROLES, managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
+import { ManagerMetricCard, ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
 
 const SAFE_DASHBOARD_STATS = {
   totalUsers: 0,
@@ -984,45 +985,202 @@ export const Dashboard = () => {
   // 4. INTERACTION MANAGER DASHBOARD (interaction-manager)
   // ----------------------------------------------------
   if (currentRole === 'interaction-manager') {
+    const managerTickets = Array.isArray(tickets) ? tickets : [];
+    const pendingApprovals = managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL);
+    const needRework = managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.NEED_REWORK);
+    const activeInteractions = managerTickets.filter((ticket) => [
+      managementTypes.feedbackStatus.VERIFIED,
+      managementTypes.feedbackStatus.ASSIGNED,
+      managementTypes.feedbackStatus.IN_PROGRESS,
+      managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+      managementTypes.feedbackStatus.NEED_REWORK,
+    ].includes(ticket.status));
+    const completedInteractions = managerTickets.filter((ticket) => [
+      managementTypes.feedbackStatus.APPROVED,
+      managementTypes.feedbackStatus.CLOSED,
+    ].includes(ticket.status));
+    const managerTopCategories = Array.isArray(stats.categoryDistribution)
+      ? stats.categoryDistribution.slice(0, 4)
+      : [];
+    const managerQuickLinks = [
+      {
+        title: 'Giám sát tương tác',
+        description: 'Theo dõi luồng phản ánh, bình luận và trạng thái phối hợp.',
+        to: '/manager/interactions',
+        icon: Lucide.MessagesSquare,
+      },
+      {
+        title: 'Hàng đợi duyệt',
+        description: 'Đối chiếu kết quả xử lý và ra quyết định phê duyệt.',
+        to: '/manager/approvals',
+        icon: Lucide.GitPullRequestArrow,
+      },
+      {
+        title: 'Phân tích SLA',
+        description: 'Xác định điểm nghẽn và dịch vụ có nguy cơ trễ hạn.',
+        to: '/analytics/sla',
+        icon: Lucide.TimerReset,
+      },
+      {
+        title: 'Cảm xúc người dân',
+        description: 'Theo dõi tín hiệu hài lòng và phản hồi tiêu cực.',
+        to: '/analytics/sentiment',
+        icon: Lucide.BrainCircuit,
+      },
+      {
+        title: 'Bản đồ điểm nóng',
+        description: 'Khoanh vùng khu vực có mật độ phản ánh cao.',
+        to: '/analytics/heatmap',
+        icon: Lucide.MapPinned,
+      },
+    ];
+
     return (
-      <div className="space-y-6 text-slate-800">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">Giám sát tương tác đô thị</h2>
-          <p className="text-xs text-gray-500 font-semibold">Theo dõi sắc thái ý kiến người dân, khối lượng bình luận trực tuyến và hiệu năng giải quyết.</p>
-        </div>
+      <article className="admin-page-shell space-y-6">
+        <ManagerPageHeader
+          title="Trung tâm phân tích trải nghiệm đô thị"
+          description="Theo dõi xu hướng phản hồi, giám sát tương tác và xác định cơ hội cải thiện dịch vụ."
+          icon={Lucide.ScanSearch}
+          statusLabel="Hồ sơ chờ quyết định"
+          statusValue={`${pendingApprovals.length} phản ánh`}
+          actions={(
+            <Link to="/manager/approvals" className="btn admin-primary-action rounded-2xl">
+              <Lucide.BadgeCheck size={17} aria-hidden="true" />
+              Mở hàng đợi duyệt
+            </Link>
+          )}
+        />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-[color:var(--brand-primary)]">{stats.csatScore}/5</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">CSAT hài lòng</span>
-          </div>
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-secondary">{stats.avgResolutionTimeHours} giờ</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">Thời gian sửa SLA</span>
-          </div>
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-[#059669]">{stats.processingRate}%</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">Tỷ lệ đóng hồ sơ</span>
-          </div>
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm text-center">
-            <span className="text-xl font-black text-error">{stats.slaBreaches} Phiếu</span>
-            <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider block mt-1">Vi phạm SLA</span>
-          </div>
-        </div>
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số quản lý tương tác">
+          <ManagerMetricCard
+            label="Luồng đang hoạt động"
+            value={activeInteractions.length}
+            description="Phản ánh đang xác minh, phối hợp hoặc xử lý."
+            icon={Lucide.Workflow}
+            toneClass="bg-blue-50 text-blue-700"
+          />
+          <ManagerMetricCard
+            label="Chờ duyệt"
+            value={pendingApprovals.length}
+            description="Kết quả cần Manager ra quyết định."
+            icon={Lucide.ClipboardCheck}
+            toneClass="bg-emerald-50 text-emerald-700"
+          />
+          <ManagerMetricCard
+            label="Cần làm lại"
+            value={needRework.length}
+            description="Hồ sơ đã trả về để Staff bổ sung."
+            icon={Lucide.RotateCcw}
+            toneClass="bg-amber-50 text-amber-700"
+          />
+          <ManagerMetricCard
+            label="Đã hoàn tất"
+            value={completedInteractions.length}
+            description="Phản ánh đã duyệt hoặc đã đóng."
+            icon={Lucide.CircleCheckBig}
+            toneClass="bg-cyan-50 text-cyan-700"
+          />
+        </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <SentimentDonutChart
-              positive={stats.sentimentTrend.Positive}
-              neutral={stats.sentimentTrend.Neutral}
-              negative={stats.sentimentTrend.Negative}
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <SLAPerformanceChart />
-          </div>
-        </div>
-      </div>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+          <section className="space-y-6" aria-label="Phân tích trải nghiệm">
+            <figure className="admin-panel overflow-hidden">
+              <ManagerSectionHeader
+                title="Tổng quan cảm xúc"
+                description="Phân bố sắc thái phản hồi để nhận diện biến động trong trải nghiệm người dân."
+                icon={Lucide.ChartPie}
+                actions={<Link to="/analytics/sentiment" className="admin-secondary-link inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold">Xem chi tiết <Lucide.ArrowRight size={14} /></Link>}
+              />
+              <section className="p-5 sm:p-6">
+                <SentimentDonutChart
+                  positive={stats.sentimentTrend.Positive}
+                  neutral={stats.sentimentTrend.Neutral}
+                  negative={stats.sentimentTrend.Negative}
+                />
+              </section>
+              <figcaption className="border-t border-slate-200 px-5 py-4 text-xs leading-5 text-slate-500 sm:px-6">
+                CSAT hiện tại: {stats.csatScore}/5 · Thời gian xử lý trung bình: {stats.avgResolutionTimeHours} giờ.
+              </figcaption>
+            </figure>
+
+            <article className="admin-panel overflow-hidden">
+              <ManagerSectionHeader
+                title="Nhóm dịch vụ cần chú ý"
+                description="Ưu tiên danh mục có khối lượng cao để phân tích nguyên nhân và cơ hội cải thiện."
+                icon={Lucide.Tags}
+                actions={<Link to="/analytics/sla" className="admin-secondary-link inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold">Phân tích SLA <Lucide.ArrowRight size={14} /></Link>}
+              />
+              {managerTopCategories.length > 0 ? (
+                <ol className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">
+                  {managerTopCategories.map((category, index) => (
+                    <li key={category.categoryId || category.name || index}>
+                      <article className="admin-inset-panel flex items-center justify-between gap-4 p-4">
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700" aria-hidden="true">{index + 1}</span>
+                          <span className="min-w-0">
+                            <h3 className="truncate text-sm font-semibold text-slate-950">{category.categoryName || category.name || 'Chưa phân loại'}</h3>
+                            <p className="mt-1 text-xs text-slate-500">Khối lượng phản ánh trong dữ liệu tổng hợp</p>
+                          </span>
+                        </span>
+                        <strong className="text-lg font-semibold text-blue-700">{category.count ?? category.value ?? 0}</strong>
+                      </article>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <section className="admin-empty-panel m-5 p-8 text-center text-sm text-slate-500 sm:m-6">Chưa có dữ liệu phân bố danh mục.</section>
+              )}
+            </article>
+          </section>
+
+          <aside className="space-y-6" aria-label="Điều hướng công việc Manager">
+            <article className="admin-panel overflow-hidden">
+              <ManagerSectionHeader
+                title="Không gian làm việc"
+                description="Truy cập nhanh các chức năng theo đúng nhiệm vụ Interaction Manager."
+                icon={Lucide.LayoutGrid}
+              />
+              <nav className="grid gap-3 p-5 sm:p-6" aria-label="Chức năng Interaction Manager">
+                {managerQuickLinks.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link key={item.to} to={item.to} className="admin-quick-link group flex items-start gap-3 p-4 transition">
+                      <span className="admin-mini-icon text-blue-700" aria-hidden="true"><Icon size={17} /></span>
+                      <span className="min-w-0 flex-1">
+                        <strong className="block text-sm font-semibold text-slate-950">{item.title}</strong>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span>
+                      </span>
+                      <Lucide.ChevronRight size={16} className="mt-1 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-700" aria-hidden="true" />
+                    </Link>
+                  );
+                })}
+              </nav>
+            </article>
+
+            <article className="admin-panel overflow-hidden">
+              <ManagerSectionHeader
+                title="Tín hiệu cần hành động"
+                description="Các chỉ số nên được kiểm tra trước trong phiên làm việc."
+                icon={Lucide.BellRing}
+              />
+              <dl className="space-y-3 p-5 sm:p-6">
+                <div className="admin-inset-panel p-4">
+                  <dt className="text-xs font-semibold text-slate-500">Vi phạm SLA</dt>
+                  <dd className="mt-1 text-xl font-semibold text-rose-700">{stats.slaBreaches}</dd>
+                </div>
+                <div className="admin-inset-panel p-4">
+                  <dt className="text-xs font-semibold text-slate-500">Tỷ lệ hoàn thành</dt>
+                  <dd className="mt-1 text-xl font-semibold text-emerald-700">{stats.processingRate}%</dd>
+                </div>
+                <div className="admin-inset-panel p-4">
+                  <dt className="text-xs font-semibold text-slate-500">Trạng thái AI</dt>
+                  <dd className="mt-1 text-sm font-semibold text-slate-950">{stats.aiStatus || 'Chưa xác định'}</dd>
+                </div>
+              </dl>
+            </article>
+          </aside>
+        </section>
+      </article>
     );
   }
 

@@ -298,6 +298,15 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/manager/interactions/:feedbackId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <InteractionApprovalDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/manager/approvals" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>

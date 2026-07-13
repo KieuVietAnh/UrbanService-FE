@@ -1,24 +1,42 @@
-// src/pages/analytics/SentimentDashboard.jsx
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { analyticsApi } from '../../services/api/analyticsApi';
 import { normalizeRole } from '../../utils/roleMap';
 import { SentimentDonutChart } from '../../components/charts/CustomCharts';
-import * as Lucide from 'lucide-react';
+import { ManagerMetricCard, ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
+
+const EMPTY_STATS = {
+  csatScore: 0,
+  avgResolutionTimeHours: 0,
+  sentimentTrend: {
+    Positive: 0,
+    Neutral: 0,
+    Negative: 0,
+  },
+};
 
 export const SentimentDashboard = () => {
   const { user } = useAuth();
   const currentRole = normalizeRole(user?.role);
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await analyticsApi.getSystemDashboardStats(currentRole);
-        setStats(res);
+        const response = await analyticsApi.getSystemDashboardStats(currentRole);
+        setStats({
+          ...EMPTY_STATS,
+          ...(response && typeof response === 'object' ? response : {}),
+          sentimentTrend: {
+            ...EMPTY_STATS.sentimentTrend,
+            ...(response?.sentimentTrend && typeof response.sentimentTrend === 'object' ? response.sentimentTrend : {}),
+          },
+        });
       } catch (err) {
         console.error(err);
+        setStats(EMPTY_STATS);
       } finally {
         setLoading(false);
       }
@@ -26,67 +44,111 @@ export const SentimentDashboard = () => {
     fetchStats();
   }, [currentRole]);
 
+  const totalSentiment = useMemo(() => (
+    Number(stats.sentimentTrend.Positive || 0) +
+    Number(stats.sentimentTrend.Neutral || 0) +
+    Number(stats.sentimentTrend.Negative || 0)
+  ), [stats.sentimentTrend]);
+
+  const dominantSentiment = useMemo(() => {
+    const entries = Object.entries(stats.sentimentTrend);
+    if (entries.length === 0 || totalSentiment === 0) return 'Chưa đủ dữ liệu';
+    const [key] = entries.sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
+    return ({ Positive: 'Tích cực', Neutral: 'Trung tính', Negative: 'Tiêu cực' })[key] || key;
+  }, [stats.sentimentTrend, totalSentiment]);
+
   if (loading) {
     return (
-      <div className="flex justify-center py-20 bg-base-100 rounded-3xl border border-base-300">
-        <span className="loading loading-spinner loading-lg text-primary"></span>
-      </div>
+      <article className="admin-page-shell space-y-6" aria-busy="true" aria-label="Đang tải phân tích cảm xúc">
+        <header className="admin-page-hero h-44 animate-pulse" />
+        <section className="grid gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => <article key={index} className="admin-stat-card h-28 animate-pulse" />)}
+        </section>
+        <section className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+          <article className="admin-panel h-96 animate-pulse" />
+          <article className="admin-panel h-96 animate-pulse" />
+        </section>
+      </article>
     );
   }
 
+  const positive = Number(stats.sentimentTrend.Positive || 0);
+  const neutral = Number(stats.sentimentTrend.Neutral || 0);
+  const negative = Number(stats.sentimentTrend.Negative || 0);
+
   return (
-    <div className="space-y-6">
-      {/* Title */}
-      <div>
-        <h2 className="text-2xl font-black">Biểu Đồ Cảm Xúc Cư Dân (AI)</h2>
-        <p className="text-xs text-gray-500 font-semibold">Phân tích sắc thái ý kiến phản ánh của cư dân tự động bằng mô hình học máy NLP, hỗ trợ đo lường mức độ hài lòng.</p>
-      </div>
+    <article className="admin-page-shell space-y-6">
+      <ManagerPageHeader
+        title="Cảm xúc và nhận thức người dân"
+        description="Phân tích phản hồi để đo mức độ hài lòng và ưu tiên cải thiện dịch vụ."
+        icon={Lucide.BrainCircuit}
+        statusLabel="Xu hướng nổi bật"
+        statusValue={dominantSentiment}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Main Donut Chart */}
-        <div className="md:col-span-1">
-          <SentimentDonutChart 
-            positive={stats.sentimentTrend.Positive}
-            neutral={stats.sentimentTrend.Neutral}
-            negative={stats.sentimentTrend.Negative}
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số cảm xúc tổng quan">
+        <ManagerMetricCard label="CSAT trung bình" value={`${stats.csatScore}/5`} description="Điểm hài lòng sau xử lý." icon={Lucide.Star} toneClass="bg-blue-50 text-blue-700" />
+        <ManagerMetricCard label="Phản hồi tích cực" value={positive} description="Tín hiệu hài lòng từ nội dung phản ánh." icon={Lucide.SmilePlus} toneClass="bg-emerald-50 text-emerald-700" />
+        <ManagerMetricCard label="Phản hồi trung tính" value={neutral} description="Nội dung mô tả chưa thể hiện cảm xúc rõ." icon={Lucide.Meh} toneClass="bg-amber-50 text-amber-700" />
+        <ManagerMetricCard label="Phản hồi tiêu cực" value={negative} description="Trường hợp cần ưu tiên theo dõi trải nghiệm." icon={Lucide.Frown} toneClass="bg-rose-50 text-rose-700" />
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]">
+        <figure className="admin-panel overflow-hidden">
+          <ManagerSectionHeader
+            title="Phân bố cảm xúc"
+            description="Tỷ trọng sắc thái được hệ thống tổng hợp từ dữ liệu phản hồi."
+            icon={Lucide.ChartPie}
           />
-        </div>
+          <section className="p-5 sm:p-6">
+            <SentimentDonutChart positive={positive} neutral={neutral} negative={negative} />
+          </section>
+          <figcaption className="border-t border-slate-200 px-5 py-4 text-xs leading-5 text-slate-500 sm:px-6">
+            Tổng dữ liệu cảm xúc hiện có: {totalSentiment} phản hồi được phân loại.
+          </figcaption>
+        </figure>
 
-        {/* Detailed AI insights cards */}
-        <div className="md:col-span-2 space-y-6">
-          <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-4">
-            <h3 className="font-extrabold text-sm border-b border-base-300 pb-2 flex items-center gap-1.5">
-              <Lucide.Brain className="text-primary" size={18} />
-              <span>Nhận định từ AI Copilot</span>
-            </h3>
-            <div className="text-xs font-semibold space-y-3 text-gray-600 leading-relaxed">
-              <div className="flex gap-2">
-                <span className="text-emerald-500 font-black">✓</span>
-                <span>Mức độ hài lòng của người dân đạt đỉnh <span className="text-emerald-500 font-bold">{stats.csatScore}/5</span> điểm CSAT, tỷ lệ phản hồi tích cực chiếm đa số nhờ sửa chữa nhanh.</span>
-              </div>
-              <div className="flex gap-2">
-                <span className="text-amber-500 font-black">✓</span>
-                <span>Xu hướng cảm xúc trung tính chủ yếu đến từ các phản ánh liên quan đến thu gom rác thải bừa bãi và tỉa cành cây xanh.</span>
-              </div>
-              <div className="flex gap-2">
-                <span className="text-red-500 font-black">✓</span>
-                <span>Các từ khóa cảm xúc tiêu cực nhiều nhất: "nguy hiểm", "thối", "tai nạn", tập trung cao ở danh mục **Cấp thoát nước** khi xảy ra ngập hoặc vỡ cống nước.</span>
-              </div>
-            </div>
-          </div>
+        <article className="admin-panel overflow-hidden">
+          <ManagerSectionHeader
+            title="Nhận định và cơ hội cải thiện"
+            description="Các điểm Manager nên xem xét khi đánh giá trải nghiệm dịch vụ."
+            icon={Lucide.Lightbulb}
+          />
+          <ol className="space-y-3 p-5 sm:p-6">
+            <li className="admin-inset-panel flex gap-3 p-4">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700" aria-hidden="true"><Lucide.ThumbsUp size={17} /></span>
+              <article>
+                <h3 className="text-sm font-semibold text-slate-950">Duy trì trải nghiệm tích cực</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">Đối chiếu nhóm phản hồi tích cực với thời gian xử lý và chất lượng phản hồi để xác định quy trình nên được nhân rộng.</p>
+              </article>
+            </li>
+            <li className="admin-inset-panel flex gap-3 p-4">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700" aria-hidden="true"><Lucide.ScanSearch size={17} /></span>
+              <article>
+                <h3 className="text-sm font-semibold text-slate-950">Làm rõ phản hồi trung tính</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">Phản hồi trung tính có thể là dấu hiệu người dân chưa nhận đủ thông tin; cần kiểm tra chất lượng cập nhật trạng thái và thông báo.</p>
+              </article>
+            </li>
+            <li className="admin-inset-panel flex gap-3 p-4">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-700" aria-hidden="true"><Lucide.ShieldAlert size={17} /></span>
+              <article>
+                <h3 className="text-sm font-semibold text-slate-950">Ưu tiên tín hiệu tiêu cực</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">Kết hợp phản hồi tiêu cực với hồ sơ trễ SLA, yêu cầu làm lại và khu vực tập trung sự cố để xác định nguyên nhân gốc.</p>
+              </article>
+            </li>
+          </ol>
+        </article>
+      </section>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm text-center">
-              <span className="text-2xl font-black text-primary">{stats.csatScore}</span>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Chỉ số hài lòng CSAT</p>
-            </div>
-            <div className="bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm text-center">
-              <span className="text-2xl font-black text-secondary">{stats.avgResolutionTimeHours} giờ</span>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Thời gian sửa trung bình</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      <aside className="admin-info-note p-5" aria-label="Ghi chú về dữ liệu cảm xúc">
+        <header className="flex items-start gap-3">
+          <Lucide.Info className="mt-0.5 shrink-0 text-blue-700" size={19} aria-hidden="true" />
+          <span>
+            <h2 className="text-sm font-semibold text-slate-950">Lưu ý khi ra quyết định</h2>
+            <p className="mt-1 text-sm leading-6">Phân tích cảm xúc là tín hiệu hỗ trợ, không thay thế việc đọc nội dung phản ánh, lịch sử tương tác và kết quả xử lý thực tế.</p>
+          </span>
+        </header>
+      </aside>
+    </article>
   );
 };
