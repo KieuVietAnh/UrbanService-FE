@@ -4,6 +4,8 @@ import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import PageTransition from '../../components/motion/PageTransition';
+import { ConfirmationModal } from '@urbanmind/shared-ui';
+import DelightToast from '../../components/delight/DelightToast';
 
 const buildImageList = (attachments = []) => {
   if (!Array.isArray(attachments) || attachments.length === 0) return [];
@@ -23,9 +25,11 @@ export const ResolutionReviewComparisonPage = () => {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [activeImage, setActiveImage] = useState('before');
-  const [, setDecision] = useState('approve');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [pendingDecision, setPendingDecision] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [toastState, setToastState] = useState({ open: false, message: '', sub: '' });
 
   useEffect(() => {
     const loadFeedback = async () => {
@@ -49,24 +53,44 @@ export const ResolutionReviewComparisonPage = () => {
   const beforeImages = useMemo(() => buildImageList(feedback?.attachments), [feedback]);
   const afterImages = useMemo(() => buildImageList(feedback?.resolution?.attachments || feedback?.afterAttachments), [feedback]);
 
-  const handleDecision = async (nextDecision) => {
-    setDecision(nextDecision);
+  const handleDecisionRequest = (nextDecision) => {
+    setPendingDecision(nextDecision);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDecision = async () => {
+    if (!feedbackId || !pendingDecision) return;
+
     setSubmitting(true);
+    setConfirmOpen(false);
+    setMessage({ type: '', text: '' });
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      setMessage({
-        type: 'success',
-        text: nextDecision === 'approve'
-          ? 'Đã chấp thuận kết quả xử lý và đưa phản ánh sang bước hoàn tất.'
-          : nextDecision === 'reject'
-            ? 'Đã từ chối kết quả và gửi phản ánh quay lại vòng xử lý.'
-            : 'Đã gửi yêu cầu làm lại với ghi chú chi tiết cho đơn vị xử lý.',
-      });
+      if (pendingDecision === 'approve') {
+        await managementFeedbackApi.approveFeedback(feedbackId, note);
+        setToastState({
+          open: true,
+          message: 'Đã phê duyệt kết quả xử lý',
+          sub: 'Đang quay lại hàng đợi duyệt...',
+        });
+      } else {
+        await managementFeedbackApi.requestRework(feedbackId, note || 'Yêu cầu làm lại từ quản lý.');
+        setToastState({
+          open: true,
+          message: 'Đã gửi yêu cầu làm lại',
+          sub: 'Đang quay lại hàng đợi duyệt...',
+        });
+      }
+
+      setTimeout(() => {
+        navigate('/manager/approvals', { state: { refreshKey: Date.now() } });
+      }, 250);
     } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: 'Không thể cập nhật quyết định lúc này.' });
+      console.error('Failed to submit decision', err);
+      setMessage({ type: 'error', text: err?.message || 'Không thể cập nhật quyết định lúc này.' });
     } finally {
       setSubmitting(false);
+      setPendingDecision(null);
     }
   };
 
@@ -214,14 +238,14 @@ export const ResolutionReviewComparisonPage = () => {
                   className="textarea textarea-bordered w-full rounded-[1.2rem] border-slate-200 bg-white text-sm"
                 />
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <button type="button" onClick={() => handleDecision('approve')} disabled={submitting} className="btn btn-success rounded-2xl text-sm">
-                    <Lucide.CheckCircle2 size={16} className="mr-2" />Approve
+                  <button type="button" onClick={() => handleDecisionRequest('approve')} disabled={submitting} className="btn btn-success rounded-2xl text-sm">
+                    <Lucide.CheckCircle2 size={16} className="mr-2" />{submitting && pendingDecision === 'approve' ? 'Đang xử lý...' : 'Approve'}
                   </button>
-                  <button type="button" onClick={() => handleDecision('reject')} disabled={submitting} className="btn btn-error rounded-2xl text-sm">
-                    <Lucide.XCircle size={16} className="mr-2" />Reject
+                  <button type="button" onClick={() => handleDecisionRequest('reject')} disabled={submitting} className="btn btn-error rounded-2xl text-sm">
+                    <Lucide.XCircle size={16} className="mr-2" />{submitting && pendingDecision === 'reject' ? 'Đang xử lý...' : 'Reject'}
                   </button>
-                  <button type="button" onClick={() => handleDecision('rework')} disabled={submitting} className="btn btn-outline rounded-2xl text-sm">
-                    <Lucide.RefreshCw size={16} className="mr-2" />Request Rework
+                  <button type="button" onClick={() => handleDecisionRequest('rework')} disabled={submitting} className="btn btn-outline rounded-2xl text-sm">
+                    <Lucide.RefreshCw size={16} className="mr-2" />{submitting && pendingDecision === 'rework' ? 'Đang xử lý...' : 'Request Rework'}
                   </button>
                 </div>
               </div>
@@ -229,6 +253,28 @@ export const ResolutionReviewComparisonPage = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmationModal
+        open={confirmOpen}
+        title={pendingDecision === 'approve' ? 'Phê duyệt kết quả' : 'Yêu cầu làm lại'}
+        message={pendingDecision === 'approve'
+          ? 'Bạn có chắc chắn muốn phê duyệt kết quả xử lý cho phản ánh này?'
+          : 'Bạn có chắc chắn muốn gửi yêu cầu làm lại cho đơn vị xử lý?'}
+        confirmLabel={pendingDecision === 'approve' ? 'Phê duyệt' : 'Gửi yêu cầu'}
+        cancelLabel="Hủy"
+        onConfirm={handleConfirmDecision}
+        onCancel={() => {
+          setConfirmOpen(false);
+          setPendingDecision(null);
+        }}
+      />
+
+      <DelightToast
+        open={toastState.open}
+        message={toastState.message}
+        sub={toastState.sub}
+        onClose={() => setToastState({ open: false, message: '', sub: '' })}
+      />
     </PageTransition>
   );
 };

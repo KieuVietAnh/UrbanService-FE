@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
-import { toolsApi } from '@urbanmind/shared-api';
+import { toolsApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart, SLAPerformanceChart, CategoryVolumeBarChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 import PageTransition from '../../components/motion/PageTransition';
@@ -64,6 +64,14 @@ export const Dashboard = () => {
 
       if (currentRole === APP_ROLES.SERVICE_PROVIDER) {
         return await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
+      }
+
+      if (currentRole === APP_ROLES.SYSTEM_STAFF) {
+        const response = await managementFeedbackApi.getFeedbacks({ pageIndex: 0, pageSize: 10 });
+        if (response && Array.isArray(response.items)) {
+          return response.items;
+        }
+        return Array.isArray(response) ? response : [];
       }
 
       return await ticketApi.getTickets({}, { role: currentRole });
@@ -682,13 +690,7 @@ export const Dashboard = () => {
                       {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, {new Date(t.createdAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' })}
                     </td>
                     <td className="text-right py-3.5">
-                      {t.status === managementTypes.feedbackStatus.SUBMITTED ? (
-                        <Link to="/staff/queue" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
-                      ) : t.status === managementTypes.feedbackStatus.RESOLVED ? (
-                        <Link to="/staff/review" className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
-                      ) : (
-                        <Link to={`/tickets/${t.feedbackId}`} className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
-                      )}
+                      <Link to={`/staff/feedbacks/${t.feedbackId}`} className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
                     </td>
                   </tr>
                 ))}

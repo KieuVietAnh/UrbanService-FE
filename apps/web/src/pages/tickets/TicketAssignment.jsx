@@ -12,8 +12,7 @@ const FALLBACK_CATEGORIES = [
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { assignmentApi } from '../../services/api/assignmentApi';
-import { toolsApi } from '@urbanmind/shared-api';
+import { toolsApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import { signalrService } from '../../services/socket/signalrService';
 import * as Lucide from 'lucide-react';
@@ -37,23 +36,34 @@ export const TicketAssignment = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
+  const [providerCandidatesLoaded, setProviderCandidatesLoaded] = useState(false);
 
   useEffect(() => {
     const loadDetails = async () => {
       try {
         const role = user?.role || 'system-staff';
         const resTicket = await ticketApi.getTicketById(id, { role });
-        const resOps = await assignmentApi.getOperators(resTicket?.categoryId);
+        const providerCandidates = await managementFeedbackApi.getProviderCandidates(id);
         const categoryResponse = await toolsApi.getCategories();
         const normalizedCategories = Array.isArray(categoryResponse) && categoryResponse.length > 0
           ? categoryResponse
           : FALLBACK_CATEGORIES;
+        const normalizedOperators = Array.isArray(providerCandidates)
+          ? providerCandidates.map((candidate) => ({
+              coordinatorId: candidate.coordinatorId ?? candidate.operatorId ?? candidate.id,
+              operatorId: candidate.coordinatorId ?? candidate.operatorId ?? candidate.id,
+              operatorName: candidate.providerName || candidate.coordinatorName || candidate.name || 'Unnamed provider',
+              contactPhone: candidate.contactPhone || candidate.phone || candidate.contactNumber || '',
+              ...candidate,
+            }))
+          : [];
 
         setTicket(resTicket);
-        setOperators(Array.isArray(resOps) ? resOps : []);
+        setOperators(normalizedOperators);
         setCategories(normalizedCategories);
-        if (resOps.length > 0) {
-          setSelectedOperatorId(resOps[0].operatorId);
+        setProviderCandidatesLoaded(true);
+        if (normalizedOperators.length > 0) {
+          setSelectedOperatorId(normalizedOperators[0].coordinatorId ?? normalizedOperators[0].operatorId);
         }
       } catch (err) {
         console.error(err);
@@ -71,20 +81,21 @@ export const TicketAssignment = () => {
   const handleAssign = async (e) => {
     e.preventDefault();
     setError('');
-    const resolvedOperatorId = selectedOperatorId || manualOperatorId;
+    const resolvedOperatorId = String(selectedOperatorId || manualOperatorId || '').trim();
     if (!resolvedOperatorId) {
       setError('Vui lòng chọn hoặc nhập mã đơn vị xử lý.');
       return;
     }
 
-    const operatorId = Number(resolvedOperatorId);
-    if (!Number.isInteger(operatorId) || operatorId <= 0) {
+    const coordinatorId = Number(resolvedOperatorId);
+    if (!Number.isInteger(coordinatorId) || coordinatorId <= 0) {
       setError('Đơn vị xử lý không hợp lệ.');
       return;
     }
 
-    const selectedOperator = operators.find((op) => Number(op.operatorId) === operatorId);
-    if (!selectedOperator && operators.length > 0) {
+    const selectedOperator = operators.find((op) => Number(op.coordinatorId ?? op.operatorId) === coordinatorId);
+    const hasManualOperator = Boolean(manualOperatorId?.trim());
+    if (!selectedOperator && operators.length > 0 && !hasManualOperator) {
       setError('Đơn vị xử lý đã chọn không tồn tại. Vui lòng kiểm tra lại mã hoặc tải lại trang.');
       return;
     }
@@ -109,12 +120,12 @@ export const TicketAssignment = () => {
     try {
       const assignmentPayload = {
         feedbackId,
-        operatorId,
+        coordinatorId,
         staffUserId: user.userId,
         note,
       };
-      await assignmentApi.assignTicket(assignmentPayload);
-      signalrService.notifyAssignmentUpdated(feedbackId, operatorId, selectedOperator?.operatorName || selectedOperator?.fullName || '', user);
+      await managementFeedbackApi.assignToOperator(assignmentPayload);
+      signalrService.notifyAssignmentUpdated(feedbackId, coordinatorId, selectedOperator?.operatorName || selectedOperator?.fullName || '', user);
       setMessage({ type: 'success', text: 'Phân công thành công. Trạng thái đã được cập nhật cho người xử lý.' });
       navigate(`/tickets/${feedbackId}`);
     } catch (err) {
@@ -195,14 +206,14 @@ export const TicketAssignment = () => {
             </div>
           )}
 
-          {operators.length === 0 && (
+          {providerCandidatesLoaded && operators.length === 0 && (
             <div className="alert alert-warning text-xs rounded-xl space-y-2">
               <div className="flex gap-2">
                 <Lucide.AlertTriangle size={16} className="flex-shrink-0" />
                 <div>
                   <p className="font-bold">Không thể tải danh sách đơn vị xử lý</p>
-                  <p className="text-[11px] mt-1">Tài khoản của bạn không có quyền truy cập danh sách này. Quyền Admin được yêu cầu.</p>
-                  <p className="text-[11px] mt-1 italic">Vui lòng liên hệ với Admin để được cấp quyền hoặc sử dụng tài khoản Admin.</p>
+                  <p className="text-[11px] mt-1">Hiện tại chưa có đơn vị xử lý phù hợp được trả về cho phản ánh này.</p>
+                 
                 </div>
               </div>
             </div>
@@ -225,7 +236,7 @@ export const TicketAssignment = () => {
                   <option value="">-- Chọn từ danh sách đơn vị xử lý --</option>
                   {operators.map((op) => (
                     <option key={op.operatorId} value={op.operatorId}>
-                      {op.operatorName} ({op.contactPhone})
+                      {op.operatorName}{op.contactPhone ? ` (${op.contactPhone})` : ''}
                     </option>
                   ))}
                 </select>
