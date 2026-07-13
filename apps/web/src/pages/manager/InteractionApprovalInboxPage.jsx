@@ -3,9 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { managementTypes, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
-import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
+import { EmptyState } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import { getApprovalQueueStatus, getApprovalQueueTitle } from './approvalQueueUtils';
+import { getApprovalQueueTitle } from './approvalQueueUtils';
 
 export const InteractionApprovalInboxPage = () => {
   const navigate = useNavigate();
@@ -39,7 +39,7 @@ export const InteractionApprovalInboxPage = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize, search]);
 
   useEffect(() => {
     const refreshQueue = async () => {
@@ -48,7 +48,7 @@ export const InteractionApprovalInboxPage = () => {
     };
 
     refreshQueue();
-  }, [search, pageSize, location.state?.refreshKey]);
+  }, [search, pageSize, location.state?.refreshKey, loadItems]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const pageLabel = totalCount === 0 ? '0' : `${pageIndex + 1}/${totalPages}`;
