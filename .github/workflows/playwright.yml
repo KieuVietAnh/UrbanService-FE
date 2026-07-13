@@ -63,6 +63,8 @@ jobs:
 
       - name: Run Playwright E2E smoke tests
         working-directory: apps/web
+        env:
+          BASE_URL: http://urbanservice.me
         run: pnpm exec playwright test --project=smoke
 
       - name: Ensure Playwright report path exists
