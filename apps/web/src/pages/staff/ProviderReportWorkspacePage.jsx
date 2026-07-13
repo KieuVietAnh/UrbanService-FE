@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { LoadingSpinner } from '@urbanmind/shared-ui';
+import { LoadingSpinner, CompletionDocumentsCard } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
 
@@ -49,6 +50,15 @@ export const ProviderReportWorkspacePage = () => {
   const [logSaving, setLogSaving] = useState(false);
   const [logFormError, setLogFormError] = useState('');
   const [toastOpen, setToastOpen] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState('');
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [documentDescription, setDocumentDescription] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
@@ -88,6 +98,33 @@ export const ProviderReportWorkspacePage = () => {
     loadContactLogs();
   }, [providerReportId, activeTab]);
 
+  useEffect(() => {
+    const loadCompletionDocuments = async () => {
+      if (!providerReportId || activeTab !== 'completion-documents') return;
+      setDocumentsLoading(true);
+      setDocumentsError('');
+      try {
+        const response = await managementFeedbackApi.getProviderReportCompletionDocuments(providerReportId);
+        const nextDocuments = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.items)
+            ? response.items
+            : Array.isArray(response?.data)
+              ? response.data
+              : [];
+        setDocuments(nextDocuments);
+      } catch (err) {
+        console.error('Failed to load completion documents', err);
+        setDocumentsError(err?.message || 'Không thể tải tài liệu hoàn thành.');
+        setDocuments([]);
+      } finally {
+        setDocumentsLoading(false);
+      }
+    };
+
+    loadCompletionDocuments();
+  }, [providerReportId, activeTab]);
+
   const provider = report?.provider || report?.operator || report?.assignedOperator || {};
   const coordinator = report?.coordinator || report?.contact || {};
 
@@ -98,6 +135,109 @@ export const ProviderReportWorkspacePage = () => {
       return bDate - aDate;
     });
   }, [contactLogs]);
+
+  const imageDocuments = useMemo(() => {
+    return documents.filter((document) => {
+      const fileName = String(document?.fileName || document?.name || '').toLowerCase();
+      return fileName.match(/\.(png|jpe?g|gif|webp|svg)$/) || document?.contentType?.includes('image');
+    });
+  }, [documents]);
+
+  const openImagePreview = (document, index) => {
+    const fileUrl = document?.fileUrl || document?.url || document?.downloadUrl || document?.documentUrl;
+    if (!fileUrl) return;
+    const imageIndex = imageDocuments.findIndex((item) => {
+      const currentFileName = String(item?.fileName || item?.name || '').toLowerCase();
+      const targetFileName = String(document?.fileName || document?.name || '').toLowerCase();
+      return currentFileName === targetFileName && (item?.fileUrl || item?.url || item?.downloadUrl || item?.documentUrl) === fileUrl;
+    });
+    setSelectedImage(fileUrl);
+    setSelectedImageIndex(imageIndex >= 0 ? imageIndex : index);
+  };
+
+  const closeImagePreview = () => {
+    setSelectedImage(null);
+    setSelectedImageIndex(0);
+  };
+
+  const showImagePreview = (direction) => {
+    if (imageDocuments.length === 0) return;
+    const nextIndex = (selectedImageIndex + direction + imageDocuments.length) % imageDocuments.length;
+    const nextDocument = imageDocuments[nextIndex];
+    const nextUrl = nextDocument?.fileUrl || nextDocument?.url || nextDocument?.downloadUrl || nextDocument?.documentUrl;
+    if (nextUrl) {
+      setSelectedImage(nextUrl);
+      setSelectedImageIndex(nextIndex);
+    }
+  };
+
+  const handleDocumentDownload = (document) => {
+    const fileUrl = document?.fileUrl || document?.url || document?.downloadUrl || document?.documentUrl;
+    if (!fileUrl) {
+      setUploadError('Không có đường dẫn tải xuống cho tài liệu này.');
+      return;
+    }
+
+    window.open(fileUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDocumentUpload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const supportedFiles = files.filter((file) => {
+      const acceptTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+      const extension = String(file.name || '').split('.').pop()?.toLowerCase();
+      return acceptTypes.includes(file.type) || ['jpg', 'jpeg', 'png', 'pdf'].includes(extension);
+    });
+
+    const trimmedDescription = String(documentDescription || '').trim();
+
+    if (trimmedDescription.length > 1000) {
+      setUploadError('Mô tả không được vượt quá 1000 ký tự.');
+      event.target.value = '';
+      return;
+    }
+
+    if (supportedFiles.length !== files.length) {
+      setUploadError('Chỉ hỗ trợ tệp JPG, PNG hoặc PDF.');
+    }
+
+    if (!supportedFiles.length) {
+      event.target.value = '';
+      return;
+    }
+
+    setUploadingDocuments(true);
+    setUploadError('');
+
+    try {
+      for (const file of supportedFiles) {
+        await managementFeedbackApi.uploadCompletionDocument(providerReportId, file, {
+          fileName: file.name,
+          description: trimmedDescription,
+        });
+      }
+
+      const response = await managementFeedbackApi.getProviderReportCompletionDocuments(providerReportId);
+      const nextDocuments = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.items)
+          ? response.items
+          : Array.isArray(response?.data)
+            ? response.data
+            : [];
+      setDocuments(nextDocuments);
+      setDocumentDescription('');
+      setToastOpen(true);
+    } catch (err) {
+      console.error('Failed to upload completion documents', err);
+      setUploadError(err?.message || 'Không thể tải lên tài liệu hoàn thành.');
+    } finally {
+      setUploadingDocuments(false);
+      event.target.value = '';
+    }
+  };
 
   if (loading) {
     return (<div className="py-12 flex justify-center"><LoadingSpinner /></div>);
@@ -352,9 +492,72 @@ export const ProviderReportWorkspacePage = () => {
               )}
 
               {activeTab === 'completion-documents' && (
-                <div>
-                  <h3 className="font-bold">Completion Documents</h3>
-                  <p className="mt-2 text-sm text-slate-500">Completion documents UI not implemented yet.</p>
+                <div className="space-y-6">
+                  <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 className="font-bold">Completion Documents</h3>
+                        <p className="mt-2 text-sm text-slate-600">Tải lên bằng chứng hoàn thành từ nhà thầu và xem lại trước khi duyệt.</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          multiple
+                          accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                          className="hidden"
+                          onChange={handleDocumentUpload}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingDocuments}
+                        >
+                          {uploadingDocuments ? <span className="loading loading-spinner loading-xs" /> : <Lucide.UploadCloud size={14} />}
+                          {uploadingDocuments ? 'Đang tải...' : 'Tải lên'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 space-y-3">
+                      <label className="block space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Description</span>
+                        <textarea
+                          value={documentDescription}
+                          onChange={(event) => setDocumentDescription(event.target.value)}
+                          placeholder="Thêm mô tả cho bằng chứng hoàn thành..."
+                          rows={4}
+                          maxLength={1000}
+                          className="textarea textarea-bordered w-full"
+                        />
+                      </label>
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>Hỗ trợ: JPG, PNG, PDF</span>
+                        <span>{documentDescription.trim().length}/1000</span>
+                      </div>
+                    </div>
+                    {uploadError ? (
+                      <div className="mt-3"><ErrorAlert message={uploadError} onClose={() => setUploadError('')} /></div>
+                    ) : null}
+                  </div>
+
+                  {documentsLoading ? (
+                    <div className="py-12 flex justify-center"><LoadingSpinner /></div>
+                  ) : documentsError ? (
+                    <ErrorAlert message={documentsError} onClose={() => setDocumentsError('')} />
+                  ) : documents.length === 0 ? (
+                    <div className="rounded-[1.2rem] border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+                      Chưa có tài liệu hoàn thành nào được tải lên.
+                    </div>
+                  ) : (
+                    <CompletionDocumentsCard
+                      documents={documents}
+                      onPreview={openImagePreview}
+                      onDownload={handleDocumentDownload}
+                      emptyMessage="Chưa có tài liệu hoàn thành nào được tải lên."
+                    />
+                  )}
                 </div>
               )}
 
@@ -387,10 +590,34 @@ export const ProviderReportWorkspacePage = () => {
         </aside>
       </div>
 
+      {selectedImage ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 px-4 py-6">
+          <div className="relative w-full max-w-5xl rounded-[1.5rem] border border-slate-700 bg-slate-950 p-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-200">
+              <div className="truncate">{imageDocuments[selectedImageIndex]?.fileName || imageDocuments[selectedImageIndex]?.name || 'Preview'}</div>
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn btn-ghost btn-sm text-slate-200" onClick={() => showImagePreview(-1)}>
+                  <Lucide.ChevronLeft size={16} />
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm text-slate-200" onClick={() => showImagePreview(1)}>
+                  <Lucide.ChevronRight size={16} />
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm text-slate-200" onClick={closeImagePreview}>
+                  <Lucide.X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="flex min-h-[60vh] items-center justify-center overflow-hidden rounded-[1.25rem] bg-slate-900">
+              <img src={selectedImage} alt="Completion document preview" className="max-h-[70vh] max-w-full object-contain" />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <DelightToast
         open={toastOpen}
-        message="Đã lưu lịch sử liên hệ"
-        sub="Nhật ký liên hệ mới đã được thêm vào báo cáo."
+        message="Completion document uploaded successfully"
+        sub="Tài liệu hoàn thành đã được tải lên và hiển thị trong danh sách."
         onClose={() => setToastOpen(false)}
       />
     </div>

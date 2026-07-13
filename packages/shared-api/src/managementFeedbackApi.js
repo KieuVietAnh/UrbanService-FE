@@ -235,6 +235,50 @@ export const managementFeedbackApi = {
     return [];
   },
 
+  async getProviderReportCompletionDocuments(providerReportId) {
+    const candidates = [
+      `/api/management/provider-reports/${providerReportId}/completion-documents`,
+      `/api/management/provider-reports/${providerReportId}/documents`,
+    ];
+
+    for (const endpoint of candidates) {
+      try {
+        return await axiosClient.get(endpoint);
+      } catch (error) {
+        if (endpoint === candidates[candidates.length - 1]) {
+          return [];
+        }
+      }
+    }
+
+    return [];
+  },
+
+  async uploadCompletionDocument(providerReportId, file, metadata = {}) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (metadata.fileName) {
+      formData.append('fileName', metadata.fileName);
+    }
+
+    if (metadata.uploadedBy) {
+      formData.append('uploadedBy', metadata.uploadedBy);
+    }
+
+    const response = await axiosClient.post(
+      `/api/management/provider-reports/${providerReportId}/completion-documents`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+
+    return response;
+  },
+
   // Verify feedback
   async verifyFeedback(feedbackId, verifyData = {}) {
     const response = await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`, verifyData);
