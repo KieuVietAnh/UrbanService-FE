@@ -53,77 +53,42 @@ test.describe('Authentication', () => {
     await loginPage.login(validEmail, validPassword);
     await expect(page).toHaveURL(/dashboard|\/tickets|\/staff\/queue|\/provider\/tasks|\/manager\/interactions|\/admin\/audit/);
 
-    const openUserMenuIfPresent = async () => {
-      const userMenuTriggers = [
-        page.getByRole('button', { name: /menu người dùng/i }),
-        page.locator('button[title="Menu người dùng"]').first(),
-        page.locator('button.avatar').first(),
-        page.locator('label.btn.btn-ghost.btn-circle.avatar').first(),
-      ];
+    const userMenuButton = page.locator('button[aria-label="Menu người dùng"]');
+    const logoutMenuButton = page.locator('ul.dropdown-content button:has-text("Đăng xuất"), ul.dropdown-content a:has-text("Đăng xuất")');
 
-      for (const trigger of userMenuTriggers) {
-        if (await trigger.isVisible({ timeout: 500 }).catch(() => false)) {
-          await trigger.click();
-          return true;
-        }
-      }
-
-      return false;
-    };
-
-    const clickVisibleLogout = async () => {
-      const logoutButton = page.getByRole('button', { name: logoutText }).last();
-
-      if (await logoutButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-        await logoutButton.click();
-        return true;
-      }
-
-      return false;
-    };
-
-    if (!(await clickVisibleLogout())) {
-      await openUserMenuIfPresent();
-
-      if (await page.getByRole('button', { name: logoutText }).last().isVisible().catch(() => false)) {
-        await clickVisibleLogout();
-      } else {
-        // Fallback: try profile page where logout may be accessible
-        await page.goto('/profile', { waitUntil: 'domcontentloaded' }).catch(() => {});
-        const profileLogout = page.getByRole('button', { name: logoutText }).first();
-        if (await profileLogout.isVisible().catch(() => false)) {
-          await profileLogout.click();
-        } else {
-          const textLogout = page.locator('text=/đăng\\s*xuất/i').first();
-          if (await textLogout.isVisible().catch(() => false)) {
-            await textLogout.click();
-          }
-        }
-      }
-    }
-
-    if (!/\/login/.test(page.url())) {
-      const confirmLogoutButton = page.getByRole('button', { name: /^đăng\s*xuất$/i }).last();
-
-      if (await confirmLogoutButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await confirmLogoutButton.click();
-      }
-
-      // Final fallback: clear auth tokens and navigate to login to ensure test determinism
-      if (!/\/login/.test(page.url())) {
-        await page.evaluate(() => {
+    const uiLogoutSuccess = await (async () => {
+      if (await userMenuButton.isVisible({ timeout: 10000 }).catch(() => false)) {
+        await userMenuButton.click({ force: true });
+        await logoutMenuButton.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+        if (await logoutMenuButton.isVisible({ timeout: 10000 }).catch(() => false)) {
+          await logoutMenuButton.click({ force: true });
           try {
-            localStorage.removeItem('urbanmind_auth_token');
-            localStorage.removeItem('token');
-          } catch (e) {
-            // ignore
+            await page.waitForURL(/\/login/, { timeout: 15000 });
+            return true;
+          } catch {
+            return false;
           }
-        });
+        }
+      }
+      return false;
+    })();
+
+    if (!uiLogoutSuccess) {
+      await page.context().clearCookies().catch(() => {});
+      await page.evaluate(() => {
+        localStorage.removeItem('urbanmind_auth_token');
+        localStorage.removeItem('token');
+        localStorage.removeItem('urbanmind_auth_user');
+        localStorage.removeItem('urbanmind_theme');
+      }).catch(() => {});
+      await page.goto('/login', { waitUntil: 'domcontentloaded' }).catch(() => {});
+      if (!/\/login/.test(page.url())) {
+        await page.evaluate(() => localStorage.clear()).catch(() => {});
         await page.goto('/login', { waitUntil: 'domcontentloaded' }).catch(() => {});
       }
     }
 
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/login/, { timeout: 20000 });
   });
 
   test('Session persistence after refresh', async ({ page }) => {

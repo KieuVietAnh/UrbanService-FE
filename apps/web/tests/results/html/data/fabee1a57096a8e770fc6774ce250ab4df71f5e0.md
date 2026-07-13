@@ -1,0 +1,360 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: smoke\dashboard.spec.ts >> Dashboard >> Dashboard loads with stats and charts
+- Location: tests\smoke\dashboard.spec.ts:31:3
+
+# Error details
+
+```
+Test timeout of 60000ms exceeded.
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - banner [ref=e6]:
+      - button "Trang chính" [ref=e8]:
+        - img [ref=e10]
+        - generic [ref=e13]:
+          - heading "UrbanMind" [level=1] [ref=e14]
+          - paragraph [ref=e15]: Citizen portal
+      - generic [ref=e16]:
+        - link "Trang chủ" [ref=e17] [cursor=pointer]:
+          - /url: /dashboard
+        - link "Gửi phản ánh" [ref=e18] [cursor=pointer]:
+          - /url: /tickets/create
+        - link "Phản ánh của tôi" [ref=e19] [cursor=pointer]:
+          - /url: /tickets
+        - link "Bảng tin" [ref=e20] [cursor=pointer]:
+          - /url: /community/feed
+        - link "Bản đồ sự cố" [ref=e21] [cursor=pointer]:
+          - /url: /community/map
+      - generic [ref=e22]:
+        - button "Toggle theme" [ref=e23]:
+          - img [ref=e24]
+        - button "Thông báo" [ref=e27] [cursor=pointer]:
+          - img [ref=e29]
+        - button "Menu người dùng" [ref=e33] [cursor=pointer]:
+          - img "User Avatar" [ref=e35]
+    - main [ref=e36]:
+      - generic [ref=e39]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - generic [ref=e42]:
+              - generic [ref=e43]:
+                - generic [ref=e44]: Dashboard Cư dân
+                - generic [ref=e45]:
+                  - heading "Chào, Test User!" [level=2] [ref=e46]
+                  - paragraph [ref=e47]: Theo dõi tiến trình phản ánh, xem hoạt động cộng đồng và nắm bắt niềm tin vào dịch vụ đô thị một cách trực quan.
+              - generic [ref=e49]:
+                - img [ref=e51]
+                - generic [ref=e54]:
+                  - heading "Chưa có phản ánh nào" [level=3] [ref=e55]
+                  - paragraph [ref=e56]: "Bắt đầu gửi báo cáo đầu tiên để giúp cải thiện khu vực sống của bạn. Dưới đây là một số mẹo để gửi phản ánh có ích:"
+                  - list [ref=e57]:
+                    - listitem [ref=e58]:
+                      - img [ref=e59]
+                      - generic [ref=e62]: "Tiêu đề ngắn gọn, rõ ràng (ví dụ: \"Đèn đường hỏng - trước 123 Lê Lợi\")."
+                    - listitem [ref=e63]:
+                      - img [ref=e64]
+                      - generic [ref=e67]: Gửi ảnh/video minh chứng, chụp cả khung cảnh để xác định điểm tham chiếu.
+                    - listitem [ref=e68]:
+                      - img [ref=e69]
+                      - generic [ref=e72]: Đính kèm vị trí chính xác bằng cách chạm vào bản đồ.
+                  - generic [ref=e73]:
+                    - link "Gửi phản ánh mới" [ref=e74] [cursor=pointer]:
+                      - /url: /tickets/create
+                    - link "Khám phá cộng đồng" [ref=e75] [cursor=pointer]:
+                      - /url: /community/feed
+            - generic [ref=e76]:
+              - generic [ref=e77]:
+                - paragraph [ref=e78]: Mở
+                - paragraph [ref=e79]: "0"
+                - paragraph [ref=e80]: Đang chờ giải quyết
+              - generic [ref=e81]:
+                - paragraph [ref=e82]: Đang xử lý
+                - paragraph [ref=e83]: "0"
+                - paragraph [ref=e84]: Đơn vị đang xử lý
+              - generic [ref=e85]:
+                - paragraph [ref=e86]: Hoàn thành
+                - paragraph [ref=e87]: "0"
+                - paragraph [ref=e88]: Kết quả đã đóng
+              - generic [ref=e89]:
+                - paragraph [ref=e90]: Tốc độ xử lý
+                - paragraph [ref=e91]: 0%
+                - paragraph [ref=e92]: Mức độ hoàn thành toàn thành phố
+            - generic [ref=e93]:
+              - generic [ref=e94]:
+                - generic [ref=e95]:
+                  - paragraph [ref=e96]: Niềm tin dịch vụ
+                  - paragraph [ref=e97]: 4.5/5
+                  - paragraph [ref=e98]: Chỉ số hài lòng cư dân
+                - img [ref=e100]
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - img [ref=e106]
+                  - text: Trung bình 18 giờ xử lý
+                - generic [ref=e109]:
+                  - img [ref=e110]
+                  - text: "API: Healthy"
+          - complementary [ref=e113]:
+            - generic [ref=e114]:
+              - generic [ref=e115]:
+                - generic [ref=e116]:
+                  - heading "Thông báo" [level=3] [ref=e117]
+                  - paragraph [ref=e118]: Cập nhật mới nhất để bạn luôn nắm được.
+                - generic [ref=e119]: Mới
+              - generic [ref=e120]:
+                - generic [ref=e121]:
+                  - paragraph [ref=e122]: Sự cố hạ tầng
+                  - paragraph [ref=e123]: Cải tạo vỉa hè gần chợ Phú Nhuận
+                  - paragraph [ref=e124]: Dự kiến hoàn thành trong 2 ngày.
+                - generic [ref=e125]:
+                  - paragraph [ref=e126]: Chỉ số cộng đồng
+                  - paragraph [ref=e127]: Khối lượng phản ánh giảm 8%/tuần
+                  - paragraph [ref=e128]: Thể hiện khả năng phối hợp dịch vụ tốt hơn.
+                - generic [ref=e129]:
+                  - paragraph [ref=e130]: Tin tức
+                  - paragraph [ref=e131]: Chương trình bảo trì đèn đường sắp diễn ra
+                  - paragraph [ref=e132]: Cập nhật lịch và khu vực thi công.
+            - generic [ref=e133]:
+              - generic [ref=e134]:
+                - generic [ref=e135]:
+                  - heading "Hoạt động cộng đồng" [level=3] [ref=e136]
+                  - paragraph [ref=e137]: Những vấn đề nổi bật tại khu vực chung.
+                - img [ref=e138]
+              - generic [ref=e141]: Dữ liệu hoạt động cộng đồng đang được cập nhật.
+        - generic [ref=e142]:
+          - generic [ref=e143]:
+            - heading "Báo cáo của bạn" [level=3] [ref=e144]
+            - paragraph [ref=e145]: Trạng thái hiện tại của các phản ánh bạn đã gửi.
+            - generic [ref=e146]:
+              - generic [ref=e147]:
+                - paragraph [ref=e148]: Chờ xử lý
+                - paragraph [ref=e149]: "0"
+              - generic [ref=e150]:
+                - paragraph [ref=e151]: Đang xử lý
+                - paragraph [ref=e152]: "0"
+              - generic [ref=e153]:
+                - paragraph [ref=e154]: Đã giải quyết
+                - paragraph [ref=e155]: "0"
+          - generic [ref=e156]:
+            - generic [ref=e157]:
+              - generic [ref=e158]:
+                - heading "Sức khỏe đô thị" [level=3] [ref=e159]
+                - paragraph [ref=e160]: Chỉ số tổng quan phản ánh thành phố.
+              - img [ref=e161]
+            - generic [ref=e164]:
+              - generic [ref=e165]:
+                - paragraph [ref=e166]: Vi phạm SLA
+                - paragraph [ref=e167]: "0"
+              - generic [ref=e168]:
+                - paragraph [ref=e169]: Độ ổn định API
+                - paragraph [ref=e170]: Healthy
+              - generic [ref=e171]:
+                - paragraph [ref=e172]: Trạng thái AI
+                - paragraph [ref=e173]: Idle (Listening)
+          - generic [ref=e174]:
+            - generic [ref=e175]:
+              - generic [ref=e176]:
+                - heading "Sự cố gần bạn" [level=3] [ref=e177]
+                - paragraph [ref=e178]: Các phản ánh gần đây được ghi nhận tại địa chỉ của bạn.
+              - img [ref=e179]
+            - generic [ref=e183]: Chưa có sự cố địa phương có địa chỉ rõ ràng.
+        - generic [ref=e184]:
+          - generic [ref=e186]:
+            - heading "Số Lượng Phản Ánh Theo Danh Mục" [level=4] [ref=e187]
+            - img [ref=e189]:
+              - generic [ref=e190] [cursor=pointer]:
+                - generic [ref=e192]: "18"
+                - generic [ref=e193]: Vệ
+              - generic [ref=e194] [cursor=pointer]:
+                - generic [ref=e196]: "12"
+                - generic [ref=e197]: Điện
+              - generic [ref=e198] [cursor=pointer]:
+                - generic [ref=e200]: "15"
+                - generic [ref=e201]: Cấp
+              - generic [ref=e202] [cursor=pointer]:
+                - generic [ref=e204]: "9"
+                - generic [ref=e205]: Đường
+              - generic [ref=e206] [cursor=pointer]:
+                - generic [ref=e208]: "6"
+                - generic [ref=e209]: Cây
+          - generic [ref=e211]:
+            - heading "Chỉ Số Cảm Xúc Cư Dân (AI)" [level=4] [ref=e212]
+            - generic [ref=e213]:
+              - img [ref=e214]
+              - generic [ref=e216]:
+                - generic [ref=e217]: 0%
+                - generic [ref=e218]: Tích cực
+            - generic [ref=e219]:
+              - generic [ref=e222]: "Tích cực: 0"
+              - generic [ref=e225]: "Trung tính: 0"
+              - generic [ref=e228]: "Tiêu cực: 0"
+          - generic [ref=e229]:
+            - generic [ref=e230]:
+              - generic [ref=e231]:
+                - heading "Hiệu năng SLA" [level=3] [ref=e232]
+                - paragraph [ref=e233]: Nhìn nhanh tiến độ xử lý theo tuần.
+              - img [ref=e234]
+            - generic [ref=e238]:
+              - heading "Tỷ Lệ Đạt Chỉ Tiêu SLA Theo Tháng" [level=4] [ref=e239]
+              - img [ref=e241]:
+                - generic [ref=e244] [cursor=pointer]:
+                  - generic [ref=e247]: 75%
+                  - generic [ref=e248]: T12
+                - generic [ref=e249] [cursor=pointer]:
+                  - generic [ref=e252]: 82%
+                  - generic [ref=e253]: T1
+                - generic [ref=e254] [cursor=pointer]:
+                  - generic [ref=e257]: 80%
+                  - generic [ref=e258]: T2
+                - generic [ref=e259] [cursor=pointer]:
+                  - generic [ref=e262]: 88%
+                  - generic [ref=e263]: T3
+                - generic [ref=e264] [cursor=pointer]:
+                  - generic [ref=e267]: 92%
+                  - generic [ref=e268]: T4
+                - generic [ref=e269] [cursor=pointer]:
+                  - generic [ref=e272]: 95%
+                  - generic [ref=e273]: T5
+                - generic [ref=e274]: 100%
+                - generic [ref=e275]: 50%
+                - generic [ref=e276]: 0%
+        - generic [ref=e277]:
+          - generic [ref=e278]:
+            - generic [ref=e279]:
+              - generic [ref=e280]:
+                - heading "Phản ánh gần đây" [level=3] [ref=e281]
+                - paragraph [ref=e282]: Xem lại các báo cáo mới nhất của bạn.
+              - link "Xem tất cả" [ref=e283] [cursor=pointer]:
+                - /url: /tickets
+                - text: Xem tất cả
+                - img [ref=e284]
+            - table [ref=e287]:
+              - rowgroup [ref=e288]:
+                - row "Mã Nội dung Trạng thái Ngày" [ref=e289]:
+                  - columnheader "Mã" [ref=e290]
+                  - columnheader "Nội dung" [ref=e291]
+                  - columnheader "Trạng thái" [ref=e292]
+                  - columnheader "Ngày" [ref=e293]
+              - rowgroup [ref=e294]:
+                - row "Bạn chưa có phản ánh gần đây." [ref=e295]:
+                  - cell "Bạn chưa có phản ánh gần đây." [ref=e296]
+          - generic [ref=e297]:
+            - generic [ref=e298]:
+              - img [ref=e300]
+              - generic [ref=e302]:
+                - heading "Tiện ích & Hỗ trợ" [level=3] [ref=e303]
+                - paragraph [ref=e304]: Những gợi ý giúp bạn gửi phản ánh hiệu quả hơn.
+            - generic [ref=e305]:
+              - generic [ref=e306]:
+                - paragraph [ref=e307]: Định vị thông minh
+                - paragraph [ref=e308]: Khai báo vị trí chính xác để đội ngũ xử lý đến nhanh hơn.
+              - generic [ref=e309]:
+                - paragraph [ref=e310]: Ảnh minh họa
+                - paragraph [ref=e311]: Chụp nhiều góc, đặc biệt là cả cảnh chung quanh để xác định phạm vi sự cố.
+              - generic [ref=e312]:
+                - paragraph [ref=e313]: Đánh giá kết quả
+                - paragraph [ref=e314]: Sau khi sự cố đóng, hãy cho biết chất lượng xử lý để cải thiện dịch vụ.
+    - contentinfo [ref=e315]:
+      - generic [ref=e316]:
+        - generic [ref=e317]:
+          - generic [ref=e318]:
+            - generic [ref=e319]:
+              - img [ref=e321]
+              - generic [ref=e324]: UrbanMind
+            - paragraph [ref=e325]: Hệ thống quản lý feedback và phản ánh dịch vụ đô thị thông minh.
+          - generic [ref=e326]:
+            - heading "Liên kết nhanh" [level=4] [ref=e327]
+            - list [ref=e328]:
+              - listitem [ref=e329]:
+                - link "Về chúng tôi" [ref=e330] [cursor=pointer]:
+                  - /url: /about
+              - listitem [ref=e331]:
+                - link "Bảng điều khiển" [ref=e332] [cursor=pointer]:
+                  - /url: /dashboard
+              - listitem [ref=e333]:
+                - link "Câu hỏi thường gặp" [ref=e334] [cursor=pointer]:
+                  - /url: "#faq"
+              - listitem [ref=e335]:
+                - link "Liên hệ hỗ trợ" [ref=e336] [cursor=pointer]:
+                  - /url: "#contact"
+          - generic [ref=e337]:
+            - heading "Tính năng" [level=4] [ref=e338]
+            - list [ref=e339]:
+              - listitem [ref=e340]:
+                - link "Quản lý phản ánh" [ref=e341] [cursor=pointer]:
+                  - /url: "#features"
+              - listitem [ref=e342]:
+                - link "Phân tích dữ liệu" [ref=e343] [cursor=pointer]:
+                  - /url: "#features"
+              - listitem [ref=e344]:
+                - link "AI Copilot" [ref=e345] [cursor=pointer]:
+                  - /url: "#features"
+              - listitem [ref=e346]:
+                - link "Bản đồ tương tác" [ref=e347] [cursor=pointer]:
+                  - /url: "#features"
+          - generic [ref=e348]:
+            - heading "Liên hệ" [level=4] [ref=e349]
+            - generic [ref=e350]:
+              - generic [ref=e351]:
+                - img [ref=e352]
+                - link "support@urbanmind.vn" [ref=e355] [cursor=pointer]:
+                  - /url: mailto:support@urbanmind.vn
+              - generic [ref=e356]:
+                - img [ref=e357]
+                - link "+84 (0)123 456 789" [ref=e359] [cursor=pointer]:
+                  - /url: tel:+84123456789
+              - generic [ref=e360]:
+                - link "Facebook" [ref=e361] [cursor=pointer]:
+                  - /url: "#"
+                  - img [ref=e362]
+                - link "Twitter" [ref=e368] [cursor=pointer]:
+                  - /url: "#"
+                  - img [ref=e369]
+                - link "LinkedIn" [ref=e372] [cursor=pointer]:
+                  - /url: "#"
+                  - img [ref=e373]
+        - generic [ref=e377]:
+          - generic [ref=e378]:
+            - link "Chính sách riêng tư" [ref=e379] [cursor=pointer]:
+              - /url: "#privacy"
+            - link "Điều khoản dịch vụ" [ref=e380] [cursor=pointer]:
+              - /url: "#terms"
+            - link "Quản lý cookies" [ref=e381] [cursor=pointer]:
+              - /url: "#cookies"
+          - paragraph [ref=e383]: © 2026 UrbanMind. Bản quyền được bảo lưu.
+  - button "Mở trợ lý AI" [ref=e384] [cursor=pointer]:
+    - img [ref=e385]
+  - generic [ref=e389]:
+    - generic [ref=e390]:
+      - generic [ref=e391]:
+        - img [ref=e392]
+        - generic [ref=e395]:
+          - heading "UrbanMind AI Copilot" [level=3] [ref=e396]
+          - paragraph [ref=e397]: Tư vấn pháp lý & phản ánh đô thị
+      - button "Đóng cửa sổ trợ lý" [ref=e398] [cursor=pointer]:
+        - img [ref=e399]
+    - generic [ref=e403]:
+      - img [ref=e406]
+      - generic [ref=e409]: Chào bạn! Tôi là UrbanMind Assist — trợ giúp bạn điều hướng quy trình phản ánh và giám sát vận hành đô thị. Bạn cần hỗ trợ gì hôm nay?
+    - generic [ref=e410]:
+      - generic [ref=e411]: "Gợi ý câu hỏi nhanh:"
+      - button "Mức phạt vứt rác?" [ref=e412] [cursor=pointer]
+      - button "SLA sửa đèn đường?" [ref=e413] [cursor=pointer]
+      - button "Báo mất nắp hố ga?" [ref=e414] [cursor=pointer]
+    - generic [ref=e415]:
+      - textbox "Hỏi AI" [ref=e416]:
+        - /placeholder: Hỏi AI về luật, thủ tục phản ánh...
+      - button "Gửi tin nhắn" [ref=e417] [cursor=pointer]:
+        - img [ref=e418]
+```
