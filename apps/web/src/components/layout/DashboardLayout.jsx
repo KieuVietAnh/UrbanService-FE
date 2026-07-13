@@ -61,10 +61,9 @@ export const DashboardLayout = ({ children }) => {
           <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-5 sm:p-6">
             <PageTransition className="mx-auto max-w-7xl space-y-6">
               {children}
+              {showFooter && <Footer />}
             </PageTransition>
           </main>
-
-          {showFooter && <Footer />}
         </div>
       </div>
 
