@@ -12,7 +12,7 @@ import MotionCard from '../../components/motion/MotionCard';
 import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
 import CelebrationBadge from '../../components/delight/CelebrationBadge';
 import { normalizeRole } from '../../utils/roleMap';
-import { managementTypes } from '@urbanmind/shared-types';
+import { APP_ROLES, managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 
 const SAFE_DASHBOARD_STATS = {
@@ -58,11 +58,11 @@ export const Dashboard = () => {
     try {
       if (!user) return [];
 
-      if (currentRole === 'service-user') {
+      if (currentRole === APP_ROLES.SERVICE_USER) {
         return await ticketApi.getTickets({ userId: user.userId }, { role: currentRole });
       }
 
-      if (currentRole === 'service-provider') {
+      if (currentRole === APP_ROLES.SERVICE_PROVIDER) {
         return await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
       }
 

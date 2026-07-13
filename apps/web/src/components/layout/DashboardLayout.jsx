@@ -7,6 +7,7 @@ import { Footer } from './Footer';
 import PageTransition from '../motion/PageTransition';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
+import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const DashboardLayout = ({ children }) => {
@@ -44,13 +45,13 @@ export const DashboardLayout = ({ children }) => {
     setInputVal(question);
   };
 
-  const showFooter = !user || user?.role === 'service-user';
+  const showFooter = !user || user?.role === APP_ROLES.SERVICE_USER;
 
   return (
     <div className="h-screen w-full overflow-hidden flex-col bg-slate-100 font-sans text-slate-900">
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}
-        {user?.role !== 'service-user' && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+        {user?.role !== APP_ROLES.SERVICE_USER && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         {/* Main container */}
         <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden bg-slate-50">

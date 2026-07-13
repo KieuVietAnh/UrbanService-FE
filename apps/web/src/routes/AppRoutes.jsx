@@ -1,6 +1,7 @@
 // src/routes/AppRoutes.jsx
 import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../contexts/AuthContext';
 import { ProtectedRoute } from '../guards/ProtectedRoute';
 import { RoleGuard } from '../guards/RoleGuard';
@@ -34,6 +35,7 @@ const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/Managemen
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
 const ResolutionReviewComparisonPage = lazy(() => import('../pages/staff/ResolutionReviewComparisonPage').then((m) => ({ default: m.ResolutionReviewComparisonPage })));
+const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
 
 const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspacePage').then((m) => ({ default: m.HelperWorkspacePage })));
 
@@ -42,6 +44,8 @@ const SentimentDashboard = lazy(() => import('../pages/analytics/SentimentDashbo
 const HeatmapDashboard = lazy(() => import('../pages/analytics/HeatmapDashboard').then((m) => ({ default: m.HeatmapDashboard })));
 const AboutPage = lazy(() => import('../pages/AboutPage').then((m) => ({ default: m.AboutPage })));
 const InteractionHistoryMonitoring = lazy(() => import('../pages/analytics/InteractionHistoryMonitoring').then((m) => ({ default: m.InteractionHistoryMonitoring })));
+const InteractionApprovalInboxPage = lazy(() => import('../pages/manager/InteractionApprovalInboxPage').then((m) => ({ default: m.InteractionApprovalInboxPage })));
+const InteractionApprovalDetailPage = lazy(() => import('../pages/manager/InteractionApprovalDetailPage').then((m) => ({ default: m.InteractionApprovalDetailPage })));
 
 const UserManagement = lazy(() => import('../pages/management/UserManagement').then((m) => ({ default: m.UserManagement })));
 const FeedbackManagement = lazy(() => import('../pages/management/FeedbackManagement').then((m) => ({ default: m.FeedbackManagement })));
@@ -93,7 +97,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/tickets/create" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['service-user']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SERVICE_USER]}>
             <DashboardLayout>
               <CreateTicketPage />
             </DashboardLayout>
@@ -109,7 +113,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/tickets/:feedbackId/result" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['service-user']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SERVICE_USER]}>
             <DashboardLayout>
               <ResolutionResultPage />
             </DashboardLayout>
@@ -118,7 +122,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/tickets/:feedbackId/rework" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['service-user']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SERVICE_USER]}>
             <DashboardLayout>
               <ReworkCenterPage />
             </DashboardLayout>
@@ -127,7 +131,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/tickets/archive" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['service-user']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SERVICE_USER]}>
             <DashboardLayout>
               <ClosedFeedbackArchivePage />
             </DashboardLayout>
@@ -176,7 +180,7 @@ export const AppRoutes = () => {
       {/* System Staff Routes */}
       <Route path="/staff/queue" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <AIReviewDetail />
             </DashboardLayout>
@@ -185,7 +189,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/staff/feedbacks" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <ManagementFeedbackListPage />
             </DashboardLayout>
@@ -194,7 +198,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/staff/feedbacks/:feedbackId" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <ManagementFeedbackDetailPage />
             </DashboardLayout>
@@ -203,7 +207,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/staff/feedbacks/:feedbackId/request-info" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <RequestInfoWorkspacePage />
             </DashboardLayout>
@@ -212,16 +216,25 @@ export const AppRoutes = () => {
       } />
       <Route path="/staff/feedbacks/:feedbackId/history" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <AssignmentHistoryPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/staff/provider-reports/:providerReportId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <ProviderReportWorkspacePage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/staff/audit" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <StaffAuditTrailPage />
             </DashboardLayout>
@@ -230,7 +243,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/staff/review/:feedbackId/compare" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <ResolutionReviewComparisonPage />
             </DashboardLayout>
@@ -239,7 +252,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/staff/duplicates" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <DuplicateDetection />
             </DashboardLayout>
@@ -248,7 +261,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/staff/review" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <CompletedTicketReview />
             </DashboardLayout>
@@ -257,7 +270,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/tickets/assign/:id" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['system-staff']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <TicketAssignment />
             </DashboardLayout>
@@ -268,7 +281,7 @@ export const AppRoutes = () => {
       {/* Service Provider (Operator) Routes */}
       <Route path="/provider/tasks" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['service-provider']}>
+          <RoleGuard allowedRoles={[APP_ROLES.SERVICE_PROVIDER]}>
             <DashboardLayout>
               <HelperWorkspacePage />
             </DashboardLayout>
@@ -279,16 +292,34 @@ export const AppRoutes = () => {
       {/* Interaction Manager Routes */}
       <Route path="/manager/interactions" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['interaction-manager']}>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
             <DashboardLayout>
               <InteractionHistoryMonitoring />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/manager/approvals" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <InteractionApprovalInboxPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/manager/approvals/:feedbackId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <InteractionApprovalDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/analytics/sla" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['interaction-manager', 'administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <SLAAnalytics />
             </DashboardLayout>
@@ -297,7 +328,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/analytics/sentiment" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['interaction-manager', 'administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <SentimentDashboard />
             </DashboardLayout>
@@ -306,7 +337,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/analytics/heatmap" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['interaction-manager', 'administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <HeatmapDashboard />
             </DashboardLayout>
@@ -317,7 +348,7 @@ export const AppRoutes = () => {
       {/* Administrator Configuration Routes */}
       <Route path="/management/users" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <UserManagement />
             </DashboardLayout>
@@ -326,7 +357,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/management/feedbacks" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <FeedbackManagement />
             </DashboardLayout>
@@ -335,7 +366,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/management/bookings" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <BookingManagement />
             </DashboardLayout>
@@ -344,7 +375,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/management/categories" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <CategoryManagement />
             </DashboardLayout>
@@ -353,7 +384,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/management/sla" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <SLAConfiguration />
             </DashboardLayout>
@@ -362,7 +393,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/management/integrations" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <IntegrationSettings />
             </DashboardLayout>
@@ -371,7 +402,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/admin/audit" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <AuditLog />
             </DashboardLayout>
@@ -380,7 +411,7 @@ export const AppRoutes = () => {
       } />
       <Route path="/admin/performance" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={['administrator']}>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <PerformanceDashboard />
             </DashboardLayout>

@@ -20,7 +20,7 @@ export default function CommentForm({ feedbackId, onPosted }) {
         method: 'POST',
         credentials: 'include',
         headers,
-        body: JSON.stringify({ message: text.trim() }),
+        body: JSON.stringify({ content: text.trim() }),
       });
       if (!res.ok) throw new Error('Failed to post');
       setText('');

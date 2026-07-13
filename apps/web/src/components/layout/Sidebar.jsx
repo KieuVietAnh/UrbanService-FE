@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
+import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
 
@@ -14,20 +15,20 @@ import managerMenu from '../../roles/interaction-manager/sidebarMenu';
 import adminMenu from '../../roles/administrator/sidebarMenu';
 
 const menuMapping = {
-  'service-user': userMenu,
-  'system-staff': staffMenu,
-  'service-provider': providerMenu,
-  'interaction-manager': managerMenu,
-  'administrator': adminMenu
+  [APP_ROLES.SERVICE_USER]: userMenu,
+  [APP_ROLES.SYSTEM_STAFF]: staffMenu,
+  [APP_ROLES.SERVICE_PROVIDER]: providerMenu,
+  [APP_ROLES.INTERACTION_MANAGER]: managerMenu,
+  [APP_ROLES.ADMINISTRATOR]: adminMenu
 };
 
 const getRoleNameVietnamese = (role) => {
   switch (role) {
-    case 'service-user': return 'Người Dân';
-    case 'system-staff': return 'Nhân Viên Tiếp Nhận';
-    case 'service-provider': return 'Đơn Vị Xử Lý';
-    case 'interaction-manager': return 'Quản Lý Tương Tác';
-    case 'administrator': return 'Quản Trị Viên';
+    case APP_ROLES.SERVICE_USER: return 'Người Dân';
+    case APP_ROLES.SYSTEM_STAFF: return 'Nhân Viên Tiếp Nhận';
+    case APP_ROLES.SERVICE_PROVIDER: return 'Đơn Vị Xử Lý';
+    case APP_ROLES.INTERACTION_MANAGER: return 'Quản Lý Tương Tác';
+    case APP_ROLES.ADMINISTRATOR: return 'Quản Trị Viên';
     default: return 'Khách';
   }
 };

@@ -1,16 +1,17 @@
 // src/pages/management/RoleManagement.jsx
 import { Fragment, useState } from 'react';
+import { APP_ROLES } from '@urbanmind/shared-types';
 import { SuccessAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
 
 export const RoleManagement = () => {
   // Mock permission matrix state
   const roles = [
-    { key: 'service-user', name: 'Resident (Người dân)' },
-    { key: 'system-staff', name: 'System Staff (Cán bộ tiếp nhận)' },
-    { key: 'service-provider', name: 'Service Provider (Kỹ thuật viên)' },
-    { key: 'interaction-manager', name: 'Interaction Manager (Quản lý)' },
-    { key: 'administrator', name: 'Admin Hệ Thống' }
+    { key: APP_ROLES.SERVICE_USER, name: 'Resident (Người dân)' },
+    { key: APP_ROLES.SYSTEM_STAFF, name: 'System Staff (Cán bộ tiếp nhận)' },
+    { key: APP_ROLES.SERVICE_PROVIDER, name: 'Service Provider (Kỹ thuật viên)' },
+    { key: APP_ROLES.INTERACTION_MANAGER, name: 'Interaction Manager (Quản lý)' },
+    { key: APP_ROLES.ADMINISTRATOR, name: 'Admin Hệ Thống' }
   ];
 
   const permissions = [
@@ -30,39 +31,39 @@ export const RoleManagement = () => {
 
   // Map showing which roles have which permissions
   const [matrix, setMatrix] = useState({
-    'service-user': ['ticket:create', 'ticket:view-own', 'ticket:rate', 'ticket:chat'],
-    'system-staff': ['ticket:view-all', 'ticket:verify', 'ticket:merge', 'ticket:assign', 'ticket:inspect-resolution', 'ticket:chat'],
-    'service-provider': ['ticket:view-assigned', 'ticket:update-progress', 'ticket:resolve', 'ticket:chat'],
-    'interaction-manager': ['analytics:view', 'ticket:chat'],
-    'administrator': ['ticket:view-all', 'user:manage', 'category:manage', 'sla:manage', 'integration:manage', 'system:logs']
+    [APP_ROLES.SERVICE_USER]: ['ticket:create', 'ticket:view-own', 'ticket:rate', 'ticket:chat'],
+    [APP_ROLES.SYSTEM_STAFF]: ['ticket:view-all', 'ticket:verify', 'ticket:merge', 'ticket:assign', 'ticket:inspect-resolution', 'ticket:chat'],
+    [APP_ROLES.SERVICE_PROVIDER]: ['ticket:view-assigned', 'ticket:update-progress', 'ticket:resolve', 'ticket:chat'],
+    [APP_ROLES.INTERACTION_MANAGER]: ['analytics:view', 'ticket:chat'],
+    [APP_ROLES.ADMINISTRATOR]: ['ticket:view-all', 'user:manage', 'category:manage', 'sla:manage', 'integration:manage', 'system:logs']
   });
 
   const roleMeta = {
-    'service-user': {
+    [APP_ROLES.SERVICE_USER]: {
       label: 'Người dân',
       tone: 'badge-info',
       icon: Lucide.Users,
       description: 'Gửi phản ánh và theo dõi hồ sơ cá nhân'
     },
-    'system-staff': {
+    [APP_ROLES.SYSTEM_STAFF]: {
       label: 'Cán bộ tiếp nhận',
       tone: 'badge-warning',
       icon: Lucide.ClipboardCheck,
       description: 'Kiểm duyệt, gộp trùng và điều phối phản ánh'
     },
-    'service-provider': {
+    [APP_ROLES.SERVICE_PROVIDER]: {
       label: 'Đơn vị xử lý',
       tone: 'badge-success',
       icon: Lucide.Wrench,
       description: 'Cập nhật tiến độ và báo cáo hoàn thành'
     },
-    'interaction-manager': {
+    [APP_ROLES.INTERACTION_MANAGER]: {
       label: 'Quản lý tương tác',
       tone: 'badge-secondary',
       icon: Lucide.MessagesSquare,
       description: 'Theo dõi phân tích và tương tác người dùng'
     },
-    'administrator': {
+    [APP_ROLES.ADMINISTRATOR]: {
       label: 'Quản trị viên',
       tone: 'badge-primary',
       icon: Lucide.ShieldCheck,
@@ -102,7 +103,7 @@ export const RoleManagement = () => {
   const coverageRate = totalPermissionSlots > 0
     ? Math.round((grantedPermissionCount / totalPermissionSlots) * 100)
     : 0;
-  const administratorPermissionCount = (matrix.administrator || []).filter(permission => (
+  const administratorPermissionCount = (matrix[APP_ROLES.ADMINISTRATOR] || []).filter(permission => (
     listedPermissionKeys.includes(permission)
   )).length;
 

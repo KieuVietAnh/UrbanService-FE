@@ -1,9 +1,11 @@
 // src/components/layout/Header.jsx
 import { Link, useLocation, useNavigate, NavLink } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
+import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { ThemeToggle } from '../../components/design-system';
+import { normalizeRole } from '../../utils/roleMap';
 
 export const Header = ({ onMenuToggle }) => {
   const { user, logout } = useAuth();
@@ -102,7 +104,7 @@ export const Header = ({ onMenuToggle }) => {
     );
   };
 
-  const isCitizen = user?.role === 'service-user';
+  const isCitizen = normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
 
   return (
     <header className="admin-topbar navbar sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-slate-200/70 bg-sky-50/75 px-6 py-3 shadow-[0_10px_30px_rgba(30,64,175,0.045)] backdrop-blur-xl supports-[backdrop-filter]:bg-sky-50/68">

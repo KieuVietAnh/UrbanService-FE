@@ -12,8 +12,8 @@ UrbanMind là nền tảng giúp người dân phản ánh sự cố đô thị 
 
 ## 🌐 Deploy hiện tại
 
-- Frontend: `http://152.42.177.174`
-- Backend Swagger UI: [http://152.42.177.174:8080/swagger/index.html](http://152.42.177.174:8080/swagger/index.html)
+- Frontend: `https://urbanservice.me`
+- Backend Swagger UI: [https://api.urbanservice.me/swagger/index.html](https://api.urbanservice.me/swagger/index.html)
 
 ---
 
@@ -108,12 +108,12 @@ packages/
 ## 🔌 Backend API
 
 ### Deploy hiện tại
-- Frontend: `http://152.42.177.174`
-- Backend Swagger UI: `http://152.42.177.174:8080/swagger/index.html`
+- Frontend: `https://urbanservice.me`
+- Backend Swagger UI: `https://api.urbanservice.me/swagger/index.html`
 
 ### Base URL môi trường
 - Local development: `http://localhost:8080/api`
-- Production backend: `http://152.42.177.174:8080/api`
+- Production backend: `https://api.urbanservice.me/api`
 
 ### Cấu hình môi trường
 
@@ -186,5 +186,5 @@ pnpm build:web
 - `packages/shared-api` chứa các API wrapper chung.
 - `packages/shared-types` chứa các loại dữ liệu và helper chung.
 - `apps/mobile` là Expo mobile app, đang ở trạng thái khởi tạo.
-- Deploy frontend hiện tại tại: `http://152.42.177.174`.
-- Backend Swagger UI: `http://152.42.177.174:8080/swagger/index.html`.
+- Deploy frontend hiện tại tại: `https://urbanservice.me`.
+- Backend Swagger UI: `https://api.urbanservice.me/swagger/index.html`.

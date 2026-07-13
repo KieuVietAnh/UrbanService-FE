@@ -6,6 +6,7 @@ import {
   normalizeCommentsResponse,
 } from './ticketApiHelpers.js';
 import { managementTypes } from '@urbanmind/shared-types';
+import { normalizeCommentPayload } from './managementFeedbackApi.js';
 
 const getTicketPath = (feedbackId, role) => {
   const base = getFeedbackBasePath(role);
@@ -169,12 +170,7 @@ export const ticketApi = {
 },
 
   addComment(feedbackId, userId, userName, userRole, content, options = {}) {
-    return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, {
-      userId,
-      userName,
-      userRole,
-      content,
-    });
+    return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, normalizeCommentPayload({ content }));
   },
 
   async verifyAndApprove(feedbackId, staffUserId, updateData = {}, options = {}) {
@@ -213,12 +209,7 @@ export const ticketApi = {
   },
 
   submitReview(feedbackId, userId, rating, isSatisfied, comment, options = {}) {
-    return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, {
-      userId,
-      rating,
-      isSatisfied,
-      comment,
-    });
+    return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, normalizeCommentPayload({ content: comment }));
   },
 
   async getHistory(feedbackId, options = {}) {

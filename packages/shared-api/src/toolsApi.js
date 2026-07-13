@@ -1,3 +1,7 @@
+import { axiosClient } from './axiosClient.js';
+
+const DEFAULT_CATEGORY_PARAMS = { includeInactive: false };
+
 let mockDbAdapter = null;
 
 const getMockDb = async () => {
@@ -23,7 +27,15 @@ export const toolsApi = {
       console.warn('toolsApi.init failed', error);
     }
   },
-  async getCategories() { const db = await getMockDb(); return db?.getCategories?.() || []; },
+  async getCategories() {
+    try {
+      const response = await axiosClient.get('/api/categories', { params: DEFAULT_CATEGORY_PARAMS });
+      return Array.isArray(response) ? response : [];
+    } catch (error) {
+      console.warn('toolsApi.getCategories failed', error);
+      return [];
+    }
+  },
   async getOperators() { const db = await getMockDb(); return db?.getOperators?.() || []; },
   async getTickets() { const db = await getMockDb(); return db?.getTickets?.() || []; },
   async getComments() { const db = await getMockDb(); return db?.getComments?.() || []; },
