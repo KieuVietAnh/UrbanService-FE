@@ -141,6 +141,31 @@ export const normalizeStaffFeedbackUpdatePayload = (updateData = {}) => {
   return payload;
 };
 
+export const normalizeProviderReportStatus = (value = '') => {
+  const rawValue = String(value ?? '').trim();
+  if (!rawValue) return '';
+
+  const normalizedValue = rawValue.toLowerCase();
+  if (normalizedValue === 'assigned') return 'Assigned';
+  if (['inprogress', 'in_progress', 'in progress'].includes(normalizedValue)) return 'InProgress';
+  if (['completed', 'complete'].includes(normalizedValue)) return 'Completed';
+
+  return rawValue;
+};
+
+export const canTransitionProviderReportStatus = (currentStatus, nextStatus) => {
+  const current = normalizeProviderReportStatus(currentStatus);
+  const next = normalizeProviderReportStatus(nextStatus);
+
+  const allowedTransitions = {
+    Assigned: ['InProgress'],
+    InProgress: ['Completed'],
+    Completed: [],
+  };
+
+  return Boolean(allowedTransitions[current]?.includes(next));
+};
+
 export const managementFeedbackApi = {
   // Get all feedbacks with pagination and filters
   async getFeedbacks(params = {}) {
@@ -167,6 +192,11 @@ export const managementFeedbackApi = {
   // Using PUT on this route is not allowed by the backend and returns 405 Method Not Allowed.
   async updateStatus(feedbackId, statusData) {
     const response = await axiosClient.patch(`/api/management/feedbacks/${feedbackId}/status`, statusData);
+    return response;
+  },
+
+  async updateProviderReportStatus(providerReportId, payload = {}) {
+    const response = await axiosClient.patch(`/api/management/provider-reports/${providerReportId}/status`, payload);
     return response;
   },
 

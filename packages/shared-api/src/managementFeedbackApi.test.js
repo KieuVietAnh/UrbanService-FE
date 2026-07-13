@@ -6,6 +6,8 @@ import {
   normalizeStaffFeedbackUpdatePayload,
   normalizeFeedbackListParams,
   normalizeCommentPayload,
+  normalizeProviderReportStatus,
+  canTransitionProviderReportStatus,
 } from './managementFeedbackApi.js';
 
 test('normalizeAiReviewedPayload maps ai-reviewed payloads to queue-ready items', () => {
@@ -90,4 +92,13 @@ test('normalizeCommentPayload keeps only the swagger-accepted content field', ()
   });
 
   assert.deepEqual(normalized, { content: 'hello' });
+});
+
+test('provider report status helpers enforce the Assigned → InProgress → Completed workflow', () => {
+  assert.equal(normalizeProviderReportStatus('in_progress'), 'InProgress');
+  assert.equal(normalizeProviderReportStatus('completed'), 'Completed');
+  assert.equal(canTransitionProviderReportStatus('Assigned', 'InProgress'), true);
+  assert.equal(canTransitionProviderReportStatus('Assigned', 'Completed'), false);
+  assert.equal(canTransitionProviderReportStatus('InProgress', 'Completed'), true);
+  assert.equal(canTransitionProviderReportStatus('Completed', 'Assigned'), false);
 });

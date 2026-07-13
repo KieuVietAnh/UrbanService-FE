@@ -13,4 +13,4 @@ export { slaApi } from './slaApi.js';
 export { getFeedbackBasePath, normalizeTicketsResponse, normalizeCommentsResponse } from './ticketApiHelpers.js';
 export { toolsApi } from './toolsApi.js';
 export { setAuthToken, removeAuthToken, setTokenStorage, setApiBaseUrl } from './axiosClient.js';
-export { managementFeedbackApi } from './managementFeedbackApi.js';
+export { managementFeedbackApi, normalizeProviderReportStatus, canTransitionProviderReportStatus } from './managementFeedbackApi.js';
