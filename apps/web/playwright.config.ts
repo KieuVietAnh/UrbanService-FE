@@ -15,7 +15,8 @@ export default defineConfig({
     ['html', { outputFolder: 'tests/results/html', open: 'never' }],
   ],
   use: {
-    baseURL: process.env.BASE_URL || 'https://urbanservice.me',
+    // Default to local dev server for CI-local runs; allow override via BASE_URL
+    baseURL: process.env.BASE_URL || 'http://localhost:5173',
     actionTimeout: 10000,
     navigationTimeout: 30000,
     trace: 'retain-on-failure',
