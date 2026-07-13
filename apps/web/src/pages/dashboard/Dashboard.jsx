@@ -1075,7 +1075,7 @@ export const Dashboard = () => {
     const adminQuickLinks = [
       {
         title: 'Quản lý người dùng',
-        description: 'Tài khoản, trạng thái hoạt động và phân quyền truy cập.',
+        description: 'Tài khoản, đổi vai trò và khóa/mở quyền truy cập.',
         to: '/management/users',
         icon: Lucide.Users,
       },
@@ -1084,12 +1084,6 @@ export const Dashboard = () => {
         description: 'Giám sát phản ánh, trạng thái, mức ưu tiên và dữ liệu media.',
         to: '/management/feedbacks',
         icon: Lucide.MessageSquare,
-      },
-      {
-        title: 'Quản lý booking',
-        description: 'Khung quản trị booking, hóa đơn và thanh toán chờ kết nối API.',
-        to: '/management/bookings',
-        icon: Lucide.Receipt,
       },
       {
         title: 'Cấu hình SLA',
@@ -1113,7 +1107,7 @@ export const Dashboard = () => {
 
     const healthItems = [
       { label: 'Feedback đã xử lý', value: resolvedFeedbackCount, helper: 'Bao gồm đã đóng và đã giải quyết', icon: Lucide.CheckCircle2 },
-      { label: 'Booking', value: 'Sẵn sàng', helper: 'Giao diện đã chuẩn bị, chờ API dữ liệu', icon: Lucide.CalendarCheck2 },
+      { label: 'Truy cập tài khoản', value: 'Kiểm soát', helper: 'Đổi vai trò và khóa/mở tài khoản trong Quản lý người dùng', icon: Lucide.UserCog },
       { label: 'Tích hợp', value: 'Ổn định', helper: 'Các kênh tiếp nhận đang hoạt động', icon: Lucide.Radio },
     ];
 
@@ -1150,7 +1144,7 @@ export const Dashboard = () => {
                   Tổng quan hệ thống
                 </h2>
                 <p className="admin-hero-description">
-                  Một màn hình để Admin theo dõi tài khoản, feedback, booking, tích hợp và tình trạng vận hành của UrbanMind.
+                  Một màn hình để Admin theo dõi tài khoản, phản ánh, danh mục, SLA, tích hợp và tình trạng vận hành của UrbanMind.
                 </p>
               </div>
             </div>
@@ -1160,9 +1154,9 @@ export const Dashboard = () => {
                 <Lucide.MessageSquare size={17} />
                 Quản lý feedback
               </Link>
-              <Link to="/management/bookings" className="admin-secondary-action btn rounded-xl px-5 text-sm font-semibold normal-case">
-                <Lucide.Receipt size={17} />
-                Booking / hóa đơn
+              <Link to="/management/users" className="admin-secondary-action btn rounded-xl px-5 text-sm font-semibold normal-case">
+                <Lucide.UserCog size={17} />
+                Quản lý tài khoản
               </Link>
             </div>
           </div>
@@ -1195,10 +1189,10 @@ export const Dashboard = () => {
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="admin-section-title">Phân bổ phản ánh theo danh mục</h3>
-                <p className="admin-section-description">Tổng hợp khối lượng phản ánh để Admin kiểm tra cấu hình danh mục.</p>
+                <p className="admin-section-description">Tổng hợp khối lượng phản ánh để Admin kiểm tra danh mục phản ánh.</p>
               </div>
               <Link to="/management/categories" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
-                Cấu hình danh mục
+                Danh mục phản ánh
                 <Lucide.ArrowRight size={14} />
               </Link>
             </div>

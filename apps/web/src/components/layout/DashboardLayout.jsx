@@ -1,5 +1,6 @@
 // src/components/layout/DashboardLayout.jsx
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -13,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export const DashboardLayout = ({ children }) => {
   
   const { user } = useAuth();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [chatOpen, setChatOpen] = useState(false);
@@ -59,7 +61,7 @@ export const DashboardLayout = ({ children }) => {
 
           {/* Main scrollable workspace */}
           <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-5 sm:p-6">
-            <PageTransition className="mx-auto max-w-7xl space-y-6">
+            <PageTransition key={location.pathname} className="mx-auto max-w-7xl space-y-6">
               {children}
               {showFooter && <Footer />}
             </PageTransition>

@@ -23,11 +23,10 @@ export const Header = ({ onMenuToggle }) => {
       audit: 'Nhật ký hệ thống',
       performance: 'Hiệu năng & Logs',
 
-      management: 'Cấu hình quản trị',
+      management: 'Quản trị vận hành',
       users: 'Quản lý người dùng',
       feedbacks: 'Quản lý feedback',
-      bookings: 'Quản lý booking',
-      categories: 'Cấu hình danh mục',
+      categories: 'Danh mục phản ánh',
       sla: 'Cấu hình SLA',
       integrations: 'Cấu hình tích hợp',
 

@@ -49,7 +49,6 @@ const InteractionApprovalDetailPage = lazy(() => import('../pages/manager/Intera
 
 const UserManagement = lazy(() => import('../pages/management/UserManagement').then((m) => ({ default: m.UserManagement })));
 const FeedbackManagement = lazy(() => import('../pages/management/FeedbackManagement').then((m) => ({ default: m.FeedbackManagement })));
-const BookingManagement = lazy(() => import('../pages/management/BookingManagement').then((m) => ({ default: m.BookingManagement })));
 const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
 const IntegrationSettings = lazy(() => import('../pages/management/IntegrationSettings').then((m) => ({ default: m.IntegrationSettings })));
@@ -360,15 +359,6 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <FeedbackManagement />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
-      <Route path="/management/bookings" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
-            <DashboardLayout>
-              <BookingManagement />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

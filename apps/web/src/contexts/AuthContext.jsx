@@ -40,14 +40,12 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const res = await authApi.register(fullName, email, password, phone);
-      setUser({
-        ...res.user,
-        role: normalizeRole(res.user.role),
-      });
-      return {
+      const updatedUser = {
         ...res.user,
         role: normalizeRole(res.user.role),
       };
+      setUser(updatedUser);
+      return updatedUser;
     } finally {
       setLoading(false);
     }
@@ -59,7 +57,10 @@ export const AuthProvider = ({ children }) => {
       const result = await authApi.verifyOTP(otp);
       const updatedUser = result?.user || tokenStorage.getUser();
       if (updatedUser) {
-        setUser(updatedUser);
+        setUser({
+          ...updatedUser,
+          role: normalizeRole(updatedUser.role),
+        });
       }
       return result;
     } finally {

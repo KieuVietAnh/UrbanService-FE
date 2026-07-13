@@ -163,7 +163,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
                     className={`absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full transition-opacity ${isActive ? 'bg-blue-600 opacity-100' : 'opacity-0'}`}
                     aria-hidden
                   />
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-transparent text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-700'}`}>
+                  <span className={`admin-sidebar-link-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-transparent text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-700'}`}>
                     {renderIcon(item.icon, 'h-[18px] w-[18px]')}
                   </span>
                   <span className="min-w-0 truncate">{item.name}</span>

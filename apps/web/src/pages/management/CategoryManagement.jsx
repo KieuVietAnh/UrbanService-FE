@@ -62,9 +62,9 @@ const CreateCategoryModal = ({
               <Lucide.PlusCircle size={22} />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-950">Thêm danh mục dịch vụ</h3>
+              <h3 className="text-lg font-semibold text-slate-950">Thêm danh mục phản ánh</h3>
               <p className="mt-1 text-sm leading-5 text-slate-500">
-                Tạo nhóm phân loại mới để tiếp nhận và điều phối phản ánh đúng đơn vị xử lý.
+                Tạo nhóm phân loại mới để tiếp nhận và điều phối phản ánh đúng đầu mối xử lý.
               </p>
             </div>
           </div>
@@ -96,7 +96,7 @@ const CreateCategoryModal = ({
 
         <div className="form-control">
           <label className="label">
-            <span className="label-text text-sm font-semibold text-slate-600">Mô tả dịch vụ *</span>
+            <span className="label-text text-sm font-semibold text-slate-600">Mô tả danh mục *</span>
           </label>
           <textarea
             rows="5"
@@ -248,10 +248,10 @@ export const CategoryManagement = () => {
             </div>
             <div className="min-w-0">
               <h2 className="admin-hero-title">
-                Cấu hình danh mục dịch vụ
+                Danh mục phản ánh
               </h2>
               <p className="admin-hero-description">
-                Quản lý nhóm phản ánh đô thị, trạng thái hoạt động và đơn vị kỹ thuật phụ trách từng danh mục.
+                Quản lý nhóm phản ánh đô thị, trạng thái hoạt động và đầu mối xử lý mặc định cho từng danh mục.
               </p>
             </div>
           </div>
@@ -269,8 +269,8 @@ export const CategoryManagement = () => {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Tổng danh mục" value={categoryStats.total} description="Nhóm phản ánh đang cấu hình." icon={Lucide.Layers3} />
         <StatCard label="Đang hoạt động" value={categoryStats.active} description="Có thể tiếp nhận phản ánh mới." icon={Lucide.CheckCircle2} tone="success" />
-        <StatCard label="Đã gắn đơn vị" value={categoryStats.assigned} description="Có đơn vị xử lý mặc định." icon={Lucide.Network} tone="info" />
-        <StatCard label="Cần rà soát" value={categoryStats.unassigned + categoryStats.inactive} description="Chưa gắn đơn vị hoặc đang khóa." icon={Lucide.AlertTriangle} tone="warning" />
+        <StatCard label="Đã gắn đầu mối" value={categoryStats.assigned} description="Có đầu mối xử lý mặc định." icon={Lucide.Network} tone="info" />
+        <StatCard label="Cần rà soát" value={categoryStats.unassigned + categoryStats.inactive} description="Chưa gắn đầu mối hoặc đang khóa." icon={Lucide.AlertTriangle} tone="warning" />
       </section>
 
       <section className="admin-panel p-5 sm:p-6">
@@ -278,7 +278,7 @@ export const CategoryManagement = () => {
           <div>
             <h3 className="text-lg font-semibold text-slate-950">Danh sách danh mục</h3>
             <p className="mt-1 text-sm text-slate-500">
-              Theo dõi phạm vi tiếp nhận và đơn vị chủ quản của từng nhóm phản ánh.
+              Theo dõi phạm vi tiếp nhận và đầu mối phụ trách của từng nhóm phản ánh.
             </p>
           </div>
 
@@ -290,7 +290,7 @@ export const CategoryManagement = () => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="grow"
-                placeholder="Tìm tên, mô tả, đơn vị..."
+                placeholder="Tìm tên, mô tả, đầu mối..."
               />
             </label>
             <select
@@ -301,8 +301,8 @@ export const CategoryManagement = () => {
               <option value="all">Tất cả trạng thái</option>
               <option value="active">Đang hoạt động</option>
               <option value="inactive">Tạm khóa</option>
-              <option value="assigned">Đã gắn đơn vị</option>
-              <option value="unassigned">Chưa gắn đơn vị</option>
+              <option value="assigned">Đã gắn đầu mối</option>
+              <option value="unassigned">Chưa gắn đầu mối</option>
             </select>
           </div>
         </div>
@@ -311,7 +311,7 @@ export const CategoryManagement = () => {
           <div className="admin-empty-panel flex min-h-[320px] items-center justify-center">
             <div className="flex flex-col items-center gap-3 text-center">
               <span className="loading loading-spinner loading-lg text-blue-700" />
-              <p className="text-sm text-slate-500">Đang tải danh mục dịch vụ...</p>
+              <p className="text-sm text-slate-500">Đang tải danh mục phản ánh...</p>
             </div>
           </div>
         ) : filteredCategories.length === 0 ? (
@@ -367,7 +367,7 @@ export const CategoryManagement = () => {
 
                   <div className="admin-inset-panel mt-5 p-4">
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-slate-400">Đơn vị chủ quản</span>
+                      <span className="text-xs font-semibold text-slate-400">Đầu mối xử lý</span>
                       {operator ? (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Đã gắn</span>
                       ) : (
@@ -381,7 +381,7 @@ export const CategoryManagement = () => {
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-950">
-                          {operator ? operator.operatorName : 'Chưa gắn đơn vị xử lý'}
+                          {operator ? operator.operatorName : 'Chưa gắn đầu mối xử lý'}
                         </p>
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
                           <Lucide.Phone size={13} />
