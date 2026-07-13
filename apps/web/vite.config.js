@@ -30,5 +30,10 @@ export default defineConfig({
         path.resolve(__dirname),
       ],
     },
+    // Avoid watching/generated Playwright artifacts during test runs which
+    // can trigger HMR reloads and cause navigation timeouts in CI.
+    watch: {
+      ignored: ['**/tests/results/**', '**/.playwright-artifacts/**'],
+    },
   },
 })

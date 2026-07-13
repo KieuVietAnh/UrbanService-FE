@@ -15,7 +15,7 @@ export default defineConfig({
     ['html', { outputFolder: 'tests/results/html', open: 'never' }],
   ],
   use: {
-    baseURL: 'https://urbanservice.me',
+    baseURL: process.env.BASE_URL || 'https://urbanservice.me',
     actionTimeout: 10000,
     navigationTimeout: 30000,
     trace: 'retain-on-failure',
