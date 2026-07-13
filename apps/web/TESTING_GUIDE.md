@@ -3,7 +3,7 @@
 ## Overview
 This guide explains how to run the Web app end-to-end tests located in `apps/web/tests` using Playwright.
 
-The suite targets the deployed frontend at `http://152.42.177.174`.
+The suite targets the deployed frontend at `https://urbanservice.me`.
 
 ## Test suite contents
 - `apps/web/playwright.config.ts` - Playwright configuration for Chromium, Firefox, and WebKit

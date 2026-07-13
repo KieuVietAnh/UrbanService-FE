@@ -24,7 +24,7 @@ jobs:
 
     environment:
       name: production
-      url: http://152.42.177.174
+      url: https://urbanservice.me
 
     steps:
       - name: Checkout source code

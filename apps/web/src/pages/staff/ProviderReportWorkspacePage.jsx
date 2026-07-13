@@ -5,10 +5,6 @@ import { LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
 
-const Tab = ({ children, active }) => (
-  <div className={`px-4 py-2 rounded-lg ${active ? 'bg-white shadow-sm' : 'bg-slate-50 text-slate-500'}`}>{children}</div>
-);
-
 const toLocalDateTimeValue = (date = new Date()) => {
   const pad = (value) => `${value}`.padStart(2, '0');
   const year = date.getFullYear();
@@ -41,7 +37,6 @@ export const ProviderReportWorkspacePage = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  const [message, setMessage] = useState(null);
   const [contactLogs, setContactLogs] = useState([]);
   const [contactLogsLoading, setContactLogsLoading] = useState(false);
   const [contactLogsError, setContactLogsError] = useState('');
@@ -67,7 +62,6 @@ export const ProviderReportWorkspacePage = () => {
         setReport(res || null);
       } catch (err) {
         console.error('Failed to load provider report', err);
-        setMessage({ type: 'error', text: 'Không thể tải báo cáo nhà thầu.' });
       } finally {
         setLoading(false);
       }
@@ -94,7 +88,20 @@ export const ProviderReportWorkspacePage = () => {
     loadContactLogs();
   }, [providerReportId, activeTab]);
 
-  if (loading) return (<div className="py-12 flex justify-center"><LoadingSpinner /></div>);
+  const provider = report?.provider || report?.operator || report?.assignedOperator || {};
+  const coordinator = report?.coordinator || report?.contact || {};
+
+  const sortedContactLogs = useMemo(() => {
+    return [...contactLogs].sort((a, b) => {
+      const aDate = new Date(a.contactedAt).getTime() || 0;
+      const bDate = new Date(b.contactedAt).getTime() || 0;
+      return bDate - aDate;
+    });
+  }, [contactLogs]);
+
+  if (loading) {
+    return (<div className="py-12 flex justify-center"><LoadingSpinner /></div>);
+  }
 
   if (!report) {
     return (
@@ -109,17 +116,6 @@ export const ProviderReportWorkspacePage = () => {
       </div>
     );
   }
-
-  const provider = report.provider || report.operator || report.assignedOperator || {};
-  const coordinator = report.coordinator || report.contact || {};
-
-  const sortedContactLogs = useMemo(() => {
-    return [...contactLogs].sort((a, b) => {
-      const aDate = new Date(a.contactedAt).getTime() || 0;
-      const bDate = new Date(b.contactedAt).getTime() || 0;
-      return bDate - aDate;
-    });
-  }, [contactLogs]);
 
   const handleLogInputChange = (key, value) => {
     setLogForm((prev) => ({ ...prev, [key]: value }));

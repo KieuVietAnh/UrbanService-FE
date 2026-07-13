@@ -12,10 +12,25 @@
 # Error details
 
 ```
-Error: page.goto: net::ERR_CONNECTION_TIMED_OUT at http://152.42.177.174/login
-Call log:
-  - navigating to "http://152.42.177.174/login", waiting until "load"
+Error: expect(locator).toHaveText(expected) failed
 
+Locator: locator('.alert.alert-error, .text-red-600')
+Expected pattern: /Đăng nhập thất bại|Sai|invalid|Unauthorized/i
+Received string:  "Lỗi đăng nhậpRequest failed with status code 405"
+Timeout: 10000ms
+
+Call log:
+  - Expect "toHaveText" with timeout 10000ms
+  - waiting for locator('.alert.alert-error, .text-red-600')
+    20 × locator resolved to <div class="alert alert-error rounded-xl shadow-lg flex items-start gap-3">…</div>
+       - unexpected value "Lỗi đăng nhậpRequest failed with status code 405"
+
+```
+
+```yaml
+- heading "Lỗi đăng nhập" [level=4]
+- paragraph: Request failed with status code 405
+- button "Đóng thông báo"
 ```
 
 # Test source
@@ -35,8 +50,7 @@ Call log:
   12 | 
   13 | test.describe('Authentication', () => {
   14 |   test.beforeEach(async ({ page }) => {
-> 15 |     await page.goto('/login');
-     |                ^ Error: page.goto: net::ERR_CONNECTION_TIMED_OUT at http://152.42.177.174/login
+  15 |     await page.goto('/login');
   16 |   });
   17 | 
   18 |   test('Login success', async ({ page }) => {
@@ -50,7 +64,8 @@ Call log:
   26 |   test('Login failure', async ({ page }) => {
   27 |     const loginPage = new LoginPage(page);
   28 |     await loginPage.fillInvalidCredentials();
-  29 |     await expect(loginPage.errorMessage).toHaveText(/Đăng nhập thất bại|Sai|invalid|Unauthorized/i);
+> 29 |     await expect(loginPage.errorMessage).toHaveText(/Đăng nhập thất bại|Sai|invalid|Unauthorized/i);
+     |                                          ^ Error: expect(locator).toHaveText(expected) failed
   30 |   });
   31 | 
   32 |   test('Logout', async ({ page }) => {

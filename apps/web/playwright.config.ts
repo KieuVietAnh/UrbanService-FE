@@ -15,7 +15,7 @@ export default defineConfig({
     ['html', { outputFolder: 'tests/results/html', open: 'never' }],
   ],
   use: {
-    baseURL: 'http://152.42.177.174',
+    baseURL: 'https://urbanservice.me',
     actionTimeout: 10000,
     navigationTimeout: 30000,
     trace: 'retain-on-failure',

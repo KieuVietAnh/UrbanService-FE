@@ -29,7 +29,7 @@ test.describe('Ticket flow', () => {
           });
           const userId = userInfo?.id || userInfo?.userId || null;
           const reporterName = userInfo?.fullName || userInfo?.name || 'E2E Test';
-          await page.request.post('http://152.42.177.174:8080/api/user/feedbacks', {
+          await page.request.post('https://api.urbanservice.me/api/user/feedbacks', {
             data: {
               userId,
               reporterName,

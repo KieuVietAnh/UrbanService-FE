@@ -28,7 +28,7 @@ test.describe('Chatbot / ticket conversation', () => {
         });
         const userId = userInfo?.id || userInfo?.userId || null;
         const reporterName = userInfo?.fullName || userInfo?.name || 'E2E Test';
-        await page.request.post('http://152.42.177.174:8080/api/user/feedbacks', {
+        await page.request.post('https://api.urbanservice.me/api/user/feedbacks', {
           data: { userId, reporterName, title: 'E2E auto ticket for chatbot', description: 'autocreated', categoryId: 1, latitude: 10.762622, longitude: 106.660172, locationText: 'Auto' },
           headers: { Authorization: `Bearer ${token}` }
         });

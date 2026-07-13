@@ -12,10 +12,69 @@
 # Error details
 
 ```
-Error: page.goto: net::ERR_CONNECTION_TIMED_OUT at http://152.42.177.174/login
-Call log:
-  - navigating to "http://152.42.177.174/login", waiting until "load"
+TimeoutError: page.waitForURL: Timeout 30000ms exceeded.
+=========================== logs ===========================
+waiting for navigation to "**/dashboard" until "load"
+============================================================
+```
 
+# Page snapshot
+
+```yaml
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - img [ref=e7]
+    - generic [ref=e10]:
+      - heading "UrbanMind" [level=3] [ref=e11]
+      - heading "Đăng nhập UrbanMind" [level=2] [ref=e12]
+      - paragraph [ref=e13]: Kết nối cộng đồng, kiến tạo tương lai đô thị.
+  - generic [ref=e14]:
+    - img [ref=e15]
+    - generic [ref=e17]:
+      - heading "Lỗi đăng nhập" [level=4] [ref=e18]
+      - paragraph [ref=e19]: Request failed with status code 405
+    - button "Đóng thông báo" [ref=e20] [cursor=pointer]:
+      - img [ref=e21]
+  - generic [ref=e24]:
+    - generic [ref=e25]:
+      - text: Email hoặc số điện thoại
+      - generic [ref=e26]:
+        - img [ref=e28]
+        - textbox "Email hoặc số điện thoại" [ref=e31]:
+          - /placeholder: name@email.com
+          - text: nguyengiauzxc@gmail.com
+    - generic [ref=e32]:
+      - text: Mật khẩu
+      - generic [ref=e33]:
+        - img [ref=e35]
+        - textbox "Mật khẩu" [ref=e38]:
+          - /placeholder: ••••••••
+          - text: nguyenhuugiau
+        - img [ref=e40]
+    - generic [ref=e43]:
+      - generic [ref=e44] [cursor=pointer]:
+        - checkbox "Ghi nhớ đăng nhập" [ref=e45]
+        - generic [ref=e46]: Ghi nhớ đăng nhập
+      - button "Quên mật khẩu" [ref=e47]: Quên mật khẩu?
+    - button "Đăng nhập" [ref=e48] [cursor=pointer]:
+      - generic [ref=e49]: Đăng nhập
+      - img [ref=e50]
+  - generic [ref=e52]: HOẶC
+  - button "Google logo Đăng nhập với Google" [ref=e53] [cursor=pointer]:
+    - img "Google logo" [ref=e54]
+    - generic [ref=e61]: Đăng nhập với Google
+  - generic [ref=e62]:
+    - text: Bạn chưa có tài khoản?
+    - link "Đăng ký ngay" [ref=e63] [cursor=pointer]:
+      - /url: /register
+  - generic [ref=e64]:
+    - heading "Đăng nhập nhanh bằng tài khoản mẫu" [level=4] [ref=e65]
+    - paragraph [ref=e66]: "Mật khẩu mặc định: 123456789"
+    - generic [ref=e67]:
+      - button "Administrator" [ref=e68] [cursor=pointer]
+      - button "System Staff" [ref=e69] [cursor=pointer]
+      - button "Interaction Manager" [ref=e70] [cursor=pointer]
+      - button "Service Operator" [ref=e71] [cursor=pointer]
 ```
 
 # Test source
@@ -35,8 +94,7 @@ Call log:
   12 | 
   13 | test.describe('Authentication', () => {
   14 |   test.beforeEach(async ({ page }) => {
-> 15 |     await page.goto('/login');
-     |                ^ Error: page.goto: net::ERR_CONNECTION_TIMED_OUT at http://152.42.177.174/login
+  15 |     await page.goto('/login');
   16 |   });
   17 | 
   18 |   test('Login success', async ({ page }) => {
@@ -107,7 +165,8 @@ Call log:
   83 |   test('Session persistence after refresh', async ({ page }) => {
   84 |     const loginPage = new LoginPage(page);
   85 |     await loginPage.login(validEmail, validPassword);
-  86 |     await page.waitForURL('**/dashboard');
+> 86 |     await page.waitForURL('**/dashboard');
+     |                ^ TimeoutError: page.waitForURL: Timeout 30000ms exceeded.
   87 |     await page.reload();
   88 |     await expect(page).toHaveURL(/\/dashboard/);
   89 |   });
