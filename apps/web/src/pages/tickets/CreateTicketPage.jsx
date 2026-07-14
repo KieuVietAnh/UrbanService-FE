@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { slaApi } from '../../services/api/slaApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import * as Lucide from 'lucide-react';
@@ -29,6 +28,7 @@ export const CreateTicketPage = () => {
     return () => cancelAnimationFrame(frame);
   }, [step]);
   const [description, setDescription] = useState('');
+  const [areaId, setAreaId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [priority, setPriority] = useState('Medium');
   const [locationText, setLocationText] = useState('');
@@ -37,6 +37,8 @@ export const CreateTicketPage = () => {
   const [attachments, setAttachments] = useState([]);
   const [submitError, setSubmitError] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [areas, setAreas] = useState([]);
+  const [areasLoading, setAreasLoading] = useState(true);
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
@@ -73,57 +75,60 @@ export const CreateTicketPage = () => {
   };
 
   // Trigger AI analysis when moving past step 1
-  const handleNextToStep2 = () => {
+  const handleNextToStep2 = async () => {
     if (!title || !description) return;
 
-    // Call simulated AI
-    const analysis = toolsApi.aiClassify(title, description);
-    setAiAnalysis(analysis);
-    setCategoryId(analysis.categoryId);
-    setPriority(analysis.urgencyLevel);
-    setStep(2);
+    try {
+      const analysis = await toolsApi.aiClassify(title, description);
+      setAiAnalysis(analysis);
+      if (analysis?.categoryId) setCategoryId(Number(analysis.categoryId));
+      if (analysis?.urgencyLevel) setPriority(analysis.urgencyLevel);
+    } catch (error) {
+      console.warn('AI classification unavailable; continuing with manual selection', error);
+      setAiAnalysis(null);
+    } finally {
+      setStep(2);
+    }
   };
 
-  const handleLocationSelect = (lat, lng, address) => {
+  const handleLocationSelect = async (lat, lng, address) => {
     setLatitude(lat);
     setLongitude(lng);
     setLocationText(address);
 
-    // Run duplicate check on location select
-    const matches = toolsApi.checkDuplicates(Number(categoryId), lat, lng);
-    setDuplicates(matches);
-    if (matches.length > 0) {
-      setShowDuplicateWarn(true);
-    } else {
+    try {
+      const matches = await toolsApi.checkDuplicates(Number(categoryId), lat, lng);
+      const normalizedMatches = Array.isArray(matches) ? matches : [];
+      setDuplicates(normalizedMatches);
+      setShowDuplicateWarn(normalizedMatches.length > 0);
+    } catch (error) {
+      console.warn('Duplicate check unavailable', error);
+      setDuplicates([]);
       setShowDuplicateWarn(false);
     }
   };
 
   useEffect(() => {
     let isMounted = true;
-    const loadCategories = async () => {
-      setCategoriesLoading(true);
-      try {
-        let fetchedCategories = [];
-        try {
-          fetchedCategories = await slaApi.getCategories();
-        } catch (apiErr) {
-          console.warn('CreateTicketPage slaApi.getCategories failed, falling back to toolsApi', apiErr);
-          fetchedCategories = await toolsApi.getCategories();
-        }
 
-        if (isMounted) {
-          setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
-        }
-      } catch (err) {
-        console.warn('CreateTicketPage failed to load categories', err);
-        if (isMounted) setCategories([]);
-      } finally {
-        if (isMounted) setCategoriesLoading(false);
-      }
+    const loadFormOptions = async () => {
+      setAreasLoading(true);
+      setCategoriesLoading(true);
+
+      const [areasResult, categoriesResult] = await Promise.allSettled([
+        toolsApi.getAreas(),
+        toolsApi.getCategories(),
+      ]);
+
+      if (!isMounted) return;
+
+      setAreas(areasResult.status === 'fulfilled' && Array.isArray(areasResult.value) ? areasResult.value : []);
+      setCategories(categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value) ? categoriesResult.value : []);
+      setAreasLoading(false);
+      setCategoriesLoading(false);
     };
 
-    loadCategories();
+    loadFormOptions();
     return () => {
       isMounted = false;
     };
@@ -131,7 +136,12 @@ export const CreateTicketPage = () => {
 
   const handleSubmit = async () => {
     setSubmitError('');
-    if (!latitude || !longitude || !locationText) {
+    if (!areaId) {
+      setSubmitError('Vui lòng chọn khu vực xảy ra sự cố trước khi gửi phản ánh.');
+      return;
+    }
+
+    if (latitude == null || longitude == null || !locationText) {
       setSubmitError('Vui lòng chọn vị trí trên bản đồ trước khi gửi phản ánh.');
       return;
     }
@@ -140,9 +150,10 @@ export const CreateTicketPage = () => {
       setSubmitError('Vui lòng tải lên ít nhất một hình ảnh hoặc video minh chứng trước khi gửi.');
       return;
     }
-    if (!latitude || !longitude || !locationText) return;
+    if (latitude == null || longitude == null || !locationText) return;
     setLoading(true);
     const payload = {
+      areaId: Number(areaId),
       title,
       description,
       categoryId,
@@ -154,7 +165,7 @@ export const CreateTicketPage = () => {
     };
     try {
       const role = user?.role || 'service-user';
-      await ticketApi.createTicket(user.userId, user.fullName, payload, { role });
+      await ticketApi.createTicket(user?.userId, user?.fullName, payload, { role });
       setStep(5); // Success step
         setShowToast(true);
     } catch (err) {
@@ -253,7 +264,7 @@ export const CreateTicketPage = () => {
               >
                 <option value="">-- Chọn danh mục --</option>
                 {categories.map((c) => (
-                  <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
+                  <option key={c.categoryId ?? c.id} value={c.categoryId ?? c.id}>{c.categoryName ?? c.name}</option>
                 ))}
               </select>
               {categoriesLoading && (
@@ -315,6 +326,25 @@ export const CreateTicketPage = () => {
               <div className="space-y-4">
                 <div className="card bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3 transition-shadow duration-200 ease-out hover:shadow-sm">
                   <h4 className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Thông tin địa điểm</h4>
+                  <div className="space-y-1">
+                    <label htmlFor="feedback-area" className="text-[10px] text-slate-400 font-bold block uppercase">Khu vực *</label>
+                    <select
+                      id="feedback-area"
+                      value={areaId}
+                      onChange={(event) => setAreaId(event.target.value)}
+                      className="select select-bordered w-full rounded-xl border-slate-200 bg-white text-xs font-bold focus:outline-none"
+                      required
+                    >
+                      <option value="">-- Chọn khu vực --</option>
+                      {areas.map((area) => {
+                        const id = area.areaId ?? area.id;
+                        const name = area.areaName ?? area.name ?? area.displayName ?? `Khu vực ${id}`;
+                        return <option key={id} value={id}>{name}</option>;
+                      })}
+                    </select>
+                    {areasLoading && <p className="text-[10px] font-semibold text-slate-500">Đang tải khu vực...</p>}
+                    {!areasLoading && areas.length === 0 && <p className="text-[10px] font-semibold text-red-500">Không tải được danh sách khu vực.</p>}
+                  </div>
                   <div className="space-y-1">
                     <span className="text-[10px] text-slate-400 font-bold block uppercase">Địa chỉ đã chọn:</span>
                     <span className="text-xs font-bold text-slate-700 block bg-white p-3 rounded-xl border border-slate-200 leading-relaxed min-h-12">
@@ -380,7 +410,7 @@ export const CreateTicketPage = () => {
                 <button
                   type="button"
                   onClick={() => setStep(4)}
-                  disabled={!latitude}
+                  disabled={!areaId || latitude == null || longitude == null}
                   className="btn btn-primary flex-1 rounded-xl font-bold text-xs h-11"
                 >
                   Tải Ảnh Minh Chứng
@@ -481,7 +511,8 @@ export const CreateTicketPage = () => {
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Tiêu đề:</span> <span className="font-bold text-slate-700">{title}</span></div>
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Mô tả:</span> <span className="font-semibold text-slate-600 line-clamp-2">{description}</span></div>
-              <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Danh mục:</span> <span className="font-bold text-slate-700">{categories.find((c) => c.categoryId === categoryId)?.categoryName || 'Chưa chọn danh mục'}</span></div>
+              <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Danh mục:</span> <span className="font-bold text-slate-700">{categories.find((c) => String(c.categoryId ?? c.id) === String(categoryId))?.categoryName || categories.find((c) => String(c.categoryId ?? c.id) === String(categoryId))?.name || 'Chưa chọn danh mục'}</span></div>
+              <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Khu vực:</span> <span className="font-bold text-slate-700">{areas.find((area) => String(area.areaId ?? area.id) === String(areaId))?.areaName || areas.find((area) => String(area.areaId ?? area.id) === String(areaId))?.name || 'Chưa chọn khu vực'}</span></div>
               <div className="flex"><span className="font-bold text-slate-400 w-24 shrink-0">Vị trí sự cố:</span> <span className="font-bold text-slate-700">{locationText}</span></div>
             </div>
           </div>
@@ -532,6 +563,7 @@ export const CreateTicketPage = () => {
             <button
               onClick={() => {
                 setTitle('');
+                setAreaId('');
                 setDescription('');
                 setCategoryId('');
                 setLocationText('');

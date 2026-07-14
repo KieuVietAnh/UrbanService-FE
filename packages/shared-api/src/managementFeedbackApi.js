@@ -1,4 +1,5 @@
 import { axiosClient } from './axiosClient.js';
+import { normalizeTicketsResponse } from './ticketApiHelpers.js';
 
 export const normalizeAiReviewedPayload = (payload = {}) => {
   const items = Array.isArray(payload?.items) ? payload.items : [];
@@ -178,7 +179,18 @@ export const managementFeedbackApi = {
   // Get specific feedback by ID
   async getFeedbackById(feedbackId) {
     const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}`);
-    return response;
+    const payload = response?.data ?? response?.item ?? response?.result ?? response;
+    return normalizeTicketsResponse([payload])[0] || payload;
+  },
+
+  // Step 19: get the resolution history submitted for this feedback.
+  async getResolutions(feedbackId) {
+    const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}/resolutions`);
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.items)) return response.items;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.resolutions)) return response.resolutions;
+    return response ? [response] : [];
   },
 
   // Update feedback details
@@ -337,10 +349,12 @@ export const managementFeedbackApi = {
 
   // Approve an operator's resolution
   async approveFeedback(feedbackId, note = '') {
+    const normalizedNote = typeof note === 'string' ? note.trim() : '';
+    const config = normalizedNote ? { params: { note: normalizedNote } } : {};
     const response = await axiosClient.put(
       `/api/management/feedbacks/${feedbackId}/approve`,
       null,
-      { params: { note } }
+      config
     );
     return response;
   },

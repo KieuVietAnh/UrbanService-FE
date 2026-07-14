@@ -12,5 +12,5 @@ export { slaApi } from './slaApi.js';
 // Use `./dev/mockIndex.js` internally in development only when `VITE_USE_MOCK` is enabled.
 export { getFeedbackBasePath, normalizeTicketsResponse, normalizeCommentsResponse } from './ticketApiHelpers.js';
 export { toolsApi } from './toolsApi.js';
-export { setAuthToken, removeAuthToken, setTokenStorage, setApiBaseUrl } from './axiosClient.js';
+export { setAuthToken, removeAuthToken, setTokenStorage, setApiBaseUrl, setUnauthorizedHandler } from './axiosClient.js';
 export { managementFeedbackApi, normalizeProviderReportStatus, canTransitionProviderReportStatus } from './managementFeedbackApi.js';

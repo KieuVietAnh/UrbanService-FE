@@ -1,6 +1,8 @@
 import axios from 'axios';
 
 let apiBaseUrl = '';
+let unauthorizedHandler = null;
+let isHandlingUnauthorized = false;
 
 /**
  * Set the base URL for API requests.
@@ -60,6 +62,10 @@ export const removeAuthToken = async () => {
   await removeToken();
 };
 
+export const setUnauthorizedHandler = (handler) => {
+  unauthorizedHandler = typeof handler === 'function' ? handler : null;
+};
+
 export const axiosClient = axios.create({
   baseURL: apiBaseUrl,
   headers: {
@@ -86,14 +92,37 @@ axiosClient.interceptors.request.use(
 
 axiosClient.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
+    const status = error?.response?.status;
+    const requestUrl = String(error?.config?.url || '');
+    const isLoginRequest = [
+      '/api/auth/login',
+      '/api/auth/register',
+      '/api/auth/google-login',
+    ].some((path) => requestUrl.includes(path));
+
+    if (status === 401 && !isLoginRequest && unauthorizedHandler && !isHandlingUnauthorized) {
+      isHandlingUnauthorized = true;
+      try {
+        await removeToken();
+        await unauthorizedHandler?.(error);
+      } finally {
+        isHandlingUnauthorized = false;
+      }
+    }
+
     const data = error?.response?.data;
     const message =
       data?.msg ||
       data?.message ||
       data?.error ||
-      error?.message ||
+      (status === 401 ? 'Phiên đăng nhập đã hết hạn.' : error?.message) ||
       'Unknown API error';
-    return Promise.reject(new Error(message));
+
+    const apiError = new Error(message);
+    apiError.status = status;
+    apiError.code = error?.code;
+    apiError.response = error?.response;
+    return Promise.reject(apiError);
   }
 );

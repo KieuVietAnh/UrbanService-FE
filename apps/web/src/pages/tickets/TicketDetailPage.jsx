@@ -43,7 +43,7 @@ export const TicketDetailPage = () => {
   const resolvedShownRef = useRef(false);
 
   useEffect(() => {
-    if (ticket?.status === managementTypes.feedbackStatus.RESOLVED && !resolvedShownRef.current) {
+    if (ticket?.status === managementTypes.feedbackStatus.APPROVED && !resolvedShownRef.current) {
       resolvedShownRef.current = true;
       setResolvedToastOpen(true);
       // auto-close after a while handled by DelightToast
@@ -106,7 +106,12 @@ export const TicketDetailPage = () => {
       case managementTypes.feedbackStatus.IN_PROGRESS:
         return 'Đang tiến hành xử lý tại hiện trường.';
       case managementTypes.feedbackStatus.RESOLVED:
-        return 'Đã xử lý xong. Vui lòng đánh giá chất lượng.';
+      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL:
+        return 'Đơn vị đã gửi kết quả và đang chờ Manager phê duyệt.';
+      case managementTypes.feedbackStatus.APPROVED:
+        return 'Kết quả đã được phê duyệt. Vui lòng đánh giá chất lượng xử lý.';
+      case managementTypes.feedbackStatus.NEED_REWORK:
+        return 'Manager yêu cầu đơn vị xử lý thực hiện lại hoặc bổ sung kết quả.';
       case managementTypes.feedbackStatus.CLOSED:
         return 'Phản ánh đã đóng sau khi hoàn tất các bước.';
       default:
@@ -115,12 +120,31 @@ export const TicketDetailPage = () => {
   };
 
   const attachments = Array.isArray(ticket?.attachments) ? ticket.attachments : [];
+  const canReviewResolution = [
+    managementTypes.feedbackStatus.APPROVED,
+    managementTypes.feedbackStatus.RESOLVED, // backward compatibility with older backend data
+  ].includes(ticket?.status);
   const currentStep = getStatusStep(ticket?.status);
   const steps = TICKET_STATUS_STEPS;
   const sortedHistory = useMemo(
     () => Array.isArray(history) ? [...history].sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt)) : [],
     [history]
   );
+  const approvalStatusText = (() => {
+    if ([managementTypes.feedbackStatus.APPROVED, managementTypes.feedbackStatus.CLOSED].includes(ticket?.status)) {
+      return 'Đã duyệt';
+    }
+    if ([managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL, managementTypes.feedbackStatus.RESOLVED].includes(ticket?.status)) {
+      return 'Chờ nghiệm thu';
+    }
+    if (ticket?.status === managementTypes.feedbackStatus.NEED_REWORK) {
+      return 'Cần làm lại';
+    }
+    if (ticket?.status === managementTypes.feedbackStatus.REJECTED) {
+      return 'Bị từ chối';
+    }
+    return 'Chưa có kết quả phê duyệt';
+  })();
 
   if (loading) {
     return (
@@ -175,13 +199,13 @@ export const TicketDetailPage = () => {
           <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${PRIORITY_BADGE_CLASSES[ticket.priority] || PRIORITY_BADGE_CLASSES.Medium}`}>
             Ưu tiên: {ticket.priority || 'Không xác định'}
           </span>
-          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default} ${ticket.status === managementTypes.feedbackStatus.RESOLVED && resolvedToastOpen ? 'ring-2 ring-emerald-100' : ''}`}>
+          <span className={`badge font-bold py-2.5 px-3 rounded-lg border uppercase ${STATUS_BADGE_CLASSES[ticket.status] || STATUS_BADGE_CLASSES.default} ${canReviewResolution && resolvedToastOpen ? 'ring-2 ring-emerald-100' : ''}`}>
             Trạng thái: {getStatusLabel(ticket.status, ticket.status || 'Không xác định')}
           </span>
           <div className="rounded-3xl bg-slate-50 px-4 py-3 text-[11px] text-slate-600 border border-slate-200">
             {statusDescription(ticket.status)}
           </div>
-          {(ticket.status === managementTypes.feedbackStatus.RESOLVED || ticket.status === managementTypes.feedbackStatus.NEED_REWORK || ticket.status === managementTypes.feedbackStatus.REJECTED) && user?.role === 'service-user' && (
+          {(canReviewResolution || ticket.status === managementTypes.feedbackStatus.NEED_REWORK || ticket.status === managementTypes.feedbackStatus.REJECTED) && user?.role === 'service-user' && (
             <div className="flex flex-wrap gap-2">
               {ticket.status === managementTypes.feedbackStatus.NEED_REWORK || ticket.status === managementTypes.feedbackStatus.REJECTED ? (
                 <button
@@ -246,7 +270,7 @@ export const TicketDetailPage = () => {
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Nghiệm thu / phê duyệt</div>
-              <div className="mt-2 font-semibold text-slate-800">{ticket.resolution?.isApproved ? 'Đã duyệt' : ticket.status === managementTypes.feedbackStatus.RESOLVED ? 'Chờ nghiệm thu' : 'Chưa có kết quả phê duyệt'}</div>
+              <div className="mt-2 font-semibold text-slate-800">{approvalStatusText}</div>
             </div>
           </div>
           <div className="flex items-center gap-4 overflow-x-auto pb-3">
@@ -371,7 +395,7 @@ export const TicketDetailPage = () => {
         <div className="space-y-6">
 
           {/* Rating Form block (Flow 4: CSAT review) */}
-          {ticket.status === managementTypes.feedbackStatus.RESOLVED && user?.role === 'service-user' && (
+          {canReviewResolution && user?.role === 'service-user' && (
             <div className="card bg-white border border-[color:var(--brand-primary)]/30 shadow-md p-6 rounded-3xl space-y-4 ring-2 ring-[color:var(--brand-primary)]/5">
               <div className="text-center space-y-1">
                 <div className="w-10 h-10 rounded-full bg-[color:var(--color-info-bg)] text-[color:var(--color-info)] flex items-center justify-center mx-auto" aria-hidden>

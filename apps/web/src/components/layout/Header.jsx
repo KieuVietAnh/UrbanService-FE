@@ -31,8 +31,12 @@ export const Header = ({ onMenuToggle }) => {
       integrations: 'Cấu hình tích hợp',
 
       analytics: 'Báo cáo phân tích',
-      sentiment: 'Ý kiến cư dân',
+      sentiment: 'Cảm xúc người dân',
       heatmap: 'Bản đồ nhiệt',
+
+      manager: 'Quản lý tương tác',
+      interactions: 'Giám sát tương tác',
+      approvals: 'Hàng đợi duyệt',
 
       provider: 'Đơn vị xử lý',
       tasks: 'Nhiệm vụ được giao',
@@ -66,6 +70,7 @@ export const Header = ({ onMenuToggle }) => {
       'provider',
       'tickets',
       'community',
+      'manager',
     ]);
 
     const visiblePaths = paths.filter(path => !hiddenBreadcrumbSegments.has(path));
@@ -82,20 +87,41 @@ export const Header = ({ onMenuToggle }) => {
         {visiblePaths.map((path, idx) => {
           if (idx === 0 && path === 'dashboard') return null;
 
-          const segmentName = labelMap[path] || path;
+          const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
+          const segmentName = isFeedbackId
+            ? 'Chi tiết phản ánh'
+            : path === 'sla' && location.pathname.startsWith('/analytics/')
+              ? 'Phân tích SLA'
+              : labelMap[path] || path;
+          const isLast = idx === visiblePaths.length - 1;
 
+          const breadcrumbLinkMap = {
+            interactions: '/manager/interactions',
+            approvals: '/manager/approvals',
+            heatmap: '/analytics/heatmap',
+            sentiment: '/analytics/sentiment',
+            settings: '/settings',
+          };
+
+          const breadcrumbLink =
+            path === 'sla' && location.pathname.startsWith('/analytics/')
+              ? '/analytics/sla'
+              : breadcrumbLinkMap[path];
           return (
             <span key={`${path}-${idx}`} className="flex items-center gap-1.5">
               <Lucide.ChevronRight size={14} className="text-slate-300" />
-              <span
-                className={
-                  idx === visiblePaths.length - 1
-                    ? 'font-semibold text-slate-950'
-                    : 'font-semibold text-base-content/45'
-                }
-              >
-                {segmentName}
-              </span>
+              {!isLast && breadcrumbLink ? (
+                <Link
+                  to={breadcrumbLink}
+                  className="font-semibold text-slate-500 transition-colors hover:text-blue-700"
+                >
+                  {segmentName}
+                </Link>
+              ) : (
+                <span className="font-semibold text-slate-950">
+                  {segmentName}
+                </span>
+              )}
             </span>
           );
         })}
@@ -126,9 +152,9 @@ export const Header = ({ onMenuToggle }) => {
             <button aria-label="Mở menu" title="Mở menu" onClick={onMenuToggle} className="btn btn-ghost btn-square lg:hidden">
               <Lucide.Menu size={20} aria-hidden="true" />
             </button>
-            <div className="hidden items-center gap-1 text-sm font-medium sm:flex">
+            <nav aria-label="Breadcrumb" className="hidden items-center gap-1 text-sm font-medium sm:flex">
               {getBreadcrumbs()}
-            </div>
+            </nav>
           </>
         )}
       </div>

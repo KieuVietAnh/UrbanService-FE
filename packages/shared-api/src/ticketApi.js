@@ -27,7 +27,9 @@ export const ticketApi = {
 
   getTicketById(feedbackId, options = {}) {
     return (async () => {
-      const res = await axiosClient.get(getTicketPath(feedbackId, options.role));
+      const response = await axiosClient.get(getTicketPath(feedbackId, options.role));
+      const payload = response?.data ?? response?.item ?? response?.result ?? response;
+      const res = normalizeTicketsResponse([payload])[0] || payload;
 
       try {
         if (res && Array.isArray(res.attachments)) {
@@ -70,51 +72,50 @@ export const ticketApi = {
     })();
   },
 
-  createTicket(userId, reporterName, ticketData, options = {}) {
-    // Detect file-like attachments (browser File/Blob or RN {uri,name,type})
-    const hasFileAttachments = Array.isArray(ticketData?.attachments) && ticketData.attachments.some((item) => {
-      try {
-        if (!item) return false;
-        if (typeof File !== 'undefined' && item instanceof File) return true;
-        if (typeof Blob !== 'undefined' && item instanceof Blob) return true;
-        // React Native style: { uri, name }
-        if (typeof item === 'object' && ('uri' in item || 'name' in item)) return true;
-      } catch (e) {
-        return false;
-      }
-      return false;
-    });
-
-    if (hasFileAttachments && typeof FormData !== 'undefined') {
-      const formData = new FormData();
-      formData.append('userId', userId);
-      formData.append('reporterName', reporterName);
-
-      Object.entries(ticketData || {}).forEach(([key, value]) => {
-        if (value === undefined || value === null) return;
-        if (Array.isArray(value)) {
-          value.forEach((item) => {
-            // If it's a file-like object, append directly
-            formData.append(key, item);
-          });
-        } else if (typeof value === 'object' && value !== null && ('uri' in value || 'name' in value)) {
-          formData.append(key, value);
-        } else {
-          formData.append(key, String(value));
-        }
-      });
-
-      return axiosClient.post(getFeedbackBasePath(options.role), formData, {
-        headers: {
-          'Content-Type': undefined,
-        },
-      });
+  createTicket(_userId, _reporterName, ticketData, options = {}) {
+    if (typeof FormData === 'undefined') {
+      throw new Error('FormData is required to create feedback.');
     }
 
-    return axiosClient.post(getFeedbackBasePath(options.role), {
-      userId,
-      reporterName,
-      ...ticketData,
+    const formData = new FormData();
+    const swaggerFields = [
+      ['AreaId', 'areaId'],
+      ['CategoryId', 'categoryId'],
+      ['Title', 'title'],
+      ['Description', 'description'],
+      ['LocationText', 'locationText'],
+      ['Latitude', 'latitude'],
+      ['Longitude', 'longitude'],
+      ['LocationAccuracyMeters', 'locationAccuracyMeters'],
+      ['GeoSource', 'geoSource'],
+      ['Priority', 'priority'],
+      ['DueDate', 'dueDate'],
+    ];
+
+    swaggerFields.forEach(([formKey, dataKey]) => {
+      const value = ticketData?.[dataKey];
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(formKey, String(value));
+      }
+    });
+
+    const attachments = Array.isArray(ticketData?.attachments)
+      ? ticketData.attachments.filter(Boolean)
+      : [];
+
+    attachments.forEach((file) => {
+      const isBlob = typeof Blob !== 'undefined' && file instanceof Blob;
+      if (isBlob) {
+        formData.append('Attachments', file, file?.name || 'attachment');
+      } else {
+        formData.append('Attachments', file);
+      }
+    });
+
+    return axiosClient.post(getFeedbackBasePath(options.role), formData, {
+      headers: {
+        'Content-Type': undefined,
+      },
     });
   },
 
@@ -209,7 +210,11 @@ export const ticketApi = {
   },
 
   submitReview(feedbackId, userId, rating, isSatisfied, comment, options = {}) {
-    return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, normalizeCommentPayload({ content: comment }));
+    return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/resolution-review`, {
+      rating: Number(rating),
+      isSatisfied: Boolean(isSatisfied),
+      comment: typeof comment === 'string' ? comment.trim() : String(comment ?? ''),
+    });
   },
 
   async getHistory(feedbackId, options = {}) {

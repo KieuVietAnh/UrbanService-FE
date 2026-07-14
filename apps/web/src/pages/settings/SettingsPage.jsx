@@ -90,26 +90,26 @@ export const SettingsPage = () => {
 
   return (
     <div className="admin-page-shell space-y-6">
-      <section className="admin-page-hero">
+      <section className="admin-page-hero settings-page-hero">
         <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
 
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             <div className="admin-hero-icon">
-              <Lucide.Settings2 size={22} />
+              <Lucide.Settings2 size={26} />
             </div>
             <div className="min-w-0">
-              <h2 className="admin-hero-title">
+              <h1 className="admin-hero-title">
                 Cài đặt hệ thống
-              </h2>
+              </h1>
               <p className="admin-hero-description">
                 Tùy biến giao diện và kênh nhận thông báo theo cách bạn vận hành UrbanMind hằng ngày.
               </p>
             </div>
           </div>
 
-          <div className="shrink-0 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+          <aside className="settings-active-theme-card shrink-0 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm backdrop-blur" aria-label="Giao diện đang sử dụng">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
                 <ActiveThemeIcon size={20} />
@@ -119,7 +119,7 @@ export const SettingsPage = () => {
                 <p className="mt-0.5 whitespace-nowrap text-sm font-semibold text-slate-950">{activeTheme.name}</p>
               </div>
             </div>
-          </div>
+          </aside>
         </div>
       </section>
 

@@ -2013,3 +2013,375 @@ html[data-theme="dark"] .role-permission-toggle.is-enabled .role-permission-togg
   color: #ffffff;
   box-shadow: 0 10px 22px rgba(14, 165, 233, 0.18);
 }
+
+/* Interaction Manager design-system accents in dark mode. */
+html[data-theme="dark"] .admin-page-shell .bg-cyan-50 {
+  background: rgba(8, 145, 178, 0.18) !important;
+}
+
+html[data-theme="dark"] .admin-page-shell .text-cyan-700,
+html[data-theme="dark"] .admin-page-shell .text-cyan-600 {
+  color: #67e8f9 !important;
+}
+
+html[data-theme="dark"] .admin-page-shell .border-cyan-200 {
+  border-color: rgba(103, 232, 249, 0.28) !important;
+}
+
+html[data-theme="dark"] .admin-page-shell .border-rose-200,
+html[data-theme="dark"] .admin-page-shell .border-red-200 {
+  border-color: rgba(251, 113, 133, 0.30) !important;
+}
+
+html[data-theme="dark"] .admin-page-shell .bg-orange-50 {
+  background: rgba(154, 52, 18, 0.24) !important;
+}
+
+html[data-theme="dark"] .admin-page-shell .text-orange-700,
+html[data-theme="dark"] .admin-page-shell .text-orange-600 {
+  color: #fdba74 !important;
+}
+
+html[data-theme="dark"] .admin-page-shell .border-orange-200 {
+  border-color: rgba(251, 146, 60, 0.30) !important;
+}
+
+/* ---------------------- Interaction Manager UI corrections ---------------------- */
+.manager-page-header,
+.settings-page-hero {
+  padding: 1.55rem 1.65rem;
+  border-radius: 1.55rem;
+}
+
+.manager-page-header .admin-hero-icon,
+.settings-page-hero .admin-hero-icon {
+  height: 3.75rem;
+  width: 3.75rem;
+  border-radius: 1.15rem;
+  box-shadow: 0 15px 32px rgba(37, 99, 235, 0.23);
+}
+
+.manager-page-header .admin-hero-title,
+.settings-page-hero .admin-hero-title {
+  font-size: clamp(1.8rem, 2.25vw, 2.25rem);
+  line-height: 1.1;
+}
+
+.manager-page-header .admin-hero-description,
+.settings-page-hero .admin-hero-description {
+  max-width: 56rem;
+  margin-top: 0.5rem;
+  line-height: 1.62;
+}
+
+.manager-header-status,
+.settings-active-theme-card {
+  width: 14rem;
+  min-width: 14rem;
+  flex: 0 0 14rem;
+}
+
+.manager-header-status {
+  --manager-status-border: rgba(16, 185, 129, 0.28);
+  --manager-status-bg: rgba(236, 253, 245, 0.92);
+  --manager-status-label: #047857;
+  border-radius: 1rem;
+  border: 1px solid var(--manager-status-border);
+  background: var(--manager-status-bg);
+  padding: 0.75rem 0.9rem;
+}
+
+.manager-header-status--info {
+  --manager-status-border: rgba(59, 130, 246, 0.3);
+  --manager-status-bg: rgba(239, 246, 255, 0.94);
+  --manager-status-label: #1d4ed8;
+}
+
+.manager-header-status--review {
+  --manager-status-border: rgba(139, 92, 246, 0.3);
+  --manager-status-bg: rgba(245, 243, 255, 0.94);
+  --manager-status-label: #6d28d9;
+}
+
+.manager-header-status--warning {
+  --manager-status-border: rgba(245, 158, 11, 0.32);
+  --manager-status-bg: rgba(255, 251, 235, 0.94);
+  --manager-status-label: #b45309;
+}
+
+.manager-header-status--rework {
+  --manager-status-border: rgba(249, 115, 22, 0.34);
+  --manager-status-bg: rgba(255, 247, 237, 0.94);
+  --manager-status-label: #c2410c;
+}
+
+.manager-header-status--danger {
+  --manager-status-border: rgba(244, 63, 94, 0.3);
+  --manager-status-bg: rgba(255, 241, 242, 0.94);
+  --manager-status-label: #be123c;
+}
+
+.manager-header-status--neutral {
+  --manager-status-border: rgba(100, 116, 139, 0.28);
+  --manager-status-bg: rgba(248, 250, 252, 0.94);
+  --manager-status-label: #475569;
+}
+
+.manager-header-status dt {
+  color: var(--manager-status-label);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.manager-header-status dd {
+  margin-top: 0.25rem;
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.manager-chart {
+  min-height: 18rem;
+}
+
+.manager-chart-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.manager-chart-summary > span:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.manager-chart-summary small,
+.manager-chart-muted {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.manager-chart-summary strong {
+  color: #0f172a;
+  font-size: 1.75rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.manager-chart-trend {
+  border-radius: 999px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.manager-chart-trend.is-positive {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.manager-chart-trend.is-negative {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.manager-line-chart {
+  width: 100%;
+  height: auto;
+  color: #2563eb;
+  overflow: visible;
+}
+
+.manager-chart-grid {
+  stroke: rgba(148, 163, 184, 0.28);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+}
+
+.manager-chart-axis-label {
+  fill: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.manager-chart-area {
+  color: #2563eb;
+}
+
+.manager-chart-line {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.manager-chart-point-halo {
+  fill: rgba(37, 99, 235, 0.12);
+}
+
+.manager-chart-point {
+  fill: #ffffff;
+  stroke: #2563eb;
+  stroke-width: 3;
+}
+
+.manager-category-bars {
+  display: grid;
+  gap: 1rem;
+}
+
+.manager-category-bars li {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.manager-category-bars li > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #334155;
+  font-size: 0.825rem;
+  font-weight: 650;
+}
+
+.manager-category-bars li > header strong {
+  color: #0f172a;
+}
+
+.manager-category-track {
+  height: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9eff8;
+}
+
+.manager-category-track > span {
+  display: block;
+  height: 100%;
+  min-width: 0.5rem;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #0ea5e9);
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.2);
+}
+
+html[data-theme="dark"] .manager-header-status {
+  --manager-status-border: rgba(52, 211, 153, 0.24);
+  --manager-status-bg: rgba(6, 78, 59, 0.26);
+  --manager-status-label: #6ee7b7;
+}
+
+html[data-theme="dark"] .manager-header-status--info {
+  --manager-status-border: rgba(96, 165, 250, 0.28);
+  --manager-status-bg: rgba(30, 64, 175, 0.2);
+  --manager-status-label: #93c5fd;
+}
+
+html[data-theme="dark"] .manager-header-status--review {
+  --manager-status-border: rgba(167, 139, 250, 0.28);
+  --manager-status-bg: rgba(91, 33, 182, 0.2);
+  --manager-status-label: #c4b5fd;
+}
+
+html[data-theme="dark"] .manager-header-status--warning {
+  --manager-status-border: rgba(251, 191, 36, 0.28);
+  --manager-status-bg: rgba(146, 64, 14, 0.2);
+  --manager-status-label: #fcd34d;
+}
+
+html[data-theme="dark"] .manager-header-status--rework {
+  --manager-status-border: rgba(251, 146, 60, 0.3);
+  --manager-status-bg: rgba(154, 52, 18, 0.22);
+  --manager-status-label: #fdba74;
+}
+
+html[data-theme="dark"] .manager-header-status--danger {
+  --manager-status-border: rgba(251, 113, 133, 0.3);
+  --manager-status-bg: rgba(159, 18, 57, 0.22);
+  --manager-status-label: #fda4af;
+}
+
+html[data-theme="dark"] .manager-header-status--neutral {
+  --manager-status-border: rgba(148, 163, 184, 0.28);
+  --manager-status-bg: rgba(30, 41, 59, 0.72);
+  --manager-status-label: #cbd5e1;
+}
+
+html[data-theme="dark"] .settings-active-theme-card {
+  border-color: rgba(71, 85, 105, 0.78) !important;
+  background: rgba(15, 23, 42, 0.82) !important;
+}
+
+html[data-theme="dark"] .manager-header-status dt {
+  color: var(--manager-status-label);
+}
+
+html[data-theme="dark"] .manager-header-status dd,
+html[data-theme="dark"] .manager-chart-summary strong,
+html[data-theme="dark"] .manager-category-bars li > header strong {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .manager-chart-summary small,
+html[data-theme="dark"] .manager-chart-muted,
+html[data-theme="dark"] .manager-chart-axis-label {
+  color: #94a3b8;
+  fill: #94a3b8;
+}
+
+html[data-theme="dark"] .manager-chart-grid {
+  stroke: rgba(71, 85, 105, 0.52);
+}
+
+html[data-theme="dark"] .manager-chart-line {
+  stroke: #60a5fa;
+}
+
+html[data-theme="dark"] .manager-chart-area,
+html[data-theme="dark"] .manager-line-chart {
+  color: #60a5fa;
+}
+
+html[data-theme="dark"] .manager-chart-point-halo {
+  fill: rgba(96, 165, 250, 0.15);
+}
+
+html[data-theme="dark"] .manager-chart-point {
+  fill: #0f172a;
+  stroke: #60a5fa;
+}
+
+html[data-theme="dark"] .manager-category-bars li > header {
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .manager-category-track {
+  background: rgba(51, 65, 85, 0.72);
+}
+
+@media (max-width: 640px) {
+  .manager-page-header,
+  .settings-page-hero {
+    padding: 1.2rem;
+  }
+
+  .manager-page-header .admin-hero-icon,
+  .settings-page-hero .admin-hero-icon {
+    height: 3.35rem;
+    width: 3.35rem;
+  }
+
+  .manager-header-status,
+  .settings-active-theme-card {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+}

@@ -6,6 +6,8 @@ import { managementTypes } from './managementTypes.js';
 test('formats shared ticket statuses for UI', () => {
   assert.equal(getStatusLabel(managementTypes.feedbackStatus.SUBMITTED), 'Đã gửi');
   assert.equal(getStatusLabel(managementTypes.feedbackStatus.IN_PROGRESS), 'Đang xử lý');
+  assert.equal(getStatusLabel(managementTypes.feedbackStatus.REJECTED), 'Bị từ chối');
+  assert.equal(getStatusLabel(managementTypes.feedbackStatus.CANCELLED), 'Đã hủy');
   assert.equal(getStatusLabel('UnknownStatus', 'Không xác định'), 'Không xác định');
 });
 

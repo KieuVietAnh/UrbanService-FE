@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 // src/components/charts/CustomCharts.jsx
 
 
@@ -102,152 +104,130 @@ export const SentimentDonutChart = ({ positive = 45, neutral = 35, negative = 20
 };
 
 // 2. SLA Performance Line Chart
-export const SLAPerformanceChart = () => {
-  // Mock data for weekly SLA compliance rates (%)
-  const data = [75, 82, 80, 88, 92, 95];
-  const labels = ['T12', 'T1', 'T2', 'T3', 'T4', 'T5'];
-  
-  const width = 500;
-  const height = 180;
-  const padding = 30;
-  
-  const chartWidth = width - padding * 2;
-  const chartHeight = height - padding * 2;
-  
-  // Calculate points
-  const points = data.map((val, idx) => {
-    const x = padding + (idx / (data.length - 1)) * chartWidth;
-    // Map 0-100 to chartHeight-0
-    const y = padding + chartHeight - (val / 100) * chartHeight;
-    return { x, y, val };
-  });
+const DEFAULT_SLA_TREND = [
+  { label: 'T12', value: 75 },
+  { label: 'T1', value: 82 },
+  { label: 'T2', value: 80 },
+  { label: 'T3', value: 88 },
+  { label: 'T4', value: 92 },
+  { label: 'T5', value: 95 },
+];
 
-  // Construct SVG Path
-  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
+export const SLAPerformanceChart = ({ data = DEFAULT_SLA_TREND }) => {
+  const gradientId = useId().replace(/:/g, '');
+  const series = Array.isArray(data) && data.length > 1
+    ? data.map((item, index) => ({
+      label: typeof item === 'number' ? `Kỳ ${index + 1}` : item.label,
+      value: Number(typeof item === 'number' ? item : item.value) || 0,
+    }))
+    : DEFAULT_SLA_TREND;
+
+  const width = 640;
+  const height = 260;
+  const padding = { top: 24, right: 24, bottom: 42, left: 46 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const points = series.map((item, index) => ({
+    ...item,
+    x: padding.left + (index / (series.length - 1)) * chartWidth,
+    y: padding.top + chartHeight - (Math.min(100, Math.max(0, item.value)) / 100) * chartHeight,
+  }));
+  const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+  const areaPath = `${linePath} L ${points.at(-1).x} ${height - padding.bottom} L ${points[0].x} ${height - padding.bottom} Z`;
+  const firstValue = points[0]?.value || 0;
+  const latestValue = points.at(-1)?.value || 0;
+  const delta = latestValue - firstValue;
 
   return (
-    <div className="bg-base-100 p-4 rounded-2xl border border-base-300 w-full">
-      <h4 className="text-sm font-bold mb-4">Tỷ Lệ Đạt Chỉ Tiêu SLA Theo Tháng</h4>
-      <div className="relative w-full overflow-hidden">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-          {/* Grid lines */}
-          <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="var(--fallback-b3, #e5e7eb)" strokeWidth="0.5" strokeDasharray="4 4" />
-          <line x1={padding} y1={padding + chartHeight / 2} x2={width - padding} y2={padding + chartHeight / 2} stroke="var(--fallback-b3, #e5e7eb)" strokeWidth="0.5" strokeDasharray="4 4" />
-          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="var(--fallback-b3, #e5e7eb)" strokeWidth="1" />
+    <section className="manager-chart" aria-label="Xu hướng tỷ lệ đạt SLA theo thời gian">
+      <header className="manager-chart-summary">
+        <span>
+          <small>Tỷ lệ kỳ gần nhất</small>
+          <strong>{latestValue}%</strong>
+        </span>
+        <span className={delta >= 0 ? 'manager-chart-trend is-positive' : 'manager-chart-trend is-negative'}>
+          {delta >= 0 ? 'Tăng' : 'Giảm'} {Math.abs(delta)} điểm so với kỳ đầu
+        </span>
+      </header>
 
-          {/* Area fill */}
-          <path d={areaPath} fill="url(#slaGrad)" opacity="0.15" />
+      <svg viewBox={`0 0 ${width} ${height}`} className="manager-line-chart" role="img" aria-labelledby={`${gradientId}-title ${gradientId}-desc`}>
+        <title id={`${gradientId}-title`}>Biểu đồ xu hướng SLA</title>
+        <desc id={`${gradientId}-desc`}>Tỷ lệ đạt SLA tăng từ {firstValue}% lên {latestValue}% trong {series.length} kỳ.</desc>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="currentColor" stopOpacity="0.24" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+          </linearGradient>
+        </defs>
 
-          {/* SLA Line */}
-          <path d={linePath} fill="none" stroke="var(--fallback-p, #4f46e5)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-
-          {/* Gradient definition */}
-          <defs>
-            <linearGradient id="slaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--fallback-p, #4f46e5)" />
-              <stop offset="100%" stopColor="var(--fallback-p, #4f46e5)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {/* Dots and Tooltips */}
-          {points.map((p, idx) => (
-            <g key={idx} className="group cursor-pointer">
-              <circle cx={p.x} cy={p.y} r="5" fill="var(--fallback-p, #4f46e5)" stroke="var(--fallback-b1, #ffffff)" strokeWidth="2" />
-              <circle cx={p.x} cy={p.y} r="10" fill="var(--fallback-p, #4f46e5)" opacity="0" className="hover:opacity-20 transition-opacity" />
-              {/* Text label on hover or default */}
-              <text x={p.x} y={p.y - 10} textAnchor="middle" className="text-[10px] font-bold fill-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                {p.val}%
-              </text>
-              {/* X axis labels */}
-              <text x={p.x} y={height - 10} textAnchor="middle" className="text-[10px] fill-gray-500 font-semibold">
-                {labels[idx]}
-              </text>
+        {[0, 25, 50, 75, 100].map((tick) => {
+          const y = padding.top + chartHeight - (tick / 100) * chartHeight;
+          return (
+            <g key={tick}>
+              <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} className="manager-chart-grid" />
+              <text x={padding.left - 12} y={y + 4} textAnchor="end" className="manager-chart-axis-label">{tick}%</text>
             </g>
-          ))}
-          
-          {/* Y Axis labels */}
-          <text x={10} y={padding + 4} className="text-[8px] fill-gray-400 font-bold">100%</text>
-          <text x={10} y={padding + chartHeight / 2 + 4} className="text-[8px] fill-gray-400 font-bold">50%</text>
-          <text x={10} y={height - padding + 4} className="text-[8px] fill-gray-400 font-bold">0%</text>
-        </svg>
-      </div>
-    </div>
+          );
+        })}
+
+        <path d={areaPath} fill={`url(#${gradientId})`} className="manager-chart-area" />
+        <path d={linePath} className="manager-chart-line" />
+
+        {points.map((point) => (
+          <g key={point.label}>
+            <circle cx={point.x} cy={point.y} r="8" className="manager-chart-point-halo" />
+            <circle cx={point.x} cy={point.y} r="4.5" className="manager-chart-point" />
+            <text x={point.x} y={height - 14} textAnchor="middle" className="manager-chart-axis-label">{point.label}</text>
+            <title>{point.label}: {point.value}%</title>
+          </g>
+        ))}
+      </svg>
+    </section>
   );
 };
 
 // 3. Category Volume Bar Chart
 export const CategoryVolumeBarChart = ({ data = [] }) => {
-  // Use provided category counts or defaults
-  const categories = data.length > 0 ? data : [
+  const source = data.length > 0 ? data : [
     { categoryName: 'Vệ sinh', count: 18 },
     { categoryName: 'Điện chiếu sáng', count: 12 },
     { categoryName: 'Cấp thoát nước', count: 15 },
     { categoryName: 'Đường sá', count: 9 },
-    { categoryName: 'Cây xanh', count: 6 }
+    { categoryName: 'Cây xanh', count: 6 },
   ];
-
-  const maxCount = Math.max(...categories.map(c => c.count), 1);
-  const width = 500;
-  const height = 180;
-  const padding = 30;
-
-  const chartWidth = width - padding * 2;
-  const chartHeight = height - padding * 2;
-  const barWidth = 40;
-  const gap = (chartWidth - barWidth * categories.length) / (categories.length - 1);
+  const categories = source.map((item, index) => ({
+    name: item.categoryName || item.name || `Danh mục ${index + 1}`,
+    count: Number(item.count ?? item.value ?? item.total ?? 0),
+  }));
+  const maxCount = Math.max(...categories.map((category) => category.count), 1);
+  const total = categories.reduce((sum, category) => sum + category.count, 0);
 
   return (
-    <div className="bg-base-100 p-4 rounded-2xl border border-base-300 w-full">
-      <h4 className="text-sm font-bold mb-4">Số Lượng Phản Ánh Theo Danh Mục</h4>
-      <div className="relative w-full overflow-hidden">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-          {/* Y-Axis lines */}
-          <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="var(--fallback-b3, #e5e7eb)" strokeWidth="0.5" strokeDasharray="4 4" />
-          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="var(--fallback-b3, #e5e7eb)" strokeWidth="1" />
+    <section className="manager-chart" aria-label="Khối lượng phản ánh theo danh mục dịch vụ">
+      <header className="manager-chart-summary">
+        <span>
+          <small>Tổng khối lượng</small>
+          <strong>{total}</strong>
+        </span>
+        <span className="manager-chart-muted">So sánh tương đối giữa các nhóm dịch vụ</span>
+      </header>
 
-          {categories.map((cat, idx) => {
-            const x = padding + idx * (barWidth + gap);
-            const barHeight = (cat.count / maxCount) * chartHeight;
-            const y = height - padding - barHeight;
-
-            return (
-              <g key={idx} className="group cursor-pointer">
-                {/* Visual Bar with nice rounding at top */}
-                <path
-                  d={`
-                    M ${x} ${y + 6}
-                    A 6 6 0 0 1 ${x + barWidth} ${y + 6}
-                    L ${x + barWidth} ${height - padding}
-                    L ${x} ${height - padding}
-                    Z
-                  `}
-                  fill="url(#barGrad)"
-                  className="transition-all duration-500 ease-out hover:fill-secondary"
-                />
-                
-                {/* Numeric value at top */}
-                <text x={x + barWidth / 2} y={y - 8} textAnchor="middle" className="text-[10px] font-extrabold fill-base-content opacity-90">
-                  {cat.count}
-                </text>
-
-                {/* X axis labels (shortened if necessary) */}
-                <text x={x + barWidth / 2} y={height - 10} textAnchor="middle" className="text-[9px] fill-gray-500 font-bold">
-                  {cat.categoryName.split(' ')[0]}
-                </text>
-              </g>
-            );
-          })}
-          
-          {/* Gradients */}
-          <defs>
-            <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--fallback-s, #f000b8)" />
-              <stop offset="100%" stopColor="var(--fallback-p, #4f46e5)" />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-    </div>
+      <ol className="manager-category-bars">
+        {categories.map((category) => {
+          const percentage = Math.round((category.count / maxCount) * 100);
+          return (
+            <li key={category.name}>
+              <header>
+                <span>{category.name}</span>
+                <strong>{category.count}</strong>
+              </header>
+              <div className="manager-category-track" role="img" aria-label={`${category.name}: ${category.count} phản ánh`}>
+                <span style={{ width: `${percentage}%` }} />
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 };

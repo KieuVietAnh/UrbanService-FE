@@ -2,6 +2,15 @@ import { axiosClient } from './axiosClient.js';
 
 const DEFAULT_CATEGORY_PARAMS = { includeInactive: false };
 
+const normalizeCollection = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.content)) return payload.content;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+};
+
 let mockDbAdapter = null;
 
 const getMockDb = async () => {
@@ -27,10 +36,19 @@ export const toolsApi = {
       console.warn('toolsApi.init failed', error);
     }
   },
+  async getAreas(params = {}) {
+    try {
+      const response = await axiosClient.get('/api/areas', { params });
+      return normalizeCollection(response);
+    } catch (error) {
+      console.warn('toolsApi.getAreas failed', error);
+      return [];
+    }
+  },
   async getCategories() {
     try {
       const response = await axiosClient.get('/api/categories', { params: DEFAULT_CATEGORY_PARAMS });
-      return Array.isArray(response) ? response : [];
+      return normalizeCollection(response);
     } catch (error) {
       console.warn('toolsApi.getCategories failed', error);
       return [];
