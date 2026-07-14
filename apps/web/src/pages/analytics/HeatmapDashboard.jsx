@@ -124,41 +124,43 @@ export const HeatmapDashboard = () => {
             </svg>
           </section>
           <figcaption className="border-t border-slate-200 px-5 py-3 text-xs leading-5 text-slate-500 sm:px-6 dark:border-slate-800 dark:text-slate-400">
-            Bản đồ hiện là trực quan hóa mô phỏng; dữ liệu production cần được nối với tọa độ thật từ feedback và bản đồ GIS.
+            Bản đồ hiện dùng dữ liệu mô phỏng; khi triển khai thực tế cần kết nối tọa độ phản ánh với bản đồ GIS.
           </figcaption>
         </figure>
 
-        <aside className="admin-panel flex min-h-0 flex-col overflow-hidden xl:max-h-[720px]" aria-labelledby="hotspot-list-title">
+        <aside className="admin-panel flex min-h-0 flex-col overflow-hidden xl:max-h-[620px]" aria-labelledby="hotspot-list-title">
           <ManagerSectionHeader
             title="Danh sách điểm nóng"
-            description="Sắp xếp theo cường độ để Manager xác định khu vực cần kiểm tra sâu hơn."
+            description="Ưu tiên khu vực có mật độ phản ánh cao."
             icon={Lucide.ListFilter}
           />
           {filteredCenters.length > 0 ? (
             <>
-              <ol className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-5 pr-3 sm:p-6 sm:pr-4" aria-label="Điểm nóng theo mức độ ưu tiên">
-              {sortedCenters.map((center, index) => (
-                <li key={center.name}>
-                  <article className="admin-inset-panel p-4">
-                    <header className="flex items-start justify-between gap-3">
-                      <span className="flex min-w-0 items-start gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-700" aria-hidden="true">{index + 1}</span>
-                        <span className="min-w-0">
-                          <h3 className="text-sm font-semibold text-slate-950">{center.name}</h3>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">{center.issue}</p>
+              <ol className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-4 pr-3 sm:p-5 sm:pr-4" aria-label="Điểm nóng theo mức độ ưu tiên">
+                {sortedCenters.map((center, index) => (
+                  <li key={center.name}>
+                    <article className="admin-inset-panel px-3.5 py-3">
+                      <header className="flex items-start gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-sm font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300" aria-hidden="true">
+                          {index + 1}
                         </span>
-                      </span>
-                      <strong className="text-sm text-rose-700">{Math.round(center.intensity * 100)}%</strong>
-                    </header>
-                    <footer className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                      {categoryLabels[center.category]}
-                    </footer>
-                  </article>
-                </li>
-              ))}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-start justify-between gap-3">
+                            <h3 className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{center.name}</h3>
+                            <strong className="shrink-0 text-sm text-rose-700 dark:text-rose-300">{Math.round(center.intensity * 100)}%</strong>
+                          </span>
+                          <p className="mt-0.5 truncate text-xs leading-5 text-slate-500 dark:text-slate-400">{center.issue}</p>
+                          <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                            {categoryLabels[center.category]}
+                          </span>
+                        </span>
+                      </header>
+                    </article>
+                  </li>
+                ))}
               </ol>
-              <footer className="shrink-0 border-t border-slate-200 px-5 py-3 text-xs text-slate-500 sm:px-6 dark:border-slate-800 dark:text-slate-400">
-                {sortedCenters.length} điểm nóng phù hợp với bộ lọc. Cuộn danh sách để xem thêm.
+              <footer className="shrink-0 border-t border-slate-200 px-5 py-2.5 text-xs text-slate-500 sm:px-6 dark:border-slate-800 dark:text-slate-400">
+                Hiển thị {sortedCenters.length} điểm nóng phù hợp với bộ lọc.
               </footer>
             </>
           ) : (

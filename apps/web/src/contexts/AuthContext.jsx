@@ -1,16 +1,45 @@
 // src/contexts/AuthContext.jsx
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { authApi } from '../services/api/authApi';
 import { tokenStorage } from '../services/storage/tokenStorage';
 import { getInternalRole } from '../utils/roleMap';
+import { setUnauthorizedHandler } from '@urbanmind/shared-api';
 
 const AuthContext = createContext(null);
 
 const normalizeRole = (role) => getInternalRole(role);
 
+const getJwtExpiresAt = (token) => {
+  if (!token || typeof token !== 'string' || typeof atob !== 'function') return null;
+
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const decoded = JSON.parse(atob(padded));
+    return Number.isFinite(decoded?.exp) ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+};
+
 const initializeUser = () => {
   const savedUser = tokenStorage.getUser();
-  if (!savedUser) return null;
+  const token = tokenStorage.getToken();
+
+  if (!savedUser || !token) {
+    tokenStorage.clear();
+    return null;
+  }
+
+  const expiresAt = getJwtExpiresAt(token);
+  if (expiresAt && expiresAt <= Date.now()) {
+    tokenStorage.clear();
+    return null;
+  }
+
   return {
     ...savedUser,
     role: normalizeRole(savedUser.role),
@@ -20,6 +49,38 @@ const initializeUser = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(initializeUser);
   const [loading, setLoading] = useState(false);
+
+  const expireSession = useCallback(() => {
+    tokenStorage.clear();
+    setUser(null);
+
+    if (typeof window === 'undefined' || window.location.pathname.startsWith('/login')) {
+      return;
+    }
+
+    const redirect = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const params = new URLSearchParams({
+      reason: 'session-expired',
+      redirect,
+    });
+    window.location.replace(`/login?${params.toString()}`);
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(expireSession);
+    return () => setUnauthorizedHandler(null);
+  }, [expireSession]);
+
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') return undefined;
+
+    const expiresAt = getJwtExpiresAt(tokenStorage.getToken());
+    if (!expiresAt) return undefined;
+
+    const delay = Math.max(expiresAt - Date.now(), 0);
+    const timer = window.setTimeout(expireSession, delay);
+    return () => window.clearTimeout(timer);
+  }, [expireSession, user]);
 
   const login = async (email, password) => {
     setLoading(true);

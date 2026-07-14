@@ -93,19 +93,35 @@ export const Header = ({ onMenuToggle }) => {
             : path === 'sla' && location.pathname.startsWith('/analytics/')
               ? 'Phân tích SLA'
               : labelMap[path] || path;
+          const isLast = idx === visiblePaths.length - 1;
 
+          const breadcrumbLinkMap = {
+            interactions: '/manager/interactions',
+            approvals: '/manager/approvals',
+            heatmap: '/analytics/heatmap',
+            sentiment: '/analytics/sentiment',
+            settings: '/settings',
+          };
+
+          const breadcrumbLink =
+            path === 'sla' && location.pathname.startsWith('/analytics/')
+              ? '/analytics/sla'
+              : breadcrumbLinkMap[path];
           return (
             <span key={`${path}-${idx}`} className="flex items-center gap-1.5">
               <Lucide.ChevronRight size={14} className="text-slate-300" />
-              <span
-                className={
-                  idx === visiblePaths.length - 1
-                    ? 'font-semibold text-slate-950'
-                    : 'font-semibold text-base-content/45'
-                }
-              >
-                {segmentName}
-              </span>
+              {!isLast && breadcrumbLink ? (
+                <Link
+                  to={breadcrumbLink}
+                  className="font-semibold text-slate-500 transition-colors hover:text-blue-700"
+                >
+                  {segmentName}
+                </Link>
+              ) : (
+                <span className="font-semibold text-slate-950">
+                  {segmentName}
+                </span>
+              )}
             </span>
           );
         })}

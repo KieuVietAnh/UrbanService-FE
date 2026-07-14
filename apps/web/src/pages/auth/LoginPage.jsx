@@ -33,6 +33,7 @@ export const LoginPage = () => {
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get('reason') === 'session-expired';
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -129,6 +130,13 @@ export const LoginPage = () => {
             <p className="text-xs text-slate-400 font-semibold">Kết nối cộng đồng, kiến tạo tương lai đô thị.</p>
           </div>
         </div>
+
+        {sessionExpired && !error && (
+          <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <Lucide.ClockAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <p>Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.</p>
+          </div>
+        )}
 
         {/* Error notification */}
         {error && (

@@ -2082,14 +2082,53 @@ html[data-theme="dark"] .admin-page-shell .border-orange-200 {
 }
 
 .manager-header-status {
+  --manager-status-border: rgba(16, 185, 129, 0.28);
+  --manager-status-bg: rgba(236, 253, 245, 0.92);
+  --manager-status-label: #047857;
   border-radius: 1rem;
-  border: 1px solid rgba(16, 185, 129, 0.28);
-  background: rgba(236, 253, 245, 0.92);
+  border: 1px solid var(--manager-status-border);
+  background: var(--manager-status-bg);
   padding: 0.75rem 0.9rem;
 }
 
+.manager-header-status--info {
+  --manager-status-border: rgba(59, 130, 246, 0.3);
+  --manager-status-bg: rgba(239, 246, 255, 0.94);
+  --manager-status-label: #1d4ed8;
+}
+
+.manager-header-status--review {
+  --manager-status-border: rgba(139, 92, 246, 0.3);
+  --manager-status-bg: rgba(245, 243, 255, 0.94);
+  --manager-status-label: #6d28d9;
+}
+
+.manager-header-status--warning {
+  --manager-status-border: rgba(245, 158, 11, 0.32);
+  --manager-status-bg: rgba(255, 251, 235, 0.94);
+  --manager-status-label: #b45309;
+}
+
+.manager-header-status--rework {
+  --manager-status-border: rgba(249, 115, 22, 0.34);
+  --manager-status-bg: rgba(255, 247, 237, 0.94);
+  --manager-status-label: #c2410c;
+}
+
+.manager-header-status--danger {
+  --manager-status-border: rgba(244, 63, 94, 0.3);
+  --manager-status-bg: rgba(255, 241, 242, 0.94);
+  --manager-status-label: #be123c;
+}
+
+.manager-header-status--neutral {
+  --manager-status-border: rgba(100, 116, 139, 0.28);
+  --manager-status-bg: rgba(248, 250, 252, 0.94);
+  --manager-status-label: #475569;
+}
+
 .manager-header-status dt {
-  color: #047857;
+  color: var(--manager-status-label);
   font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -2234,8 +2273,45 @@ html[data-theme="dark"] .admin-page-shell .border-orange-200 {
 }
 
 html[data-theme="dark"] .manager-header-status {
-  border-color: rgba(52, 211, 153, 0.24);
-  background: rgba(6, 78, 59, 0.26);
+  --manager-status-border: rgba(52, 211, 153, 0.24);
+  --manager-status-bg: rgba(6, 78, 59, 0.26);
+  --manager-status-label: #6ee7b7;
+}
+
+html[data-theme="dark"] .manager-header-status--info {
+  --manager-status-border: rgba(96, 165, 250, 0.28);
+  --manager-status-bg: rgba(30, 64, 175, 0.2);
+  --manager-status-label: #93c5fd;
+}
+
+html[data-theme="dark"] .manager-header-status--review {
+  --manager-status-border: rgba(167, 139, 250, 0.28);
+  --manager-status-bg: rgba(91, 33, 182, 0.2);
+  --manager-status-label: #c4b5fd;
+}
+
+html[data-theme="dark"] .manager-header-status--warning {
+  --manager-status-border: rgba(251, 191, 36, 0.28);
+  --manager-status-bg: rgba(146, 64, 14, 0.2);
+  --manager-status-label: #fcd34d;
+}
+
+html[data-theme="dark"] .manager-header-status--rework {
+  --manager-status-border: rgba(251, 146, 60, 0.3);
+  --manager-status-bg: rgba(154, 52, 18, 0.22);
+  --manager-status-label: #fdba74;
+}
+
+html[data-theme="dark"] .manager-header-status--danger {
+  --manager-status-border: rgba(251, 113, 133, 0.3);
+  --manager-status-bg: rgba(159, 18, 57, 0.22);
+  --manager-status-label: #fda4af;
+}
+
+html[data-theme="dark"] .manager-header-status--neutral {
+  --manager-status-border: rgba(148, 163, 184, 0.28);
+  --manager-status-bg: rgba(30, 41, 59, 0.72);
+  --manager-status-label: #cbd5e1;
 }
 
 html[data-theme="dark"] .settings-active-theme-card {
@@ -2244,7 +2320,7 @@ html[data-theme="dark"] .settings-active-theme-card {
 }
 
 html[data-theme="dark"] .manager-header-status dt {
-  color: #6ee7b7;
+  color: var(--manager-status-label);
 }
 
 html[data-theme="dark"] .manager-header-status dd,

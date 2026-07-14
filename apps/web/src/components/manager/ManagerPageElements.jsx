@@ -7,6 +7,7 @@ export const ManagerPageHeader = ({
   actions,
   statusLabel,
   statusValue,
+  statusTone = 'success',
 }) => (
   <header className="admin-page-hero manager-page-header">
     <section className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -23,7 +24,7 @@ export const ManagerPageHeader = ({
       {actions || statusLabel || statusValue ? (
         <aside className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
           {statusLabel || statusValue ? (
-            <dl className="manager-header-status">
+            <dl className={`manager-header-status manager-header-status--${statusTone}`}>
               {statusLabel ? <dt>{statusLabel}</dt> : null}
               {statusValue ? <dd>{statusValue}</dd> : null}
             </dl>
