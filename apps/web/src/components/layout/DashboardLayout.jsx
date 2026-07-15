@@ -9,12 +9,14 @@ import PageTransition from '../motion/PageTransition';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
+import { normalizeRole } from '../../utils/roleMap';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const DashboardLayout = ({ children }) => {
-  
+
   const { user } = useAuth();
   const location = useLocation();
+  const isCitizen = normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [chatOpen, setChatOpen] = useState(false);
@@ -47,24 +49,33 @@ export const DashboardLayout = ({ children }) => {
     setInputVal(question);
   };
 
-  const showFooter = !user || user?.role === APP_ROLES.SERVICE_USER;
+  const showFooter = isCitizen;
 
   return (
-    <div className="h-screen w-full overflow-hidden flex-col bg-slate-100 font-sans text-slate-900">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-100 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}
-        {user?.role !== APP_ROLES.SERVICE_USER && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+        {!isCitizen && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         {/* Main container */}
-        <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden bg-slate-50">
+        <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
           <Header onMenuToggle={toggleSidebar} />
 
           {/* Main scrollable workspace */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 p-5 sm:p-6">
-            <PageTransition key={location.pathname} className="mx-auto max-w-7xl space-y-6">
-              {children}
-              {showFooter && <Footer />}
-            </PageTransition>
+          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 dark:bg-slate-950">
+            <div className="flex min-h-full flex-col">
+              <PageTransition
+                key={location.pathname}
+                className={`mx-auto w-full flex-1 ${
+                  isCitizen
+                    ? 'citizen-content-shell px-5 py-7 sm:px-6 lg:px-8 2xl:px-10 lg:py-8'
+                    : 'max-w-7xl space-y-6 p-5 sm:p-6'
+                }`}
+              >
+                {children}
+              </PageTransition>
+              {showFooter ? <Footer /> : null}
+            </div>
           </main>
         </div>
       </div>
@@ -74,15 +85,15 @@ export const DashboardLayout = ({ children }) => {
         onClick={toggleChat}
         aria-label="Mở trợ lý AI"
         title="Mở trợ lý AI"
-        className="btn btn-circle btn-primary btn-lg group fixed bottom-6 right-6 z-40 shadow-lg shadow-blue-600/15 transition-transform hover:scale-105"
+        className={`btn btn-circle btn-primary btn-lg group fixed right-5 z-40 shadow-xl shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:scale-105 sm:right-6 lg:right-8 ${isCitizen ? 'bottom-24' : 'bottom-6'}`}
       >
         <Lucide.Sparkles size={24} className="group-hover:rotate-12 transition-transform" aria-hidden />
       </button>
 
-     
+
       {/* AI COPILOT CHAT PANEL (Slide out Drawer) */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-96 bg-base-100 border-l border-base-300 shadow-2xl transform transition-transform duration-300 ${chatOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`fixed inset-y-0 right-0 z-50 w-[min(24rem,calc(100vw-1rem))] bg-base-100 border-l border-base-300 shadow-2xl transform transition-transform duration-300 ${chatOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
       >
         <div className="flex flex-col h-full">

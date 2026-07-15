@@ -77,6 +77,18 @@ html[data-theme="dark"] {
   padding-right: var(--space-md);
 }
 
+
+/* Citizen app pages inherit the width and padding from DashboardLayout.
+   This prevents legacy .page-container blocks from shrinking back to 1180px. */
+.citizen-content-shell .page-container {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
 /* Section helpers for rhythm */
 .section { margin-top: var(--space-lg); margin-bottom: var(--space-lg); }
 .section-tight { margin-top: var(--space-sm); margin-bottom: var(--space-sm); }
