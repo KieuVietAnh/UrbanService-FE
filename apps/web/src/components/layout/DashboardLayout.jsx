@@ -68,7 +68,7 @@ export const DashboardLayout = ({ children }) => {
                 key={location.pathname}
                 className={`mx-auto w-full flex-1 ${
                   isCitizen
-                    ? 'citizen-content-shell px-5 py-7 sm:px-6 lg:px-8 2xl:px-10 lg:py-8'
+                    ? 'citizen-content-shell px-5 pt-7 pb-2 sm:px-6 lg:px-8 lg:pt-8 lg:pb-3 2xl:px-10'
                     : 'max-w-7xl space-y-6 p-5 sm:p-6'
                 }`}
               >
