@@ -233,7 +233,7 @@ export const Dashboard = () => {
       new Date(b.updatedAt || b.createdAt || 0) -
       new Date(a.updatedAt || a.createdAt || 0)
     ))
-    .slice(0, 4);
+    .slice(0, 5);
   const attentionTickets = [...residentTickets]
     .filter((ticket) => (
       [
@@ -397,7 +397,7 @@ export const Dashboard = () => {
                     Phản ánh gần đây
                   </h2>
                   <p className="mt-1 text-xs text-base-content/50">
-                    Bốn hồ sơ có cập nhật mới nhất.
+                    Năm hồ sơ có cập nhật mới nhất.
                   </p>
                 </div>
 
@@ -1723,7 +1723,7 @@ export const Dashboard = () => {
                     </div>
                   </Link>
                 );
-              })}
+              })} 
             </div>
           </div>
         </section>

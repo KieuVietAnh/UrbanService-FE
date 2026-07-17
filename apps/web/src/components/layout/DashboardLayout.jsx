@@ -1,5 +1,5 @@
 // src/components/layout/DashboardLayout.jsx
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { Sidebar } from './Sidebar';
@@ -11,6 +11,13 @@ import { toolsApi } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { normalizeRole } from '../../utils/roleMap';
 import { useAuth } from '../../contexts/AuthContext';
+
+const AI_DOCK_STORAGE_KEY = 'urbanmind-ai-dock-position';
+const AI_BUTTON_SIZE = 56;
+const AI_MIN_TOP = 96;
+const AI_CITIZEN_BOTTOM_GAP = 112;
+const AI_DRAG_THRESHOLD = 6;
+
 
 export const DashboardLayout = ({ children }) => {
 
@@ -25,6 +32,111 @@ export const DashboardLayout = ({ children }) => {
   ]);
   const [inputVal, setInputVal] = useState('');
   const [loadingReply, setLoadingReply] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(() => (
+    typeof window !== 'undefined' ? window.innerHeight : 900
+  ));
+  const [aiDock, setAiDock] = useState(() => {
+    if (typeof window === 'undefined') return 'bottom';
+    const savedDock = window.localStorage.getItem(AI_DOCK_STORAGE_KEY);
+    return ['top', 'middle', 'bottom'].includes(savedDock)
+      ? savedDock
+      : 'bottom';
+  });
+  const [aiDragTop, setAiDragTop] = useState(null);
+  const [aiDragging, setAiDragging] = useState(false);
+  const aiDragStateRef = useRef(null);
+  const suppressAiClickRef = useRef(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportHeight(window.innerHeight);
+      setAiDragTop(null);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const getAiDockTop = (dock) => {
+    const maxTop = Math.max(
+      AI_MIN_TOP,
+      viewportHeight - AI_BUTTON_SIZE - AI_CITIZEN_BOTTOM_GAP
+    );
+
+    if (dock === 'top') return AI_MIN_TOP;
+    if (dock === 'middle') return Math.round((AI_MIN_TOP + maxTop) / 2);
+    return maxTop;
+  };
+
+  const clampAiTop = (top) => {
+    const maxTop = Math.max(
+      AI_MIN_TOP,
+      viewportHeight - AI_BUTTON_SIZE - AI_CITIZEN_BOTTOM_GAP
+    );
+    return Math.min(maxTop, Math.max(AI_MIN_TOP, top));
+  };
+
+  const handleAiPointerDown = (event) => {
+    if (!isCitizen || window.innerWidth < 768 || chatOpen) return;
+
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    aiDragStateRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startTop: aiDragTop ?? getAiDockTop(aiDock),
+      moved: false,
+    };
+    setAiDragging(true);
+  };
+
+  const handleAiPointerMove = (event) => {
+    const dragState = aiDragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    const deltaY = event.clientY - dragState.startY;
+    if (Math.abs(deltaY) >= AI_DRAG_THRESHOLD) {
+      dragState.moved = true;
+    }
+
+    if (dragState.moved) {
+      event.preventDefault();
+      setAiDragTop(clampAiTop(dragState.startTop + deltaY));
+    }
+  };
+
+  const finishAiDrag = (event) => {
+    const dragState = aiDragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (dragState.moved) {
+      const currentTop = clampAiTop(
+        dragState.startTop + event.clientY - dragState.startY
+      );
+      const dockPositions = {
+        top: getAiDockTop('top'),
+        middle: getAiDockTop('middle'),
+        bottom: getAiDockTop('bottom'),
+      };
+      const nearestDock = Object.entries(dockPositions).reduce(
+        (nearest, [dock, dockTop]) => (
+          Math.abs(dockTop - currentTop) < Math.abs(dockPositions[nearest] - currentTop)
+            ? dock
+            : nearest
+        ),
+        'bottom'
+      );
+
+      setAiDock(nearestDock);
+      window.localStorage.setItem(AI_DOCK_STORAGE_KEY, nearestDock);
+      suppressAiClickRef.current = true;
+    }
+
+    aiDragStateRef.current = null;
+    setAiDragTop(null);
+    setAiDragging(false);
+  };
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const toggleChat = () => setChatOpen(!chatOpen);
@@ -68,7 +180,7 @@ export const DashboardLayout = ({ children }) => {
                 key={location.pathname}
                 className={`mx-auto w-full flex-1 ${
                   isCitizen
-                    ? 'citizen-content-shell px-5 pt-7 pb-2 sm:px-6 lg:px-8 lg:pt-8 lg:pb-3 2xl:px-10'
+                    ? 'citizen-content-shell max-w-[1600px] px-5 py-7 sm:px-6 lg:px-8 lg:py-8'
                     : 'max-w-7xl space-y-6 p-5 sm:p-6'
                 }`}
               >
@@ -82,12 +194,44 @@ export const DashboardLayout = ({ children }) => {
 
       {/* PERSISTENT AI COPILOT FLOATING BUTTON */}
       <button
-        onClick={toggleChat}
-        aria-label="Mở trợ lý AI"
-        title="Mở trợ lý AI"
-        className={`btn btn-circle btn-primary btn-lg group fixed right-5 z-40 shadow-xl shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:scale-105 sm:right-6 lg:right-8 ${isCitizen ? 'bottom-24' : 'bottom-6'}`}
+        type="button"
+        onClick={() => {
+          if (suppressAiClickRef.current) {
+            suppressAiClickRef.current = false;
+            return;
+          }
+          toggleChat();
+        }}
+        onPointerDown={handleAiPointerDown}
+        onPointerMove={handleAiPointerMove}
+        onPointerUp={finishAiDrag}
+        onPointerCancel={finishAiDrag}
+        aria-label={chatOpen ? 'Đóng trợ lý AI' : 'Mở trợ lý AI'}
+        title={
+          isCitizen
+            ? 'Bấm để mở trợ lý. Trên máy tính, kéo dọc cạnh phải để đổi vị trí.'
+            : 'Mở trợ lý AI'
+        }
+        className={`btn btn-circle btn-primary btn-lg group fixed right-5 z-40 shadow-xl shadow-blue-600/20 transition-[transform,box-shadow,background-color] hover:scale-105 sm:right-6 lg:right-8 ${
+          isCitizen ? 'bottom-24 md:bottom-auto' : 'bottom-6'
+        } ${
+          isCitizen ? 'md:cursor-grab md:touch-none md:active:cursor-grabbing' : ''
+        } ${aiDragging ? 'scale-105 shadow-2xl ring-4 ring-primary/15' : ''}`}
+        style={
+          isCitizen && typeof window !== 'undefined' && window.innerWidth >= 768
+            ? {
+                top: `${aiDragTop ?? getAiDockTop(aiDock)}px`,
+                bottom: 'auto',
+                touchAction: 'none',
+              }
+            : undefined
+        }
       >
-        <Lucide.Sparkles size={24} className="group-hover:rotate-12 transition-transform" aria-hidden />
+        <Lucide.Sparkles
+          size={24}
+          className="transition-transform group-hover:rotate-12"
+          aria-hidden="true"
+        />
       </button>
 
 
