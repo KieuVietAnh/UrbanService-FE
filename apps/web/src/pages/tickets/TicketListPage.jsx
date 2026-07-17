@@ -1,6 +1,6 @@
 // src/pages/tickets/TicketListPage.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
@@ -224,16 +224,27 @@ const FilterDropdown = ({
 export const TicketListPage = () => {
   const pageRootRef = useRef(null);
   const filtersSectionRef = useRef(null);
+  const restoreHandledRef = useRef(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const readInitialPage = () => {
+    const parsedPage = Number(searchParams.get('page') || 1);
+    return Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  };
+
   const [tickets, setTickets] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [sortKey, setSortKey] = useState('newest');
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
+  const [status, setStatus] = useState(() => searchParams.get('status') || '');
+  const [categoryId, setCategoryId] = useState(() => searchParams.get('category') || '');
+  const [sortKey, setSortKey] = useState(() => searchParams.get('sort') || 'newest');
   const [openMenu, setOpenMenu] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(readInitialPage);
+  const [highlightedTicketId, setHighlightedTicketId] = useState(null);
   const pageSize = 6;
 
   const loadTickets = useCallback(async () => {
@@ -296,8 +307,63 @@ export const TicketListPage = () => {
   }, []);
 
   useEffect(() => {
+    const nextParams = new URLSearchParams();
+
+    if (search.trim()) nextParams.set('q', search.trim());
+    if (status) nextParams.set('status', status);
+    if (categoryId) nextParams.set('category', String(categoryId));
+    if (sortKey && sortKey !== 'newest') nextParams.set('sort', sortKey);
+    if (currentPage > 1) nextParams.set('page', String(currentPage));
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [
+    categoryId,
+    currentPage,
+    search,
+    searchParams,
+    setSearchParams,
+    sortKey,
+    status,
+  ]);
+
+  const updateSearch = (value) => {
+    setSearch(value);
     setCurrentPage(1);
-  }, [search, status, categoryId, sortKey]);
+  };
+
+  const updateStatus = (value) => {
+    setStatus(value);
+    setCurrentPage(1);
+  };
+
+  const updateCategory = (value) => {
+    setCategoryId(value);
+    setCurrentPage(1);
+  };
+
+  const updateSort = (value) => {
+    setSortKey(value);
+    setCurrentPage(1);
+  };
+
+  const saveReturnContext = (ticketId) => {
+    const returnContext = {
+      from: `${location.pathname}${location.search}`,
+      scrollY: window.scrollY,
+      ticketId,
+    };
+
+    try {
+      sessionStorage.setItem(
+        'urbanmind-ticket-list-return',
+        JSON.stringify(returnContext)
+      );
+    } catch {
+      // Session storage may be unavailable in private browsing modes.
+    }
+  };
 
   const categoryOptions = useMemo(() => [
     { value: '', label: 'Tất cả danh mục' },
@@ -385,10 +451,85 @@ export const TicketListPage = () => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
+  useEffect(() => {
+    if (loading || restoreHandledRef.current) return undefined;
+
+    const restoreScrollY = Number(location.state?.restoreScrollY);
+    const restoreTicketId = location.state?.restoreTicketId;
+
+    if (!restoreTicketId && !Number.isFinite(restoreScrollY)) return undefined;
+
+    restoreHandledRef.current = true;
+    setHighlightedTicketId(restoreTicketId || null);
+
+    let cancelled = false;
+    let retryTimer = null;
+    let attempts = 0;
+
+    const finishRestore = () => {
+      if (cancelled) return;
+
+      if (restoreTicketId) {
+        window.setTimeout(() => setHighlightedTicketId(null), 2200);
+      }
+
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: null,
+      });
+    };
+
+    const restoreToTicketRow = () => {
+      if (cancelled) return;
+
+      const row = restoreTicketId
+        ? document.getElementById(`ticket-row-${restoreTicketId}`)
+        : null;
+
+      if (row) {
+        row.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest',
+        });
+        finishRestore();
+        return;
+      }
+
+      attempts += 1;
+      if (attempts < 24) {
+        retryTimer = window.setTimeout(restoreToTicketRow, 60);
+        return;
+      }
+
+      if (Number.isFinite(restoreScrollY)) {
+        window.scrollTo({
+          top: Math.max(0, restoreScrollY),
+          behavior: 'auto',
+        });
+      }
+      finishRestore();
+    };
+
+    const frame = window.requestAnimationFrame(restoreToTicketRow);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [
+    loading,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+    paginatedTickets.length,
+  ]);
+
   const handleSummaryFilter = (nextStatus) => {
-    setStatus(nextStatus);
+    updateStatus(nextStatus);
     setOpenMenu(null);
-    setCurrentPage(1);
 
     window.requestAnimationFrame(() => {
       filtersSectionRef.current?.scrollIntoView({
@@ -555,7 +696,7 @@ export const TicketListPage = () => {
               id="ticket-search"
               type="search"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => updateSearch(event.target.value)}
               className="h-11 w-full rounded-xl border border-base-300 bg-base-100 pl-9 pr-9 text-sm outline-none transition placeholder:text-base-content/35 focus:border-primary focus:ring-2 focus:ring-primary/15"
               placeholder="Tìm theo tiêu đề hoặc khu vực"
               autoComplete="off"
@@ -563,7 +704,7 @@ export const TicketListPage = () => {
             {search ? (
               <button
                 type="button"
-                onClick={() => setSearch('')}
+                onClick={() => updateSearch('')}
                 className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-base-content/35 hover:bg-base-200 hover:text-base-content"
                 aria-label="Xóa từ khóa tìm kiếm"
               >
@@ -576,7 +717,7 @@ export const TicketListPage = () => {
             menuId="category"
             value={categoryId}
             options={categoryOptions}
-            onChange={setCategoryId}
+            onChange={updateCategory}
             icon={Lucide.Tags}
             label="Lọc theo danh mục"
             openMenu={openMenu}
@@ -587,7 +728,7 @@ export const TicketListPage = () => {
             menuId="status"
             value={status}
             options={STATUS_OPTIONS}
-            onChange={setStatus}
+            onChange={updateStatus}
             icon={Lucide.ListFilter}
             label="Lọc theo trạng thái"
             openMenu={openMenu}
@@ -598,7 +739,7 @@ export const TicketListPage = () => {
             menuId="sort"
             value={sortKey}
             options={SORT_OPTIONS}
-            onChange={setSortKey}
+            onChange={updateSort}
             icon={Lucide.ArrowUpDown}
             label="Sắp xếp danh sách"
             openMenu={openMenu}
@@ -618,7 +759,7 @@ export const TicketListPage = () => {
                 }
                 <button
                   type="button"
-                  onClick={() => setStatus(STATUS_FILTER_VALUES.ALL)}
+                  onClick={() => updateStatus(STATUS_FILTER_VALUES.ALL)}
                   className="inline-flex h-5 w-5 items-center justify-center rounded-full transition hover:bg-primary/10"
                   aria-label="Xóa bộ lọc trạng thái"
                 >
@@ -688,14 +829,29 @@ export const TicketListPage = () => {
 
               return (
                 <li key={feedbackId}>
-                  <article className="grid gap-4 px-5 py-4 transition-colors hover:bg-base-200/35 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <article
+                    id={`ticket-row-${feedbackId}`}
+                    className={`grid gap-4 px-5 py-4 transition-all sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center ${
+                      highlightedTicketId === feedbackId
+                        ? 'bg-primary/8 ring-2 ring-inset ring-primary/20'
+                        : 'hover:bg-base-200/35'
+                    }`}
+                  >
                     <section className="flex min-w-0 items-start gap-3.5">
                       <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${statusMeta.className}`} aria-hidden="true">
                         <StatusIcon size={17} />
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <Link to={`/tickets/${feedbackId}`} className="block truncate text-base font-semibold leading-6 text-base-content transition-colors hover:text-primary">
+                        <Link
+                          to={`/tickets/${feedbackId}`}
+                          state={{
+                            from: `${location.pathname}${location.search}`,
+                            ticketId: feedbackId,
+                          }}
+                          onClick={() => saveReturnContext(feedbackId)}
+                          className="block truncate text-base font-semibold leading-6 text-base-content transition-colors hover:text-primary"
+                        >
                           {ticket.title || 'Phản ánh chưa có tiêu đề'}
                         </Link>
 
@@ -733,6 +889,11 @@ export const TicketListPage = () => {
 
                       <Link
                         to={`/tickets/${feedbackId}`}
+                        state={{
+                          from: `${location.pathname}${location.search}`,
+                          ticketId: feedbackId,
+                        }}
+                        onClick={() => saveReturnContext(feedbackId)}
                         className="btn btn-sm admin-primary-action w-full justify-center rounded-xl"
                       >
                         Xem chi tiết

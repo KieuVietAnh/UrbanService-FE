@@ -7,7 +7,6 @@ import { analyticsApi } from '../../services/api/analyticsApi';
 import { toolsApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
-import PageTransition from '../../components/motion/PageTransition';
 import { normalizeRole } from '../../utils/roleMap';
 import { APP_ROLES, managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
@@ -50,7 +49,7 @@ export const Dashboard = () => {
   const [stats, setStats] = useState(SAFE_DASHBOARD_STATS);
   const [tickets, setTickets] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const fetchScopedTickets = useCallback(async () => {
     try {
@@ -320,9 +319,105 @@ export const Dashboard = () => {
   // 1. SERVICE USER DASHBOARD
   // ----------------------------------------------------
   if (currentRole === 'service-user') {
+    if (loading) {
+      return (
+        <main
+          className="space-y-5 text-base-content"
+          aria-busy="true"
+          aria-label="Đang tải trang chủ"
+        >
+          <span className="sr-only" role="status">
+            Đang tải dữ liệu trang chủ
+          </span>
+
+          <section className="grid gap-5 rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+            <div className="animate-pulse">
+              <div className="h-9 w-52 rounded-xl bg-base-300/70" />
+              <div className="mt-3 h-4 w-full max-w-xl rounded-lg bg-base-300/55" />
+              <div className="mt-2 h-4 w-4/5 max-w-lg rounded-lg bg-base-300/45" />
+              <div className="mt-5 h-8 w-44 rounded-full bg-base-300/55" />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:gap-3" aria-hidden="true">
+              {[0, 1, 2].map((item) => (
+                <div
+                  key={item}
+                  className="min-w-[112px] animate-pulse rounded-2xl border border-base-300 bg-base-200/50 px-4 py-3"
+                >
+                  <div className="h-3 w-16 rounded bg-base-300/60" />
+                  <div className="mt-3 h-7 w-10 rounded-lg bg-base-300/75" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.5fr)]">
+            <article className="overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-sm">
+              <header className="border-b border-base-300 px-5 py-4 sm:px-6">
+                <div className="h-6 w-40 animate-pulse rounded-lg bg-base-300/70" />
+                <div className="mt-2 h-3 w-52 animate-pulse rounded bg-base-300/45" />
+              </header>
+
+              <div className="divide-y divide-base-300" aria-hidden="true">
+                {[0, 1, 2, 3, 4].map((item) => (
+                  <div
+                    key={item}
+                    className="flex animate-pulse items-center gap-3 px-5 py-4 sm:px-6"
+                  >
+                    <div className="h-10 w-10 shrink-0 rounded-2xl bg-base-300/55" />
+                    <div className="min-w-0 flex-1">
+                      <div className="h-4 w-48 max-w-[70%] rounded bg-base-300/70" />
+                      <div className="mt-2 h-3 w-32 rounded bg-base-300/45" />
+                    </div>
+                    <div className="h-3 w-20 rounded bg-base-300/45" />
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <aside className="space-y-5" aria-hidden="true">
+              <section className="animate-pulse rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-sm">
+                <div className="flex gap-3">
+                  <div className="h-10 w-10 rounded-2xl bg-base-300/60" />
+                  <div className="flex-1">
+                    <div className="h-5 w-36 rounded bg-base-300/70" />
+                    <div className="mt-2 h-3 w-full rounded bg-base-300/45" />
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-sm">
+                <div className="flex animate-pulse gap-3">
+                  <div className="h-10 w-10 rounded-2xl bg-base-300/60" />
+                  <div className="flex-1">
+                    <div className="h-5 w-32 rounded bg-base-300/70" />
+                    <div className="mt-2 h-3 w-40 rounded bg-base-300/45" />
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-2" aria-hidden="true">
+                  {[0, 1, 2].map((item) => (
+                    <div
+                      key={item}
+                      className="flex animate-pulse items-center gap-3 rounded-2xl border border-base-300 px-4 py-3"
+                    >
+                      <div className="h-9 w-9 rounded-xl bg-base-300/55" />
+                      <div className="flex-1">
+                        <div className="h-4 w-36 rounded bg-base-300/65" />
+                        <div className="mt-2 h-3 w-48 max-w-full rounded bg-base-300/40" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </aside>
+          </section>
+        </main>
+      );
+    }
+
     return (
-      <PageTransition>
-        <main className="space-y-5 text-base-content">
+      <main className="space-y-5 text-base-content">
           <section
             className="grid gap-5 rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
             aria-labelledby="citizen-dashboard-title"
@@ -697,8 +792,7 @@ export const Dashboard = () => {
               </section>
             </aside>
           </section>
-        </main>
-      </PageTransition>
+      </main>
     );
   }
 
@@ -1723,7 +1817,7 @@ export const Dashboard = () => {
                     </div>
                   </Link>
                 );
-              })} 
+              })}
             </div>
           </div>
         </section>
