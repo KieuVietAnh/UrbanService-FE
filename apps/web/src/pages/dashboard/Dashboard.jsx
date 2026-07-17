@@ -330,7 +330,7 @@ export const Dashboard = () => {
             <header className="max-w-2xl">
               <h1
                 id="citizen-dashboard-title"
-                className="mt-2 text-2xl font-bold tracking-tight text-base-content sm:text-3xl"
+                className="text-2xl font-bold tracking-tight text-base-content sm:text-3xl"
               >
                 Chào, {user?.fullName || 'Bạn'}!
               </h1>
@@ -465,14 +465,15 @@ export const Dashboard = () => {
                                 </span>
                               </div>
 
-                              <p className="mt-1 truncate text-xs text-base-content/50">
-                                {ticket.locationText ||
-                                  ticket.areaName ||
-                                  'Chưa có thông tin vị trí'}
-                              </p>
-
-                              <p className="mt-1.5 font-mono text-[10px] font-semibold text-primary/75">
-                                {formatTicketId(feedbackId)}
+                              <p className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-base-content/50">
+                                <Lucide.MapPin
+                                  size={13}
+                                  className="shrink-0"
+                                  aria-hidden="true"
+                                />
+                                <span className="truncate">
+                                  {ticket.areaName || 'Chưa xác định khu vực'}
+                                </span>
                               </p>
                             </div>
                           </article>
@@ -500,18 +501,20 @@ export const Dashboard = () => {
 
             <aside className="space-y-5">
               <section
-                className={`overflow-hidden rounded-[26px] border shadow-sm ${attentionTickets.length > 0
+                className={`overflow-hidden rounded-[26px] border shadow-sm ${
+                  attentionTickets.length > 0
                     ? 'border-warning/25 bg-warning/5'
                     : 'border-success/20 bg-success/5'
-                  }`}
+                }`}
                 aria-labelledby="attention-title"
               >
                 <header className="flex items-start gap-3 px-5 py-4">
                   <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${attentionTickets.length > 0
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                      attentionTickets.length > 0
                         ? 'bg-warning/12 text-warning'
                         : 'bg-success/12 text-success'
-                      }`}
+                    }`}
                     aria-hidden="true"
                   >
                     {attentionTickets.length > 0 ? (
@@ -533,7 +536,9 @@ export const Dashboard = () => {
                     <p className="mt-1 text-xs leading-5 text-base-content/50">
                       {attentionTickets.length === 1
                         ? '1 hồ sơ đang chờ bạn kiểm tra.'
-                        : `${attentionTickets.length} hồ sơ đang chờ bạn kiểm tra.`}
+                        : attentionTickets.length > 1
+                          ? `${attentionTickets.length} hồ sơ đang chờ bạn kiểm tra.`
+                          : 'Hiện không có phản ánh nào cần bạn phản hồi.'}
                     </p>
                   </div>
                 </header>

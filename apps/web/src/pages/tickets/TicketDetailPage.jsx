@@ -3,6 +3,8 @@
 import { Fragment, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { ticketApi } from '../../services/api/ticketApi';
+import { toolsApi } from '@urbanmind/shared-api';
 import useTicketDetail from '../../hooks/useTicketDetail';
 import { TICKET_STATUS_STEPS, getStatusStep, getStatusLabel, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES, managementTypes } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
@@ -41,6 +43,23 @@ export const TicketDetailPage = () => {
 
   const [resolvedToastOpen, setResolvedToastOpen] = useState(false);
   const resolvedShownRef = useRef(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [editAttachments, setEditAttachments] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [attachmentDeleteTarget, setAttachmentDeleteTarget] = useState(null);
+  const [editForm, setEditForm] = useState({
+    categoryId: '',
+    title: '',
+    description: '',
+    locationText: '',
+    latitude: null,
+    longitude: null,
+    priority: '',
+  });
 
   useEffect(() => {
     if (ticket?.status === managementTypes.feedbackStatus.APPROVED && !resolvedShownRef.current) {
@@ -119,6 +138,161 @@ export const TicketDetailPage = () => {
     }
   };
 
+  const CATEGORY_LABELS = {
+    Drainage: 'Thoát nước',
+    'Garbage Collection': 'Thu gom rác',
+    'Public Safety': 'An toàn công cộng',
+    'Road Maintenance': 'Bảo trì đường bộ',
+    'Street Lighting': 'Chiếu sáng đô thị',
+    'Water Supply': 'Cấp nước',
+  };
+
+  const getCategoryLabel = (categoryName) => (
+    CATEGORY_LABELS[categoryName] || categoryName || 'Chưa phân loại'
+  );
+
+  const normalizedRole = String(user?.role || '').toLowerCase().replace(/[\s_-]/g, '');
+  const isServiceUser = normalizedRole.includes('serviceuser') || normalizedRole.includes('citizen');
+  const canEditTicket = isServiceUser && [
+    managementTypes.feedbackStatus.SUBMITTED,
+    managementTypes.feedbackStatus.AI_REVIEWED,
+  ].includes(ticket?.status);
+  const canDeleteTicket = isServiceUser
+    && ticket?.status === managementTypes.feedbackStatus.SUBMITTED;
+
+  const resolveAttachmentId = (file) => {
+    if (!file || typeof file === 'string') return null;
+    return file.attachmentId || file.id || file.fileId || file.feedbackAttachmentId || null;
+  };
+
+  const resolveAttachmentName = (file, index) => {
+    if (!file) return `Tệp ${index + 1}`;
+    if (typeof file === 'string') return file.split('/').pop() || `Tệp ${index + 1}`;
+    return file.fileName || file.name || file.originalFileName || `Tệp ${index + 1}`;
+  };
+
+  const openEditDialog = async () => {
+    setActionError('');
+    setEditForm({
+      categoryId: ticket?.categoryId || '',
+      title: ticket?.title || '',
+      description: ticket?.description || '',
+      locationText: ticket?.locationText || '',
+      latitude: ticket?.latitude ?? null,
+      longitude: ticket?.longitude ?? null,
+      priority: ticket?.priority || '',
+    });
+    setEditAttachments(Array.isArray(ticket?.attachments) ? ticket.attachments : []);
+    setSelectedFiles([]);
+    setEditOpen(true);
+
+    if (categories.length === 0) {
+      try {
+        const response = await toolsApi.getCategories();
+        setCategories(Array.isArray(response) ? response : []);
+      } catch (err) {
+        console.warn('Không thể tải danh mục phản ánh', err);
+      }
+    }
+  };
+
+  const handleUpdateTicket = async (event) => {
+    event.preventDefault();
+    if (!editForm.title.trim() || !editForm.description.trim()) {
+      setActionError('Vui lòng nhập đầy đủ tiêu đề và mô tả phản ánh.');
+      return;
+    }
+
+    setActionLoading(true);
+    setActionError('');
+    try {
+      const payload = {
+        title: editForm.title.trim(),
+        description: editForm.description.trim(),
+        locationText: editForm.locationText.trim(),
+      };
+
+      if (editForm.categoryId !== '') payload.categoryId = Number(editForm.categoryId);
+      if (editForm.priority) payload.priority = editForm.priority;
+      if (editForm.latitude !== null && editForm.latitude !== '') {
+        payload.latitude = Number(editForm.latitude);
+      }
+      if (editForm.longitude !== null && editForm.longitude !== '') {
+        payload.longitude = Number(editForm.longitude);
+      }
+
+      await ticketApi.updateTicket(feedbackId, payload, { role: 'service-user' });
+      setEditOpen(false);
+      navigate(0);
+    } catch (err) {
+      console.error('Không thể cập nhật phản ánh', err);
+      setActionError(err?.response?.data?.message || err?.message || 'Không thể cập nhật phản ánh.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteTicket = async () => {
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await ticketApi.deleteTicket(feedbackId, { role: 'service-user' });
+      navigate('/tickets', { replace: true });
+    } catch (err) {
+      console.error('Không thể xóa phản ánh', err);
+      setActionError(err?.response?.data?.message || err?.message || 'Không thể xóa phản ánh.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUploadAttachments = async () => {
+    if (selectedFiles.length === 0) return;
+
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await ticketApi.addAttachments(feedbackId, selectedFiles, { role: 'service-user' });
+      const refreshed = await ticketApi.getTicketById(feedbackId, { role: 'service-user' });
+      setEditAttachments(Array.isArray(refreshed?.attachments) ? refreshed.attachments : []);
+      setSelectedFiles([]);
+    } catch (err) {
+      console.error('Không thể thêm tệp đính kèm', err);
+      setActionError(err?.response?.data?.message || err?.message || 'Không thể thêm tệp đính kèm.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteAttachment = async () => {
+    if (!attachmentDeleteTarget) return;
+    if (editAttachments.length <= 1) {
+      setActionError('Phản ánh phải giữ lại ít nhất một tệp minh chứng.');
+      setAttachmentDeleteTarget(null);
+      return;
+    }
+
+    const attachmentId = resolveAttachmentId(attachmentDeleteTarget);
+    if (!attachmentId) {
+      setActionError('Không xác định được tệp đính kèm cần xóa.');
+      setAttachmentDeleteTarget(null);
+      return;
+    }
+
+    setActionLoading(true);
+    setActionError('');
+    try {
+      await ticketApi.deleteAttachment(feedbackId, attachmentId, { role: 'service-user' });
+      setEditAttachments((items) => items.filter((item) => resolveAttachmentId(item) !== attachmentId));
+      setAttachmentDeleteTarget(null);
+    } catch (err) {
+      console.error('Không thể xóa tệp đính kèm', err);
+      setActionError(err?.response?.data?.message || err?.message || 'Không thể xóa tệp đính kèm.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const attachments = Array.isArray(ticket?.attachments) ? ticket.attachments : [];
   const canReviewResolution = [
     managementTypes.feedbackStatus.APPROVED,
@@ -184,7 +358,7 @@ export const TicketDetailPage = () => {
             <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-400">{formatTicketId(ticket.feedbackId)}</span>
             <span className="status-label status-info">
-              {ticket.categoryName || 'Chưa xác định'}
+              {getCategoryLabel(ticket.categoryName)}
             </span>
             {ticket.isMasterTicket && <span className="badge badge-accent badge-xs font-black uppercase py-2 px-2.5 rounded-lg text-white">MASTER TICKET</span>}
           </div>
@@ -205,6 +379,35 @@ export const TicketDetailPage = () => {
           <div className="rounded-3xl bg-slate-50 px-4 py-3 text-[11px] text-slate-600 border border-slate-200">
             {statusDescription(ticket.status)}
           </div>
+          {(canEditTicket || canDeleteTicket) ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              {canEditTicket ? (
+                <button
+                  type="button"
+                  onClick={openEditDialog}
+                  className="btn btn-outline rounded-2xl px-4 text-xs font-bold"
+                >
+                  <Lucide.Pencil size={15} aria-hidden="true" />
+                  Chỉnh sửa
+                </button>
+              ) : null}
+
+              {canDeleteTicket ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActionError('');
+                    setDeleteOpen(true);
+                  }}
+                  className="btn btn-outline rounded-2xl border-error/30 px-4 text-xs font-bold text-error hover:border-error hover:bg-error/10"
+                >
+                  <Lucide.Trash2 size={15} aria-hidden="true" />
+                  Xóa phản ánh
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           {(canReviewResolution || ticket.status === managementTypes.feedbackStatus.NEED_REWORK || ticket.status === managementTypes.feedbackStatus.REJECTED) && user?.role === 'service-user' && (
             <div className="flex flex-wrap gap-2">
               {ticket.status === managementTypes.feedbackStatus.NEED_REWORK || ticket.status === managementTypes.feedbackStatus.REJECTED ? (
@@ -542,6 +745,209 @@ export const TicketDetailPage = () => {
       </div>
     </div>
     </PageTransition>
+
+      {editOpen ? (
+        <dialog open className="modal modal-open bg-transparent" aria-labelledby="edit-ticket-title">
+          <form
+            method="dialog"
+            onSubmit={handleUpdateTicket}
+            className="modal-box max-h-[88vh] max-w-2xl overflow-y-auto rounded-3xl border border-base-300 bg-base-100 p-6 text-base-content shadow-2xl"
+          >
+            <header className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="edit-ticket-title" className="text-xl font-bold">Chỉnh sửa phản ánh</h2>
+                <p className="mt-1 text-sm text-base-content/55">
+                  Bạn chỉ có thể chỉnh sửa khi phản ánh chưa được xác minh.
+                </p>
+              </div>
+              <button type="button" onClick={() => setEditOpen(false)} className="btn btn-sm btn-ghost btn-circle" aria-label="Đóng">
+                <Lucide.X size={18} aria-hidden="true" />
+              </button>
+            </header>
+
+            {actionError ? (
+              <p className="mt-4 rounded-2xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">
+                {actionError}
+              </p>
+            ) : null}
+
+            <section className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="form-control sm:col-span-2">
+                <span className="mb-2 text-sm font-semibold">Tiêu đề</span>
+                <input
+                  value={editForm.title}
+                  onChange={(event) => setEditForm((form) => ({ ...form, title: event.target.value }))}
+                  className="input input-bordered w-full rounded-2xl bg-base-100"
+                  required
+                />
+              </label>
+
+              <label className="form-control sm:col-span-2">
+                <span className="mb-2 text-sm font-semibold">Mô tả</span>
+                <textarea
+                  rows="5"
+                  value={editForm.description}
+                  onChange={(event) => setEditForm((form) => ({ ...form, description: event.target.value }))}
+                  className="textarea textarea-bordered w-full rounded-2xl bg-base-100"
+                  required
+                />
+              </label>
+
+              <label className="form-control">
+                <span className="mb-2 text-sm font-semibold">Danh mục</span>
+                <select
+                  value={editForm.categoryId}
+                  onChange={(event) => setEditForm((form) => ({ ...form, categoryId: event.target.value }))}
+                  className="select select-bordered w-full rounded-2xl bg-base-100"
+                >
+                  <option value="">Chưa phân loại</option>
+                  {categories.map((category) => (
+                    <option key={category.categoryId} value={category.categoryId}>
+                      {getCategoryLabel(category.categoryName)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="form-control">
+                <span className="mb-2 text-sm font-semibold">Mức ưu tiên</span>
+                <select
+                  value={editForm.priority}
+                  onChange={(event) => setEditForm((form) => ({ ...form, priority: event.target.value }))}
+                  className="select select-bordered w-full rounded-2xl bg-base-100"
+                >
+                  <option value="Low">Thấp</option>
+                  <option value="Medium">Trung bình</option>
+                  <option value="High">Cao</option>
+                  <option value="Urgent">Khẩn cấp</option>
+                </select>
+              </label>
+
+              <label className="form-control sm:col-span-2">
+                <span className="mb-2 text-sm font-semibold">Vị trí đã ghi nhận</span>
+                <input
+                  value={editForm.locationText}
+                  onChange={(event) => setEditForm((form) => ({ ...form, locationText: event.target.value }))}
+                  className="input input-bordered w-full rounded-2xl bg-base-100"
+                />
+              </label>
+            </section>
+
+            <section className="mt-5 rounded-2xl border border-base-300 p-4">
+              <header>
+                <h3 className="text-sm font-semibold">Tệp minh chứng</h3>
+                <p className="mt-1 text-xs text-base-content/50">
+                  Phản ánh phải giữ lại ít nhất một hình ảnh hoặc video.
+                </p>
+              </header>
+
+              {editAttachments.length > 0 ? (
+                <ul className="mt-3 space-y-2">
+                  {editAttachments.map((file, index) => (
+                    <li key={resolveAttachmentId(file) || getAttachmentUrl(file) || index} className="flex items-center gap-3 rounded-xl bg-base-200/60 px-3 py-2">
+                      <Lucide.Paperclip size={15} className="shrink-0 text-primary" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                        {resolveAttachmentName(file, index)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachmentDeleteTarget(file)}
+                        disabled={actionLoading || editAttachments.length <= 1}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-error hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-35"
+                        aria-label={`Xóa ${resolveAttachmentName(file, index)}`}
+                      >
+                        <Lucide.Trash2 size={14} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
+                  className="file-input file-input-bordered min-w-0 flex-1 rounded-2xl"
+                />
+                <button
+                  type="button"
+                  onClick={handleUploadAttachments}
+                  disabled={actionLoading || selectedFiles.length === 0}
+                  className="btn admin-secondary-action rounded-2xl"
+                >
+                  <Lucide.Upload size={15} aria-hidden="true" />
+                  Thêm tệp
+                </button>
+              </div>
+            </section>
+
+            <footer className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setEditOpen(false)} disabled={actionLoading} className="btn admin-secondary-action rounded-2xl">
+                Hủy
+              </button>
+              <button type="submit" disabled={actionLoading} className="btn admin-primary-action rounded-2xl">
+                {actionLoading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={15} aria-hidden="true" />}
+                Lưu thay đổi
+              </button>
+            </footer>
+          </form>
+          <button type="button" className="modal-backdrop cursor-default" onClick={() => setEditOpen(false)} aria-label="Đóng hộp thoại" />
+        </dialog>
+      ) : null}
+
+      {deleteOpen ? (
+        <dialog open className="modal modal-open bg-transparent" aria-labelledby="delete-ticket-title">
+          <section className="modal-box max-w-md rounded-3xl border border-base-300 bg-base-100 p-6 text-base-content shadow-2xl">
+            <header className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-error/10 text-error" aria-hidden="true">
+                <Lucide.Trash2 size={20} />
+              </span>
+              <div>
+                <h2 id="delete-ticket-title" className="text-lg font-bold">Xóa phản ánh?</h2>
+                <p className="mt-2 text-sm leading-6 text-base-content/60">
+                  Phản ánh <strong>{ticket.title}</strong> sẽ bị xóa và không thể khôi phục.
+                </p>
+              </div>
+            </header>
+
+            {actionError ? (
+              <p className="mt-4 rounded-2xl border border-error/25 bg-error/10 px-4 py-3 text-sm text-error">
+                {actionError}
+              </p>
+            ) : null}
+
+            <footer className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setDeleteOpen(false)} disabled={actionLoading} className="btn admin-secondary-action rounded-2xl">
+                Hủy
+              </button>
+              <button type="button" onClick={handleDeleteTicket} disabled={actionLoading} className="btn rounded-2xl border-none bg-error text-error-content hover:bg-error/90">
+                {actionLoading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Trash2 size={15} aria-hidden="true" />}
+                Xóa phản ánh
+              </button>
+            </footer>
+          </section>
+          <button type="button" className="modal-backdrop cursor-default" onClick={() => setDeleteOpen(false)} aria-label="Đóng hộp thoại" />
+        </dialog>
+      ) : null}
+
+      {attachmentDeleteTarget ? (
+        <dialog open className="modal modal-open bg-transparent" aria-labelledby="delete-attachment-title">
+          <section className="modal-box max-w-md rounded-3xl border border-base-300 bg-base-100 p-6 text-base-content shadow-2xl">
+            <h2 id="delete-attachment-title" className="text-lg font-bold">Xóa tệp minh chứng?</h2>
+            <p className="mt-2 text-sm leading-6 text-base-content/60">
+              Bạn có chắc muốn xóa <strong>{resolveAttachmentName(attachmentDeleteTarget, 0)}</strong>?
+            </p>
+            <footer className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setAttachmentDeleteTarget(null)} disabled={actionLoading} className="btn admin-secondary-action rounded-2xl">Hủy</button>
+              <button type="button" onClick={handleDeleteAttachment} disabled={actionLoading} className="btn rounded-2xl border-none bg-error text-error-content hover:bg-error/90">Xóa tệp</button>
+            </footer>
+          </section>
+          <button type="button" className="modal-backdrop cursor-default" onClick={() => setAttachmentDeleteTarget(null)} aria-label="Đóng hộp thoại" />
+        </dialog>
+      ) : null}
+
       {resolvedToastOpen && (
         <>
           <ConfettiBurst />
