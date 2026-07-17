@@ -18,6 +18,10 @@ export const authApi = {
     return axiosClient.post('/api/auth/google-login', { idToken });
   },
 
+  refreshToken(refreshToken) {
+    return axiosClient.post('/api/auth/refresh-token', { refreshToken });
+  },
+
   sendOtp() {
     return axiosClient.post('/api/auth/email-verification/send-otp');
   },
