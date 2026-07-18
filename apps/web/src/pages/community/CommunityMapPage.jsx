@@ -414,7 +414,7 @@ export const CommunityMapPage = () => {
       </section>
 
       <section
-        className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_38px_rgba(15,23,42,0.075)]"
+        className="card overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_38px_rgba(15,23,42,0.075)]"
         aria-labelledby="incident-map-panel-title"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 px-5 py-4 sm:px-6">
@@ -449,7 +449,7 @@ export const CommunityMapPage = () => {
               />
             </div>
           ) : (
-            <div className="flex h-[520px] flex-col items-center justify-center rounded-[24px] border border-dashed border-base-300 bg-base-200/35 px-6 text-center">
+            <div className="flex h-[550px] flex-col items-center justify-center rounded-[24px] border border-dashed border-base-300 bg-base-200/35 px-6 text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-info/10 text-info">
                 <Lucide.MapPinOff size={24} aria-hidden="true" />
               </span>
