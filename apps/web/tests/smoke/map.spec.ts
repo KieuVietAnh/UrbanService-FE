@@ -9,6 +9,27 @@ test.setTimeout(120000);
 test.describe('Map view', () => {
   test.beforeEach(async ({ page }) => {
     // Mock auth endpoint so tests don't depend on the backend
+    await page.route('**/api/user/feedbacks**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            feedbackId: 'smoke-map-feedback-1',
+            userId: 1,
+            title: 'Điểm phản ánh kiểm thử bản đồ',
+            categoryName: 'Garbage Collection',
+            status: 'Verified',
+            priority: 'Medium',
+            areaName: 'Phường Long Trường',
+            locationText: 'Vị trí đã chọn: 10.781288, 106.725419',
+            latitude: 10.781288,
+            longitude: 106.725419,
+          },
+        ]),
+      });
+    });
+
     await page.route('**/api/auth/login', async (route) => {
       const req = route.request();
       const post = (await req.postData()) || '';
@@ -35,15 +56,13 @@ test.describe('Map view', () => {
     await mapPage.expectMapLoaded();
 
     const markerCount = await mapPage.markerLayer.count();
-    if (markerCount === 0) {
-      // Accept an empty state as a valid outcome for CI environments
-      await expect(mapPage.emptyStateCard).toBeVisible({ timeout: 5000 });
-      return;
-    }
+    expect(markerCount).toBe(1);
 
-    await expect(markerCount).toBeGreaterThan(0);
-    // click first marker and ensure popup appears
     await mapPage.clickFirstMarker();
-    await expect(page.locator('.leaflet-popup-content')).toBeVisible();
+    await expect(
+      page.locator('.leaflet-popup-content')
+    ).toBeVisible({
+      timeout: 10000,
+    });
   });
 });

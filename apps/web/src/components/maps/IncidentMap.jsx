@@ -1,10 +1,83 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, Marker, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
 import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
+
+
+const STATUS_LABELS = {
+  submitted: 'Đã gửi',
+  aireviewed: 'Đã phân loại tự động',
+  verified: 'Đã xác minh',
+  assigned: 'Đã chuyển xử lý',
+  inprogress: 'Đang xử lý',
+  resolved: 'Đã có kết quả',
+  submittedforapproval: 'Đang kiểm tra kết quả',
+  needrework: 'Cần xử lý lại',
+  approved: 'Chờ người dân đánh giá',
+  closed: 'Đã kết thúc',
+};
+
+const PRIORITY_LABELS = {
+  low: 'Thấp',
+  medium: 'Trung bình',
+  high: 'Cao',
+  critical: 'Khẩn cấp',
+  urgent: 'Khẩn cấp',
+};
+
+const CATEGORY_LABELS = {
+  'garbage collection': 'Thu gom rác',
+  'waste management': 'Quản lý chất thải',
+  'road maintenance': 'Bảo trì đường bộ',
+  'street lighting': 'Chiếu sáng đô thị',
+  drainage: 'Thoát nước',
+  'water supply': 'Cấp nước',
+  'public safety': 'An toàn công cộng',
+};
+
+const normalizeLookupKey = (value) => (
+  String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLocaleLowerCase('en-US')
+);
+
+const translateStatus = (value) => (
+  STATUS_LABELS[normalizeLookupKey(value)] ||
+  value ||
+  'Chưa xác định'
+);
+
+const translatePriority = (value) => (
+  PRIORITY_LABELS[
+    String(value || '').trim().toLocaleLowerCase('en-US')
+  ] ||
+  value ||
+  'Chưa xác định'
+);
+
+const translateCategory = (value) => {
+  const normalizedCategory = String(value || '')
+    .trim()
+    .toLocaleLowerCase('en-US');
+
+  return (
+    CATEGORY_LABELS[normalizedCategory] ||
+    value ||
+    'Chưa xác định'
+  );
+};
 
 const DEFAULT_CENTER = [10.776530, 106.700981];
 const DEFAULT_ZOOM = 12;
@@ -32,7 +105,7 @@ const distanceMeters = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-function AutoFitBounds({ incidents }) {
+function AutoFitBounds({ incidents, fitRequestKey }) {
   const map = useMap();
 
   const validPositions = useMemo(
@@ -52,13 +125,29 @@ function AutoFitBounds({ incidents }) {
     } else {
       map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: true });
     }
-  }, [map, validPositions]);
+  }, [fitRequestKey, map, validPositions]);
 
   return null;
 }
 
-export const IncidentMap = ({ incidents }) => {
+export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const openFeedbackDetail = (ticket) => {
+    const currentUserId = user?.userId ?? user?.id;
+    const isOwnFeedback =
+      currentUserId != null &&
+      ticket?.reporterUserId != null &&
+      String(ticket.reporterUserId) === String(currentUserId);
+
+    navigate(
+      isOwnFeedback
+        ? `/tickets/${ticket.feedbackId}`
+        : `/community/feed/${ticket.feedbackId}`,
+      { state: { from: '/community/map' } }
+    );
+  };
 
   const markers = useMemo(() => {
     if (!Array.isArray(incidents)) return [];
@@ -99,7 +188,10 @@ export const IncidentMap = ({ incidents }) => {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <AutoFitBounds incidents={markers} />
+        <AutoFitBounds
+          incidents={markers}
+          fitRequestKey={fitRequestKey}
+        />
         {markers.map((marker) => (
           <Marker
             key={`${marker.latitude}-${marker.longitude}`}
@@ -115,10 +207,24 @@ export const IncidentMap = ({ incidents }) => {
               <div className="space-y-1 text-xs">
                 {marker.tickets.length === 1 ? (
                   <>
-                    <div className="font-bold text-slate-900 truncate">{marker.tickets[0].title}</div>
-                    <div>Danh mục: {marker.tickets[0].categoryName}</div>
-                    <div>Trạng thái: {marker.tickets[0].status}</div>
-                    <div>Ưu tiên: {marker.tickets[0].priority}</div>
+                    <div className="truncate font-bold text-slate-900">
+                      {marker.tickets[0].title}
+                    </div>
+                    <div>
+                      Danh mục: {translateCategory(
+                        marker.tickets[0].categoryName
+                      )}
+                    </div>
+                    <div>
+                      Trạng thái: {translateStatus(
+                        marker.tickets[0].status
+                      )}
+                    </div>
+                    <div>
+                      Mức độ ảnh hưởng: {translatePriority(
+                        marker.tickets[0].priority
+                      )}
+                    </div>
                   </>
                 ) : (
                   <div className="font-bold text-slate-900 truncate">{marker.tickets.length} phản ánh tại điểm này</div>
@@ -127,18 +233,26 @@ export const IncidentMap = ({ incidents }) => {
             </Tooltip>
             <Popup>
               <div className="space-y-3 text-xs">
-                <div className="font-bold text-slate-900">{marker.tickets.length} phản ánh tại điểm này</div>
+                <div className="font-bold text-slate-900">
+                  {marker.tickets.length === 1
+                    ? 'Thông tin phản ánh'
+                    : `${marker.tickets.length} phản ánh tại điểm này`}
+                </div>
                 <div className="grid gap-2">
                   {marker.tickets.map((ticket) => (
                     <button
                       key={ticket.feedbackId}
                       type="button"
-                      onClick={() => navigate(`/tickets/${ticket.feedbackId}`)}
+                      onClick={() => openFeedbackDetail(ticket)}
                       className="w-full text-left rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-primary hover:bg-slate-50"
                     >
                       <div className="truncate font-bold">{ticket.title}</div>
-                      <div className="text-[10px] text-slate-500">
-                        {ticket.categoryName} · {ticket.status}
+                      <div className="mt-1 text-[10px] font-normal text-slate-500">
+                        {translateCategory(ticket.categoryName)}
+                        {' · '}
+                        {translateStatus(ticket.status)}
+                        {' · '}
+                        {translatePriority(ticket.priority)}
                       </div>
                     </button>
                   ))}

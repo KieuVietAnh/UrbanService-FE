@@ -233,6 +233,29 @@ export const CommunityFeedDetailPage = () => {
   const location = useLocation();
   const { user } = useAuth();
 
+  const returnTo = location.state?.from || '/community/feed';
+  const returnLabel =
+    location.state?.returnLabel ||
+    (
+      returnTo === '/community/map'
+        ? 'Quay lại bản đồ sự cố'
+        : 'Quay lại bảng tin'
+    );
+
+  const handleBack = () => {
+    const returningToMap = returnTo === '/community/map';
+
+    navigate(returnTo, {
+      state: returningToMap
+        ? {
+          mapState: location.state?.mapState || null,
+        }
+        : {
+          restoreFeedbackId: feedbackId,
+        },
+    });
+  };
+
   const {
     ticket,
     comments,
@@ -367,15 +390,6 @@ export const CommunityFeedDetailPage = () => {
     });
   };
 
-  const backDestination = location.state?.from || '/community/feed';
-  const backLabel = backDestination === '/community/map'
-    ? 'Quay lại bản đồ sự cố'
-    : '{backLabel}';
-
-  const handleBack = () => {
-    navigate(backDestination);
-  };
-
   if (loading) {
     return (
       <main className="space-y-4" aria-busy="true" aria-label="Đang tải chi tiết phản ánh cộng đồng">
@@ -409,7 +423,7 @@ export const CommunityFeedDetailPage = () => {
           onClick={handleBack}
           className="btn admin-primary-action mt-5 rounded-2xl"
         >
-          {backLabel}
+          {returnLabel}
         </button>
       </main>
     );
@@ -424,7 +438,7 @@ export const CommunityFeedDetailPage = () => {
           className="inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-base-content/55 transition hover:bg-base-100 hover:text-primary"
         >
           <Lucide.ArrowLeft size={17} aria-hidden="true" />
-          {backLabel}
+          {returnLabel}
         </button>
 
         <article className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_16px_40px_rgba(15,23,42,0.09)]">

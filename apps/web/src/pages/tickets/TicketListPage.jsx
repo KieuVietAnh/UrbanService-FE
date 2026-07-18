@@ -1,17 +1,51 @@
 // src/pages/tickets/TicketListPage.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { getStatusLabel, managementTypes } from '@urbanmind/shared-types';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 
+const TICKET_LIST_SNAPSHOT_STORAGE_KEY =
+  'urbanmind-service-user-ticket-list-snapshot';
+const TICKET_CATEGORY_SNAPSHOT_STORAGE_KEY =
+  'urbanmind-service-user-ticket-category-snapshot';
+
+const readSessionArray = (storageKey) => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const rawValue = window.sessionStorage.getItem(storageKey);
+    if (!rawValue) return [];
+
+    const parsedValue = JSON.parse(rawValue);
+    return Array.isArray(parsedValue) ? parsedValue : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeSessionArray = (storageKey, items) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify(items)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
 const STATUS_FILTER_VALUES = {
   ALL: '',
   PROCESSING: '__processing__',
   CHECKING: '__checking__',
+  RESULTS: '__results__',
   AWAITING_REVIEW: managementTypes.feedbackStatus.APPROVED,
+  ENDED: managementTypes.feedbackStatus.CLOSED,
 };
 
 const PROCESSING_STATUSES = new Set([
@@ -28,12 +62,39 @@ const CHECKING_STATUSES = new Set([
   managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
 ]);
 
+const RESULT_STATUSES = new Set([
+  managementTypes.feedbackStatus.RESOLVED,
+  managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+  managementTypes.feedbackStatus.APPROVED,
+  managementTypes.feedbackStatus.CLOSED,
+]);
+
+const STATUS_QUERY_VALUES = {
+  processing: STATUS_FILTER_VALUES.PROCESSING,
+  checking: STATUS_FILTER_VALUES.CHECKING,
+  results: STATUS_FILTER_VALUES.RESULTS,
+  'awaiting-review': STATUS_FILTER_VALUES.AWAITING_REVIEW,
+  ended: STATUS_FILTER_VALUES.ENDED,
+};
+
+const getStatusFilterFromQuery = (queryValue) => (
+  STATUS_QUERY_VALUES[queryValue] || ''
+);
+
+const getStatusQueryValue = (statusValue) => {
+  const matchedEntry = Object.entries(STATUS_QUERY_VALUES)
+    .find(([, value]) => String(value) === String(statusValue));
+
+  return matchedEntry?.[0] || '';
+};
+
 const STATUS_OPTIONS = [
   { value: STATUS_FILTER_VALUES.ALL, label: 'Tất cả trạng thái' },
   { value: STATUS_FILTER_VALUES.PROCESSING, label: 'Đang xử lý' },
   { value: STATUS_FILTER_VALUES.CHECKING, label: 'Đang kiểm tra kết quả' },
+  { value: STATUS_FILTER_VALUES.RESULTS, label: 'Có kết quả' },
   { value: STATUS_FILTER_VALUES.AWAITING_REVIEW, label: 'Chờ bạn đánh giá' },
-  { value: managementTypes.feedbackStatus.CLOSED, label: 'Đã kết thúc' },
+  { value: STATUS_FILTER_VALUES.ENDED, label: 'Đã kết thúc' },
   { value: managementTypes.feedbackStatus.REJECTED, label: 'Không tiếp nhận' },
   { value: managementTypes.feedbackStatus.CANCELLED, label: 'Đã hủy' },
 ];
@@ -221,34 +282,84 @@ const FilterDropdown = ({
   );
 };
 
+const TicketListSkeleton = () => (
+  <ol className="divide-y divide-base-300" aria-hidden="true">
+    {[0, 1, 2, 3].map((item) => (
+      <li key={item}>
+        <div className="grid animate-pulse gap-4 px-5 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="flex items-start gap-3.5">
+            <div className="h-10 w-10 shrink-0 rounded-2xl bg-base-300/45" />
+            <div className="min-w-0 flex-1">
+              <div className="h-4 w-56 max-w-[70%] rounded bg-base-300/55" />
+              <div className="mt-3 flex gap-4">
+                <div className="h-3 w-28 rounded bg-base-300/30" />
+                <div className="h-3 w-24 rounded bg-base-300/30" />
+                <div className="h-3 w-28 rounded bg-base-300/30" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 pl-[54px] lg:pl-0">
+            <div className="h-7 w-28 rounded-full bg-base-300/35" />
+            <div className="h-9 w-36 rounded-xl bg-base-300/40" />
+          </div>
+        </div>
+      </li>
+    ))}
+  </ol>
+);
+
 export const TicketListPage = () => {
   const pageRootRef = useRef(null);
   const filtersSectionRef = useRef(null);
-  const restoreHandledRef = useRef(false);
-  const location = useLocation();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [cachedTickets] = useState(() => (
+    readSessionArray(TICKET_LIST_SNAPSHOT_STORAGE_KEY)
+  ));
+  const [cachedCategories] = useState(() => (
+    readSessionArray(TICKET_CATEGORY_SNAPSHOT_STORAGE_KEY)
+  ));
+  const [tickets, setTickets] = useState(cachedTickets);
+  const [categories, setCategories] = useState(cachedCategories);
+  const [search, setSearch] = useState(
+    () => searchParams.get('search') || ''
+  );
+  const [status, setStatus] = useState(
+    () => getStatusFilterFromQuery(
+      searchParams.get('status')
+    )
+  );
+  const [categoryId, setCategoryId] = useState(
+    () => searchParams.get('category') || ''
+  );
+  const [sortKey, setSortKey] = useState(() => {
+    const requestedSort = searchParams.get('sort');
 
-  const readInitialPage = () => {
-    const parsedPage = Number(searchParams.get('page') || 1);
-    return Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
-  };
-
-  const [tickets, setTickets] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [search, setSearch] = useState(() => searchParams.get('q') || '');
-  const [status, setStatus] = useState(() => searchParams.get('status') || '');
-  const [categoryId, setCategoryId] = useState(() => searchParams.get('category') || '');
-  const [sortKey, setSortKey] = useState(() => searchParams.get('sort') || 'newest');
+    return SORT_OPTIONS.some(
+      (option) => option.value === requestedSort
+    )
+      ? requestedSort
+      : 'newest';
+  });
   const [openMenu, setOpenMenu] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    cachedTickets.length === 0
+  );
+  const [refreshing, setRefreshing] = useState(
+    cachedTickets.length > 0
+  );
   const [error, setError] = useState('');
-  const [currentPage, setCurrentPage] = useState(readInitialPage);
-  const [highlightedTicketId, setHighlightedTicketId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 6;
 
   const loadTickets = useCallback(async () => {
-    setLoading(true);
+    const hasCachedTickets = cachedTickets.length > 0;
+
+    if (hasCachedTickets) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError('');
 
     try {
@@ -256,19 +367,57 @@ export const TicketListPage = () => {
         { pageNumber: 1, pageSize: 100 },
         { role: 'service-user' }
       );
-      setTickets(Array.isArray(response) ? response : []);
+      const nextTickets = Array.isArray(response) ? response : [];
+
+      setTickets(nextTickets);
+      writeSessionArray(
+        TICKET_LIST_SNAPSHOT_STORAGE_KEY,
+        nextTickets
+      );
     } catch (err) {
       console.error('Không thể tải danh sách phản ánh', err);
-      setTickets([]);
+
+      if (!hasCachedTickets) {
+        setTickets([]);
+      }
+
       setError(err?.message || 'Không thể tải danh sách phản ánh.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [cachedTickets.length]);
 
   useEffect(() => {
     loadTickets();
   }, [loadTickets]);
+
+  useEffect(() => {
+    const nextSearchParams = new URLSearchParams();
+    const trimmedSearch = search.trim();
+    const statusQueryValue = getStatusQueryValue(status);
+
+    if (trimmedSearch) {
+      nextSearchParams.set('search', trimmedSearch);
+    }
+    if (statusQueryValue) {
+      nextSearchParams.set('status', statusQueryValue);
+    }
+    if (categoryId) {
+      nextSearchParams.set('category', String(categoryId));
+    }
+    if (sortKey !== 'newest') {
+      nextSearchParams.set('sort', sortKey);
+    }
+
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [
+    categoryId,
+    search,
+    setSearchParams,
+    sortKey,
+    status,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -276,7 +425,17 @@ export const TicketListPage = () => {
     const loadCategories = async () => {
       try {
         const response = await toolsApi.getCategories();
-        if (active) setCategories(Array.isArray(response) ? response : []);
+        const nextCategories = Array.isArray(response)
+          ? response
+          : [];
+
+        if (active) {
+          setCategories(nextCategories);
+          writeSessionArray(
+            TICKET_CATEGORY_SNAPSHOT_STORAGE_KEY,
+            nextCategories
+          );
+        }
       } catch (err) {
         console.warn('Không thể tải danh mục phản ánh', err);
       }
@@ -307,63 +466,8 @@ export const TicketListPage = () => {
   }, []);
 
   useEffect(() => {
-    const nextParams = new URLSearchParams();
-
-    if (search.trim()) nextParams.set('q', search.trim());
-    if (status) nextParams.set('status', status);
-    if (categoryId) nextParams.set('category', String(categoryId));
-    if (sortKey && sortKey !== 'newest') nextParams.set('sort', sortKey);
-    if (currentPage > 1) nextParams.set('page', String(currentPage));
-
-    if (nextParams.toString() !== searchParams.toString()) {
-      setSearchParams(nextParams, { replace: true });
-    }
-  }, [
-    categoryId,
-    currentPage,
-    search,
-    searchParams,
-    setSearchParams,
-    sortKey,
-    status,
-  ]);
-
-  const updateSearch = (value) => {
-    setSearch(value);
     setCurrentPage(1);
-  };
-
-  const updateStatus = (value) => {
-    setStatus(value);
-    setCurrentPage(1);
-  };
-
-  const updateCategory = (value) => {
-    setCategoryId(value);
-    setCurrentPage(1);
-  };
-
-  const updateSort = (value) => {
-    setSortKey(value);
-    setCurrentPage(1);
-  };
-
-  const saveReturnContext = (ticketId) => {
-    const returnContext = {
-      from: `${location.pathname}${location.search}`,
-      scrollY: window.scrollY,
-      ticketId,
-    };
-
-    try {
-      sessionStorage.setItem(
-        'urbanmind-ticket-list-return',
-        JSON.stringify(returnContext)
-      );
-    } catch {
-      // Session storage may be unavailable in private browsing modes.
-    }
-  };
+  }, [search, status, categoryId, sortKey]);
 
   const categoryOptions = useMemo(() => [
     { value: '', label: 'Tất cả danh mục' },
@@ -383,6 +487,9 @@ export const TicketListPage = () => {
     ).length,
     awaitingReview: tickets.filter(
       (ticket) => ticket.status === managementTypes.feedbackStatus.APPROVED
+    ).length,
+    ended: tickets.filter(
+      (ticket) => ticket.status === managementTypes.feedbackStatus.CLOSED
     ).length,
   }), [tickets]);
 
@@ -418,6 +525,9 @@ export const TicketListPage = () => {
           if (status === STATUS_FILTER_VALUES.CHECKING) {
             return CHECKING_STATUSES.has(ticket.status);
           }
+          if (status === STATUS_FILTER_VALUES.RESULTS) {
+            return RESULT_STATUSES.has(ticket.status);
+          }
           return ticket.status === status;
         })();
         const matchesCategory = categoryId
@@ -451,85 +561,10 @@ export const TicketListPage = () => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
-  useEffect(() => {
-    if (loading || restoreHandledRef.current) return undefined;
-
-    const restoreScrollY = Number(location.state?.restoreScrollY);
-    const restoreTicketId = location.state?.restoreTicketId;
-
-    if (!restoreTicketId && !Number.isFinite(restoreScrollY)) return undefined;
-
-    restoreHandledRef.current = true;
-    setHighlightedTicketId(restoreTicketId || null);
-
-    let cancelled = false;
-    let retryTimer = null;
-    let attempts = 0;
-
-    const finishRestore = () => {
-      if (cancelled) return;
-
-      if (restoreTicketId) {
-        window.setTimeout(() => setHighlightedTicketId(null), 2200);
-      }
-
-      navigate(`${location.pathname}${location.search}`, {
-        replace: true,
-        state: null,
-      });
-    };
-
-    const restoreToTicketRow = () => {
-      if (cancelled) return;
-
-      const row = restoreTicketId
-        ? document.getElementById(`ticket-row-${restoreTicketId}`)
-        : null;
-
-      if (row) {
-        row.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-          inline: 'nearest',
-        });
-        finishRestore();
-        return;
-      }
-
-      attempts += 1;
-      if (attempts < 24) {
-        retryTimer = window.setTimeout(restoreToTicketRow, 60);
-        return;
-      }
-
-      if (Number.isFinite(restoreScrollY)) {
-        window.scrollTo({
-          top: Math.max(0, restoreScrollY),
-          behavior: 'auto',
-        });
-      }
-      finishRestore();
-    };
-
-    const frame = window.requestAnimationFrame(restoreToTicketRow);
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-      if (retryTimer) window.clearTimeout(retryTimer);
-    };
-  }, [
-    loading,
-    location.pathname,
-    location.search,
-    location.state,
-    navigate,
-    paginatedTickets.length,
-  ]);
-
   const handleSummaryFilter = (nextStatus) => {
-    updateStatus(nextStatus);
+    setStatus(nextStatus);
     setOpenMenu(null);
+    setCurrentPage(1);
 
     window.requestAnimationFrame(() => {
       filtersSectionRef.current?.scrollIntoView({
@@ -554,141 +589,223 @@ export const TicketListPage = () => {
 
   return (
     <main ref={pageRootRef} className="space-y-5 text-base-content">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <section>
-          <h1 className="text-3xl font-bold tracking-tight text-base-content">
-            Phản ánh của tôi
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-base-content/55">
-            Theo dõi tiến trình, xem kết quả và cập nhật những phản ánh bạn đã gửi.
-          </p>
-        </section>
-      </header>
-
       <section
-        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-        aria-label="Lọc nhanh theo tình trạng phản ánh"
+        className="relative overflow-hidden rounded-[30px] border border-info/15 bg-gradient-to-br from-base-100 via-info/[0.035] to-primary/[0.075] shadow-[0_18px_48px_rgba(15,23,42,0.085)]"
+        aria-labelledby="my-feedback-title"
       >
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ALL)}
-          aria-pressed={status === STATUS_FILTER_VALUES.ALL}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.ALL
-              ? 'border-primary/45 bg-primary/5 ring-2 ring-primary/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-primary/30'
-          }`}
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          aria-hidden="true"
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info" aria-hidden="true">
-            <Lucide.Files size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Tổng phản ánh</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.total}
-            </strong>
-          </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-primary"
-            aria-hidden="true"
-          />
-        </button>
+          <svg
+            viewBox="0 0 1400 360"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full text-info opacity-[0.15]"
+            fill="none"
+          >
+            <path
+              d="M-30 270C121 236 195 142 337 142C486 142 522 222 671 220C823 218 884 123 1034 123C1175 123 1245 191 1435 154"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M-10 318C170 286 247 216 385 220C528 225 605 302 746 292C879 282 947 216 1076 211C1195 207 1272 246 1415 269"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeDasharray="10 12"
+              strokeLinecap="round"
+              opacity="0.75"
+            />
+            <path
+              d="M988 -18C944 66 974 127 1038 162C1091 191 1178 190 1234 148C1285 109 1290 40 1350 -16"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              opacity="0.65"
+            />
+            <circle cx="337" cy="142" r="7" fill="currentColor" opacity="0.75" />
+            <circle cx="671" cy="220" r="9" fill="currentColor" opacity="0.6" />
+            <circle cx="1034" cy="123" r="8" fill="currentColor" opacity="0.75" />
+            <circle cx="1234" cy="148" r="27" stroke="currentColor" opacity="0.35" />
+          </svg>
 
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.PROCESSING)}
-          aria-pressed={status === STATUS_FILTER_VALUES.PROCESSING}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.PROCESSING
-              ? 'border-warning/45 bg-warning/5 ring-2 ring-warning/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-warning/35'
-          }`}
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warning/10 text-warning" aria-hidden="true">
-            <Lucide.LoaderCircle size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Đang xử lý</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.inProgress}
-            </strong>
-          </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-warning"
-            aria-hidden="true"
-          />
-        </button>
+          <div className="absolute -left-20 top-8 h-64 w-64 rounded-full bg-info/[0.065] blur-3xl" />
+          <div className="absolute -bottom-24 right-[7%] h-72 w-72 rounded-full bg-primary/[0.07] blur-3xl" />
 
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.CHECKING)}
-          aria-pressed={status === STATUS_FILTER_VALUES.CHECKING}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.CHECKING
-              ? 'border-secondary/45 bg-secondary/5 ring-2 ring-secondary/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-secondary/35'
-          }`}
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-secondary/10 text-secondary" aria-hidden="true">
-            <Lucide.ClipboardCheck size={18} />
+          <span className="absolute left-[46%] top-[16%] flex h-8 w-8 items-center justify-center rounded-full border border-info/12 bg-base-100/65 text-info/45 shadow-sm backdrop-blur">
+            <Lucide.MapPin size={14} />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Đang kiểm tra kết quả</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.checking}
-            </strong>
+          <span className="absolute right-[22%] top-[12%] flex h-8 w-8 items-center justify-center rounded-full border border-secondary/12 bg-base-100/65 text-secondary/45 shadow-sm backdrop-blur">
+            <Lucide.Route size={14} />
           </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-secondary"
-            aria-hidden="true"
-          />
-        </button>
+          <span className="absolute right-[8%] top-[31%] flex h-8 w-8 items-center justify-center rounded-full border border-success/12 bg-base-100/65 text-success/45 shadow-sm backdrop-blur">
+            <Lucide.CircleCheck size={14} />
+          </span>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
-          aria-pressed={status === STATUS_FILTER_VALUES.AWAITING_REVIEW}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.AWAITING_REVIEW
-              ? 'border-success/45 bg-success/5 ring-2 ring-success/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-success/35'
-          }`}
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-success/10 text-success" aria-hidden="true">
-            <Lucide.Star size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Chờ bạn đánh giá</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.awaitingReview}
-            </strong>
-          </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-success"
-            aria-hidden="true"
-          />
-        </button>
+        <div className="relative px-5 py-6 sm:px-7 sm:py-7">
+          <header className="max-w-3xl">
+            <h1
+              id="my-feedback-title"
+              className="mt-4 text-3xl font-bold tracking-tight text-base-content sm:text-4xl"
+            >
+              Phản ánh của tôi
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-base-content/60">
+              Theo dõi tiến trình, xem kết quả và cập nhật những phản ánh bạn đã gửi.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-info/8 px-3 py-1.5 text-xs font-semibold text-info">
+                <Lucide.Activity size={13} aria-hidden="true" />
+                Theo dõi toàn bộ tiến trình
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-base-300/85 bg-base-100/70 px-3 py-1.5 text-xs font-medium text-base-content/55 backdrop-blur">
+                <Lucide.BellRing size={13} className="text-warning" aria-hidden="true" />
+                Cập nhật khi trạng thái thay đổi
+              </span>
+            </div>
+          </header>
+
+          <dl
+            className="mt-6 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
+            aria-label="Lọc nhanh theo tình trạng phản ánh"
+          >
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ALL)}
+              aria-pressed={status === STATUS_FILTER_VALUES.ALL}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
+                status === STATUS_FILTER_VALUES.ALL
+                  ? 'border-primary/40 bg-base-100/95 ring-2 ring-primary/10'
+                  : 'border-base-300 bg-base-100/85 hover:border-primary/30'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Tổng phản ánh
+                <Lucide.Files size={14} className="text-primary" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-base-content">
+                {summary.total}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-primary">
+                Xem toàn bộ
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.PROCESSING)}
+              aria-pressed={status === STATUS_FILTER_VALUES.PROCESSING}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/25 ${
+                status === STATUS_FILTER_VALUES.PROCESSING
+                  ? 'border-warning/45 bg-warning/[0.08] ring-2 ring-warning/10'
+                  : 'border-warning/20 bg-warning/5 hover:border-warning/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Đang xử lý
+                <Lucide.LoaderCircle size={14} className="text-warning" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-warning">
+                {summary.inProgress}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-warning">
+                Theo dõi tiến độ
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.CHECKING)}
+              aria-pressed={status === STATUS_FILTER_VALUES.CHECKING}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary/25 ${
+                status === STATUS_FILTER_VALUES.CHECKING
+                  ? 'border-secondary/45 bg-secondary/[0.08] ring-2 ring-secondary/10'
+                  : 'border-secondary/20 bg-secondary/5 hover:border-secondary/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Đang kiểm tra kết quả
+                <Lucide.ClipboardCheck size={14} className="text-secondary" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-secondary">
+                {summary.checking}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-secondary">
+                Xem kết quả đang duyệt
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
+              aria-pressed={status === STATUS_FILTER_VALUES.AWAITING_REVIEW}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/25 ${
+                status === STATUS_FILTER_VALUES.AWAITING_REVIEW
+                  ? 'border-success/45 bg-success/[0.08] ring-2 ring-success/10'
+                  : 'border-success/20 bg-success/5 hover:border-success/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Chờ bạn đánh giá
+                <Lucide.Star size={14} className="text-success" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-success">
+                {summary.awaitingReview}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-success">
+                Xem và đánh giá
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ENDED)}
+              aria-pressed={status === STATUS_FILTER_VALUES.ENDED}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/25 ${
+                status === STATUS_FILTER_VALUES.ENDED
+                  ? 'border-success/45 bg-success/[0.08] ring-2 ring-success/10'
+                  : 'border-success/20 bg-success/5 hover:border-success/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Đã kết thúc
+                <Lucide.CircleCheckBig size={14} className="text-success" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-success">
+                {summary.ended}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-success">
+                Xem hồ sơ đã kết thúc
+              </span>
+            </button>
+          </dl>
+        </div>
       </section>
 
       <section
         ref={filtersSectionRef}
-        className="scroll-mt-24 rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6"
+        className="scroll-mt-28 rounded-[24px] border border-base-300 bg-base-100 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.055)] sm:p-5"
         aria-labelledby="ticket-filters-title"
       >
         <header>
-          <h2 id="ticket-filters-title" className="text-base font-semibold">
-            Tìm và lọc phản ánh
-          </h2>
-          <p className="mt-1 text-xs text-base-content/50">
-            Lọc theo danh mục, trạng thái hoặc sắp xếp danh sách.
-          </p>
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/8 text-primary">
+              <Lucide.SlidersHorizontal size={15} aria-hidden="true" />
+            </span>
+            <div>
+              <h2 id="ticket-filters-title" className="text-sm font-semibold">
+                Tìm và lọc phản ánh
+              </h2>
+              <p className="mt-0.5 text-xs text-base-content/45">
+                Thu hẹp danh sách theo nhu cầu của bạn.
+              </p>
+            </div>
+          </div>
         </header>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(240px,1.55fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(180px,0.75fr)]">
+        <div className="mt-3 grid gap-2.5 md:grid-cols-[minmax(240px,1.55fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(180px,0.75fr)]">
           <label className="relative block" htmlFor="ticket-search">
             <span className="sr-only">Tìm phản ánh</span>
             <Lucide.Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" aria-hidden="true" />
@@ -696,7 +813,7 @@ export const TicketListPage = () => {
               id="ticket-search"
               type="search"
               value={search}
-              onChange={(event) => updateSearch(event.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
               className="h-11 w-full rounded-xl border border-base-300 bg-base-100 pl-9 pr-9 text-sm outline-none transition placeholder:text-base-content/35 focus:border-primary focus:ring-2 focus:ring-primary/15"
               placeholder="Tìm theo tiêu đề hoặc khu vực"
               autoComplete="off"
@@ -704,7 +821,7 @@ export const TicketListPage = () => {
             {search ? (
               <button
                 type="button"
-                onClick={() => updateSearch('')}
+                onClick={() => setSearch('')}
                 className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-base-content/35 hover:bg-base-200 hover:text-base-content"
                 aria-label="Xóa từ khóa tìm kiếm"
               >
@@ -717,7 +834,7 @@ export const TicketListPage = () => {
             menuId="category"
             value={categoryId}
             options={categoryOptions}
-            onChange={updateCategory}
+            onChange={setCategoryId}
             icon={Lucide.Tags}
             label="Lọc theo danh mục"
             openMenu={openMenu}
@@ -728,7 +845,7 @@ export const TicketListPage = () => {
             menuId="status"
             value={status}
             options={STATUS_OPTIONS}
-            onChange={updateStatus}
+            onChange={setStatus}
             icon={Lucide.ListFilter}
             label="Lọc theo trạng thái"
             openMenu={openMenu}
@@ -739,7 +856,7 @@ export const TicketListPage = () => {
             menuId="sort"
             value={sortKey}
             options={SORT_OPTIONS}
-            onChange={updateSort}
+            onChange={setSortKey}
             icon={Lucide.ArrowUpDown}
             label="Sắp xếp danh sách"
             openMenu={openMenu}
@@ -759,7 +876,7 @@ export const TicketListPage = () => {
                 }
                 <button
                   type="button"
-                  onClick={() => updateStatus(STATUS_FILTER_VALUES.ALL)}
+                  onClick={() => setStatus(STATUS_FILTER_VALUES.ALL)}
                   className="inline-flex h-5 w-5 items-center justify-center rounded-full transition hover:bg-primary/10"
                   aria-label="Xóa bộ lọc trạng thái"
                 >
@@ -788,7 +905,7 @@ export const TicketListPage = () => {
         </aside>
       ) : null}
 
-      <section className="rounded-[26px] border border-base-300 bg-base-100 shadow-sm" aria-labelledby="ticket-list-title" aria-busy={loading}>
+      <section className="overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-[0_10px_30px_rgba(15,23,42,0.06)]" aria-labelledby="ticket-list-title" aria-busy={loading}>
         <header className="flex items-center justify-between gap-4 border-b border-base-300 px-5 py-4 sm:px-6">
           <div>
             <h2 id="ticket-list-title" className="text-lg font-semibold">
@@ -798,12 +915,20 @@ export const TicketListPage = () => {
               {totalItems} phản ánh phù hợp với bộ lọc hiện tại.
             </p>
           </div>
+
+          {refreshing ? (
+            <span
+              className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-info/8 px-3 py-1.5 text-xs font-semibold text-info"
+              role="status"
+            >
+              <span className="loading loading-spinner loading-xs" />
+              Đang đồng bộ
+            </span>
+          ) : null}
         </header>
 
         {loading ? (
-          <div className="flex min-h-72 items-center justify-center">
-            <span className="loading loading-spinner loading-md text-primary" />
-          </div>
+          <TicketListSkeleton />
         ) : paginatedTickets.length === 0 ? (
           <section className="flex min-h-72 flex-col items-center justify-center px-6 py-10 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-base-200 text-base-content/40" aria-hidden="true">
@@ -829,29 +954,14 @@ export const TicketListPage = () => {
 
               return (
                 <li key={feedbackId}>
-                  <article
-                    id={`ticket-row-${feedbackId}`}
-                    className={`grid gap-4 px-5 py-4 transition-all sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center ${
-                      highlightedTicketId === feedbackId
-                        ? 'bg-primary/8 ring-2 ring-inset ring-primary/20'
-                        : 'hover:bg-base-200/35'
-                    }`}
-                  >
+                  <article className="grid gap-4 px-5 py-4 transition-colors hover:bg-base-200/35 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                     <section className="flex min-w-0 items-start gap-3.5">
                       <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${statusMeta.className}`} aria-hidden="true">
                         <StatusIcon size={17} />
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <Link
-                          to={`/tickets/${feedbackId}`}
-                          state={{
-                            from: `${location.pathname}${location.search}`,
-                            ticketId: feedbackId,
-                          }}
-                          onClick={() => saveReturnContext(feedbackId)}
-                          className="block truncate text-base font-semibold leading-6 text-base-content transition-colors hover:text-primary"
-                        >
+                        <Link to={`/tickets/${feedbackId}`} className="block truncate text-base font-semibold leading-6 text-base-content transition-colors hover:text-primary">
                           {ticket.title || 'Phản ánh chưa có tiêu đề'}
                         </Link>
 
@@ -889,11 +999,6 @@ export const TicketListPage = () => {
 
                       <Link
                         to={`/tickets/${feedbackId}`}
-                        state={{
-                          from: `${location.pathname}${location.search}`,
-                          ticketId: feedbackId,
-                        }}
-                        onClick={() => saveReturnContext(feedbackId)}
                         className="btn btn-sm admin-primary-action w-full justify-center rounded-xl"
                       >
                         Xem chi tiết
@@ -907,7 +1012,7 @@ export const TicketListPage = () => {
           </ol>
         )}
 
-        {!loading && totalItems > 0 ? (
+        {totalItems > 0 ? (
           <footer className="flex flex-col gap-3 border-t border-base-300 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <p className="text-xs text-base-content/45">
               Hiển thị <strong className="text-base-content">{startIndex + 1}–{endIndex}</strong> trong tổng số <strong className="text-base-content">{totalItems}</strong> phản ánh

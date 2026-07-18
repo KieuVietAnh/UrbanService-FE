@@ -9,7 +9,6 @@ import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import useTicketDetail from '../../hooks/useTicketDetail';
-import MotionCard from '../../components/motion/MotionCard';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 
 const CATEGORY_LABELS = {
@@ -129,6 +128,179 @@ const getPriorityTone = (priority) => {
   }
 };
 
+const getCommentAuthor = (comment) => (
+  comment?.userName ||
+  comment?.authorName ||
+  comment?.createdByName ||
+  comment?.fullName ||
+  'Người dùng'
+);
+
+const getCommentContent = (comment) => (
+  comment?.content ||
+  comment?.message ||
+  comment?.text ||
+  comment?.comment ||
+  ''
+);
+
+const getCommentTimestamp = (comment) => {
+  const timestamp = new Date(
+    comment?.createdAt ||
+    comment?.createdDate ||
+    comment?.timestamp ||
+    0
+  ).getTime();
+
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const normalizeCommentText = (value) => (
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('vi-VN')
+);
+
+const dedupeComments = (commentItems = []) => {
+  const uniqueComments = [];
+  const seenIds = new Set();
+  const recentFingerprints = new Map();
+
+  commentItems.forEach((comment, index) => {
+    const rawId = comment?.commentId || comment?.id;
+    const commentId = rawId ? String(rawId) : '';
+    const author = normalizeCommentText(getCommentAuthor(comment));
+    const content = normalizeCommentText(getCommentContent(comment));
+    const timestamp = getCommentTimestamp(comment);
+    const fingerprint = `${author}::${content}`;
+
+    if (commentId && seenIds.has(commentId)) return;
+
+    const previousTimestamp = recentFingerprints.get(fingerprint);
+    const likelyOptimisticDuplicate = (
+      fingerprint !== '::' &&
+      previousTimestamp !== undefined &&
+      (
+        timestamp === 0 ||
+        previousTimestamp === 0 ||
+        Math.abs(timestamp - previousTimestamp) <= 10000
+      )
+    );
+
+    if (likelyOptimisticDuplicate) return;
+
+    if (commentId) seenIds.add(commentId);
+    recentFingerprints.set(fingerprint, timestamp);
+    uniqueComments.push({
+      ...comment,
+      __ticketCommentRenderKey: (
+        commentId ||
+        `${fingerprint}-${timestamp || index}`
+      ),
+    });
+  });
+
+  return uniqueComments;
+};
+
+const TICKET_DETAIL_SNAPSHOT_PREFIX =
+  'urbanmind-service-user-ticket-detail:';
+
+const readTicketDetailSnapshot = (feedbackId) => {
+  if (
+    typeof window === 'undefined' ||
+    !feedbackId
+  ) {
+    return null;
+  }
+
+  try {
+    const rawSnapshot = window.sessionStorage.getItem(
+      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`
+    );
+    if (!rawSnapshot) return null;
+
+    const parsedSnapshot = JSON.parse(rawSnapshot);
+    return parsedSnapshot && typeof parsedSnapshot === 'object'
+      ? parsedSnapshot
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeTicketDetailSnapshot = (feedbackId, ticket) => {
+  if (
+    typeof window === 'undefined' ||
+    !feedbackId ||
+    !ticket
+  ) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`,
+      JSON.stringify(ticket)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+const TicketDetailSkeleton = () => (
+  <main
+    className="space-y-5 text-base-content"
+    aria-busy="true"
+    aria-label="Đang tải chi tiết phản ánh"
+  >
+    <span className="sr-only" role="status">
+      Đang tải chi tiết phản ánh
+    </span>
+
+    <section className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-sm">
+      <div className="grid animate-pulse gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div>
+          <div className="flex gap-2">
+            <div className="h-7 w-28 rounded-full bg-base-300/40" />
+            <div className="h-7 w-36 rounded-full bg-base-300/35" />
+          </div>
+          <div className="mt-5 h-8 w-72 max-w-[70%] rounded-lg bg-base-300/55" />
+          <div className="mt-4 flex gap-4">
+            <div className="h-3 w-36 rounded bg-base-300/30" />
+            <div className="h-3 w-32 rounded bg-base-300/30" />
+            <div className="h-3 w-36 rounded bg-base-300/30" />
+          </div>
+        </div>
+        <div className="h-36 rounded-[24px] border border-base-300 bg-base-200/45" />
+      </div>
+
+      <div className="grid grid-cols-3 divide-x divide-base-300 border-t border-base-300">
+        {[0, 1, 2].map((item) => (
+          <div key={item} className="animate-pulse px-5 py-4">
+            <div className="h-3 w-24 rounded bg-base-300/35" />
+            <div className="mt-2 h-5 w-32 rounded bg-base-300/50" />
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section className="rounded-[28px] border border-base-300 bg-base-100 p-6 shadow-sm">
+      <div className="animate-pulse">
+        <div className="h-6 w-40 rounded bg-base-300/55" />
+        <div className="mt-2 h-3 w-72 rounded bg-base-300/30" />
+        <div className="mt-7 h-20 rounded-2xl bg-base-200/55" />
+      </div>
+    </section>
+
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="h-72 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
+      <div className="h-72 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
+    </section>
+  </main>
+);
+
 const translateHistoryText = (value) => {
   const original = String(value || '').trim();
   if (!original) return 'Không có ghi chú.';
@@ -182,7 +354,10 @@ export const TicketDetailPage = () => {
     getAttachmentUrl,
   } = useTicketDetail(feedbackId, user);
 
-  const [ticket, setTicket] = useState(null);
+  const [cachedTicket] = useState(() => (
+    readTicketDetailSnapshot(feedbackId)
+  ));
+  const [ticket, setTicket] = useState(cachedTicket);
   const [updateNotice, setUpdateNotice] = useState('');
   const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState(null);
   const [previewSource, setPreviewSource] = useState('detail');
@@ -197,6 +372,7 @@ export const TicketDetailPage = () => {
   const selectedFilesRef = useRef([]);
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] = useState(null);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [visibleCommentCount, setVisibleCommentCount] = useState(3);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [locationPickerError, setLocationPickerError] = useState('');
   const [locationDraft, setLocationDraft] = useState({
@@ -216,6 +392,10 @@ export const TicketDetailPage = () => {
     longitude: null,
     priority: '',
   });
+
+  useEffect(() => {
+    setVisibleCommentCount(3);
+  }, [feedbackId]);
 
   const attachments = Array.isArray(ticket?.attachments)
     ? ticket.attachments
@@ -252,20 +432,37 @@ export const TicketDetailPage = () => {
 
     return {
       from: location.state?.from || matchingStoredContext?.from || '/tickets',
+      returnLabel:
+        location.state?.returnLabel ||
+        (
+          location.state?.from === '/community/map'
+            ? 'Quay lại bản đồ sự cố'
+            : 'Quay lại phản ánh của tôi'
+        ),
       scrollY: Number(matchingStoredContext?.scrollY || 0),
-      ticketId: location.state?.ticketId || matchingStoredContext?.ticketId || feedbackId,
+      ticketId:
+        location.state?.ticketId ||
+        matchingStoredContext?.ticketId ||
+        feedbackId,
+      mapState: location.state?.mapState || null,
     };
   };
 
+  const returnContext = readReturnContext();
+
   const handleBackToList = ({ replace = false, highlight = true } = {}) => {
-    const returnContext = readReturnContext();
+    const returningToMap = returnContext.from === '/community/map';
 
     navigate(returnContext.from, {
       replace,
-      state: {
-        restoreScrollY: returnContext.scrollY,
-        restoreTicketId: highlight ? returnContext.ticketId : null,
-      },
+      state: returningToMap
+        ? {
+          mapState: returnContext.mapState,
+        }
+        : {
+          restoreScrollY: returnContext.scrollY,
+          restoreTicketId: highlight ? returnContext.ticketId : null,
+        },
     });
   };
 
@@ -307,8 +504,14 @@ export const TicketDetailPage = () => {
   };
 
   useEffect(() => {
-    setTicket(fetchedTicket || null);
-  }, [fetchedTicket]);
+    if (!fetchedTicket) return;
+
+    setTicket(fetchedTicket);
+    writeTicketDetailSnapshot(
+      feedbackId,
+      fetchedTicket
+    );
+  }, [feedbackId, fetchedTicket]);
 
   useEffect(() => {
     selectedFilesRef.current = selectedFiles;
@@ -781,6 +984,10 @@ export const TicketDetailPage = () => {
 
       if (refreshedTicket && typeof refreshedTicket === 'object') {
         setTicket(refreshedTicket);
+        writeTicketDetailSnapshot(
+          feedbackId,
+          refreshedTicket
+        );
         setEditAttachments(
           Array.isArray(refreshedTicket.attachments)
             ? refreshedTicket.attachments
@@ -896,6 +1103,30 @@ export const TicketDetailPage = () => {
     ? sortedHistory
     : sortedHistory.slice(-3);
 
+  const uniqueComments = dedupeComments(
+    Array.isArray(comments) ? comments : []
+  );
+  const orderedComments = [...uniqueComments].sort(
+    (firstComment, secondComment) => (
+      getCommentTimestamp(secondComment) -
+      getCommentTimestamp(firstComment)
+    )
+  );
+  const visibleComments = orderedComments.slice(
+    0,
+    visibleCommentCount
+  );
+  const hiddenCommentCount = Math.max(
+    0,
+    orderedComments.length - visibleComments.length
+  );
+  const latestCommentAt = (
+    orderedComments[0]?.createdAt ||
+    orderedComments[0]?.createdDate ||
+    ticket?.updatedAt ||
+    ticket?.createdAt
+  );
+
   const approvalStatusText = (() => {
     if (
       [
@@ -986,12 +1217,8 @@ export const TicketDetailPage = () => {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[340px] items-center justify-center rounded-[28px] border border-base-300 bg-base-100 shadow-sm">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+  if (loading && !ticket) {
+    return <TicketDetailSkeleton />;
   }
 
   if (!ticket) {
@@ -1013,7 +1240,7 @@ export const TicketDetailPage = () => {
           onClick={() => handleBackToList()}
           className="btn admin-primary-action mt-5 rounded-2xl"
         >
-          Quay lại danh sách
+          {returnContext.returnLabel}
         </button>
       </div>
     );
@@ -1027,6 +1254,17 @@ export const TicketDetailPage = () => {
 
   return (
     <>
+      {loading && ticket ? (
+        <div
+          className="fixed right-5 top-24 z-40 inline-flex items-center gap-2 rounded-full border border-info/20 bg-base-100/95 px-3 py-2 text-xs font-semibold text-info shadow-lg backdrop-blur"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="loading loading-spinner loading-xs" />
+          Đang đồng bộ chi tiết
+        </div>
+      ) : null}
+
       {updateNotice && typeof document !== 'undefined'
         ? createPortal(
             <div
@@ -1070,7 +1308,7 @@ export const TicketDetailPage = () => {
               className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-base-200 hover:text-primary"
             >
               <Lucide.ArrowLeft size={15} aria-hidden="true" />
-              Quay lại phản ánh của tôi
+              {returnContext.returnLabel}
             </button>
           </nav>
 
@@ -1351,7 +1589,11 @@ export const TicketDetailPage = () => {
             </div>
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)] xl:items-start">
+          <div className={`grid gap-4 ${
+            canReviewResolution && isServiceUser
+              ? 'xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)] xl:items-start'
+              : ''
+          }`}>
             <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)] sm:p-5" aria-labelledby="history-title">
               <header>
                 <h2 id="history-title" className="text-lg font-bold">Lịch sử cập nhật</h2>
@@ -1499,80 +1741,256 @@ export const TicketDetailPage = () => {
                   </form>
                 </section>
               ) : null}
-
-              <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)] sm:p-5" aria-labelledby="comments-title">
-                <header className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 id="comments-title" className="text-base font-bold">Trao đổi cộng đồng</h2>
-                    <p className="mt-1 text-sm leading-6 text-base-content/60">
-                      Bình luận công khai liên quan đến phản ánh.
-                    </p>
-                  </div>
-                  <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-base-300 bg-base-200/45 px-2.5 py-1 text-xs font-semibold">
-                    {comments.length}
-                  </span>
-                </header>
-
-                <form
-                  onSubmit={handleSendChat}
-                  className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
-                >
-                  <label htmlFor="public-comment" className="sr-only">Viết bình luận công khai</label>
-                  <textarea
-                    id="public-comment"
-                    rows="2"
-                    value={chatInput}
-                    onChange={(event) => setChatInput(event.target.value)}
-                    placeholder="Viết bình luận công khai..."
-                    className="textarea textarea-bordered min-h-[72px] w-full rounded-2xl bg-base-100 text-sm"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!chatInput?.trim()}
-                    className="btn admin-primary-action rounded-xl sm:mb-0.5"
-                  >
-                    <Lucide.Send size={14} aria-hidden="true" />
-                    Gửi
-                  </button>
-                </form>
-
-                <div className="mt-4 space-y-3">
-                  {comments.length === 0 ? (
-                    <div className="flex items-center gap-2 rounded-xl border border-dashed border-base-300 bg-base-200/40 px-3 py-3 text-left">
-                      <Lucide.MessageCircle size={18} className="shrink-0 text-base-content/25" aria-hidden="true" />
-                      <p className="text-sm text-base-content/55">Chưa có bình luận nào.</p>
-                    </div>
-                  ) : (
-                    comments.filter(Boolean).map((comment, index) => {
-                      const author = comment?.userName || comment?.authorName || 'Người dùng';
-                      const content = comment?.content || comment?.message || '---';
-
-                      return (
-                        <MotionCard
-                          key={comment.commentId || comment.id || index}
-                          index={index}
-                          className="rounded-2xl border border-base-300 bg-base-200/25 p-4"
-                        >
-                          <div className="flex items-start gap-3">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-content">
-                              {author.charAt(0).toUpperCase()}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <p className="truncate text-sm font-semibold">{author}</p>
-                                <time className="text-[11px] text-base-content/48">{formatDate(comment?.createdAt)}</time>
-                              </div>
-                              <p className="mt-2 break-words text-sm leading-6 text-base-content/62">{content}</p>
-                            </div>
-                          </div>
-                        </MotionCard>
-                      );
-                    })
-                  )}
-                </div>
-              </section>
             </aside>
           </div>
+
+          <section
+            className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_32px_rgba(15,23,42,0.08)]"
+            aria-labelledby="comments-title"
+          >
+            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 px-5 py-5 sm:px-6">
+              <div>
+                <h2 id="comments-title" className="text-lg font-bold">
+                  Trao đổi cộng đồng
+                </h2>
+                <p className="mt-1 text-sm text-base-content/55">
+                  Chia sẻ thông tin hữu ích và trao đổi văn minh về phản ánh.
+                </p>
+              </div>
+              <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/15 bg-primary/8 px-3 text-xs font-semibold text-primary">
+                <Lucide.MessageCircle size={14} aria-hidden="true" />
+                {orderedComments.length} bình luận
+              </span>
+            </header>
+
+            <div className="grid gap-5 bg-base-200/18 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
+              <div className="min-w-0 space-y-4">
+                <form
+                  onSubmit={handleSendChat}
+                  className="rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-content shadow-sm">
+                      {(user?.fullName || user?.name || 'Bạn')
+                        .charAt(0)
+                        .toUpperCase()}
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <label htmlFor="public-comment" className="sr-only">
+                        Viết bình luận công khai
+                      </label>
+                      <textarea
+                        id="public-comment"
+                        rows="2"
+                        value={chatInput}
+                        onChange={(event) => setChatInput(event.target.value)}
+                        placeholder="Bạn nghĩ gì về phản ánh này?"
+                        className="textarea textarea-bordered min-h-[72px] max-h-40 w-full resize-y rounded-xl border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 focus:border-primary/40 focus:outline-none"
+                      />
+
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <p className="inline-flex items-center gap-1.5 text-xs text-base-content/42">
+                          <Lucide.Globe2 size={13} aria-hidden="true" />
+                          Nội dung được hiển thị công khai.
+                        </p>
+                        <button
+                          type="submit"
+                          disabled={!chatInput?.trim()}
+                          className="btn admin-primary-action h-10 min-h-10 rounded-xl px-4"
+                        >
+                          <Lucide.Send size={14} aria-hidden="true" />
+                          Gửi bình luận
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+
+                <div className="space-y-3">
+                  {visibleComments.length > 0 ? (
+                    visibleComments.map((comment, index) => {
+                      const author = getCommentAuthor(comment);
+                      const content = getCommentContent(comment);
+
+                      return (
+                        <article
+                          key={
+                            comment.__ticketCommentRenderKey ||
+                            comment.commentId ||
+                            comment.id ||
+                            index
+                          }
+                          className="grid grid-cols-[40px_minmax(0,1fr)] gap-3"
+                        >
+                          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10 text-xs font-bold text-secondary">
+                            {author.charAt(0).toUpperCase()}
+                          </span>
+
+                          <div className="min-w-0 rounded-2xl rounded-tl-md border border-base-300 bg-base-100 px-4 py-3 shadow-sm transition hover:border-primary/15">
+                            <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                              <p className="truncate text-sm font-semibold">
+                                {author}
+                              </p>
+                              <time
+                                dateTime={comment?.createdAt || undefined}
+                                className="shrink-0 text-xs text-base-content/42"
+                              >
+                                {formatDate(comment?.createdAt)}
+                              </time>
+                            </header>
+                            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-base-content/68">
+                              {content || 'Bình luận không có nội dung.'}
+                            </p>
+                          </div>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <div className="flex min-h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-base-300 bg-base-100 px-4 py-6 text-center">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/8 text-primary">
+                        <Lucide.MessageCircle size={20} aria-hidden="true" />
+                      </span>
+                      <p className="mt-3 text-sm font-semibold text-base-content/65">
+                        Chưa có bình luận nào
+                      </p>
+                      <p className="mt-1 text-xs text-base-content/42">
+                        Hãy là người đầu tiên chia sẻ thông tin hữu ích.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {hiddenCommentCount > 0 || (
+                  visibleCommentCount > 3 &&
+                  orderedComments.length > 3
+                ) ? (
+                  <div className="flex flex-wrap justify-center gap-2 pt-1">
+                    {hiddenCommentCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleCommentCount(
+                          (currentCount) => currentCount + 5
+                        )}
+                        className="btn btn-outline btn-sm rounded-xl px-4"
+                      >
+                        <Lucide.MessageSquareMore
+                          size={15}
+                          aria-hidden="true"
+                        />
+                        Xem thêm {Math.min(5, hiddenCommentCount)} bình luận
+                      </button>
+                    ) : null}
+
+                    {visibleCommentCount > 3 &&
+                    orderedComments.length > 3 ? (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleCommentCount(3)}
+                        className="btn btn-ghost btn-sm rounded-xl px-4 text-base-content/55"
+                      >
+                        <Lucide.ChevronUp size={15} aria-hidden="true" />
+                        Thu gọn
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <aside className="space-y-4 xl:sticky xl:top-24">
+                <section className="overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/8 via-base-100 to-secondary/8 p-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Lucide.ChartNoAxesColumnIncreasing
+                        size={19}
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-bold">
+                        Tổng quan trao đổi
+                      </h3>
+                      <p className="mt-0.5 text-xs text-base-content/45">
+                        Thông tin của cuộc thảo luận.
+                      </p>
+                    </div>
+                  </div>
+
+                  <dl className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
+                      <dt className="text-[11px] text-base-content/45">
+                        Bình luận
+                      </dt>
+                      <dd className="mt-1 text-xl font-bold">
+                        {orderedComments.length}
+                      </dd>
+                    </div>
+                    <div className="rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
+                      <dt className="text-[11px] text-base-content/45">
+                        Trạng thái
+                      </dt>
+                      <dd className="mt-1 truncate text-sm font-bold text-primary">
+                        {getCitizenStatusLabel(ticket?.status)}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-2 rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
+                    <p className="text-[11px] text-base-content/45">
+                      Hoạt động gần nhất
+                    </p>
+                    <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-base-content/68">
+                      <Lucide.Clock3 size={13} aria-hidden="true" />
+                      {formatDate(latestCommentAt)}
+                    </p>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10 text-success">
+                      <Lucide.ShieldCheck size={19} aria-hidden="true" />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-bold">
+                        Trao đổi văn minh
+                      </h3>
+                      <p className="mt-0.5 text-xs text-base-content/45">
+                        Giữ cuộc thảo luận hữu ích.
+                      </p>
+                    </div>
+                  </div>
+
+                  <ul className="mt-4 space-y-3 text-xs leading-5 text-base-content/58">
+                    <li className="flex gap-2">
+                      <Lucide.Check
+                        size={14}
+                        className="mt-0.5 shrink-0 text-success"
+                        aria-hidden="true"
+                      />
+                      Chia sẻ thông tin đúng với sự việc.
+                    </li>
+                    <li className="flex gap-2">
+                      <Lucide.Check
+                        size={14}
+                        className="mt-0.5 shrink-0 text-success"
+                        aria-hidden="true"
+                      />
+                      Tôn trọng người tham gia trao đổi.
+                    </li>
+                    <li className="flex gap-2">
+                      <Lucide.Check
+                        size={14}
+                        className="mt-0.5 shrink-0 text-success"
+                        aria-hidden="true"
+                      />
+                      Không đăng nội dung spam hoặc không liên quan.
+                    </li>
+                  </ul>
+                </section>
+              </aside>
+            </div>
+          </section>
       </main>
 
       {editOpen && typeof document !== 'undefined'

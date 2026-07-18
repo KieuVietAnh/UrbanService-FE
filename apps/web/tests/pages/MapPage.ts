@@ -6,49 +6,31 @@ export class MapPage extends BasePage {
   readonly markerLayer;
   readonly mapContainer;
   readonly spinner;
+  readonly loadingState;
   readonly emptyStateCard;
 
   constructor(page: Page) {
     super(page);
     this.leafletContainer = page.locator('.leaflet-container');
     this.markerLayer = page.locator('.leaflet-marker-pane .leaflet-marker-icon');
-    this.mapContainer = page.locator('.card .overflow-hidden.rounded-3xl.border.border-slate-200.shadow-sm.h-\\[550px\\]');
+    this.mapContainer = page.locator('.leaflet-container');
     this.spinner = page.locator('.loading-spinner, .loading.loading-spinner');
-    this.emptyStateCard = page.locator('.card .flex.h-\\[550px\\]');
+    this.loadingState = page.getByTestId('community-map-loading');
+    this.emptyStateCard = page.getByTestId('community-map-empty-state');
   }
 
   async expectMapLoaded() {
-    await this.page.waitForLoadState('networkidle');
-    try {
-      await Promise.any([
-        this.leafletContainer.waitFor({ state: 'attached', timeout: 20000 }),
-        this.mapContainer.waitFor({ state: 'attached', timeout: 20000 }),
-      ]);
-      await this.spinner.waitFor({ state: 'detached', timeout: 20000 });
-      await Promise.any([
-        this.markerLayer.first().waitFor({ state: 'visible', timeout: 20000 }),
-        this.emptyStateCard.waitFor({ state: 'visible', timeout: 20000 }),
-      ]);
-      return;
-    } catch (e) {
-      // Retry with longer timeouts before giving up to reduce flakiness
-      await this.page.waitForTimeout(2000);
-      try {
-        await Promise.any([
-          this.leafletContainer.waitFor({ state: 'attached', timeout: 40000 }),
-          this.mapContainer.waitFor({ state: 'attached', timeout: 40000 }),
-        ]);
-        await this.spinner.waitFor({ state: 'detached', timeout: 40000 });
-        await Promise.any([
-          this.markerLayer.first().waitFor({ state: 'visible', timeout: 40000 }),
-          this.emptyStateCard.waitFor({ state: 'visible', timeout: 40000 }),
-        ]);
-        return;
-      } catch (e2) {
-        // Final fallback: allow test to continue so assertions can handle empty state
-        return;
-      }
-    }
+    await this.page.waitForLoadState('domcontentloaded');
+
+    await this.leafletContainer.waitFor({
+      state: 'visible',
+      timeout: 30000,
+    });
+
+    await this.markerLayer.first().waitFor({
+      state: 'visible',
+      timeout: 30000,
+    });
   }
 
   async hasMarkers() {

@@ -11,6 +11,10 @@ import CommunityFeedItem from './CommunityFeedItem';
 import CommentDrawer from './CommentDrawer';
 
 const COMMUNITY_RETURN_STORAGE_KEY = 'urbanmind-community-feed-return';
+const COMMUNITY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const COMMUNITY_REFERENCE_TIMESTAMP = Date.now();
+const COMMUNITY_FEED_PAGE_SIZE = 10;
+const COMMUNITY_SNAPSHOT_PAGE_SIZE = 100;
 
 const readCommunityReturnContext = () => {
   if (typeof window === 'undefined') return null;
@@ -35,8 +39,26 @@ const TAB_OPTIONS = [
   { value: 'Latest', label: 'Mới nhất', icon: Lucide.Clock3 },
   { value: 'Trending', label: 'Được quan tâm', icon: Lucide.Flame },
   { value: 'Nearby', label: 'Gần bạn', icon: Lucide.MapPin },
-  { value: 'Resolved', label: 'Đã xử lý', icon: Lucide.CircleCheck },
+  { value: 'Processing', label: 'Đang xử lý', icon: Lucide.LoaderCircle },
+  { value: 'Ended', label: 'Đã kết thúc', icon: Lucide.CircleCheckBig },
 ];
+
+const PROCESSING_STATUSES = new Set([
+  managementTypes.feedbackStatus.VERIFIED,
+  managementTypes.feedbackStatus.ASSIGNED,
+  managementTypes.feedbackStatus.IN_PROGRESS,
+  managementTypes.feedbackStatus.RESOLVED,
+  managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+  managementTypes.feedbackStatus.APPROVED,
+]);
+
+const normalizeFeedTab = (value, fallback = 'Latest') => {
+  if (value === 'Resolved') return 'Ended';
+
+  return TAB_OPTIONS.some((option) => option.value === value)
+    ? value
+    : fallback;
+};
 
 const getItemId = (item) => item?.feedbackId || item?.id || item?.ticketId;
 
@@ -121,7 +143,7 @@ const FeedSkeleton = () => (
           <div className="mt-3 h-4 w-full rounded bg-base-300/45" />
           <div className="mt-2 h-4 w-4/5 rounded bg-base-300/40" />
         </div>
-        <div className="mx-5 h-56 rounded-2xl bg-base-300/50 sm:mx-6 sm:h-64" />
+        <div className="mx-5 h-44 rounded-2xl bg-base-300/50 sm:mx-6 sm:h-52" />
         <div className="mt-4 flex justify-between border-t border-base-300 px-5 py-4 sm:px-6">
           <div className="h-9 w-24 rounded-xl bg-base-300/50" />
           <div className="h-9 w-28 rounded-xl bg-base-300/45" />
@@ -137,52 +159,85 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
   const restoreContextRef = useRef(restoredContext);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(() => (
     Math.max(1, Number(restoredContext?.page) || 1)
   ));
-  const [hasMore, setHasMore] = useState(true);
-  const [tab, setTab] = useState(
-    restoredContext?.tab || initialTab
-  );
+  const [tab, setTab] = useState(() => (
+    normalizeFeedTab(restoredContext?.tab, initialTab)
+  ));
   const [query, setQuery] = useState(restoredContext?.query || '');
   const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(null);
   const [error, setError] = useState('');
   const [openCommentsFor, setOpenCommentsFor] = useState(null);
   const isFetchingRef = useRef(false);
+  const hasLoadedSnapshotRef = useRef(false);
+  const hasInitializedFiltersRef = useRef(false);
+  const filterSectionRef = useRef(null);
+  const feedListSectionRef = useRef(null);
+  const [scrollRequest, setScrollRequest] = useState({
+    id: 0,
+    target: 'controls',
+  });
 
-  const loadPage = useCallback(async (pageNumber = 1) => {
+  const loadFeedSnapshot = useCallback(async ({
+    background = false,
+  } = {}) => {
     if (isFetchingRef.current) return;
 
     isFetchingRef.current = true;
     setError('');
-    setLoading(true);
+
+    const showInitialLoading = (
+      !background &&
+      !hasLoadedSnapshotRef.current
+    );
+
+    if (showInitialLoading) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
 
     try {
-      const response = await getCommunityFeed({
-        PageNumber: pageNumber,
-        PageSize: 10,
-        Status: tab === 'Resolved' ? 'Resolved' : undefined,
+      const firstResponse = await getCommunityFeed({
+        PageNumber: 1,
+        PageSize: COMMUNITY_SNAPSHOT_PAGE_SIZE,
       });
-      const {
-        items: fetchedItemsRaw,
-        pageNumber: responsePageNumber,
-        totalPages,
-      } = response;
-      const fetchedItems = normalizeTicketsResponse(fetchedItemsRaw || []);
-      const publicItems = filterPublicItems(fetchedItems);
+      const totalPages = Math.max(
+        1,
+        Number(firstResponse?.totalPages) || 1
+      );
+      const responses = [firstResponse];
 
-      setItems((currentItems) => {
-        const merged = pageNumber === 1
-          ? publicItems
-          : [...currentItems, ...publicItems];
-        return dedupeFeedItems(merged);
-      });
+      for (
+        let pageNumber = 2;
+        pageNumber <= totalPages;
+        pageNumber += 1
+      ) {
+        const pageResponse = await getCommunityFeed({
+          PageNumber: pageNumber,
+          PageSize: COMMUNITY_SNAPSHOT_PAGE_SIZE,
+        });
+        responses.push(pageResponse);
+      }
 
-      setHasMore(responsePageNumber < totalPages && fetchedItems.length > 0);
+      const fetchedItems = responses.flatMap((response) => (
+        normalizeTicketsResponse(response?.items || [])
+      ));
+      const publicItems = dedupeFeedItems(
+        filterPublicItems(fetchedItems)
+      );
+
+      setItems(publicItems);
+      hasLoadedSnapshotRef.current = true;
 
       const itemsMissingPreview = publicItems.filter((item) => (
         item?.attachmentCount > 0 &&
-        !(Array.isArray(item?.attachments) && item.attachments.length > 0)
+        !(
+          Array.isArray(item?.attachments) &&
+          item.attachments.length > 0
+        )
       ));
 
       if (itemsMissingPreview.length > 0) {
@@ -191,9 +246,11 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
             const feedbackId = getItemId(item);
 
             try {
-              const detail = await ticketApi.getTicketById(feedbackId, {
-                role: 'service-user',
-              });
+              const detail = await ticketApi.getTicketById(
+                feedbackId,
+                { role: 'service-user' }
+              );
+
               return {
                 feedbackId,
                 attachments: Array.isArray(detail?.attachments)
@@ -206,12 +263,18 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                 feedbackId,
                 previewError?.message || previewError
               );
-              return { feedbackId, attachments: [] };
+              return {
+                feedbackId,
+                attachments: [],
+              };
             }
           })
         ).then((results) => {
           const attachmentMap = new Map(
-            results.map((result) => [result.feedbackId, result.attachments])
+            results.map((result) => [
+              result.feedbackId,
+              result.attachments,
+            ])
           );
 
           setItems((currentItems) => currentItems.map((item) => {
@@ -221,9 +284,15 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
             if (
               attachments &&
               attachments.length > 0 &&
-              !(Array.isArray(item?.attachments) && item.attachments.length > 0)
+              !(
+                Array.isArray(item?.attachments) &&
+                item.attachments.length > 0
+              )
             ) {
-              return { ...item, attachments };
+              return {
+                ...item,
+                attachments,
+              };
             }
 
             return item;
@@ -237,42 +306,81 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
         loadError?.message ||
         'Không thể tải bảng tin cộng đồng.'
       );
-      setHasMore(false);
     } finally {
       setLoading(false);
+      setRefreshing(false);
       isFetchingRef.current = false;
     }
-  }, [tab]);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    loadFeedSnapshot();
+  }, [loadFeedSnapshot]);
 
-    const loadInitialFeed = async () => {
-      const savedContext = restoreContextRef.current;
-      const shouldRestore = (
-        savedContext &&
-        savedContext.tab === tab
+  useEffect(() => {
+    if (!hasInitializedFiltersRef.current) {
+      hasInitializedFiltersRef.current = true;
+      return;
+    }
+
+    setPage(1);
+  }, [query, tab]);
+
+  const requestFeedScroll = useCallback((target = 'list') => {
+    setScrollRequest((currentRequest) => ({
+      id: currentRequest.id + 1,
+      target,
+    }));
+  }, []);
+
+  useEffect(() => {
+    if (
+      scrollRequest.id === 0 ||
+      typeof window === 'undefined'
+    ) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const targetElement = (
+        scrollRequest.target === 'controls'
+          ? filterSectionRef.current
+          : (
+              feedListSectionRef.current ||
+              filterSectionRef.current
+            )
       );
-      const targetPage = shouldRestore
-        ? Math.max(1, Number(savedContext.page) || 1)
-        : 1;
 
-      setItems([]);
-      setHasMore(true);
-      setPage(targetPage);
+      if (!targetElement) return;
 
-      for (let pageNumber = 1; pageNumber <= targetPage; pageNumber += 1) {
-        if (cancelled) return;
-        await loadPage(pageNumber);
-      }
-    };
-
-    loadInitialFeed();
+      targetElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+        inline: 'nearest',
+      });
+    }, scrollRequest.target === 'list' ? 100 : 60);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [tab, loadPage]);
+  }, [scrollRequest]);
+
+  const handleFeedTabChange = useCallback((
+    nextTab,
+    target = 'controls'
+  ) => {
+    setTab(nextTab);
+    requestFeedScroll(target);
+  }, [requestFeedScroll]);
+
+  const handleQueryFocus = useCallback(() => {
+    requestFeedScroll('controls');
+  }, [requestFeedScroll]);
+
+  const handleQueryChange = useCallback((event) => {
+    setQuery(event.target.value);
+    requestFeedScroll('controls');
+  }, [requestFeedScroll]);
 
   useEffect(() => {
     signalrService.start();
@@ -413,9 +521,19 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     };
   }, [items, loading]);
 
+  const tabItems = tab === 'Processing'
+    ? items.filter((item) => PROCESSING_STATUSES.has(item?.status))
+    : tab === 'Ended'
+      ? items.filter(
+          (item) => (
+            item?.status === managementTypes.feedbackStatus.CLOSED
+          )
+        )
+      : items;
+
   const normalizedQuery = query.trim().toLocaleLowerCase('vi-VN');
   const searchedItems = normalizedQuery
-    ? items.filter((item) => {
+    ? tabItems.filter((item) => {
         const searchable = [
           item?.title,
           item?.description,
@@ -429,9 +547,9 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
         return searchable.includes(normalizedQuery);
       })
-    : items;
+    : tabItems;
 
-  const visibleItems = [...searchedItems].sort((left, right) => {
+  const sortedItems = [...searchedItems].sort((left, right) => {
     if (tab === 'Trending') {
       const engagementDifference = (
         getSupportCount(right) + getCommentCount(right)
@@ -443,6 +561,11 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
     return getCreatedTimestamp(right) - getCreatedTimestamp(left);
   });
+  const visibleItems = sortedItems.slice(
+    0,
+    page * COMMUNITY_FEED_PAGE_SIZE
+  );
+  const hasMore = visibleItems.length < sortedItems.length;
 
   const trendingItems = [...items]
     .sort((left, right) => (
@@ -452,21 +575,50 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     ))
     .slice(0, 4);
 
-  const processingStatuses = new Set([
-    managementTypes.feedbackStatus.VERIFIED,
-    managementTypes.feedbackStatus.ASSIGNED,
-    managementTypes.feedbackStatus.IN_PROGRESS,
-    managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-  ]);
-  const completedStatuses = new Set([
-    managementTypes.feedbackStatus.RESOLVED,
-    managementTypes.feedbackStatus.APPROVED,
-    managementTypes.feedbackStatus.CLOSED,
-  ]);
-  const processingCount = items.filter((item) => processingStatuses.has(item?.status)).length;
-  const completedCount = items.filter((item) => completedStatuses.has(item?.status)).length;
+  const processingCount = items.filter(
+    (item) => PROCESSING_STATUSES.has(item?.status)
+  ).length;
+  const endedCount = items.filter(
+    (item) => (
+      item?.status === managementTypes.feedbackStatus.CLOSED
+    )
+  ).length;
+  const sevenDaysAgo = (
+    COMMUNITY_REFERENCE_TIMESTAMP - COMMUNITY_RECENT_WINDOW_MS
+  );
+  const recentPublicCount = items.filter(
+    (item) => getCreatedTimestamp(item) >= sevenDaysAgo
+  ).length;
+  const loadedInteractionCount = items.reduce(
+    (total, item) => (
+      total + getSupportCount(item) + getCommentCount(item)
+    ),
+    0
+  );
+  const latestActivityTimestamp = items.reduce(
+    (latestTimestamp, item) => {
+      const itemTimestamp = new Date(
+        item?.updatedAt ||
+        item?.createdAt ||
+        item?.createdDate ||
+        0
+      ).getTime();
+
+      if (Number.isNaN(itemTimestamp)) return latestTimestamp;
+      return Math.max(latestTimestamp, itemTimestamp);
+    },
+    0
+  );
+  const latestActivityText = latestActivityTimestamp
+    ? new Intl.DateTimeFormat('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(latestActivityTimestamp))
+    : 'Chưa có hoạt động';
+
   const initialLoading = loading && items.length === 0;
-  const loadingMore = loading && items.length > 0;
 
   const openDetail = (item) => {
     const feedbackId = getItemId(item);
@@ -493,274 +645,492 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
   };
 
   const retryLoad = () => {
-    setItems([]);
-    setPage(1);
-    setHasMore(true);
-    loadPage(1);
+    loadFeedSnapshot({
+      background: items.length > 0,
+    });
   };
 
   const handleLoadMore = () => {
-    if (loading || !hasMore || isFetchingRef.current) return;
-
-    const nextPage = page + 1;
-    setPage(nextPage);
-    loadPage(nextPage);
+    if (!hasMore) return;
+    setPage((currentPage) => currentPage + 1);
   };
 
   return (
-    <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="min-w-0 space-y-4">
-        <section className="rounded-[24px] border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-base-200/55 p-1" role="tablist" aria-label="Lọc bảng tin">
-              {TAB_OPTIONS.map((option) => {
-                const Icon = option.icon;
-                const active = tab === option.value;
+    <>
+      <section className="relative isolate overflow-hidden rounded-[28px] border border-primary/15 bg-gradient-to-br from-base-100 via-info/[0.025] to-primary/[0.075] shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          aria-hidden="true"
+        >
+          <svg
+            viewBox="0 0 1400 320"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full text-primary"
+            fill="none"
+          >
+            <path
+              d="M-40 250C135 210 185 72 365 96C515 116 515 260 690 243C836 229 856 81 1018 90C1165 98 1192 214 1445 142"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeOpacity="0.09"
+            />
+            <path
+              d="M-15 278C180 238 222 129 397 145C564 160 614 294 786 262C934 234 964 126 1131 124C1250 122 1320 171 1435 188"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeDasharray="9 12"
+              strokeOpacity="0.075"
+            />
+            <path
+              d="M722 -25C761 70 742 145 802 207C872 278 1014 280 1075 194C1129 118 1091 38 1173 -28"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeOpacity="0.065"
+            />
+            <circle
+              cx="360"
+              cy="97"
+              r="7"
+              fill="currentColor"
+              fillOpacity="0.09"
+            />
+            <circle
+              cx="690"
+              cy="243"
+              r="9"
+              fill="currentColor"
+              fillOpacity="0.075"
+            />
+            <circle
+              cx="1018"
+              cy="90"
+              r="6"
+              fill="currentColor"
+              fillOpacity="0.11"
+            />
+            <circle
+              cx="1131"
+              cy="124"
+              r="15"
+              stroke="currentColor"
+              strokeOpacity="0.075"
+            />
+          </svg>
 
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setTab(option.value)}
-                    role="tab"
-                    aria-selected={active}
-                    className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${
-                      active
-                        ? 'bg-base-100 text-primary shadow-sm ring-1 ring-base-300'
-                        : 'text-base-content/55 hover:bg-base-100/70 hover:text-base-content'
-                    }`}
-                  >
-                    <Icon size={15} aria-hidden="true" />
-                    {option.label}
-                  </button>
-                );
-              })}
+          <div className="absolute -left-20 -top-24 h-72 w-72 rounded-full bg-primary/[0.035] blur-3xl" />
+          <div className="absolute -bottom-28 right-[12%] h-72 w-72 rounded-full bg-info/[0.07] blur-3xl" />
+
+          <span className="absolute left-[42%] top-[24%] flex h-8 w-8 items-center justify-center rounded-full border border-primary/10 bg-base-100/50 text-primary/35 shadow-sm">
+            <Lucide.MapPin size={14} />
+          </span>
+          <span className="absolute bottom-[18%] left-[57%] flex h-7 w-7 items-center justify-center rounded-full border border-success/10 bg-base-100/50 text-success/35 shadow-sm">
+            <Lucide.Check size={13} />
+          </span>
+          <span className="absolute right-[24%] top-[18%] flex h-7 w-7 items-center justify-center rounded-full border border-secondary/10 bg-base-100/50 text-secondary/35 shadow-sm">
+            <Lucide.MessageCircle size={13} />
+          </span>
+        </div>
+
+        <div className="relative grid gap-6 px-6 py-7 sm:px-8 sm:py-8 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+          <div className="max-w-3xl">
+            <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+              Bảng tin đô thị
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-base-content/60">
+              Theo dõi các phản ánh đã được xác minh, cùng trao đổi và giám sát tiến độ xử lý trong cộng đồng.
+            </p>
+
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success">
+                <Lucide.Radio size={14} aria-hidden="true" />
+                Cập nhật theo thời gian thực
+              </span>
+            </div>
+          </div>
+
+          <div className="relative">
+            <dl className="grid grid-cols-3 gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => handleFeedTabChange('Latest')}
+                className="group min-w-[118px] rounded-2xl border border-base-300 bg-base-100/85 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+              >
+                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                  Tổng công khai
+                  <Lucide.Files
+                    size={14}
+                    className="text-primary"
+                    aria-hidden="true"
+                  />
+                </dt>
+                <dd className="mt-1 text-2xl font-bold tracking-tight text-base-content">
+                  {initialLoading ? (
+                    <span className="inline-block h-7 w-8 animate-pulse rounded bg-base-300/55" />
+                  ) : (
+                    items.length
+                  )}
+                </dd>
+                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-primary">
+                  Xem toàn bộ
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleFeedTabChange('Processing')}
+                className="group min-w-[118px] rounded-2xl border border-warning/20 bg-warning/5 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-warning/35 hover:shadow-md"
+              >
+                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                  Đang xử lý
+                  <Lucide.LoaderCircle
+                    size={14}
+                    className="text-warning"
+                    aria-hidden="true"
+                  />
+                </dt>
+                <dd className="mt-1 text-2xl font-bold tracking-tight text-warning">
+                  {initialLoading ? (
+                    <span className="inline-block h-7 w-8 animate-pulse rounded bg-warning/15" />
+                  ) : (
+                    processingCount
+                  )}
+                </dd>
+                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-warning">
+                  Theo dõi tiến độ
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleFeedTabChange('Ended')}
+                className="group min-w-[118px] rounded-2xl border border-success/20 bg-success/5 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-success/35 hover:shadow-md"
+              >
+                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                  Đã kết thúc
+                  <Lucide.CircleCheckBig
+                    size={14}
+                    className="text-success"
+                    aria-hidden="true"
+                  />
+                </dt>
+                <dd className="mt-1 text-2xl font-bold tracking-tight text-success">
+                  {initialLoading ? (
+                    <span className="inline-block h-7 w-8 animate-pulse rounded bg-success/15" />
+                  ) : (
+                    endedCount
+                  )}
+                </dd>
+                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-success">
+                  Xem hồ sơ đã kết thúc
+                </span>
+              </button>
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
+        <div className="min-w-0 space-y-4">
+          <section
+            ref={filterSectionRef}
+            className="scroll-mt-28 rounded-[22px] border border-base-300 bg-base-100 p-3 shadow-[0_8px_24px_rgba(15,23,42,0.055)] sm:p-4"
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div
+                className="flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-base-200/60 p-1"
+                role="tablist"
+                aria-label="Lọc bảng tin"
+              >
+                {TAB_OPTIONS.map((option) => {
+                  const Icon = option.icon;
+                  const active = tab === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleFeedTabChange(option.value)}
+                      role="tab"
+                      aria-selected={active}
+                      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${
+                        active
+                          ? 'bg-base-100 text-primary shadow-sm ring-1 ring-base-300'
+                          : 'text-base-content/52 hover:bg-base-100/75 hover:text-base-content'
+                      }`}
+                    >
+                      <Icon size={15} aria-hidden="true" />
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="relative block w-full lg:max-w-[360px]">
+                <span className="sr-only">Tìm kiếm trong bảng tin</span>
+                <Lucide.Search
+                  size={17}
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/35"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  value={query}
+                  onFocus={handleQueryFocus}
+                  onChange={handleQueryChange}
+                  placeholder="Tìm tiêu đề, khu vực, danh mục..."
+                  className="input input-bordered h-10 w-full rounded-xl bg-base-100 pl-10 text-sm"
+                />
+              </label>
             </div>
 
-            <label className="relative block w-full lg:max-w-sm">
-              <span className="sr-only">Tìm kiếm trong bảng tin</span>
-              <Lucide.Search
-                size={17}
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/35"
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-base-content/45">
+              <span>
+                {initialLoading
+                  ? 'Đang tải dữ liệu bảng tin...'
+                  : `${sortedItems.length} phản ánh phù hợp`}
+              </span>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${
+                refreshing
+                  ? 'bg-info/8 text-info'
+                  : 'bg-success/8 text-success'
+              }`}>
+                {refreshing ? (
+                  <span className="loading loading-spinner loading-xs" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                )}
+                {refreshing
+                  ? 'Đang đồng bộ dữ liệu'
+                  : 'Cập nhật trực tiếp'}
+              </span>
+            </div>
+          </section>
+
+          {error ? (
+            <div>
+              <ErrorAlert
+                title="Không thể tải bảng tin"
+                message={error}
+                onClose={() => setError('')}
+              />
+              <button
+                type="button"
+                onClick={retryLoad}
+                className="btn btn-sm mt-3 rounded-xl"
+              >
+                <Lucide.RefreshCw size={14} aria-hidden="true" />
+                Thử lại
+              </button>
+            </div>
+          ) : null}
+
+          {initialLoading ? <FeedSkeleton /> : null}
+
+          {!initialLoading && visibleItems.length > 0 ? (
+            <div
+              ref={feedListSectionRef}
+              className="scroll-mt-28 space-y-4"
+            >
+              {visibleItems.map((item, index) => (
+                <CommunityFeedItem
+                  key={getItemId(item) || index}
+                  item={item}
+                  highlighted={
+                    String(getItemId(item)) ===
+                    String(highlightedFeedbackId)
+                  }
+                  onOpenComments={setOpenCommentsFor}
+                  onOpen={openDetail}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {!initialLoading && visibleItems.length === 0 && !error ? (
+            <div className="rounded-[26px] border border-base-300 bg-base-100 px-6 py-12 text-center shadow-sm">
+              <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/8 text-primary">
+                <Lucide.Newspaper size={25} aria-hidden="true" />
+              </span>
+              <h2 className="mt-4 text-lg font-bold">
+                {query
+                  ? 'Không tìm thấy phản ánh phù hợp'
+                  : 'Chưa có phản ánh công khai'}
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-base-content/55">
+                {query
+                  ? 'Thử sử dụng từ khóa khác hoặc chuyển sang một nhóm bảng tin khác.'
+                  : 'Các phản ánh đã được xác minh sẽ xuất hiện tại đây để cộng đồng cùng theo dõi.'}
+              </p>
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    requestFeedScroll('controls');
+                  }}
+                  className="btn btn-sm mt-5 rounded-xl"
+                >
+                  Xóa từ khóa
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate('/tickets/create')}
+                  className="btn admin-primary-action btn-sm mt-5 rounded-xl"
+                >
+                  <Lucide.Plus size={15} aria-hidden="true" />
+                  Gửi phản ánh
+                </button>
+              )}
+            </div>
+          ) : null}
+
+          {items.length > 0 && hasMore ? (
+            <div className="flex justify-center py-2">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                className="btn btn-outline min-w-52 rounded-xl"
+              >
+                <Lucide.Plus size={16} aria-hidden="true" />
+                Hiện thêm phản ánh
+              </button>
+            </div>
+          ) : null}
+
+          {!initialLoading && !hasMore && sortedItems.length > 0 ? (
+            <div className="flex items-center justify-center gap-2 py-4 text-sm text-base-content/45">
+              <Lucide.CircleCheck
+                size={16}
+                className="text-success"
                 aria-hidden="true"
               />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Tìm tiêu đề, khu vực, danh mục..."
-                className="input input-bordered h-10 w-full rounded-xl bg-base-100 pl-10 text-sm"
-              />
-            </label>
-          </div>
+              Bạn đã xem hết các phản ánh phù hợp.
+            </div>
+          ) : null}
+        </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-base-content/45">
-            <span>
-              {initialLoading
-                ? 'Đang tải bảng tin...'
-                : `${visibleItems.length} phản ánh phù hợp`}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Lucide.Radio size={13} className="text-success" aria-hidden="true" />
-              Cập nhật theo thời gian thực
-            </span>
-          </div>
-        </section>
+        <aside className="space-y-4">
+          <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold">Được quan tâm</h2>
+                <p className="mt-1 text-xs text-base-content/45">
+                  Phản ánh có nhiều tương tác
+                </p>
+              </div>
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-warning/10 text-warning">
+                <Lucide.Flame size={19} aria-hidden="true" />
+              </span>
+            </div>
 
-        {error ? (
-          <div>
-            <ErrorAlert title="Không thể tải bảng tin" message={error} onClose={() => setError('')} />
-            <button
-              type="button"
-              onClick={retryLoad}
-              className="btn btn-sm mt-3 rounded-xl"
-            >
-              <Lucide.RefreshCw size={14} aria-hidden="true" />
-              Thử lại
-            </button>
-          </div>
-        ) : null}
-
-        {initialLoading ? <FeedSkeleton /> : null}
-
-        {!initialLoading && visibleItems.length > 0 ? (
-          <div className="space-y-4">
-            {visibleItems.map((item, index) => (
-              <CommunityFeedItem
-                key={getItemId(item) || index}
-                item={item}
-                highlighted={
-                  String(getItemId(item)) === String(highlightedFeedbackId)
-                }
-                onOpenComments={setOpenCommentsFor}
-                onOpen={openDetail}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {!initialLoading && visibleItems.length === 0 && !error ? (
-          <div className="rounded-[26px] border border-base-300 bg-base-100 px-6 py-12 text-center shadow-sm">
-            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/8 text-primary">
-              <Lucide.Newspaper size={25} aria-hidden="true" />
-            </span>
-            <h2 className="mt-4 text-lg font-bold">
-              {query ? 'Không tìm thấy phản ánh phù hợp' : 'Chưa có phản ánh công khai'}
-            </h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-base-content/55">
-              {query
-                ? 'Thử sử dụng từ khóa khác hoặc chuyển sang một nhóm bảng tin khác.'
-                : 'Các phản ánh đã được xác minh sẽ xuất hiện tại đây để cộng đồng cùng theo dõi.'}
-            </p>
-            {query ? (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="btn btn-sm mt-5 rounded-xl"
-              >
-                Xóa từ khóa
-              </button>
+            {trendingItems.length > 0 ? (
+              <ol className="mt-4 space-y-1.5">
+                {trendingItems.map((item, index) => (
+                  <li key={getItemId(item) || index}>
+                    <button
+                      type="button"
+                      onClick={() => openDetail(item)}
+                      className="group flex w-full items-start gap-3 rounded-2xl border border-transparent px-2 py-2.5 text-left transition hover:border-base-300 hover:bg-base-200/45"
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-xs font-bold text-primary">
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-2 text-sm font-semibold leading-5 transition group-hover:text-primary">
+                          {item?.title || 'Phản ánh đô thị'}
+                        </span>
+                        <span className="mt-1 flex items-center gap-3 text-[11px] text-base-content/45">
+                          <span className="inline-flex items-center gap-1">
+                            <Lucide.Heart size={11} aria-hidden="true" />
+                            {getSupportCount(item)}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Lucide.MessageCircle size={11} aria-hidden="true" />
+                            {getCommentCount(item)}
+                          </span>
+                        </span>
+                      </span>
+                      <Lucide.ChevronRight
+                        size={15}
+                        className="mt-1 shrink-0 text-base-content/25"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </li>
+                ))}
+              </ol>
             ) : (
-              <button
-                type="button"
-                onClick={() => navigate('/tickets/create')}
-                className="btn admin-primary-action btn-sm mt-5 rounded-xl"
-              >
-                <Lucide.Plus size={15} aria-hidden="true" />
-                Gửi phản ánh
-              </button>
+              <p className="mt-4 rounded-2xl bg-base-200/45 px-4 py-5 text-center text-sm text-base-content/45">
+                Chưa có dữ liệu xu hướng.
+              </p>
             )}
-          </div>
-        ) : null}
+          </section>
 
-        {items.length > 0 && hasMore ? (
-          <div className="flex justify-center py-2">
+          <section className="overflow-hidden rounded-[24px] border border-primary/15 bg-gradient-to-br from-primary/8 via-base-100 to-secondary/8 p-5 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Lucide.Activity size={19} aria-hidden="true" />
+              </span>
+              <div>
+                <h2 className="font-bold">Hoạt động cộng đồng</h2>
+                <p className="mt-0.5 text-xs text-base-content/45">
+                  Dựa trên toàn bộ bảng tin
+                </p>
+              </div>
+            </div>
+
+            <dl className="mt-4 space-y-2">
+              <div className="flex items-center justify-between rounded-xl border border-base-300/75 bg-base-100/80 px-3 py-3">
+                <dt className="text-xs text-base-content/50">
+                  Phản ánh mới trong 7 ngày
+                </dt>
+                <dd className="text-sm font-bold text-info">
+                  {recentPublicCount}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-base-300/75 bg-base-100/80 px-3 py-3">
+                <dt className="text-xs text-base-content/50">
+                  Tổng lượt tương tác
+                </dt>
+                <dd className="text-sm font-bold text-secondary">
+                  {loadedInteractionCount}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-base-300/75 bg-base-100/80 px-3 py-3">
+                <dt className="text-xs text-base-content/50">
+                  Cập nhật gần nhất
+                </dt>
+                <dd className="text-xs font-semibold">
+                  {latestActivityText}
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
+            <h2 className="font-bold">Khám phá theo khu vực</h2>
+            <p className="mt-1 text-xs leading-5 text-base-content/45">
+              Xem các phản ánh trên bản đồ để nắm tình hình xung quanh bạn.
+            </p>
             <button
               type="button"
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="btn btn-outline min-w-52 rounded-xl"
+              onClick={() => navigate('/community/map')}
+              className="btn btn-outline mt-4 w-full rounded-xl"
             >
-              {loadingMore ? (
-                <>
-                  <span className="loading loading-spinner loading-sm" />
-                  Đang tải thêm...
-                </>
-              ) : (
-                <>
-                  <Lucide.Plus size={16} aria-hidden="true" />
-                  Xem thêm phản ánh
-                </>
-              )}
+              <Lucide.Map size={16} aria-hidden="true" />
+              Mở bản đồ sự cố
             </button>
-          </div>
-        ) : null}
+          </section>
+        </aside>
 
-        {!loading && !hasMore && items.length > 0 ? (
-          <div className="flex items-center justify-center gap-2 py-4 text-sm text-base-content/45">
-            <Lucide.CircleCheck size={16} className="text-success" aria-hidden="true" />
-            Bạn đã xem hết các phản ánh phù hợp.
-          </div>
-        ) : null}
-      </div>
-
-      <aside className="space-y-4 xl:sticky xl:top-24">
-        <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Lucide.ChartNoAxesColumnIncreasing size={18} aria-hidden="true" />
-            </span>
-            <div>
-              <h2 className="font-bold">Tổng quan bảng tin</h2>
-              <p className="mt-0.5 text-xs text-base-content/45">Dựa trên dữ liệu đã tải</p>
-            </div>
-          </div>
-
-          <dl className="mt-4 grid grid-cols-3 gap-2">
-            <div className="rounded-2xl border border-base-300 bg-base-200/40 px-2 py-3 text-center">
-              <dt className="text-[11px] text-base-content/45">Công khai</dt>
-              <dd className="mt-1 text-xl font-bold">{items.length}</dd>
-            </div>
-            <div className="rounded-2xl border border-warning/15 bg-warning/5 px-2 py-3 text-center">
-              <dt className="text-[11px] text-base-content/45">Đang xử lý</dt>
-              <dd className="mt-1 text-xl font-bold text-warning">{processingCount}</dd>
-            </div>
-            <div className="rounded-2xl border border-success/15 bg-success/5 px-2 py-3 text-center">
-              <dt className="text-[11px] text-base-content/45">Hoàn tất</dt>
-              <dd className="mt-1 text-xl font-bold text-success">{completedCount}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-bold">Được quan tâm</h2>
-              <p className="mt-1 text-xs text-base-content/45">Phản ánh có nhiều tương tác</p>
-            </div>
-            <Lucide.Flame size={19} className="text-warning" aria-hidden="true" />
-          </div>
-
-          {trendingItems.length > 0 ? (
-            <ol className="mt-4 space-y-2">
-              {trendingItems.map((item, index) => (
-                <li key={getItemId(item) || index}>
-                  <button
-                    type="button"
-                    onClick={() => openDetail(item)}
-                    className="group flex w-full items-start gap-3 rounded-2xl border border-transparent px-2 py-2.5 text-left transition hover:border-base-300 hover:bg-base-200/45"
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-xs font-bold text-primary">
-                      {index + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="line-clamp-2 text-sm font-semibold leading-5 transition group-hover:text-primary">
-                        {item?.title || 'Phản ánh đô thị'}
-                      </span>
-                      <span className="mt-1 flex items-center gap-3 text-[11px] text-base-content/45">
-                        <span className="inline-flex items-center gap-1">
-                          <Lucide.Heart size={11} aria-hidden="true" />
-                          {getSupportCount(item)}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Lucide.MessageCircle size={11} aria-hidden="true" />
-                          {getCommentCount(item)}
-                        </span>
-                      </span>
-                    </span>
-                    <Lucide.ChevronRight size={15} className="mt-1 shrink-0 text-base-content/25" aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="mt-4 rounded-2xl bg-base-200/45 px-4 py-5 text-center text-sm text-base-content/45">
-              Chưa có dữ liệu xu hướng.
-            </p>
-          )}
-        </section>
-
-        <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
-          <h2 className="font-bold">Khám phá thêm</h2>
-          <p className="mt-1 text-xs leading-5 text-base-content/45">
-            Xem các phản ánh theo vị trí để nắm tình hình xung quanh bạn.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate('/community/map')}
-            className="btn btn-outline mt-4 w-full rounded-xl"
-          >
-            <Lucide.Map size={16} aria-hidden="true" />
-            Mở bản đồ sự cố
-          </button>
-        </section>
-      </aside>
-
-      <CommentDrawer
-        open={Boolean(openCommentsFor)}
-        feedbackId={openCommentsFor}
-        onClose={() => setOpenCommentsFor(null)}
-      />
-    </section>
+        <CommentDrawer
+          open={Boolean(openCommentsFor)}
+          feedbackId={openCommentsFor}
+          onClose={() => setOpenCommentsFor(null)}
+        />
+      </section>
+    </>
   );
+
 }

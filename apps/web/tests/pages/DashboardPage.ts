@@ -9,7 +9,7 @@ export class DashboardPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.dashboardHeading = page.locator('h2', { hasText: /Chào,|Tổng Quan|Bản Đồ/i });
+    this.dashboardHeading = page.locator('#citizen-dashboard-title, h1, h2').filter({ hasText: /Chào,|Tổng quan|Bản đồ/i });
     this.createTicketCard = page.locator('a', { hasText: /Gửi phản ánh/i });
     this.ticketListCard = page.locator('a', { hasText: /Xem tất cả|Phản ánh của tôi/ });
     this.mapCard = page.locator('a', { hasText: /Bản đồ sự cố|Báo cáo thống kê/ });
@@ -20,8 +20,12 @@ export class DashboardPage extends BasePage {
       await this.dashboardHeading.first().waitFor({ state: 'visible', timeout: 5000 });
       return;
     } catch (e) {
-      // fallback: wait for header or sidebar to appear
-      await this.page.locator('header.navbar').waitFor({ state: 'visible', timeout: 25000 });
+      // Semantic citizen header no longer uses the legacy .navbar class.
+      await this.page
+        .locator('header')
+        .filter({ has: this.page.getByRole('link', { name: /UrbanMind|Về trang chủ UrbanMind/i }) })
+        .first()
+        .waitFor({ state: 'visible', timeout: 25000 });
     }
   }
 }
