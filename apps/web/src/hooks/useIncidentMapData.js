@@ -42,9 +42,9 @@ const normalizeIncident = (ticket) => {
       ticket?.description ||
       ticket?.categoryName ||
       'Phản ánh đô thị',
-    categoryName: ticket?.categoryName || ticket?.category || 'Không xác định',
-    status: ticket?.status || 'Unknown',
-    priority: ticket?.priority || 'Medium',
+    categoryName: ticket?.categoryName || ticket?.category || 'Chưa xác định',
+    status: ticket?.status || 'Chưa xác định',
+    priority: ticket?.priority || 'Trung bình',
     latitude,
     longitude,
   };
@@ -74,7 +74,7 @@ export function useIncidentMapData() {
         .filter((incident) => isValidLocation(incident.latitude, incident.longitude));
       setIncidents(validIncidents);
     } catch (err) {
-      setError(err?.message || 'Unable to load incident map data.');
+      setError(err?.message || 'Không thể tải dữ liệu bản đồ sự cố.');
       setIncidents([]);
     } finally {
       setLoading(false);
