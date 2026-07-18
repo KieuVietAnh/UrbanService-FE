@@ -6,25 +6,31 @@ export class MapPage extends BasePage {
   readonly markerLayer;
   readonly mapContainer;
   readonly spinner;
+  readonly loadingState;
   readonly emptyStateCard;
 
   constructor(page: Page) {
     super(page);
     this.leafletContainer = page.locator('.leaflet-container');
     this.markerLayer = page.locator('.leaflet-marker-pane .leaflet-marker-icon');
-    this.mapContainer = page.getByTestId('incident-map-container');
+    this.mapContainer = page.locator('.leaflet-container');
     this.spinner = page.locator('.loading-spinner, .loading.loading-spinner');
-    this.emptyStateCard = page.getByTestId('incident-map-empty-state');
+    this.loadingState = page.getByTestId('community-map-loading');
+    this.emptyStateCard = page.getByTestId('community-map-empty-state');
   }
 
   async expectMapLoaded() {
     await this.page.waitForLoadState('domcontentloaded');
-    await this.spinner.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {});
 
-    await Promise.race([
-      this.markerLayer.first().waitFor({ state: 'visible', timeout: 30000 }),
-      this.emptyStateCard.waitFor({ state: 'visible', timeout: 30000 }),
-    ]);
+    await this.leafletContainer.waitFor({
+      state: 'visible',
+      timeout: 30000,
+    });
+
+    await this.markerLayer.first().waitFor({
+      state: 'visible',
+      timeout: 30000,
+    });
   }
 
   async hasMarkers() {

@@ -9,6 +9,27 @@ test.setTimeout(120000);
 test.describe('Map view', () => {
   test.beforeEach(async ({ page }) => {
     // Mock auth endpoint so tests don't depend on the backend
+    await page.route('**/api/user/feedbacks**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            feedbackId: 'smoke-map-feedback-1',
+            userId: 1,
+            title: 'Điểm phản ánh kiểm thử bản đồ',
+            categoryName: 'Garbage Collection',
+            status: 'Verified',
+            priority: 'Medium',
+            areaName: 'Phường Long Trường',
+            locationText: 'Vị trí đã chọn: 10.781288, 106.725419',
+            latitude: 10.781288,
+            longitude: 106.725419,
+          },
+        ]),
+      });
+    });
+
     await page.route('**/api/auth/login', async (route) => {
       const req = route.request();
       const post = (await req.postData()) || '';
@@ -23,33 +44,6 @@ test.describe('Map view', () => {
       }
     });
 
-
-    await page.route('**/api/user/feedbacks**', async (route) => {
-      if (route.request().method() !== 'GET') {
-        await route.continue();
-        return;
-      }
-
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: [
-            {
-              feedbackId: 'feedback-map-smoke-1',
-              userId: 1,
-              title: 'Phản ánh kiểm thử bản đồ',
-              categoryName: 'Street Lighting',
-              status: 'Verified',
-              priority: 'Medium',
-              latitude: 10.77653,
-              longitude: 106.700981,
-            },
-          ],
-        }),
-      });
-    });
-
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     const loginPage = new LoginPage(page);
     await loginPage.login(validEmail, validPassword);
@@ -61,9 +55,14 @@ test.describe('Map view', () => {
     const mapPage = new MapPage(page);
     await mapPage.expectMapLoaded();
 
-    await expect(mapPage.markerLayer.first()).toBeVisible({ timeout: 10000 });
-    // click first marker and ensure popup appears
+    const markerCount = await mapPage.markerLayer.count();
+    expect(markerCount).toBe(1);
+
     await mapPage.clickFirstMarker();
-    await expect(page.locator('.leaflet-popup-content')).toBeVisible();
+    await expect(
+      page.locator('.leaflet-popup-content')
+    ).toBeVisible({
+      timeout: 10000,
+    });
   });
 });
