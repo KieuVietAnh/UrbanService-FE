@@ -15,6 +15,32 @@ const citizenNavigation = [
   { label: 'Bản đồ sự cố', to: '/community/map' },
 ];
 
+const isCitizenNavigationActive = (targetPath, pathname) => {
+  if (targetPath === '/dashboard') {
+    return pathname === '/dashboard';
+  }
+
+  if (targetPath === '/tickets') {
+    return (
+      pathname === '/tickets' ||
+      (
+        pathname.startsWith('/tickets/') &&
+        pathname !== '/tickets/create'
+      )
+    );
+  }
+
+  if (targetPath === '/community/feed') {
+    return pathname.startsWith('/community/feed');
+  }
+
+  if (targetPath === '/community/map') {
+    return pathname.startsWith('/community/map');
+  }
+
+  return pathname === targetPath;
+};
+
 const getInitials = (fullName) => {
   const normalizedName = String(fullName || '').trim();
   if (!normalizedName) return 'UM';
@@ -53,7 +79,7 @@ const CitizenAvatar = ({ user }) => {
   );
 };
 
-const CitizenHeader = ({ user, logout, navigate }) => (
+const CitizenHeader = ({ user, logout, navigate, pathname }) => (
   <header className="sticky top-0 z-40 shrink-0 border-b border-slate-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.02)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/95">
     <div className="grid h-[72px] w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 px-5 sm:px-6 lg:px-8 2xl:px-10">
       <Link
@@ -75,22 +101,27 @@ const CitizenHeader = ({ user, logout, navigate }) => (
       </Link>
 
       <nav className="hidden min-w-0 items-center justify-center gap-0.5 md:flex xl:gap-1" aria-label="Điều hướng người dân">
-        {citizenNavigation.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) => (
-              `rounded-xl px-2.5 py-2 text-[13px] font-semibold transition-colors xl:px-3.5 xl:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${
+        {citizenNavigation.map((item) => {
+          const isActive = isCitizenNavigationActive(
+            item.to,
+            pathname
+          );
+
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              aria-current={isActive ? 'page' : undefined}
+              className={`rounded-xl px-2.5 py-2 text-[13px] font-semibold transition-colors xl:px-3.5 xl:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${
                 isActive
                   ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
-              }`
-            )}
-          >
-            {item.label}
-          </NavLink>
-        ))}
+              }`}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
 
       <div className="flex min-w-fit items-center justify-end gap-1.5 sm:gap-2">
@@ -277,7 +308,14 @@ export const Header = ({ onMenuToggle }) => {
   };
 
   if (isCitizen) {
-    return <CitizenHeader user={user} logout={logout} navigate={navigate} />;
+    return (
+      <CitizenHeader
+        user={user}
+        logout={logout}
+        navigate={navigate}
+        pathname={location.pathname}
+      />
+    );
   }
 
   return (

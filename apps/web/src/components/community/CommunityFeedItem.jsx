@@ -8,41 +8,52 @@ const STATUS_META = {
   [managementTypes.feedbackStatus.VERIFIED]: {
     label: 'Đã xác minh',
     className: 'border-info/20 bg-info/10 text-info',
+    accentClassName: 'bg-info',
     icon: Lucide.BadgeCheck,
   },
   [managementTypes.feedbackStatus.ASSIGNED]: {
     label: 'Đã chuyển xử lý',
     className: 'border-secondary/20 bg-secondary/10 text-secondary',
+    accentClassName: 'bg-secondary',
     icon: Lucide.SendToBack,
   },
   [managementTypes.feedbackStatus.IN_PROGRESS]: {
     label: 'Đang xử lý',
     className: 'border-warning/25 bg-warning/10 text-warning',
+    accentClassName: 'bg-warning',
     icon: Lucide.LoaderCircle,
   },
   [managementTypes.feedbackStatus.RESOLVED]: {
     label: 'Đã có kết quả',
     className: 'border-success/20 bg-success/10 text-success',
+    accentClassName: 'bg-success',
     icon: Lucide.ClipboardCheck,
   },
   [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: {
     label: 'Đang kiểm tra kết quả',
     className: 'border-secondary/20 bg-secondary/10 text-secondary',
+    accentClassName: 'bg-secondary',
     icon: Lucide.SearchCheck,
   },
   [managementTypes.feedbackStatus.APPROVED]: {
-    label: 'Đã phê duyệt',
+    label: 'Chờ bạn đánh giá',
     className: 'border-success/20 bg-success/10 text-success',
-    icon: Lucide.CircleCheck,
+    accentClassName: 'bg-success',
+    icon: Lucide.Star,
   },
   [managementTypes.feedbackStatus.CLOSED]: {
-    label: 'Đã đóng',
-    className: 'border-base-300 bg-base-200 text-base-content/65',
-    icon: Lucide.Archive,
+    label: 'Đã kết thúc',
+    className: 'border-success/25 bg-success/10 text-success',
+    accentClassName: 'bg-success',
+    icon: Lucide.CircleCheckBig,
   },
 };
 
-const getItemId = (item) => item?.feedbackId || item?.id || item?.ticketId;
+const getItemId = (item) => (
+  item?.feedbackId ||
+  item?.id ||
+  item?.ticketId
+);
 
 const getAuthorName = (item) => (
   item?.userName ||
@@ -95,23 +106,37 @@ const formatDateTime = (value) => {
 const isVideoAttachment = (attachment) => {
   const raw = typeof attachment === 'string'
     ? attachment
-    : attachment?.fileUrl ||
-      attachment?.url ||
-      attachment?.path ||
-      attachment?.attachmentUrl ||
-      '';
+    : (
+        attachment?.fileUrl ||
+        attachment?.url ||
+        attachment?.path ||
+        attachment?.attachmentUrl ||
+        ''
+      );
   const mimeType = String(
-    attachment?.mimeType || attachment?.contentType || attachment?.fileType || ''
+    attachment?.mimeType ||
+    attachment?.contentType ||
+    attachment?.fileType ||
+    ''
   ).toLowerCase();
-  const normalized = String(raw).toLowerCase().split('?')[0];
+  const normalized = String(raw)
+    .toLowerCase()
+    .split('?')[0];
 
   return (
     mimeType.startsWith('video/') ||
-    ['.mp4', '.webm', '.ogg', '.mov', '.m4v'].some((extension) => normalized.endsWith(extension))
+    ['.mp4', '.webm', '.ogg', '.mov', '.m4v']
+      .some((extension) => normalized.endsWith(extension))
   );
 };
 
-const MediaTile = ({ attachment, itemTitle, index, onOpen, className = '' }) => {
+const MediaTile = ({
+  attachment,
+  itemTitle,
+  index,
+  onOpen,
+  className = '',
+}) => {
   const mediaUrl = getAttachmentUrl(attachment);
   const video = isVideoAttachment(attachment);
 
@@ -120,7 +145,7 @@ const MediaTile = ({ attachment, itemTitle, index, onOpen, className = '' }) => 
       type="button"
       onClick={onOpen}
       className={`group/media relative min-h-0 overflow-hidden bg-base-200 text-left ${className}`}
-      aria-label={`Mở chi tiết ${itemTitle || `minh chứng ${index + 1}`}`}
+      aria-label={`Mở ${itemTitle || `minh chứng ${index + 1}`}`}
     >
       {mediaUrl ? (
         video ? (
@@ -133,8 +158,12 @@ const MediaTile = ({ attachment, itemTitle, index, onOpen, className = '' }) => 
               preload="metadata"
             />
             <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition group-hover/media:bg-black/25">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 shadow-lg backdrop-blur">
-                <Lucide.Play size={18} fill="currentColor" aria-hidden="true" />
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/55 shadow-lg backdrop-blur">
+                <Lucide.Play
+                  size={17}
+                  fill="currentColor"
+                  aria-hidden="true"
+                />
               </span>
             </span>
           </>
@@ -142,12 +171,12 @@ const MediaTile = ({ attachment, itemTitle, index, onOpen, className = '' }) => 
           <img
             src={mediaUrl}
             alt={itemTitle || `Minh chứng ${index + 1}`}
-            className="h-full w-full object-cover transition duration-300 group-hover/media:scale-[1.02]"
+            className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.012]"
             loading="lazy"
           />
         )
       ) : (
-        <span className="flex h-full min-h-36 items-center justify-center text-sm text-base-content/40">
+        <span className="flex h-full min-h-28 items-center justify-center text-sm text-base-content/40">
           Không thể hiển thị tệp
         </span>
       )}
@@ -162,7 +191,9 @@ const CommunityFeedItem = ({
   onOpen,
 }) => {
   const feedbackId = getItemId(item);
-  const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
+  const attachments = Array.isArray(item?.attachments)
+    ? item.attachments
+    : [];
   const fallbackAttachment = (
     item?.imageUrl ||
     item?.image ||
@@ -181,11 +212,14 @@ const CommunityFeedItem = ({
   const statusMeta = STATUS_META[item?.status] || {
     label: 'Đang cập nhật',
     className: 'border-base-300 bg-base-200 text-base-content/60',
+    accentClassName: 'bg-base-content/25',
     icon: Lucide.Clock3,
   };
   const StatusIcon = statusMeta.icon;
   const commentCount = item?.commentCount ?? (
-    Array.isArray(item?.comments) ? item.comments.length : 0
+    Array.isArray(item?.comments)
+      ? item.comments.length
+      : 0
   );
   const categoryName = translateCategoryName(
     item?.categoryName || item?.category?.name
@@ -199,28 +233,44 @@ const CommunityFeedItem = ({
   return (
     <article
       data-community-feedback-id={feedbackId}
-      className={`overflow-hidden rounded-[26px] border bg-base-100 shadow-[0_12px_32px_rgba(15,23,42,0.07)] transition duration-300 hover:border-primary/20 hover:shadow-[0_16px_38px_rgba(15,23,42,0.10)] ${
+      className={`relative overflow-hidden rounded-[26px] border bg-base-100 shadow-[0_8px_24px_rgba(15,23,42,0.055)] transition duration-200 hover:border-primary/18 hover:shadow-[0_12px_28px_rgba(15,23,42,0.075)] ${
         highlighted
           ? 'border-primary/45 ring-2 ring-primary/20'
           : 'border-base-300'
       }`}
     >
-      <header className="flex items-start justify-between gap-4 px-5 pb-3 pt-5 sm:px-6">
+      <span
+        className={`absolute inset-x-0 top-0 h-[3px] ${statusMeta.accentClassName}`}
+        aria-hidden="true"
+      />
+
+      <header className="flex items-start justify-between gap-3 px-5 pb-2.5 pt-5 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-content shadow-sm">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-content shadow-sm">
             {authorName.charAt(0).toUpperCase()}
           </span>
 
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-base-content">{authorName}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/50">
+            <p className="truncate text-sm font-semibold">
+              {authorName}
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/48">
               <span className="inline-flex min-w-0 items-center gap-1.5">
-                <Lucide.MapPin size={13} className="shrink-0" aria-hidden="true" />
-                <span className="truncate">{areaName}</span>
+                <Lucide.MapPin
+                  size={13}
+                  className="shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="truncate">
+                  {areaName}
+                </span>
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Lucide.Clock3 size={13} aria-hidden="true" />
-                {formatDateTime(item?.createdAt || item?.createdDate)}
+                {formatDateTime(
+                  item?.createdAt ||
+                  item?.createdDate
+                )}
               </span>
             </div>
           </div>
@@ -232,22 +282,28 @@ const CommunityFeedItem = ({
         </span>
       </header>
 
-      <div className="px-5 pb-4 sm:px-6">
-        {categoryName ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/8 px-2.5 py-1 text-[11px] font-semibold text-secondary">
-            <Lucide.Tag size={12} aria-hidden="true" />
-            {categoryName}
-          </span>
-        ) : null}
+      <div className="px-5 pb-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {categoryName ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/8 px-2.5 py-1 text-[11px] font-semibold text-secondary">
+              <Lucide.Tag size={12} aria-hidden="true" />
+              {categoryName}
+            </span>
+          ) : null}
+        </div>
 
-        <button type="button" onClick={() => onOpen(item)} className="mt-2 block w-full text-left">
-          <h2 className="text-lg font-bold leading-7 tracking-tight text-base-content transition hover:text-primary sm:text-xl">
+        <button
+          type="button"
+          onClick={() => onOpen(item)}
+          className="mt-2 block w-full text-left"
+        >
+          <h2 className="text-lg font-bold leading-7 tracking-tight transition hover:text-primary sm:text-xl">
             {item?.title || 'Phản ánh đô thị'}
           </h2>
         </button>
 
         {item?.description ? (
-          <p className="mt-2 line-clamp-2 text-sm leading-6 text-base-content/60">
+          <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-base-content/58">
             {item.description}
           </p>
         ) : null}
@@ -258,13 +314,13 @@ const CommunityFeedItem = ({
           <button
             type="button"
             onClick={() => onOpen(item)}
-            className="flex h-28 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-base-300 bg-base-200/35 text-sm text-base-content/45"
+            className="flex h-24 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-base-300 bg-base-200/30 text-sm text-base-content/42"
           >
             <Lucide.ImageOff size={18} aria-hidden="true" />
-            Phản ánh chưa có hình ảnh công khai
+            Chưa có hình ảnh công khai
           </button>
         ) : mediaItems.length === 1 ? (
-          <div className="h-48 overflow-hidden rounded-2xl border border-base-300 sm:h-56">
+          <div className="h-44 overflow-hidden rounded-2xl border border-base-300 sm:h-52">
             <MediaTile
               attachment={mediaItems[0]}
               itemTitle={item?.title}
@@ -272,73 +328,84 @@ const CommunityFeedItem = ({
               onOpen={() => onOpen(item)}
               className="h-full w-full"
             />
-          </div>
-        ) : mediaItems.length === 2 ? (
-          <div className="grid h-44 grid-cols-2 gap-1 overflow-hidden rounded-2xl border border-base-300 sm:h-52">
-            {mediaItems.slice(0, 2).map((attachment, index) => (
-              <MediaTile
-                key={attachment?.attachmentId || attachment?.id || index}
-                attachment={attachment}
-                itemTitle={item?.title}
-                index={index}
-                onOpen={() => onOpen(item)}
-                className="h-full w-full"
-              />
-            ))}
           </div>
         ) : (
-          <div className="grid h-48 grid-cols-2 grid-rows-2 gap-1 overflow-hidden rounded-2xl border border-base-300 sm:h-56">
+          <div className="grid h-44 grid-cols-[minmax(0,1.7fr)_minmax(110px,0.7fr)] gap-1 overflow-hidden rounded-2xl border border-base-300 sm:h-52">
             <MediaTile
               attachment={mediaItems[0]}
               itemTitle={item?.title}
               index={0}
               onOpen={() => onOpen(item)}
-              className="row-span-2 h-full w-full"
-            />
-            <MediaTile
-              attachment={mediaItems[1]}
-              itemTitle={item?.title}
-              index={1}
-              onOpen={() => onOpen(item)}
               className="h-full w-full"
             />
-            <div className="relative min-h-0 overflow-hidden">
+
+            <div className="grid min-h-0 grid-rows-2 gap-1">
               <MediaTile
-                attachment={mediaItems[2]}
+                attachment={mediaItems[1]}
                 itemTitle={item?.title}
-                index={2}
+                index={1}
                 onOpen={() => onOpen(item)}
                 className="h-full w-full"
               />
-              {mediaItems.length > 3 ? (
-                <button
-                  type="button"
-                  onClick={() => onOpen(item)}
-                  className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-bold text-white backdrop-blur-[1px] transition hover:bg-black/65"
-                  aria-label={`Xem thêm ${mediaItems.length - 3} tệp`}
-                >
-                  +{mediaItems.length - 3}
-                </button>
-              ) : null}
+
+              <div className="relative min-h-0 overflow-hidden">
+                {mediaItems[2] ? (
+                  <MediaTile
+                    attachment={mediaItems[2]}
+                    itemTitle={item?.title}
+                    index={2}
+                    onOpen={() => onOpen(item)}
+                    className="h-full w-full"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(item)}
+                    className="flex h-full w-full items-center justify-center bg-base-200 text-sm font-semibold text-base-content/45"
+                  >
+                    Xem chi tiết
+                  </button>
+                )}
+
+                {mediaItems.length > 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(item)}
+                    className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-bold text-white backdrop-blur-[1px] transition hover:bg-black/65"
+                    aria-label={`Xem thêm ${mediaItems.length - 3} tệp`}
+                  >
+                    +{mediaItems.length - 3}
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 bg-base-200/25 px-5 py-3.5 sm:px-6">
+      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 bg-base-200/20 px-5 py-3 sm:px-6">
         <div className="flex items-center gap-2">
           <SupportButton
             feedbackId={feedbackId}
-            initialCount={item?.supportCount || item?.supports || 0}
-            initialSupported={item?.isSupportedByCurrentUser}
+            initialCount={
+              item?.supportCount ||
+              item?.supports ||
+              0
+            }
+            initialSupported={
+              item?.isSupportedByCurrentUser
+            }
             className="h-9"
           />
           <button
             type="button"
             onClick={handleComments}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-semibold text-base-content/60 transition hover:border-primary/20 hover:bg-primary/5 hover:text-primary"
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-semibold text-base-content/58 transition hover:border-primary/20 hover:bg-primary/5 hover:text-primary"
           >
-            <Lucide.MessageCircle size={16} aria-hidden="true" />
+            <Lucide.MessageCircle
+              size={16}
+              aria-hidden="true"
+            />
             {commentCount}
           </button>
         </div>
@@ -349,7 +416,10 @@ const CommunityFeedItem = ({
           className="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-primary/8"
         >
           Xem chi tiết
-          <Lucide.ArrowRight size={16} aria-hidden="true" />
+          <Lucide.ArrowRight
+            size={16}
+            aria-hidden="true"
+          />
         </button>
       </footer>
     </article>
