@@ -589,169 +589,223 @@ export const TicketListPage = () => {
 
   return (
     <main ref={pageRootRef} className="space-y-5 text-base-content">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <section>
-          <h1 className="text-3xl font-bold tracking-tight text-base-content">
-            Phản ánh của tôi
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-base-content/55">
-            Theo dõi tiến trình, xem kết quả và cập nhật những phản ánh bạn đã gửi.
-          </p>
-        </section>
-      </header>
-
       <section
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
-        aria-label="Lọc nhanh theo tình trạng phản ánh"
+        className="relative overflow-hidden rounded-[30px] border border-info/15 bg-gradient-to-br from-base-100 via-info/[0.035] to-primary/[0.075] shadow-[0_18px_48px_rgba(15,23,42,0.085)]"
+        aria-labelledby="my-feedback-title"
       >
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ALL)}
-          aria-pressed={status === STATUS_FILTER_VALUES.ALL}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.ALL
-              ? 'border-primary/45 bg-primary/5 ring-2 ring-primary/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-primary/30'
-          }`}
+        <div
+          className="pointer-events-none absolute inset-0 overflow-hidden"
+          aria-hidden="true"
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info" aria-hidden="true">
-            <Lucide.Files size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Tổng phản ánh</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.total}
-            </strong>
-          </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-primary"
-            aria-hidden="true"
-          />
-        </button>
+          <svg
+            viewBox="0 0 1400 360"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full text-info opacity-[0.15]"
+            fill="none"
+          >
+            <path
+              d="M-30 270C121 236 195 142 337 142C486 142 522 222 671 220C823 218 884 123 1034 123C1175 123 1245 191 1435 154"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M-10 318C170 286 247 216 385 220C528 225 605 302 746 292C879 282 947 216 1076 211C1195 207 1272 246 1415 269"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeDasharray="10 12"
+              strokeLinecap="round"
+              opacity="0.75"
+            />
+            <path
+              d="M988 -18C944 66 974 127 1038 162C1091 191 1178 190 1234 148C1285 109 1290 40 1350 -16"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              opacity="0.65"
+            />
+            <circle cx="337" cy="142" r="7" fill="currentColor" opacity="0.75" />
+            <circle cx="671" cy="220" r="9" fill="currentColor" opacity="0.6" />
+            <circle cx="1034" cy="123" r="8" fill="currentColor" opacity="0.75" />
+            <circle cx="1234" cy="148" r="27" stroke="currentColor" opacity="0.35" />
+          </svg>
 
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.PROCESSING)}
-          aria-pressed={status === STATUS_FILTER_VALUES.PROCESSING}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.PROCESSING
-              ? 'border-warning/45 bg-warning/5 ring-2 ring-warning/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-warning/35'
-          }`}
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warning/10 text-warning" aria-hidden="true">
-            <Lucide.LoaderCircle size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Đang xử lý</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.inProgress}
-            </strong>
-          </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-warning"
-            aria-hidden="true"
-          />
-        </button>
+          <div className="absolute -left-20 top-8 h-64 w-64 rounded-full bg-info/[0.065] blur-3xl" />
+          <div className="absolute -bottom-24 right-[7%] h-72 w-72 rounded-full bg-primary/[0.07] blur-3xl" />
 
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.CHECKING)}
-          aria-pressed={status === STATUS_FILTER_VALUES.CHECKING}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.CHECKING
-              ? 'border-secondary/45 bg-secondary/5 ring-2 ring-secondary/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-secondary/35'
-          }`}
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-secondary/10 text-secondary" aria-hidden="true">
-            <Lucide.ClipboardCheck size={18} />
+          <span className="absolute left-[46%] top-[16%] flex h-8 w-8 items-center justify-center rounded-full border border-info/12 bg-base-100/65 text-info/45 shadow-sm backdrop-blur">
+            <Lucide.MapPin size={14} />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Đang kiểm tra kết quả</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.checking}
-            </strong>
+          <span className="absolute right-[22%] top-[12%] flex h-8 w-8 items-center justify-center rounded-full border border-secondary/12 bg-base-100/65 text-secondary/45 shadow-sm backdrop-blur">
+            <Lucide.Route size={14} />
           </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-secondary"
-            aria-hidden="true"
-          />
-        </button>
+          <span className="absolute right-[8%] top-[31%] flex h-8 w-8 items-center justify-center rounded-full border border-success/12 bg-base-100/65 text-success/45 shadow-sm backdrop-blur">
+            <Lucide.CircleCheck size={14} />
+          </span>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
-          aria-pressed={status === STATUS_FILTER_VALUES.AWAITING_REVIEW}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.AWAITING_REVIEW
-              ? 'border-success/45 bg-success/5 ring-2 ring-success/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-success/35'
-          }`}
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-success/10 text-success" aria-hidden="true">
-            <Lucide.Star size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">Chờ bạn đánh giá</span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.awaitingReview}
-            </strong>
-          </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-success"
-            aria-hidden="true"
-          />
-        </button>
+        <div className="relative px-5 py-6 sm:px-7 sm:py-7">
+          <header className="max-w-3xl">
+            <h1
+              id="my-feedback-title"
+              className="mt-4 text-3xl font-bold tracking-tight text-base-content sm:text-4xl"
+            >
+              Phản ánh của tôi
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-base-content/60">
+              Theo dõi tiến trình, xem kết quả và cập nhật những phản ánh bạn đã gửi.
+            </p>
 
-        <button
-          type="button"
-          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ENDED)}
-          aria-pressed={status === STATUS_FILTER_VALUES.ENDED}
-          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
-            status === STATUS_FILTER_VALUES.ENDED
-              ? 'border-success/45 bg-success/5 ring-2 ring-success/10'
-              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-success/35'
-          }`}
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-success/10 text-success" aria-hidden="true">
-            <Lucide.CircleCheckBig size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs text-base-content/50">
-              Đã kết thúc
-            </span>
-            <strong className="mt-1 block text-2xl font-bold text-base-content">
-              {summary.ended}
-            </strong>
-          </span>
-          <Lucide.ChevronDown
-            size={16}
-            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-success"
-            aria-hidden="true"
-          />
-        </button>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-info/8 px-3 py-1.5 text-xs font-semibold text-info">
+                <Lucide.Activity size={13} aria-hidden="true" />
+                Theo dõi toàn bộ tiến trình
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-base-300/85 bg-base-100/70 px-3 py-1.5 text-xs font-medium text-base-content/55 backdrop-blur">
+                <Lucide.BellRing size={13} className="text-warning" aria-hidden="true" />
+                Cập nhật khi trạng thái thay đổi
+              </span>
+            </div>
+          </header>
+
+          <dl
+            className="mt-6 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
+            aria-label="Lọc nhanh theo tình trạng phản ánh"
+          >
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ALL)}
+              aria-pressed={status === STATUS_FILTER_VALUES.ALL}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${
+                status === STATUS_FILTER_VALUES.ALL
+                  ? 'border-primary/40 bg-base-100/95 ring-2 ring-primary/10'
+                  : 'border-base-300 bg-base-100/85 hover:border-primary/30'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Tổng phản ánh
+                <Lucide.Files size={14} className="text-primary" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-base-content">
+                {summary.total}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-primary">
+                Xem toàn bộ
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.PROCESSING)}
+              aria-pressed={status === STATUS_FILTER_VALUES.PROCESSING}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/25 ${
+                status === STATUS_FILTER_VALUES.PROCESSING
+                  ? 'border-warning/45 bg-warning/[0.08] ring-2 ring-warning/10'
+                  : 'border-warning/20 bg-warning/5 hover:border-warning/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Đang xử lý
+                <Lucide.LoaderCircle size={14} className="text-warning" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-warning">
+                {summary.inProgress}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-warning">
+                Theo dõi tiến độ
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.CHECKING)}
+              aria-pressed={status === STATUS_FILTER_VALUES.CHECKING}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary/25 ${
+                status === STATUS_FILTER_VALUES.CHECKING
+                  ? 'border-secondary/45 bg-secondary/[0.08] ring-2 ring-secondary/10'
+                  : 'border-secondary/20 bg-secondary/5 hover:border-secondary/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Đang kiểm tra kết quả
+                <Lucide.ClipboardCheck size={14} className="text-secondary" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-secondary">
+                {summary.checking}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-secondary">
+                Xem kết quả đang duyệt
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
+              aria-pressed={status === STATUS_FILTER_VALUES.AWAITING_REVIEW}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/25 ${
+                status === STATUS_FILTER_VALUES.AWAITING_REVIEW
+                  ? 'border-success/45 bg-success/[0.08] ring-2 ring-success/10'
+                  : 'border-success/20 bg-success/5 hover:border-success/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Chờ bạn đánh giá
+                <Lucide.Star size={14} className="text-success" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-success">
+                {summary.awaitingReview}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-success">
+                Xem và đánh giá
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ENDED)}
+              aria-pressed={status === STATUS_FILTER_VALUES.ENDED}
+              className={`group min-w-0 rounded-2xl border px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/25 ${
+                status === STATUS_FILTER_VALUES.ENDED
+                  ? 'border-success/45 bg-success/[0.08] ring-2 ring-success/10'
+                  : 'border-success/20 bg-success/5 hover:border-success/35'
+              }`}
+            >
+              <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                Đã kết thúc
+                <Lucide.CircleCheckBig size={14} className="text-success" aria-hidden="true" />
+              </dt>
+              <dd className="mt-1 text-2xl font-bold tracking-tight text-success">
+                {summary.ended}
+              </dd>
+              <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-success">
+                Xem hồ sơ đã kết thúc
+              </span>
+            </button>
+          </dl>
+        </div>
       </section>
 
       <section
         ref={filtersSectionRef}
-        className="scroll-mt-24 rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6"
+        className="scroll-mt-28 rounded-[24px] border border-base-300 bg-base-100 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.055)] sm:p-5"
         aria-labelledby="ticket-filters-title"
       >
         <header>
-          <h2 id="ticket-filters-title" className="text-base font-semibold">
-            Tìm và lọc phản ánh
-          </h2>
-          <p className="mt-1 text-xs text-base-content/50">
-            Lọc theo danh mục, trạng thái hoặc sắp xếp danh sách.
-          </p>
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/8 text-primary">
+              <Lucide.SlidersHorizontal size={15} aria-hidden="true" />
+            </span>
+            <div>
+              <h2 id="ticket-filters-title" className="text-sm font-semibold">
+                Tìm và lọc phản ánh
+              </h2>
+              <p className="mt-0.5 text-xs text-base-content/45">
+                Thu hẹp danh sách theo nhu cầu của bạn.
+              </p>
+            </div>
+          </div>
         </header>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(240px,1.55fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(180px,0.75fr)]">
+        <div className="mt-3 grid gap-2.5 md:grid-cols-[minmax(240px,1.55fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(180px,0.75fr)]">
           <label className="relative block" htmlFor="ticket-search">
             <span className="sr-only">Tìm phản ánh</span>
             <Lucide.Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" aria-hidden="true" />
@@ -851,7 +905,7 @@ export const TicketListPage = () => {
         </aside>
       ) : null}
 
-      <section className="rounded-[26px] border border-base-300 bg-base-100 shadow-sm" aria-labelledby="ticket-list-title" aria-busy={loading}>
+      <section className="overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-[0_10px_30px_rgba(15,23,42,0.06)]" aria-labelledby="ticket-list-title" aria-busy={loading}>
         <header className="flex items-center justify-between gap-4 border-b border-base-300 px-5 py-4 sm:px-6">
           <div>
             <h2 id="ticket-list-title" className="text-lg font-semibold">
