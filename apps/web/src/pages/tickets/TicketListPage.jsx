@@ -1,1327 +1,946 @@
 // src/pages/tickets/TicketListPage.jsx
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import * as Lucide from 'lucide-react';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { getStatusLabel, managementTypes } from '@urbanmind/shared-types';
-import * as Lucide from 'lucide-react';
-import OnboardingEmpty from '../../components/onboarding/OnboardingEmpty';
-import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
+import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+
+const STATUS_FILTER_VALUES = {
+  ALL: '',
+  PROCESSING: '__processing__',
+  CHECKING: '__checking__',
+  AWAITING_REVIEW: managementTypes.feedbackStatus.APPROVED,
+};
+
+const PROCESSING_STATUSES = new Set([
+  managementTypes.feedbackStatus.SUBMITTED,
+  managementTypes.feedbackStatus.AI_REVIEWED,
+  managementTypes.feedbackStatus.VERIFIED,
+  managementTypes.feedbackStatus.ASSIGNED,
+  managementTypes.feedbackStatus.IN_PROGRESS,
+  managementTypes.feedbackStatus.NEED_REWORK,
+]);
+
+const CHECKING_STATUSES = new Set([
+  managementTypes.feedbackStatus.RESOLVED,
+  managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+]);
+
+const STATUS_OPTIONS = [
+  { value: STATUS_FILTER_VALUES.ALL, label: 'Tất cả trạng thái' },
+  { value: STATUS_FILTER_VALUES.PROCESSING, label: 'Đang xử lý' },
+  { value: STATUS_FILTER_VALUES.CHECKING, label: 'Đang kiểm tra kết quả' },
+  { value: STATUS_FILTER_VALUES.AWAITING_REVIEW, label: 'Chờ bạn đánh giá' },
+  { value: managementTypes.feedbackStatus.CLOSED, label: 'Đã kết thúc' },
+  { value: managementTypes.feedbackStatus.REJECTED, label: 'Không tiếp nhận' },
+  { value: managementTypes.feedbackStatus.CANCELLED, label: 'Đã hủy' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Cập nhật mới nhất' },
+  { value: 'oldest', label: 'Cũ nhất trước' },
+  { value: 'status', label: 'Tiến trình xử lý' },
+];
+
+const CATEGORY_LABELS = {
+  Drainage: 'Thoát nước',
+  'Garbage Collection': 'Thu gom rác',
+  'Public Safety': 'An toàn công cộng',
+  'Road Maintenance': 'Bảo trì đường bộ',
+  'Street Lighting': 'Chiếu sáng đô thị',
+  'Water Supply': 'Cấp nước',
+};
+
+const getCategoryLabel = (categoryName) => (
+  CATEGORY_LABELS[categoryName] || categoryName || 'Chưa phân loại'
+);
+
+const formatDate = (value) => {
+  if (!value) return 'Chưa cập nhật';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Không xác định';
+
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+const getCitizenStatusMeta = (status) => {
+  const statusMap = {
+    [managementTypes.feedbackStatus.SUBMITTED]: {
+      label: 'Đã tiếp nhận',
+      icon: Lucide.Inbox,
+      className: 'border-info/25 bg-info/10 text-info',
+    },
+    [managementTypes.feedbackStatus.AI_REVIEWED]: {
+      label: 'Đang phân loại',
+      icon: Lucide.ScanSearch,
+      className: 'border-secondary/25 bg-secondary/10 text-secondary',
+    },
+    [managementTypes.feedbackStatus.VERIFIED]: {
+      label: 'Đã xác minh',
+      icon: Lucide.BadgeCheck,
+      className: 'border-info/25 bg-info/10 text-info',
+    },
+    [managementTypes.feedbackStatus.ASSIGNED]: {
+      label: 'Đã chuyển xử lý',
+      icon: Lucide.Send,
+      className: 'border-info/25 bg-info/10 text-info',
+    },
+    [managementTypes.feedbackStatus.IN_PROGRESS]: {
+      label: 'Đang xử lý',
+      icon: Lucide.LoaderCircle,
+      className: 'border-warning/25 bg-warning/10 text-warning',
+    },
+    [managementTypes.feedbackStatus.RESOLVED]: {
+      label: 'Đang kiểm tra kết quả',
+      icon: Lucide.ClipboardCheck,
+      className: 'border-warning/25 bg-warning/10 text-warning',
+    },
+    [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: {
+      label: 'Đang kiểm tra kết quả',
+      icon: Lucide.ClipboardCheck,
+      className: 'border-warning/25 bg-warning/10 text-warning',
+    },
+    [managementTypes.feedbackStatus.NEED_REWORK]: {
+      label: 'Đang xử lý bổ sung',
+      icon: Lucide.RotateCcw,
+      className: 'border-warning/25 bg-warning/10 text-warning',
+    },
+    [managementTypes.feedbackStatus.APPROVED]: {
+      label: 'Chờ bạn đánh giá',
+      icon: Lucide.Star,
+      className: 'border-success/25 bg-success/10 text-success',
+    },
+    [managementTypes.feedbackStatus.CLOSED]: {
+      label: 'Đã kết thúc',
+      icon: Lucide.CircleCheckBig,
+      className: 'border-success/25 bg-success/10 text-success',
+    },
+    [managementTypes.feedbackStatus.REJECTED]: {
+      label: 'Không tiếp nhận',
+      icon: Lucide.CircleX,
+      className: 'border-error/25 bg-error/10 text-error',
+    },
+    [managementTypes.feedbackStatus.CANCELLED]: {
+      label: 'Đã hủy',
+      icon: Lucide.Ban,
+      className: 'border-base-300 bg-base-200 text-base-content/60',
+    },
+  };
+
+  return statusMap[status] || {
+    label: getStatusLabel(status, 'Đang cập nhật'),
+    icon: Lucide.Clock3,
+    className: 'border-base-300 bg-base-200 text-base-content/60',
+  };
+};
+
+const FilterDropdown = ({
+  menuId,
+  value,
+  options,
+  onChange,
+  icon: Icon,
+  label,
+  openMenu,
+  setOpenMenu,
+}) => {
+  const isOpen = openMenu === menuId;
+  const selectedOption = options.find(
+    (option) => String(option.value) === String(value)
+  ) || options[0];
+
+  return (
+    <section className="relative min-w-0" data-ticket-menu>
+      <button
+        type="button"
+        onClick={() => setOpenMenu(isOpen ? null : menuId)}
+        className="flex h-11 w-full items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-medium text-base-content outline-none transition hover:border-primary/40 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <Icon
+          size={15}
+          className="shrink-0 text-base-content/35"
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate text-left">
+          {selectedOption?.label}
+        </span>
+        <Lucide.ChevronDown
+          size={15}
+          className={`shrink-0 text-base-content/35 transition-transform ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {isOpen ? (
+        <menu
+          className="absolute left-0 right-0 z-40 mt-2 max-h-72 overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
+          role="listbox"
+          aria-label={label}
+        >
+          {options.map((option) => {
+            const isSelected = String(option.value) === String(value);
+
+            return (
+              <li key={String(option.value || 'all')}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpenMenu(null);
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                    isSelected
+                      ? 'bg-primary/10 font-semibold text-primary'
+                      : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
+                  }`}
+                  role="option"
+                  aria-selected={isSelected}
+                >
+                  <span>{option.label}</span>
+                  {isSelected ? (
+                    <Lucide.Check size={15} className="shrink-0" aria-hidden="true" />
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </menu>
+      ) : null}
+    </section>
+  );
+};
 
 export const TicketListPage = () => {
-  const { user } = useAuth();
+  const pageRootRef = useRef(null);
+  const filtersSectionRef = useRef(null);
+  const restoreHandledRef = useRef(false);
+  const location = useLocation();
   const navigate = useNavigate();
-  const [tickets, setTickets] = useState([]);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [categories, setCategories] = useState([]);
-  const getCategoryName = (id) => categories.find((c) => c.categoryId === id)?.categoryName || '';
-  const [dateRange, setDateRange] = useState(''); // mock filter
-  const [sortKey, setSortKey] = useState('newest');
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 5;
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [editTarget, setEditTarget] = useState(null);
-  const [editForm, setEditForm] = useState({
-    categoryId: '',
-    title: '',
-    description: '',
-    locationText: '',
-    latitude: null,
-    longitude: null,
-    priority: '',
-  });
-  const [editLoading, setEditLoading] = useState(false);
-  const [editAttachments, setEditAttachments] = useState([]);
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [attachmentLoading, setAttachmentLoading] = useState(false);
-  const [attachmentDeleteTarget, setAttachmentDeleteTarget] = useState(null);
-  const [attachmentWarning, setAttachmentWarning] = useState('');
-  const [previewAttachment, setPreviewAttachment] = useState(null);
-  const [pageMessage, setPageMessage] = useState({ type: '', message: '' });
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const fetchTickets = useCallback(async () => {
+  const readInitialPage = () => {
+    const parsedPage = Number(searchParams.get('page') || 1);
+    return Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  };
+
+  const [tickets, setTickets] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
+  const [status, setStatus] = useState(() => searchParams.get('status') || '');
+  const [categoryId, setCategoryId] = useState(() => searchParams.get('category') || '');
+  const [sortKey, setSortKey] = useState(() => searchParams.get('sort') || 'newest');
+  const [openMenu, setOpenMenu] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [currentPage, setCurrentPage] = useState(readInitialPage);
+  const [highlightedTicketId, setHighlightedTicketId] = useState(null);
+  const pageSize = 6;
+
+  const loadTickets = useCallback(async () => {
     setLoading(true);
+    setError('');
+
     try {
-      const filters = {
-        pageNumber: 1,
-        pageSize: 100,
-        search: search || undefined,
-        status: status || undefined,
-        categoryId: categoryId || undefined,
-      };
-      const res = await ticketApi.getTickets(filters, { role: 'service-user' });
-      setTickets(res);
+      const response = await ticketApi.getTickets(
+        { pageNumber: 1, pageSize: 100 },
+        { role: 'service-user' }
+      );
+      setTickets(Array.isArray(response) ? response : []);
     } catch (err) {
-      console.error(err);
+      console.error('Không thể tải danh sách phản ánh', err);
+      setTickets([]);
+      setError(err?.message || 'Không thể tải danh sách phản ánh.');
     } finally {
       setLoading(false);
     }
-  }, [search, status, categoryId]);
+  }, []);
 
   useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+    loadTickets();
+  }, [loadTickets]);
 
   useEffect(() => {
-    let isMounted = true;
+    let active = true;
+
     const loadCategories = async () => {
       try {
-        const fetched = await toolsApi.getCategories();
-        if (!isMounted) return;
-        setCategories(Array.isArray(fetched) ? fetched : []);
+        const response = await toolsApi.getCategories();
+        if (active) setCategories(Array.isArray(response) ? response : []);
       } catch (err) {
-        console.warn('TicketListPage failed to load categories', err);
-        if (isMounted) setCategories([]);
+        console.warn('Không thể tải danh mục phản ánh', err);
       }
     };
 
     loadCategories();
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, []);
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [search, status, categoryId, dateRange]);
-
-  // Helpers for stats counts
-  const [allCitizenTickets, setAllCitizenTickets] = useState([]);
-  useEffect(() => {
-    const fetchAllCitizenTickets = async () => {
-      if (user?.userId) {
-        try {
-          const res = await ticketApi.getTickets({ pageNumber: 1, pageSize: 100 }, { role: 'service-user' });
-          setAllCitizenTickets(res);
-        } catch (e) {
-          console.error(e);
-        }
-      }
+    const closeMenus = (event) => {
+      if (!event.target.closest('[data-ticket-menu]')) setOpenMenu(null);
     };
-    fetchAllCitizenTickets();
-  }, [user, loading]);
 
-  const countAll = allCitizenTickets.length;
-  const countInProgress = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED, managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(t.status)).length;
-  const countPendingApproval = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL].includes(t.status)).length;
-  const countAwaitingReview = allCitizenTickets.filter(t => [managementTypes.feedbackStatus.APPROVED, managementTypes.feedbackStatus.RESOLVED].includes(t.status)).length;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setOpenMenu(null);
+    };
 
-  const renderProgressStage = (s) => {
-    switch (s) {
-      case managementTypes.feedbackStatus.SUBMITTED:
-        return { label: 'Mới nhận', tone: 'bg-blue-50 text-blue-600', icon: <Lucide.Mail className="text-blue-600" size={14} /> };
-      case managementTypes.feedbackStatus.AI_REVIEWED:
-        return { label: 'Đang phân loại', tone: 'bg-purple-50 text-purple-600', icon: <Lucide.Cpu className="text-purple-600" size={14} /> };
-      case managementTypes.feedbackStatus.ASSIGNED:
-        return { label: 'Đã phân công', tone: 'bg-indigo-50 text-indigo-600', icon: <Lucide.Users className="text-indigo-600" size={14} /> };
-      case managementTypes.feedbackStatus.IN_PROGRESS:
-        return { label: 'Đang xử lý', tone: 'bg-amber-50 text-amber-600', icon: <Lucide.Wrench className="text-amber-600" size={14} /> };
-      case managementTypes.feedbackStatus.RESOLVED:
-      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL:
-        return { label: 'Chờ duyệt', tone: 'bg-amber-50 text-amber-700', icon: <Lucide.Clock3 className="text-amber-700" size={14} /> };
-      case managementTypes.feedbackStatus.APPROVED:
-        return { label: 'Chờ đánh giá', tone: 'bg-emerald-50 text-emerald-600', icon: <Lucide.CheckCircle2 className="text-emerald-600" size={14} /> };
-      case managementTypes.feedbackStatus.CLOSED:
-        return { label: 'Đã đóng', tone: 'bg-slate-100 text-slate-600', icon: <Lucide.Lock className="text-slate-600" size={14} /> };
-      default:
-        return { label: getStatusLabel(s, 'Chờ xử lý'), tone: 'bg-slate-50 text-slate-500', icon: <Lucide.Clock className="text-slate-500" size={14} /> };
+    document.addEventListener('pointerdown', closeMenus);
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('pointerdown', closeMenus);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+
+    if (search.trim()) nextParams.set('q', search.trim());
+    if (status) nextParams.set('status', status);
+    if (categoryId) nextParams.set('category', String(categoryId));
+    if (sortKey && sortKey !== 'newest') nextParams.set('sort', sortKey);
+    if (currentPage > 1) nextParams.set('page', String(currentPage));
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
     }
+  }, [
+    categoryId,
+    currentPage,
+    search,
+    searchParams,
+    setSearchParams,
+    sortKey,
+    status,
+  ]);
+
+  const updateSearch = (value) => {
+    setSearch(value);
+    setCurrentPage(1);
   };
 
-  const renderPriorityBadge = (priority) => {
-    switch (priority) {
-      case 'Critical':
-        return <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-[10px] font-black text-red-700">KHẨN CẤP</span>;
-      case 'High':
-        return <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black text-amber-700">CAO</span>;
-      case 'Medium':
-        return <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">TRUNG BÌNH</span>;
-      case 'Low':
-        return <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-700">THẤP</span>;
-      default:
-        return <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-700">TRUNG BÌNH</span>;
-    }
+  const updateStatus = (value) => {
+    setStatus(value);
+    setCurrentPage(1);
   };
 
-  const renderStatusDot = (s) => {
-    const stage = renderProgressStage(s);
-    return (
-      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${stage.tone} border border-slate-200`}>
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-900 opacity-75"></span>
-        {stage.label}
-      </span>
-    );
+  const updateCategory = (value) => {
+    setCategoryId(value);
+    setCurrentPage(1);
   };
 
-  const filteredTickets = tickets
-    .filter((ticket) => {
-      const query = search.trim().toLowerCase();
-      const matchesSearch =
-        query === '' ||
-        ticket.title?.toLowerCase().includes(query) ||
-        ticket.description?.toLowerCase().includes(query) ||
-        formatTicketId(ticket.feedbackId).toLowerCase().includes(query) ||
-        ticket.locationText?.toLowerCase().includes(query);
-
-      const matchesStatus = status ? ticket.status === status : true;
-      const matchesCategory = categoryId ? String(ticket.categoryId) === String(categoryId) : true;
-      const matchesDate = dateRange
-        ? new Date(ticket.createdAt).toLocaleDateString('vi-VN').includes(dateRange)
-        : true;
-
-      return matchesSearch && matchesStatus && matchesCategory && matchesDate;
-    })
-    .sort((a, b) => {
-      if (sortKey === 'oldest') {
-        return new Date(a.createdAt) - new Date(b.createdAt);
-      }
-      if (sortKey === 'priority') {
-        const priorityOrder = { Critical: 1, High: 2, Medium: 3, Low: 4 };
-        return (priorityOrder[a.priority] || 5) - (priorityOrder[b.priority] || 5);
-      }
-      if (sortKey === 'status') {
-        const statusOrder = {
-          [managementTypes.feedbackStatus.SUBMITTED]: 1,
-          [managementTypes.feedbackStatus.AI_REVIEWED]: 2,
-          [managementTypes.feedbackStatus.ASSIGNED]: 3,
-          [managementTypes.feedbackStatus.IN_PROGRESS]: 4,
-          [managementTypes.feedbackStatus.RESOLVED]: 5,
-          [managementTypes.feedbackStatus.CLOSED]: 6,
-        };
-        return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
-      }
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
-
-
-  const formatTicketId = (fbId) => {
-    if (!fbId) return '';
-    const num = fbId.split('-').pop();
-    return `UM-2026-00${num}`;
+  const updateSort = (value) => {
+    setSortKey(value);
+    setCurrentPage(1);
   };
 
-  const openEditModal = async (ticket) => {
-    try {
-      const detailResponse = await ticketApi.getTicketById(ticket.feedbackId, { role: user?.role || 'service-user' });
-
-      const detail =
-        detailResponse?.data ||
-        detailResponse?.item ||
-        detailResponse?.result ||
-        detailResponse ||
-        ticket;
-
-      setEditTarget(detail);
-
-      setEditForm({
-        categoryId: detail.categoryId || ticket.categoryId || '',
-        title: detail.title || ticket.title || '',
-        description: detail.description || ticket.description || '',
-        locationText: detail.locationText || ticket.locationText || '',
-        latitude: detail.latitude ?? ticket.latitude ?? null,
-        longitude: detail.longitude ?? ticket.longitude ?? null,
-        priority: detail.priority || ticket.priority || '',
-      });
-      setEditAttachments(Array.isArray(detail.attachments) ? detail.attachments : []);
-      setSelectedFiles([]);
-    } catch (err) {
-      console.error('Không lấy được chi tiết phản ánh để sửa:', err);
-
-      setEditTarget(ticket);
-      setEditForm({
-        categoryId: ticket.categoryId || '',
-        title: ticket.title || '',
-        description: ticket.description || '',
-        locationText: ticket.locationText || '',
-        latitude: ticket.latitude ?? null,
-        longitude: ticket.longitude ?? null,
-        priority: ticket.priority || '',
-      });
-      setEditAttachments(Array.isArray(ticket.attachments) ? ticket.attachments : []);
-      setSelectedFiles([]);
-    }
-  };
-
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setPageMessage({ type: 'error', message: 'Trình duyệt không hỗ trợ lấy vị trí hiện tại.' });
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-
-        setEditForm((prev) => ({
-          ...prev,
-          latitude,
-          longitude,
-          locationText: `Vị trí hiện tại: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-        }));
-      },
-      () => {
-        setPageMessage({ type: 'error', message: 'Không thể lấy vị trí hiện tại. Vui lòng cho phép quyền vị trí.' });
-      }
-    );
-  };
-
-  const getAttachmentId = (file) => {
-    if (!file || typeof file === 'string') return null;
-
-    return (
-      file.attachmentId ||
-      file.id ||
-      file.fileId ||
-      file.feedbackAttachmentId ||
-      null
-    );
-  };
-
-  const getAttachmentUrl = (file) => {
-    if (!file) return '';
-
-    if (typeof file === 'string') return file;
-
-    return (
-      file.fileUrl ||
-      file.url ||
-      file.path ||
-      file.attachmentUrl ||
-      file.displayUrl ||
-      ''
-    );
-  };
-
-  const getAttachmentName = (file, index) => {
-    if (!file) return `Tệp ${index + 1}`;
-
-    if (typeof file === 'string') {
-      return file.split('/').pop() || `Tệp ${index + 1}`;
-    }
-
-    return (
-      file.fileName ||
-      file.name ||
-      file.originalFileName ||
-      `Tệp ${index + 1}`
-    );
-  };
-
-  const isVideoFile = (fileUrl = '') => {
-    const url = fileUrl.toLowerCase();
-
-    return (
-      url.includes('.mp4') ||
-      url.includes('.webm') ||
-      url.includes('.ogg') ||
-      url.includes('.mov') ||
-      url.includes('.m4v')
-    );
-  };
-  const handleUploadAttachments = async () => {
-    if (!editTarget || selectedFiles.length === 0) return;
+  const saveReturnContext = (ticketId) => {
+    const returnContext = {
+      from: `${location.pathname}${location.search}`,
+      scrollY: window.scrollY,
+      ticketId,
+    };
 
     try {
-      setAttachmentLoading(true);
-
-      await ticketApi.addAttachments(editTarget.feedbackId, selectedFiles, { role: user?.role || 'service-user' });
-
-      const detailResponse = await ticketApi.getTicketById(editTarget.feedbackId, { role: user?.role || 'service-user' });
-
-      const detail =
-        detailResponse?.data ||
-        detailResponse?.item ||
-        detailResponse?.result ||
-        detailResponse;
-
-      setEditAttachments(Array.isArray(detail?.attachments) ? detail.attachments : []);
-      setSelectedFiles([]);
-    } catch (err) {
-      console.error('Không thể thêm tệp đính kèm:', err);
-      setPageMessage({
-        type: 'error',
-        message:
-          err?.response?.data?.message ||
-          err?.message ||
-          'Không thể thêm tệp đính kèm.',
-      });
-    } finally {
-      setAttachmentLoading(false);
-    }
-  };
-
-  const handleDeleteAttachment = async () => {
-    if (editAttachments.length <= 1) {
-      setAttachmentWarning('Phản ánh phải có ít nhất một hình ảnh hoặc video minh chứng.');
-      setAttachmentDeleteTarget(null);
-      return;
-    }
-
-    if (!editTarget || !attachmentDeleteTarget) return;
-
-    const attachmentId = getAttachmentId(attachmentDeleteTarget);
-
-    if (!attachmentId) {
-      setPageMessage({ type: 'error', message: 'Không tìm thấy attachmentId để xóa file này.' });
-      setAttachmentDeleteTarget(null);
-      return;
-    }
-
-    try {
-      setAttachmentLoading(true);
-
-      await ticketApi.deleteAttachment(editTarget.feedbackId, attachmentId);
-
-      setEditAttachments((prev) =>
-        prev.filter((item) => getAttachmentId(item) !== attachmentId)
+      sessionStorage.setItem(
+        'urbanmind-ticket-list-return',
+        JSON.stringify(returnContext)
       );
-
-      setAttachmentDeleteTarget(null);
-    } catch (err) {
-      console.error('Không thể xóa tệp đính kèm:', err);
-      setPageMessage({
-        type: 'error',
-        message:
-          err?.response?.data?.message ||
-          err?.message ||
-          'Không thể xóa tệp đính kèm.',
-      });
-    } finally {
-      setAttachmentLoading(false);
+    } catch {
+      // Session storage may be unavailable in private browsing modes.
     }
   };
 
-  const handleUpdateTicket = async (e) => {
-    e.preventDefault();
+  const categoryOptions = useMemo(() => [
+    { value: '', label: 'Tất cả danh mục' },
+    ...categories.map((category) => ({
+      value: category.categoryId,
+      label: getCategoryLabel(category.categoryName),
+    })),
+  ], [categories]);
 
-    if (!editTarget) return;
+  const summary = useMemo(() => ({
+    total: tickets.length,
+    inProgress: tickets.filter(
+      (ticket) => PROCESSING_STATUSES.has(ticket.status)
+    ).length,
+    checking: tickets.filter(
+      (ticket) => CHECKING_STATUSES.has(ticket.status)
+    ).length,
+    awaitingReview: tickets.filter(
+      (ticket) => ticket.status === managementTypes.feedbackStatus.APPROVED
+    ).length,
+  }), [tickets]);
 
-    if (!editForm.title.trim()) {
-      setPageMessage({ type: 'error', message: 'Vui lòng nhập tiêu đề phản ánh.' });
-      return;
-    }
+  const filteredTickets = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const statusOrder = {
+      [managementTypes.feedbackStatus.SUBMITTED]: 1,
+      [managementTypes.feedbackStatus.AI_REVIEWED]: 2,
+      [managementTypes.feedbackStatus.VERIFIED]: 3,
+      [managementTypes.feedbackStatus.ASSIGNED]: 4,
+      [managementTypes.feedbackStatus.IN_PROGRESS]: 5,
+      [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: 6,
+      [managementTypes.feedbackStatus.NEED_REWORK]: 7,
+      [managementTypes.feedbackStatus.APPROVED]: 8,
+      [managementTypes.feedbackStatus.CLOSED]: 9,
+      [managementTypes.feedbackStatus.REJECTED]: 10,
+      [managementTypes.feedbackStatus.CANCELLED]: 11,
+    };
 
-    if (!editForm.description.trim()) {
-      setPageMessage({ type: 'error', message: 'Vui lòng nhập mô tả phản ánh.' });
-      return;
-    }
+    return [...tickets]
+      .filter((ticket) => {
+        const matchesSearch = !query || [
+          ticket.title,
+          ticket.areaName,
+          getCategoryLabel(ticket.categoryName),
+        ].some((value) => String(value || '').toLowerCase().includes(query));
 
-    try {
-      setEditLoading(true);
+        const matchesStatus = (() => {
+          if (!status) return true;
+          if (status === STATUS_FILTER_VALUES.PROCESSING) {
+            return PROCESSING_STATUSES.has(ticket.status);
+          }
+          if (status === STATUS_FILTER_VALUES.CHECKING) {
+            return CHECKING_STATUSES.has(ticket.status);
+          }
+          return ticket.status === status;
+        })();
+        const matchesCategory = categoryId
+          ? String(ticket.categoryId) === String(categoryId)
+          : true;
 
-      const payload = {
-        title: editForm.title.trim(),
-        description: editForm.description.trim(),
-        locationText: editForm.locationText.trim(),
-      };
+        return matchesSearch && matchesStatus && matchesCategory;
+      })
+      .sort((a, b) => {
+        if (sortKey === 'oldest') {
+          return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+        }
 
-      if (editForm.categoryId !== '') {
-        payload.categoryId = Number(editForm.categoryId);
-      }
+        if (sortKey === 'status') {
+          return (statusOrder[a.status] || 99) - (statusOrder[b.status] || 99);
+        }
 
-      if (editForm.latitude !== null && editForm.latitude !== '') {
-        payload.latitude = Number(editForm.latitude);
-      }
-
-      if (editForm.longitude !== null && editForm.longitude !== '') {
-        payload.longitude = Number(editForm.longitude);
-      }
-
-      if (editForm.priority !== '') {
-        payload.priority = editForm.priority;
-      }
-
-      const updatedResponse = await ticketApi.updateTicket(editTarget.feedbackId, payload);
-
-      const updatedTicket =
-        updatedResponse?.data ||
-        updatedResponse?.item ||
-        updatedResponse?.result ||
-        updatedResponse ||
-        payload;
-
-      const nextTicket = {
-        ...editTarget,
-        ...payload,
-        ...updatedTicket,
-      };
-
-      setTickets((prev) =>
-        prev.map((t) => (t.feedbackId === editTarget.feedbackId ? nextTicket : t))
-      );
-
-      setAllCitizenTickets((prev) =>
-        prev.map((t) => (t.feedbackId === editTarget.feedbackId ? nextTicket : t))
-      );
-
-      setEditTarget(null);
-    } catch (err) {
-      console.error('Không thể cập nhật phản ánh:', err);
-      setPageMessage({
-        type: 'error',
-        message:
-          err?.response?.data?.message ||
-          err?.message ||
-          'Không thể cập nhật phản ánh.',
+        return new Date(b.updatedAt || b.createdAt || 0)
+          - new Date(a.updatedAt || a.createdAt || 0);
       });
-    } finally {
-      setEditLoading(false);
-    }
-  };
+  }, [categoryId, search, sortKey, status, tickets]);
 
-  const handleDeleteTicket = async () => {
-    if (!deleteTarget) return;
-
-    try {
-      setDeleteLoading(true);
-
-      await ticketApi.deleteTicket(deleteTarget.feedbackId);
-
-      setTickets((prev) => prev.filter((t) => t.feedbackId !== deleteTarget.feedbackId));
-      setAllCitizenTickets((prev) => prev.filter((t) => t.feedbackId !== deleteTarget.feedbackId));
-
-      setDeleteTarget(null);
-    } catch (err) {
-      console.error('Không thể xóa phản ánh:', err);
-      setPageMessage({
-        type: 'error',
-        message:
-          err?.response?.data?.message ||
-          err?.message ||
-          'Không thể xóa phản ánh.',
-      });
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  // Pagination calculations
   const totalItems = filteredTickets.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const startIndex = (currentPage - 1) * pageSize;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const paginatedTickets = Array.isArray(filteredTickets) ? filteredTickets.slice(startIndex, endIndex) : [];
+  const paginatedTickets = filteredTickets.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    if (loading || restoreHandledRef.current) return undefined;
+
+    const restoreScrollY = Number(location.state?.restoreScrollY);
+    const restoreTicketId = location.state?.restoreTicketId;
+
+    if (!restoreTicketId && !Number.isFinite(restoreScrollY)) return undefined;
+
+    restoreHandledRef.current = true;
+    setHighlightedTicketId(restoreTicketId || null);
+
+    let cancelled = false;
+    let retryTimer = null;
+    let attempts = 0;
+
+    const finishRestore = () => {
+      if (cancelled) return;
+
+      if (restoreTicketId) {
+        window.setTimeout(() => setHighlightedTicketId(null), 2200);
+      }
+
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: null,
+      });
+    };
+
+    const restoreToTicketRow = () => {
+      if (cancelled) return;
+
+      const row = restoreTicketId
+        ? document.getElementById(`ticket-row-${restoreTicketId}`)
+        : null;
+
+      if (row) {
+        row.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest',
+        });
+        finishRestore();
+        return;
+      }
+
+      attempts += 1;
+      if (attempts < 24) {
+        retryTimer = window.setTimeout(restoreToTicketRow, 60);
+        return;
+      }
+
+      if (Number.isFinite(restoreScrollY)) {
+        window.scrollTo({
+          top: Math.max(0, restoreScrollY),
+          behavior: 'auto',
+        });
+      }
+      finishRestore();
+    };
+
+    const frame = window.requestAnimationFrame(restoreToTicketRow);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [
+    loading,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+    paginatedTickets.length,
+  ]);
+
+  const handleSummaryFilter = (nextStatus) => {
+    updateStatus(nextStatus);
+    setOpenMenu(null);
+
+    window.requestAnimationFrame(() => {
+      filtersSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setStatus('');
+    setCategoryId('');
+    setSortKey('newest');
+    setOpenMenu(null);
+    setCurrentPage(1);
+  };
+
+  const hasActiveFilters = Boolean(
+    search || status || categoryId || sortKey !== 'newest'
+  );
 
   return (
-    <div className="page-container space-y-6 text-slate-800">
-      {pageMessage.type && (
-        <div>
-          {pageMessage.type === 'error' ? (
-            <ErrorAlert
-              title="Lỗi"
-              message={pageMessage.message}
-              onClose={() => setPageMessage({ type: '', message: '' })}
+    <main ref={pageRootRef} className="space-y-5 text-base-content">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <section>
+          <h1 className="text-3xl font-bold tracking-tight text-base-content">
+            Phản ánh của tôi
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-base-content/55">
+            Theo dõi tiến trình, xem kết quả và cập nhật những phản ánh bạn đã gửi.
+          </p>
+        </section>
+      </header>
+
+      <section
+        className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        aria-label="Lọc nhanh theo tình trạng phản ánh"
+      >
+        <button
+          type="button"
+          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ALL)}
+          aria-pressed={status === STATUS_FILTER_VALUES.ALL}
+          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+            status === STATUS_FILTER_VALUES.ALL
+              ? 'border-primary/45 bg-primary/5 ring-2 ring-primary/10'
+              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-primary/30'
+          }`}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info" aria-hidden="true">
+            <Lucide.Files size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs text-base-content/50">Tổng phản ánh</span>
+            <strong className="mt-1 block text-2xl font-bold text-base-content">
+              {summary.total}
+            </strong>
+          </span>
+          <Lucide.ChevronDown
+            size={16}
+            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-primary"
+            aria-hidden="true"
+          />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.PROCESSING)}
+          aria-pressed={status === STATUS_FILTER_VALUES.PROCESSING}
+          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+            status === STATUS_FILTER_VALUES.PROCESSING
+              ? 'border-warning/45 bg-warning/5 ring-2 ring-warning/10'
+              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-warning/35'
+          }`}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warning/10 text-warning" aria-hidden="true">
+            <Lucide.LoaderCircle size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs text-base-content/50">Đang xử lý</span>
+            <strong className="mt-1 block text-2xl font-bold text-base-content">
+              {summary.inProgress}
+            </strong>
+          </span>
+          <Lucide.ChevronDown
+            size={16}
+            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-warning"
+            aria-hidden="true"
+          />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.CHECKING)}
+          aria-pressed={status === STATUS_FILTER_VALUES.CHECKING}
+          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+            status === STATUS_FILTER_VALUES.CHECKING
+              ? 'border-secondary/45 bg-secondary/5 ring-2 ring-secondary/10'
+              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-secondary/35'
+          }`}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-secondary/10 text-secondary" aria-hidden="true">
+            <Lucide.ClipboardCheck size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs text-base-content/50">Đang kiểm tra kết quả</span>
+            <strong className="mt-1 block text-2xl font-bold text-base-content">
+              {summary.checking}
+            </strong>
+          </span>
+          <Lucide.ChevronDown
+            size={16}
+            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-secondary"
+            aria-hidden="true"
+          />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
+          aria-pressed={status === STATUS_FILTER_VALUES.AWAITING_REVIEW}
+          className={`group flex items-center gap-4 rounded-[22px] border px-4 py-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+            status === STATUS_FILTER_VALUES.AWAITING_REVIEW
+              ? 'border-success/45 bg-success/5 ring-2 ring-success/10'
+              : 'border-base-300 bg-base-100 hover:-translate-y-0.5 hover:border-success/35'
+          }`}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-success/10 text-success" aria-hidden="true">
+            <Lucide.Star size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs text-base-content/50">Chờ bạn đánh giá</span>
+            <strong className="mt-1 block text-2xl font-bold text-base-content">
+              {summary.awaitingReview}
+            </strong>
+          </span>
+          <Lucide.ChevronDown
+            size={16}
+            className="shrink-0 text-base-content/25 transition-transform group-hover:translate-y-0.5 group-hover:text-success"
+            aria-hidden="true"
+          />
+        </button>
+      </section>
+
+      <section
+        ref={filtersSectionRef}
+        className="scroll-mt-24 rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6"
+        aria-labelledby="ticket-filters-title"
+      >
+        <header>
+          <h2 id="ticket-filters-title" className="text-base font-semibold">
+            Tìm và lọc phản ánh
+          </h2>
+          <p className="mt-1 text-xs text-base-content/50">
+            Lọc theo danh mục, trạng thái hoặc sắp xếp danh sách.
+          </p>
+        </header>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(240px,1.55fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(180px,0.75fr)]">
+          <label className="relative block" htmlFor="ticket-search">
+            <span className="sr-only">Tìm phản ánh</span>
+            <Lucide.Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" aria-hidden="true" />
+            <input
+              id="ticket-search"
+              type="search"
+              value={search}
+              onChange={(event) => updateSearch(event.target.value)}
+              className="h-11 w-full rounded-xl border border-base-300 bg-base-100 pl-9 pr-9 text-sm outline-none transition placeholder:text-base-content/35 focus:border-primary focus:ring-2 focus:ring-primary/15"
+              placeholder="Tìm theo tiêu đề hoặc khu vực"
+              autoComplete="off"
             />
-          ) : (
-            <SuccessAlert
-              title="Thành công"
-              message={pageMessage.message}
-              onClose={() => setPageMessage({ type: '', message: '' })}
-            />
-          )}
-        </div>
-      )}
-      {/* Breadcrumbs */}
-      <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-        <span>Trang chủ</span>
-        <Lucide.ChevronRight size={12} />
-        <span className="text-[color:var(--brand-primary)]">Phản ánh đã gửi</span>
-      </div>
-
-      {/* Header section */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900">Phản ánh đã gửi</h2>
-          <p className="text-xs text-slate-500 font-semibold mt-1">Theo dõi tiến độ, cập nhật hội thoại và đánh giá chất lượng xử lý các sự cố đô thị.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/tickets/archive" className="btn btn-outline rounded-xl text-xs font-bold gap-1.5 h-10 px-4 min-h-0">
-            <Lucide.Archive size={16} />
-            Kho lưu trữ
-          </Link>
-          <Link to="/tickets/create" className="btn btn-primary rounded-xl text-xs font-bold gap-1.5 h-10 px-4 min-h-0">
-            <Lucide.Plus size={16} />
-            Gửi phản ánh mới
-          </Link>
-        </div>
-      </div>
-
-      {/* 4 Counter Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          {
-            label: 'Tất cả phản ánh',
-            count: countAll,
-            icon: <Lucide.FileText size={18} />,
-            active: status === '',
-            onClick: () => setStatus(''),
-          },
-          {
-            label: 'Đang xử lý',
-            count: countInProgress,
-            icon: <Lucide.Clock size={18} />,
-            active: status === managementTypes.feedbackStatus.IN_PROGRESS,
-            onClick: () => setStatus(managementTypes.feedbackStatus.IN_PROGRESS),
-          },
-          {
-            label: 'Chờ Manager duyệt',
-            count: countPendingApproval,
-            icon: <Lucide.CheckCircle2 size={18} />,
-            active: status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-            onClick: () => setStatus(managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL),
-          },
-          {
-            label: 'Chờ đánh giá',
-            count: countAwaitingReview,
-            icon: <Lucide.Star size={18} />,
-            active: status === managementTypes.feedbackStatus.APPROVED,
-            onClick: () => setStatus(managementTypes.feedbackStatus.APPROVED),
-          },
-        ].map((card) => (
-          <button
-            key={card.label}
-            type="button"
-            onClick={card.onClick}
-            className={`w-full rounded-2xl border p-4 text-left transition duration-200 ${card.active ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-            aria-pressed={card.active}
-          >
-            <div className="flex justify-between items-center gap-4">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{card.label}</span>
-              <div className={card.label === 'Chờ Manager duyệt' ? 'p-2 rounded-xl bg-emerald-50 text-emerald-600' : card.label === 'Chờ đánh giá' ? 'p-2 rounded-xl bg-red-50 text-red-500' : card.label === 'Đang xử lý' ? 'p-2 rounded-xl bg-slate-100 text-slate-600' : 'p-2 rounded-xl bg-blue-50 text-blue-600'}>
-                {card.icon}
-              </div>
-            </div>
-            <div className="mt-4">
-              <span className="text-2xl font-black text-slate-900">{card.count}</span>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {/* Filters Hub Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="form-control sm:col-span-2">
-            <label className="sr-only" htmlFor="resident-search">Tìm kiếm phản ánh</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
-                <Lucide.Search size={15} />
-              </span>
-              <input
-                id="resident-search"
-                type="text"
-                aria-label="Tìm kiếm phản ánh"
-                placeholder="Tìm kiếm phản ánh, địa điểm, mã..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="input input-bordered w-full pl-9 text-xs rounded-xl h-10 border-slate-200 focus:border-primary focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="form-control">
-            <label className="sr-only" htmlFor="filter-category">Lọc danh mục</label>
-            <select
-              id="filter-category"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
-            >
-              <option value="">Tất cả danh mục</option>
-              {categories.map((c) => (
-                <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-control">
-            <label className="sr-only" htmlFor="filter-status">Lọc trạng thái</label>
-            <select
-              id="filter-status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
-            >
-              <option value="">Tất cả trạng thái</option>
-              <option value={managementTypes.feedbackStatus.SUBMITTED}>Đã gửi</option>
-              <option value={managementTypes.feedbackStatus.AI_REVIEWED}>Đang xem xét</option>
-              <option value={managementTypes.feedbackStatus.ASSIGNED}>Đã phân công</option>
-              <option value={managementTypes.feedbackStatus.IN_PROGRESS}>Đang xử lý</option>
-              <option value={managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL}>Chờ Manager duyệt</option>
-              <option value={managementTypes.feedbackStatus.APPROVED}>Chờ đánh giá</option>
-              <option value={managementTypes.feedbackStatus.CLOSED}>Đã đóng</option>
-            </select>
-          </div>
-
-          <div className="form-control">
-            <label className="sr-only" htmlFor="sort-key">Sắp xếp</label>
-            <select
-              id="sort-key"
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value)}
-              className="select select-bordered text-xs rounded-xl h-10 min-h-0 font-semibold border-slate-200 focus:border-primary focus:outline-none w-full"
-            >
-              <option value="newest">Mới nhất</option>
-              <option value="oldest">Cũ nhất</option>
-              <option value="priority">Ưu tiên</option>
-              <option value="status">Trạng thái</option>
-            </select>
-          </div>
-
-          <div className="form-control">
-            <label className="sr-only" htmlFor="date-range">Bộ lọc ngày</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
-                <Lucide.Calendar size={15} />
-              </span>
-              <input
-                id="date-range"
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
-              className="input input-bordered w-full pl-9 text-xs rounded-xl h-10 border-slate-200 focus:border-primary focus:outline-none"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Status Shortcut Pills Row */}
-      <div className="flex flex-wrap gap-2 items-center text-xs">
-        <span className="font-bold text-slate-400 mr-1">Sắp xếp nhanh:</span>
-        {[ '', managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED, managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS, managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL, managementTypes.feedbackStatus.APPROVED, managementTypes.feedbackStatus.CLOSED ].map((value) => (
-          <button
-            key={value || 'all'}
-            type="button"
-            onClick={() => setStatus(value)}
-            aria-pressed={status === value}
-            className={`px-3 py-1.5 rounded-full font-bold text-[11px] border transition duration-200 ease-out ${status === value ? 'bg-primary text-white border-primary shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'}`}
-          >
-            {value === '' ? 'Tất cả' : getStatusLabel(value, value)}
-          </button>
-        ))}
-      </div>
-
-      {/* Main timeline list */}
-      <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4 fade-in-up visible">
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <span className="loading loading-spinner loading-lg text-[color:var(--brand-primary)]"></span>
-          </div>
-        ) : paginatedTickets.length === 0 ? (
-          <div className="py-6">
-            <OnboardingEmpty />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {paginatedTickets.map((ticket) => {
-              const stage = renderProgressStage(ticket.status);
-              return (
-                <article key={ticket.feedbackId} className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                  <div className="absolute left-0 top-7 hidden h-[calc(100%-2rem)] w-0.5 bg-slate-200 md:block"></div>
-                  <div className="md:pl-8">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                      <div className="space-y-3 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                          <span>{formatTicketId(ticket.feedbackId)}</span>
-                          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-slate-300"></span>
-                          <span>{getCategoryName(ticket.categoryId)}</span>
-                        </div>
-                        <h3 className="text-base font-black text-slate-950 leading-tight">
-                          {ticket.title}
-                        </h3>
-                        <p className="text-sm text-slate-600 max-w-3xl leading-6 line-clamp-2">
-                          {ticket.description}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        {renderPriorityBadge(ticket.priority)}
-                        <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
-                          <Lucide.CalendarClock size={12} />
-                          {new Date(ticket.createdAt).toLocaleDateString('vi-VN')}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <div className="rounded-3xl bg-white border border-slate-200 p-4">
-                        <p className="text-[10px] uppercase font-black tracking-[0.2em] text-slate-400">Trạng thái</p>
-                        <div className="mt-3">{renderStatusDot(ticket.status)}</div>
-                      </div>
-                      <div className="rounded-3xl bg-white border border-slate-200 p-4">
-                        <p className="text-[10px] uppercase font-black tracking-[0.2em] text-slate-400">Tiến trình</p>
-                        <div className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-[10px] font-black text-slate-700">
-                          {stage.icon}
-                          {stage.label}
-                        </div>
-                      </div>
-                      <div className="rounded-3xl bg-white border border-slate-200 p-4">
-                        <p className="text-[10px] uppercase font-black tracking-[0.2em] text-slate-400">Vị trí</p>
-                        <p className="mt-3 text-sm font-semibold text-slate-700 truncate">
-                          {ticket.locationText || 'Chưa có địa điểm'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span className="inline-flex items-center gap-1 font-semibold">
-                          <Lucide.Tag size={14} />
-                          {getCategoryName(ticket.categoryId)}
-                        </span>
-                        <span className="inline-flex items-center gap-1 font-semibold">
-                          <Lucide.Megaphone size={14} />
-                          {ticket.priority}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => navigate(`/tickets/${ticket.feedbackId}`)}
-                          className="btn btn-sm rounded-2xl bg-[color:var(--brand-primary)] text-white border-none text-xs font-black h-10"
-                        >
-                          Xem tiến độ
-                        </button>
-                        <button
-                          onClick={() => openEditModal(ticket)}
-                          className="btn btn-sm btn-outline rounded-2xl text-xs font-bold h-10"
-                        >
-                          Chỉnh sửa
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Pagination bar */}
-        {!loading && tickets.length > 0 && (
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs font-bold text-slate-500">
-            <div>
-              Hiển thị {startIndex + 1}-{endIndex} của {totalItems} phản ánh
-            </div>
-            <div className="flex gap-1">
-                <button
-                onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="btn btn-xs rounded-lg btn-outline border-slate-200 disabled:opacity-50 text-slate-600"
-              >
-                Trước
-              </button>
-              {Array.from({ length: totalPages }).map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentPage(idx + 1)}
-                  className={`btn btn-xs rounded-lg w-8 h-8 ${currentPage === idx + 1
-                    ? 'bg-[color:var(--brand-primary)] hover:bg-[color:var(--brand-primary-dark)] text-white border-none'
-                    : 'btn-outline border-slate-200 text-slate-600'
-                    }`}
-                >
-                  {idx + 1}
-                </button>
-              ))}
-              <button
-                onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="btn btn-xs rounded-lg btn-outline border-slate-200 disabled:opacity-50 text-slate-600"
-              >
-                Sau
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Delete Modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-5">
-            <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center shrink-0">
-                <Lucide.Trash2 size={22} />
-              </div>
-
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-slate-900">
-                  Xóa phản ánh?
-                </h3>
-                <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                  Bạn có chắc muốn xóa phản ánh{' '}
-                  <span className="font-bold text-slate-800">
-                    {deleteTarget.title}
-                  </span>
-                  ? Hành động này không thể hoàn tác.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+            {search ? (
               <button
                 type="button"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleteLoading}
-                className="btn btn-ghost rounded-xl font-bold"
+                onClick={() => updateSearch('')}
+                className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-base-content/35 hover:bg-base-200 hover:text-base-content"
+                aria-label="Xóa từ khóa tìm kiếm"
               >
-                Hủy
+                <Lucide.X size={14} aria-hidden="true" />
               </button>
+            ) : null}
+          </label>
 
-              <button
-                type="button"
-                onClick={handleDeleteTicket}
-                disabled={deleteLoading}
-                className="btn bg-red-500 hover:bg-red-600 text-white border-none rounded-xl font-bold"
-              >
-                {deleteLoading ? (
-                  <span className="loading loading-spinner loading-sm"></span>
-                ) : (
-                  <>
-                    <Lucide.Trash2 size={16} />
-                    Xóa phản ánh
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+          <FilterDropdown
+            menuId="category"
+            value={categoryId}
+            options={categoryOptions}
+            onChange={updateCategory}
+            icon={Lucide.Tags}
+            label="Lọc theo danh mục"
+            openMenu={openMenu}
+            setOpenMenu={setOpenMenu}
+          />
+
+          <FilterDropdown
+            menuId="status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={updateStatus}
+            icon={Lucide.ListFilter}
+            label="Lọc theo trạng thái"
+            openMenu={openMenu}
+            setOpenMenu={setOpenMenu}
+          />
+
+          <FilterDropdown
+            menuId="sort"
+            value={sortKey}
+            options={SORT_OPTIONS}
+            onChange={updateSort}
+            icon={Lucide.ArrowUpDown}
+            label="Sắp xếp danh sách"
+            openMenu={openMenu}
+            setOpenMenu={setOpenMenu}
+          />
         </div>
-      )}
 
-      {/* Edit Modal */}
-      {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[88vh] overflow-y-auto p-5 space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-black text-slate-900">
-                  Sửa phản ánh
-                </h3>
-                <p className="text-sm text-slate-500 font-medium">
-                  Cập nhật thông tin phản ánh của bạn.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setEditTarget(null)}
-                disabled={editLoading}
-                className="btn btn-ghost btn-circle btn-sm"
-              >
-                <Lucide.X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateTicket} className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="form-control space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600">
-                    Tiêu đề
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.title}
-                    onChange={(e) =>
-                      setEditForm((prev) => ({ ...prev, title: e.target.value }))
-                    }
-                    className="input input-bordered rounded-2xl text-sm h-12"
-                    placeholder="Nhập tiêu đề phản ánh"
-                  />
-                </div>
-
-                <div className="form-control space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600">
-                    Danh mục
-                  </label>
-                  <select
-                    value={editForm.categoryId}
-                    onChange={(e) =>
-                      setEditForm((prev) => ({ ...prev, categoryId: e.target.value }))
-                    }
-                    className="select select-bordered rounded-2xl text-sm h-12"
-                  >
-                    <option value="">Chọn danh mục</option>
-                    {categories.map((c) => (
-                      <option key={c.categoryId} value={c.categoryId}>
-                        {c.categoryName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-control space-y-1.5 w-full">
-                <label className="text-xs font-bold text-slate-600">
-                  Mô tả
-                </label>
-
-                <textarea
-                  rows="7"
-                  value={editForm.description}
-                  onChange={(e) =>
-                    setEditForm((prev) => ({ ...prev, description: e.target.value }))
-                  }
-                  className="textarea textarea-bordered rounded-2xl text-sm w-full min-h-[190px] resize-none leading-relaxed px-4 py-3"
-                  placeholder="Nhập mô tả phản ánh"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="form-control space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600">
-                    Vị trí
-                  </label>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={editForm.locationText}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({ ...prev, locationText: e.target.value }))
-                      }
-                      className="input input-bordered rounded-2xl text-sm h-12 flex-1"
-                      placeholder="Nhập vị trí hoặc địa chỉ"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={handleUseCurrentLocation}
-                      className="btn btn-outline rounded-2xl h-12 px-4"
-                      title="Lấy vị trí hiện tại"
-                    >
-                      <Lucide.MapPin size={17} />
-                    </button>
-                  </div>
-
-                  {editForm.latitude !== null && editForm.longitude !== null && (
-                    <p className="text-[10px] text-slate-400 font-semibold pl-1">
-                      Tọa độ: {Number(editForm.latitude).toFixed(6)}, {Number(editForm.longitude).toFixed(6)}
-                    </p>
-                  )}
-                </div>
-
-                <div className="form-control space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600">
-                    Mức ưu tiên
-                  </label>
-
-                  <select
-                    value={editForm.priority}
-                    onChange={(e) =>
-                      setEditForm((prev) => ({ ...prev, priority: e.target.value }))
-                    }
-                    className="select select-bordered rounded-2xl text-sm h-12"
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-4 pt-2">
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 space-y-4 w-full">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500">
-                      <Lucide.ImagePlus size={18} />
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-sm font-extrabold text-slate-800">
-                        Hình ảnh / video đính kèm
-                      </p>
-                      <p className="text-xs text-slate-500 font-medium">
-                        Thêm hoặc xóa file đính kèm cho phản ánh này. Cần giữ lại ít nhất 1 ảnh hoặc video minh chứng.
-                      </p>
-                    </div>
-                  </div>
-
-                  {editAttachments.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {editAttachments.map((file, index) => {
-                        const fileUrl = getAttachmentUrl(file);
-
-                        return (
-                          <div
-                            key={getAttachmentId(file) || fileUrl || index}
-                            className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-3"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setPreviewAttachment(file)}
-                              className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0"
-                            >
-                              {fileUrl ? (
-                                isVideoFile(fileUrl) ? (
-                                  <div className="relative w-full h-full bg-black">
-                                    <video
-                                      src={fileUrl}
-                                      muted
-                                      playsInline
-                                      preload="metadata"
-                                      className="w-full h-full object-cover opacity-80"
-                                    />
-
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                      <div className="w-7 h-7 rounded-full bg-white/90 text-slate-900 flex items-center justify-center shadow-sm">
-                                        <Lucide.Play size={14} fill="currentColor" />
-                                      </div>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <img
-                                    src={fileUrl}
-                                    alt={getAttachmentName(file, index)}
-                                    className="w-full h-full object-cover"
-                                  />
-                                )
-                              ) : (
-                                <Lucide.File size={20} className="text-slate-400" />
-                              )}
-                            </button>
-
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-bold text-slate-700 truncate">
-                                {getAttachmentName(file, index)}
-                              </p>
-                              {fileUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewAttachment(file)}
-                                  className="text-[10px] text-[color:var(--brand-primary)] font-bold hover:underline"
-                                >
-                                  Xem file
-                                </button>
-                              )}
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (editAttachments.length <= 1) {
-                                  setAttachmentWarning('Phản ánh phải có ít nhất một hình ảnh hoặc video minh chứng.');
-                                  setAttachmentDeleteTarget(null);
-                                  return;
-                                }
-
-                                setAttachmentDeleteTarget(file);
-                              }}
-                              disabled={attachmentLoading}
-                              className="btn btn-ghost btn-circle btn-xs text-red-500 hover:bg-red-50"
-                              title="Xóa file"
-                            >
-                              <Lucide.Trash2 size={15} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*,video/*"
-                      onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-                      className="file-input file-input-bordered rounded-2xl flex-1 text-sm"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={handleUploadAttachments}
-                      disabled={attachmentLoading || selectedFiles.length === 0}
-                      className="btn btn-outline rounded-2xl font-bold"
-                    >
-                      {attachmentLoading ? (
-                        <span className="loading loading-spinner loading-sm"></span>
-                      ) : (
-                        <>
-                          <Lucide.Upload size={16} />
-                          Thêm file
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {selectedFiles.length > 0 && (
-                    <p className="text-[10px] text-slate-500 font-semibold">
-                      Đã chọn {selectedFiles.length} file.
-                    </p>
-                  )}
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditTarget(null)}
-                    disabled={editLoading}
-                    className="btn btn-ghost rounded-xl font-bold"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={editLoading}
-                    className="btn bg-amber-500 hover:bg-amber-600 text-white border-none rounded-xl font-bold"
-                  >
-                    {editLoading ? (
-                      <span className="loading loading-spinner loading-sm"></span>
-                    ) : (
-                      <>
-                        <Lucide.Save size={16} />
-                        Lưu thay đổi
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Attachment Delete Modal */}
-      {attachmentDeleteTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-5">
-            <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center shrink-0">
-                <Lucide.Trash2 size={22} />
-              </div>
-
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-slate-900">
-                  Xóa tệp đính kèm?
-                </h3>
-
-                <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                  Bạn có chắc muốn xóa file{' '}
-                  <span className="font-bold text-slate-800">
-                    {getAttachmentName(attachmentDeleteTarget, 0)}
-                  </span>
-                  ? Hành động này không thể hoàn tác.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setAttachmentDeleteTarget(null)}
-                disabled={attachmentLoading}
-                className="btn btn-ghost rounded-xl font-bold"
-              >
-                Hủy
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDeleteAttachment}
-                disabled={attachmentLoading}
-                className="btn bg-red-500 hover:bg-red-600 text-white border-none rounded-xl font-bold"
-              >
-                {attachmentLoading ? (
-                  <span className="loading loading-spinner loading-sm"></span>
-                ) : (
-                  <>
-                    <Lucide.Trash2 size={16} />
-                    Xóa file
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Warning Modal */}
-      {attachmentWarning && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-5">
-            <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
-                <Lucide.AlertTriangle size={22} />
-              </div>
-
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-slate-900">
-                  Không thể xóa file cuối cùng
-                </h3>
-
-                <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                  {attachmentWarning}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setAttachmentWarning('')}
-                className="btn bg-[color:var(--brand-primary)] hover:bg-[color:var(--brand-primary-dark)] text-white border-none rounded-xl font-bold"
-              >
-                Đã hiểu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Preview Modal */}
-      {previewAttachment && (() => {
-        const previewUrl = getAttachmentUrl(previewAttachment);
-        const isVideo = isVideoFile(previewUrl);
-
-        return (
-          <div
-            className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center px-4 py-6"
-            onClick={() => setPreviewAttachment(null)}
-          >
-            <div
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200">
-                <div className="min-w-0">
-                  <h3 className="font-black text-sm text-slate-900 truncate">
-                    {isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm'}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-semibold">
-                    Xem trực tiếp trong trang
-                  </p>
-                </div>
-
+        {hasActiveFilters ? (
+          <footer className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            {status ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 px-3 py-1.5 text-xs font-semibold text-primary">
+                <Lucide.Filter size={13} aria-hidden="true" />
+                Đang lọc: {
+                  STATUS_OPTIONS.find(
+                    (option) => String(option.value) === String(status)
+                  )?.label || 'Trạng thái đã chọn'
+                }
                 <button
                   type="button"
-                  onClick={() => setPreviewAttachment(null)}
-                  className="btn btn-sm btn-ghost btn-circle"
+                  onClick={() => updateStatus(STATUS_FILTER_VALUES.ALL)}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full transition hover:bg-primary/10"
+                  aria-label="Xóa bộ lọc trạng thái"
                 >
-                  <Lucide.X size={18} />
+                  <Lucide.X size={12} aria-hidden="true" />
                 </button>
-              </div>
+              </span>
+            ) : (
+              <span />
+            )}
 
-              <div className="bg-black flex items-center justify-center max-h-[75vh]">
-                {isVideo ? (
-                  <video
-                    src={previewUrl}
-                    controls
-                    autoPlay
-                    className="w-full max-h-[75vh] object-contain"
-                  />
-                ) : (
-                  <img
-                    src={previewUrl}
-                    alt="Attachment preview"
-                    className="w-full max-h-[75vh] object-contain"
-                  />
-                )}
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:underline"
+            >
+              <Lucide.RotateCcw size={13} aria-hidden="true" />
+              Xóa bộ lọc
+            </button>
+          </footer>
+        ) : null}
+      </section>
+
+      {error ? (
+        <aside aria-live="assertive">
+          <ErrorAlert title="Không thể tải dữ liệu" message={error} onClose={() => setError('')} />
+        </aside>
+      ) : null}
+
+      <section className="rounded-[26px] border border-base-300 bg-base-100 shadow-sm" aria-labelledby="ticket-list-title" aria-busy={loading}>
+        <header className="flex items-center justify-between gap-4 border-b border-base-300 px-5 py-4 sm:px-6">
+          <div>
+            <h2 id="ticket-list-title" className="text-lg font-semibold">
+              Danh sách phản ánh
+            </h2>
+            <p className="mt-1 text-xs text-base-content/50">
+              {totalItems} phản ánh phù hợp với bộ lọc hiện tại.
+            </p>
           </div>
-        );
-      })()}
-    </div>
+        </header>
+
+        {loading ? (
+          <div className="flex min-h-72 items-center justify-center">
+            <span className="loading loading-spinner loading-md text-primary" />
+          </div>
+        ) : paginatedTickets.length === 0 ? (
+          <section className="flex min-h-72 flex-col items-center justify-center px-6 py-10 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-base-200 text-base-content/40" aria-hidden="true">
+              <Lucide.SearchX size={24} />
+            </span>
+            <h3 className="mt-4 text-base font-semibold">Không có phản ánh phù hợp</h3>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-base-content/50">
+              Hãy thay đổi từ khóa hoặc bộ lọc để mở rộng kết quả.
+            </p>
+            {hasActiveFilters ? (
+              <button type="button" onClick={clearFilters} className="btn admin-secondary-action mt-5 rounded-2xl">
+                Xóa bộ lọc
+              </button>
+            ) : null}
+          </section>
+        ) : (
+          <ol className="divide-y divide-base-300">
+            {paginatedTickets.map((ticket) => {
+              const feedbackId = ticket.feedbackId || ticket.id;
+              const statusMeta = getCitizenStatusMeta(ticket.status);
+              const StatusIcon = statusMeta.icon;
+              const updatedAt = ticket.updatedAt || ticket.createdAt;
+
+              return (
+                <li key={feedbackId}>
+                  <article
+                    id={`ticket-row-${feedbackId}`}
+                    className={`grid gap-4 px-5 py-4 transition-all sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center ${
+                      highlightedTicketId === feedbackId
+                        ? 'bg-primary/8 ring-2 ring-inset ring-primary/20'
+                        : 'hover:bg-base-200/35'
+                    }`}
+                  >
+                    <section className="flex min-w-0 items-start gap-3.5">
+                      <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${statusMeta.className}`} aria-hidden="true">
+                        <StatusIcon size={17} />
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <Link
+                          to={`/tickets/${feedbackId}`}
+                          state={{
+                            from: `${location.pathname}${location.search}`,
+                            ticketId: feedbackId,
+                          }}
+                          onClick={() => saveReturnContext(feedbackId)}
+                          className="block truncate text-base font-semibold leading-6 text-base-content transition-colors hover:text-primary"
+                        >
+                          {ticket.title || 'Phản ánh chưa có tiêu đề'}
+                        </Link>
+
+                        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/45">
+                          <span className="inline-flex min-w-0 items-center gap-1.5">
+                            <Lucide.MapPin size={13} className="shrink-0" aria-hidden="true" />
+                            <span className="max-w-md truncate">
+                              {ticket.areaName || 'Chưa xác định khu vực'}
+                            </span>
+                          </span>
+
+                          <time className="inline-flex items-center gap-1.5" dateTime={ticket.createdAt || undefined}>
+                            <Lucide.CalendarDays size={13} aria-hidden="true" />
+                            Gửi {formatDate(ticket.createdAt)}
+                          </time>
+
+                          <time className="inline-flex items-center gap-1.5" dateTime={updatedAt || undefined}>
+                            <Lucide.Clock3 size={13} aria-hidden="true" />
+                            Cập nhật {formatDate(updatedAt)}
+                          </time>
+                        </div>
+                      </div>
+                    </section>
+
+                    <aside
+                      className="grid w-full grid-cols-[minmax(0,1fr)_132px] items-center gap-3 pl-[54px] lg:w-[340px] lg:grid-cols-[184px_144px] lg:pl-0"
+                      aria-label="Trạng thái và thao tác"
+                    >
+                      <span
+                        className={`inline-flex w-fit items-center gap-1.5 justify-self-start rounded-full border px-3 py-1.5 text-xs font-semibold ${statusMeta.className}`}
+                      >
+                        <StatusIcon size={13} aria-hidden="true" />
+                        {statusMeta.label}
+                      </span>
+
+                      <Link
+                        to={`/tickets/${feedbackId}`}
+                        state={{
+                          from: `${location.pathname}${location.search}`,
+                          ticketId: feedbackId,
+                        }}
+                        onClick={() => saveReturnContext(feedbackId)}
+                        className="btn btn-sm admin-primary-action w-full justify-center rounded-xl"
+                      >
+                        Xem chi tiết
+                        <Lucide.ArrowRight size={14} aria-hidden="true" />
+                      </Link>
+                    </aside>
+                  </article>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        {!loading && totalItems > 0 ? (
+          <footer className="flex flex-col gap-3 border-t border-base-300 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <p className="text-xs text-base-content/45">
+              Hiển thị <strong className="text-base-content">{startIndex + 1}–{endIndex}</strong> trong tổng số <strong className="text-base-content">{totalItems}</strong> phản ánh
+            </p>
+
+            <nav className="flex items-center gap-2" aria-label="Phân trang danh sách phản ánh">
+              <button
+                type="button"
+                className="btn btn-sm admin-secondary-action rounded-xl"
+                disabled={safeCurrentPage <= 1}
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              >
+                <Lucide.ChevronLeft size={15} aria-hidden="true" />
+                Trước
+              </button>
+
+              <span className="inline-flex h-8 min-w-16 items-center justify-center rounded-xl border border-base-300 bg-base-100 px-3 text-xs font-medium text-base-content/60">
+                {safeCurrentPage} / {totalPages}
+              </span>
+
+              <button
+                type="button"
+                className="btn btn-sm admin-secondary-action rounded-xl"
+                disabled={safeCurrentPage >= totalPages}
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              >
+                Sau
+                <Lucide.ChevronRight size={15} aria-hidden="true" />
+              </button>
+            </nav>
+          </footer>
+        ) : null}
+      </section>
+    </main>
   );
 };

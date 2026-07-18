@@ -1,13 +1,35 @@
 // src/contexts/AuthContext.jsx
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 import { authApi } from '../services/api/authApi';
 import { tokenStorage } from '../services/storage/tokenStorage';
 import { getInternalRole } from '../utils/roleMap';
-import { setUnauthorizedHandler } from '@urbanmind/shared-api';
+import {
+  refreshAuthSession,
+  setUnauthorizedHandler,
+} from '@urbanmind/shared-api';
+import { SessionExpiredDialog } from '../components/auth/SessionExpiredDialog';
 
 const AuthContext = createContext(null);
+const REFRESH_EARLY_MS = 60 * 1000;
 
 const normalizeRole = (role) => getInternalRole(role);
+
+const shouldExpireSession = (error) => {
+  const status = error?.status ?? error?.response?.status;
+  return (
+    error?.code === 'REFRESH_TOKEN_MISSING' ||
+    error?.code === 'INVALID_REFRESH_RESPONSE' ||
+    status === 400 ||
+    status === 401 ||
+    status === 403
+  );
+};
 
 const getJwtExpiresAt = (token) => {
   if (!token || typeof token !== 'string' || typeof atob !== 'function') return null;
@@ -25,62 +47,128 @@ const getJwtExpiresAt = (token) => {
   }
 };
 
-const initializeUser = () => {
+const initializeSession = () => {
   const savedUser = tokenStorage.getUser();
-  const token = tokenStorage.getToken();
+  const accessToken = tokenStorage.getToken();
+  const refreshToken = tokenStorage.getRefreshToken();
 
-  if (!savedUser || !token) {
+  if (!savedUser) {
     tokenStorage.clear();
-    return null;
+    return { user: null, needsRefresh: false };
   }
 
-  const expiresAt = getJwtExpiresAt(token);
-  if (expiresAt && expiresAt <= Date.now()) {
-    tokenStorage.clear();
-    return null;
-  }
-
-  return {
+  const normalizedUser = {
     ...savedUser,
     role: normalizeRole(savedUser.role),
+  };
+
+  const expiresAt = getJwtExpiresAt(accessToken);
+  const accessTokenExpired = !accessToken || (expiresAt && expiresAt <= Date.now());
+
+  return {
+    user: normalizedUser,
+    needsRefresh: Boolean(accessTokenExpired || (!accessToken && refreshToken)),
   };
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(initializeUser);
-  const [loading, setLoading] = useState(false);
+  const [initialSession] = useState(initializeSession);
+  const [user, setUser] = useState(initialSession.user);
+  const [loading, setLoading] = useState(initialSession.needsRefresh);
+  const [tokenRevision, setTokenRevision] = useState(0);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [sessionRedirect, setSessionRedirect] = useState('/dashboard');
 
-  const expireSession = useCallback(() => {
-    tokenStorage.clear();
-    setUser(null);
+  const showSessionExpired = useCallback(() => {
+    tokenStorage.removeToken();
+    tokenStorage.removeRefreshToken();
+    setLoading(false);
 
-    if (typeof window === 'undefined' || window.location.pathname.startsWith('/login')) {
+    if (typeof window === 'undefined') return;
+
+    const savedUser = user || tokenStorage.getUser();
+    if (!savedUser || window.location.pathname.startsWith('/login')) {
+      tokenStorage.clear();
+      setUser(null);
       return;
     }
 
     const redirect = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    setSessionRedirect(redirect || '/dashboard');
+    setSessionExpired(true);
+  }, [user]);
+
+  const handleLoginAgain = useCallback(() => {
+    tokenStorage.clear();
+    setSessionExpired(false);
+
+    if (typeof window === 'undefined') return;
+
     const params = new URLSearchParams({
       reason: 'session-expired',
-      redirect,
+      redirect: sessionRedirect || '/dashboard',
     });
     window.location.replace(`/login?${params.toString()}`);
-  }, []);
+  }, [sessionRedirect]);
 
   useEffect(() => {
-    setUnauthorizedHandler(expireSession);
+    setUnauthorizedHandler(showSessionExpired);
     return () => setUnauthorizedHandler(null);
-  }, [expireSession]);
+  }, [showSessionExpired]);
 
   useEffect(() => {
-    if (!user || typeof window === 'undefined') return undefined;
+    if (!initialSession.needsRefresh || !initialSession.user) return undefined;
+
+    let active = true;
+
+    const restoreSession = async () => {
+      try {
+        await refreshAuthSession();
+        if (!active) return;
+        setTokenRevision((current) => current + 1);
+        setLoading(false);
+      } catch (error) {
+        if (!active) return;
+
+        setLoading(false);
+        if (shouldExpireSession(error)) {
+          showSessionExpired();
+        }
+      }
+    };
+
+    restoreSession();
+
+    return () => {
+      active = false;
+    };
+  }, [initialSession, showSessionExpired]);
+
+  useEffect(() => {
+    if (!user || sessionExpired || typeof window === 'undefined') return undefined;
 
     const expiresAt = getJwtExpiresAt(tokenStorage.getToken());
     if (!expiresAt) return undefined;
 
-    const delay = Math.max(expiresAt - Date.now(), 0);
-    const timer = window.setTimeout(expireSession, delay);
+    const delay = Math.max(expiresAt - Date.now() - REFRESH_EARLY_MS, 0);
+    const timer = window.setTimeout(async () => {
+      try {
+        await refreshAuthSession();
+        setTokenRevision((current) => current + 1);
+      } catch (error) {
+        if (shouldExpireSession(error)) {
+          showSessionExpired();
+          return;
+        }
+
+        window.setTimeout(() => {
+          setTokenRevision((current) => current + 1);
+        }, 15000);
+      }
+    }, delay);
+
     return () => window.clearTimeout(timer);
-  }, [expireSession, user]);
+  }, [sessionExpired, showSessionExpired, tokenRevision, user]);
 
   const login = async (email, password) => {
     setLoading(true);
@@ -90,6 +178,8 @@ export const AuthProvider = ({ children }) => {
         ...res.user,
         role: normalizeRole(res.user.role),
       };
+      setSessionExpired(false);
+      setTokenRevision((current) => current + 1);
       setUser(updatedUser);
       return updatedUser;
     } finally {
@@ -105,6 +195,8 @@ export const AuthProvider = ({ children }) => {
         ...res.user,
         role: normalizeRole(res.user.role),
       };
+      setSessionExpired(false);
+      setTokenRevision((current) => current + 1);
       setUser(updatedUser);
       return updatedUser;
     } finally {
@@ -118,6 +210,7 @@ export const AuthProvider = ({ children }) => {
       const result = await authApi.verifyOTP(otp);
       const updatedUser = result?.user || tokenStorage.getUser();
       if (updatedUser) {
+        setTokenRevision((current) => current + 1);
         setUser({
           ...updatedUser,
           role: normalizeRole(updatedUser.role),
@@ -137,6 +230,8 @@ export const AuthProvider = ({ children }) => {
         ...res.user,
         role: normalizeRole(res.user.role),
       };
+      setSessionExpired(false);
+      setTokenRevision((current) => current + 1);
       setUser(updatedUser);
       return updatedUser;
     } catch (err) {
@@ -158,6 +253,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     setLoading(true);
+    setSessionExpired(false);
     setUser(null);
     try {
       await authApi.logout();
@@ -177,10 +273,18 @@ export const AuthProvider = ({ children }) => {
     googleLogin,
     sendOtp,
     logout,
-    isAuthenticated: !!user,
+    isAuthenticated: Boolean(user),
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <SessionExpiredDialog
+        open={sessionExpired}
+        onLoginAgain={handleLoginAgain}
+      />
+    </AuthContext.Provider>
+  );
 };
 
 // eslint-disable-next-line react-refresh/only-export-components

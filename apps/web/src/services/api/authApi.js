@@ -21,10 +21,21 @@ const extractToken = (response) => {
   );
 };
 
+const extractRefreshToken = (response) => {
+  const payload = response?.data ?? response;
+  return (
+    response?.refreshToken ||
+    payload?.refreshToken ||
+    payload?.data?.refreshToken ||
+    null
+  );
+};
+
 const saveUserSession = (response) => {
   const payload = response?.data ?? response;
   const userPayload = response?.user ?? response?.data?.user ?? payload;
   const token = extractToken(response);
+  const refreshToken = extractRefreshToken(response);
   const normalizedRole = normalizeRole(userPayload?.role);
 
   const sessionUser = {
@@ -35,13 +46,19 @@ const saveUserSession = (response) => {
     isVerified: userPayload?.isVerified === true || userPayload?.isVerified === 'true',
   };
 
-  if (token) {
-    tokenStorage.setToken(token);
+  if (token) tokenStorage.setToken(token);
+
+  if (refreshToken) {
+    tokenStorage.setRefreshToken(refreshToken);
+  } else {
+    tokenStorage.removeRefreshToken();
   }
 
   tokenStorage.setUser(sessionUser);
+
   return {
     token,
+    refreshToken,
     user: sessionUser,
   };
 };
@@ -73,10 +90,10 @@ export const authApi = {
     const existingUser = tokenStorage.getUser();
     const updatedUser = payload?.user ?? existingUser;
     const token = extractToken(response);
+    const refreshToken = extractRefreshToken(response);
 
-    if (token) {
-      tokenStorage.setToken(token);
-    }
+    if (token) tokenStorage.setToken(token);
+    if (refreshToken) tokenStorage.setRefreshToken(refreshToken);
 
     if (updatedUser) {
       updatedUser.role = getInternalRole(updatedUser.role);

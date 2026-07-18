@@ -1,132 +1,49 @@
 // src/components/layout/Footer.jsx
 import * as Lucide from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 export const Footer = () => {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-base-300 border-t border-base-300 text-base-content mt-auto">
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Footer Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-          {/* Brand Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary text-primary-content flex items-center justify-center">
-                <Lucide.MapPin size={20} />
-              </div>
-              <span className="font-bold text-lg">UrbanMind</span>
-            </div>
-            <p className="text-xs text-base-content/70">
-              Hệ thống quản lý feedback và phản ánh dịch vụ đô thị thông minh.
-            </p>
-          </div>
+    <footer className="mt-2 shrink-0 text-base-content">
+      <div className="w-full px-5 sm:px-6 lg:px-8 2xl:px-10">
+        <div className="flex min-h-[64px] flex-col justify-center gap-3 border-t border-base-300 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"
+              aria-hidden="true"
+            >
+              <Lucide.MapPinned size={15} />
+            </span>
 
-          {/* Quick Links */}
-          <div className="space-y-3">
-            <h4 className="font-bold text-sm uppercase tracking-wider text-base-content">Liên kết nhanh</h4>
-            <ul className="space-y-2 text-xs">
-              <li>
-                <Link to="/about" className="link link-hover text-base-content/70 hover:text-base-content">
-                  Về chúng tôi
-                </Link>
-              </li>
-              <li>
-                <Link to="/dashboard" className="link link-hover text-base-content/70 hover:text-base-content">
-                  Bảng điều khiển
-                </Link>
-              </li>
-              <li>
-                <a href="#faq" className="link link-hover text-base-content/70 hover:text-base-content">
-                  Câu hỏi thường gặp
-                </a>
-              </li>
-              <li>
-                <a href="#contact" className="link link-hover text-base-content/70 hover:text-base-content">
-                  Liên hệ hỗ trợ
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Features */}
-          <div className="space-y-3">
-            <h4 className="font-bold text-sm uppercase tracking-wider text-base-content">Tính năng</h4>
-            <ul className="space-y-2 text-xs">
-              <li>
-                <a href="#features" className="link link-hover text-base-content/70 hover:text-base-content">
-                  Quản lý phản ánh
-                </a>
-              </li>
-              <li>
-                <a href="#features" className="link link-hover text-base-content/70 hover:text-base-content">
-                  Phân tích dữ liệu
-                </a>
-              </li>
-              <li>
-                <a href="#features" className="link link-hover text-base-content/70 hover:text-base-content">
-                  AI Copilot
-                </a>
-              </li>
-              <li>
-                <a href="#features" className="link link-hover text-base-content/70 hover:text-base-content">
-                  Bản đồ tương tác
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Contact */}
-          <div className="space-y-3">
-            <h4 className="font-bold text-sm uppercase tracking-wider text-base-content">Liên hệ</h4>
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2 text-base-content/70">
-                <Lucide.Mail size={14} />
-                <a href="mailto:support@urbanmind.vn" className="link link-hover">
-                  support@urbanmind.vn
-                </a>
-              </div>
-              <div className="flex items-center gap-2 text-base-content/70">
-                <Lucide.Phone size={14} />
-                <a href="tel:+84123456789" className="link link-hover">
-                  +84 (0)123 456 789
-                </a>
-              </div>
-              <div className="flex gap-3 mt-3">
-                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="Facebook" aria-label="Facebook">
-                  <Lucide.Share2 size={16} aria-hidden="true" />
-                </a>
-                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="Twitter" aria-label="Twitter">
-                  <Lucide.Send size={16} aria-hidden="true" />
-                </a>
-                <a href="#" className="btn btn-ghost btn-xs btn-circle" title="LinkedIn" aria-label="LinkedIn">
-                  <Lucide.Briefcase size={16} aria-hidden="true" />
-                </a>
-              </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-base-content">
+                UrbanMind
+              </p>
+              <p className="mt-0.5 truncate text-xs text-base-content/50">
+                © {currentYear} Cổng phản ánh đô thị
+              </p>
             </div>
           </div>
-        </div>
 
-        {/* Divider */}
-        <div className="divider my-6"></div>
-
-        {/* Bottom Bar */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-base-content/60">
-          <div className="flex gap-4">
-            <a href="#privacy" className="link link-hover">
+          <nav
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-base-content/50"
+            aria-label="Thông tin pháp lý và hỗ trợ"
+          >
+            <a href="#privacy" className="transition-colors hover:text-primary">
               Chính sách riêng tư
             </a>
-            <a href="#terms" className="link link-hover">
-              Điều khoản dịch vụ
+            <a href="#terms" className="transition-colors hover:text-primary">
+              Điều khoản sử dụng
             </a>
-            <a href="#cookies" className="link link-hover">
-              Quản lý cookies
+            <a
+              href="mailto:support@urbanmind.vn"
+              className="inline-flex items-center gap-1.5 transition-colors hover:text-primary"
+            >
+              <Lucide.LifeBuoy size={13} aria-hidden="true" />
+              Hỗ trợ
             </a>
-          </div>
-          <div className="text-center md:text-right">
-            <p>© {currentYear} UrbanMind. Bản quyền được bảo lưu.</p>
-          </div>
+          </nav>
         </div>
       </div>
     </footer>
