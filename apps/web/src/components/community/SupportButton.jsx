@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import * as Lucide from 'lucide-react';
-import { signalrService } from '../../services/socket/signalrService';
 
 export default function SupportButton({
   feedbackId,
@@ -14,47 +13,88 @@ export default function SupportButton({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    setCount(Number(initialCount) || 0);
+  }, [initialCount]);
+
+  useEffect(() => {
     setIsSupported(Boolean(initialSupported));
-    setCount(initialCount || 0);
-  }, [initialCount, initialSupported]);
+  }, [feedbackId, initialSupported]);
 
   const toggle = async (event) => {
     event?.stopPropagation();
     if (loading) return;
 
-    const nextSupported = !isSupported;
-    const nextCount = Math.max(0, count + (nextSupported ? 1 : -1));
+    const previousSupported = isSupported;
+    const previousCount = count;
+    const nextSupported = !previousSupported;
+    const optimisticCount = Math.max(
+      0,
+      previousCount + (nextSupported ? 1 : -1)
+    );
 
     setIsSupported(nextSupported);
-    setCount(nextCount);
+    setCount(optimisticCount);
     setLoading(true);
 
     try {
-      const base = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
+      const base = (
+        import.meta.env.VITE_API_URL ||
+        import.meta.env.VITE_API_BASE_URL ||
+        ''
+      );
       const prefix = base ? base.replace(/\/$/, '') : '';
       const url = `${prefix}/api/user/feedbacks/${feedbackId}/support`;
       const token = typeof localStorage !== 'undefined'
-        ? localStorage.getItem('urbanmind_auth_token') || localStorage.getItem('token')
+        ? (
+          localStorage.getItem('urbanmind_auth_token') ||
+          localStorage.getItem('token')
+        )
         : null;
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const headers = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+
       const response = await fetch(url, {
         method: nextSupported ? 'POST' : 'DELETE',
         credentials: 'include',
         headers,
       });
 
-      if (!response.ok) throw new Error('Không thể cập nhật lượt quan tâm.');
-
-      onChange?.({ isSupported: nextSupported, count: nextCount });
-
-      try {
-        signalrService.notifySupportAdded(feedbackId, nextCount, null);
-      } catch {
-        // Không làm gián đoạn thao tác nếu realtime chưa sẵn sàng.
+      if (!response.ok) {
+        throw new Error('Không thể cập nhật lượt quan tâm.');
       }
+
+      const responsePayload = await response.json().catch(() => null);
+      const responseData = responsePayload?.data || responsePayload || {};
+
+      const serverSupported = [
+        responseData?.isSupportedByCurrentUser,
+        responseData?.isSupported,
+        responseData?.supported,
+      ].find((value) => typeof value === 'boolean');
+
+      const serverCount = [
+        responseData?.supportCount,
+        responseData?.supports,
+        responseData?.count,
+      ].find((value) => Number.isFinite(Number(value)));
+
+      const resolvedSupported = typeof serverSupported === 'boolean'
+        ? serverSupported
+        : nextSupported;
+      const resolvedCount = serverCount !== undefined
+        ? Math.max(0, Number(serverCount))
+        : optimisticCount;
+
+      setIsSupported(resolvedSupported);
+      setCount(resolvedCount);
+      onChange?.({
+        isSupported: resolvedSupported,
+        count: resolvedCount,
+      });
     } catch (error) {
-      setIsSupported(!nextSupported);
-      setCount(count);
+      setIsSupported(previousSupported);
+      setCount(previousCount);
       console.error('Support toggle failed', error);
     } finally {
       setLoading(false);

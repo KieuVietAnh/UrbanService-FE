@@ -10,6 +10,27 @@ import { signalrService } from '../../services/socket/signalrService';
 import CommunityFeedItem from './CommunityFeedItem';
 import CommentDrawer from './CommentDrawer';
 
+const COMMUNITY_RETURN_STORAGE_KEY = 'urbanmind-community-feed-return';
+
+const readCommunityReturnContext = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawContext = window.sessionStorage.getItem(
+      COMMUNITY_RETURN_STORAGE_KEY
+    );
+    if (!rawContext) return null;
+
+    const parsedContext = JSON.parse(rawContext);
+    return parsedContext && typeof parsedContext === 'object'
+      ? parsedContext
+      : null;
+  } catch (error) {
+    console.warn('Không thể đọc vị trí quay lại bảng tin', error);
+    return null;
+  }
+};
+
 const TAB_OPTIONS = [
   { value: 'Latest', label: 'Mới nhất', icon: Lucide.Clock3 },
   { value: 'Trending', label: 'Được quan tâm', icon: Lucide.Flame },
@@ -112,12 +133,19 @@ const FeedSkeleton = () => (
 
 export default function CommunityFeed({ initialTab = 'Latest' }) {
   const navigate = useNavigate();
+  const [restoredContext] = useState(readCommunityReturnContext);
+  const restoreContextRef = useRef(restoredContext);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => (
+    Math.max(1, Number(restoredContext?.page) || 1)
+  ));
   const [hasMore, setHasMore] = useState(true);
-  const [tab, setTab] = useState(initialTab);
-  const [query, setQuery] = useState('');
+  const [tab, setTab] = useState(
+    restoredContext?.tab || initialTab
+  );
+  const [query, setQuery] = useState(restoredContext?.query || '');
+  const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(null);
   const [error, setError] = useState('');
   const [openCommentsFor, setOpenCommentsFor] = useState(null);
   const isFetchingRef = useRef(false);
@@ -217,10 +245,33 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
   }, [tab]);
 
   useEffect(() => {
-    setItems([]);
-    setPage(1);
-    setHasMore(true);
-    loadPage(1);
+    let cancelled = false;
+
+    const loadInitialFeed = async () => {
+      const savedContext = restoreContextRef.current;
+      const shouldRestore = (
+        savedContext &&
+        savedContext.tab === tab
+      );
+      const targetPage = shouldRestore
+        ? Math.max(1, Number(savedContext.page) || 1)
+        : 1;
+
+      setItems([]);
+      setHasMore(true);
+      setPage(targetPage);
+
+      for (let pageNumber = 1; pageNumber <= targetPage; pageNumber += 1) {
+        if (cancelled) return;
+        await loadPage(pageNumber);
+      }
+    };
+
+    loadInitialFeed();
+
+    return () => {
+      cancelled = true;
+    };
   }, [tab, loadPage]);
 
   useEffect(() => {
@@ -303,6 +354,65 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     };
   }, []);
 
+  useEffect(() => {
+    const savedContext = restoreContextRef.current;
+    if (!savedContext || loading || items.length === 0) return undefined;
+
+    let cancelled = false;
+    let retryCount = 0;
+
+    const restorePosition = () => {
+      if (cancelled) return;
+
+      const escapedFeedbackId = (
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(String(savedContext.feedbackId || ''))
+          : String(savedContext.feedbackId || '').replace(/["\\]/g, '\\$&')
+      );
+      const targetRow = escapedFeedbackId
+        ? document.querySelector(
+          `[data-community-feedback-id="${escapedFeedbackId}"]`
+        )
+        : null;
+
+      if (targetRow) {
+        targetRow.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+        setHighlightedFeedbackId(String(savedContext.feedbackId));
+
+        window.setTimeout(() => {
+          setHighlightedFeedbackId(null);
+        }, 2200);
+
+        window.sessionStorage.removeItem(COMMUNITY_RETURN_STORAGE_KEY);
+        restoreContextRef.current = null;
+        return;
+      }
+
+      retryCount += 1;
+      if (retryCount < 8) {
+        window.setTimeout(restorePosition, 120);
+        return;
+      }
+
+      window.scrollTo({
+        top: Number(savedContext.scrollY) || 0,
+        behavior: 'smooth',
+      });
+      window.sessionStorage.removeItem(COMMUNITY_RETURN_STORAGE_KEY);
+      restoreContextRef.current = null;
+    };
+
+    const timer = window.setTimeout(restorePosition, 80);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [items, loading]);
+
   const normalizedQuery = query.trim().toLocaleLowerCase('vi-VN');
   const searchedItems = normalizedQuery
     ? items.filter((item) => {
@@ -361,6 +471,21 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
   const openDetail = (item) => {
     const feedbackId = getItemId(item);
     if (!feedbackId) return;
+
+    try {
+      window.sessionStorage.setItem(
+        COMMUNITY_RETURN_STORAGE_KEY,
+        JSON.stringify({
+          tab,
+          query,
+          page,
+          scrollY: window.scrollY,
+          feedbackId,
+        })
+      );
+    } catch (storageError) {
+      console.warn('Không thể lưu vị trí bảng tin', storageError);
+    }
 
     navigate(`/community/feed/${feedbackId}`, {
       state: { from: '/community/feed' },
@@ -464,6 +589,9 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
               <CommunityFeedItem
                 key={getItemId(item) || index}
                 item={item}
+                highlighted={
+                  String(getItemId(item)) === String(highlightedFeedbackId)
+                }
                 onOpenComments={setOpenCommentsFor}
                 onOpen={openDetail}
               />

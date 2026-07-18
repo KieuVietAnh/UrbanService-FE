@@ -155,7 +155,12 @@ const MediaTile = ({ attachment, itemTitle, index, onOpen, className = '' }) => 
   );
 };
 
-const CommunityFeedItem = ({ item, onOpenComments, onOpen }) => {
+const CommunityFeedItem = ({
+  item,
+  highlighted = false,
+  onOpenComments,
+  onOpen,
+}) => {
   const feedbackId = getItemId(item);
   const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
   const fallbackAttachment = (
@@ -192,7 +197,14 @@ const CommunityFeedItem = ({ item, onOpenComments, onOpen }) => {
   };
 
   return (
-    <article className="overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-[0_12px_32px_rgba(15,23,42,0.07)] transition duration-200 hover:border-primary/20 hover:shadow-[0_16px_38px_rgba(15,23,42,0.10)]">
+    <article
+      data-community-feedback-id={feedbackId}
+      className={`overflow-hidden rounded-[26px] border bg-base-100 shadow-[0_12px_32px_rgba(15,23,42,0.07)] transition duration-300 hover:border-primary/20 hover:shadow-[0_16px_38px_rgba(15,23,42,0.10)] ${
+        highlighted
+          ? 'border-primary/45 ring-2 ring-primary/20'
+          : 'border-base-300'
+      }`}
+    >
       <header className="flex items-start justify-between gap-4 px-5 pb-3 pt-5 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-content shadow-sm">
