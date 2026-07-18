@@ -204,6 +204,103 @@ const dedupeComments = (commentItems = []) => {
   return uniqueComments;
 };
 
+const TICKET_DETAIL_SNAPSHOT_PREFIX =
+  'urbanmind-service-user-ticket-detail:';
+
+const readTicketDetailSnapshot = (feedbackId) => {
+  if (
+    typeof window === 'undefined' ||
+    !feedbackId
+  ) {
+    return null;
+  }
+
+  try {
+    const rawSnapshot = window.sessionStorage.getItem(
+      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`
+    );
+    if (!rawSnapshot) return null;
+
+    const parsedSnapshot = JSON.parse(rawSnapshot);
+    return parsedSnapshot && typeof parsedSnapshot === 'object'
+      ? parsedSnapshot
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeTicketDetailSnapshot = (feedbackId, ticket) => {
+  if (
+    typeof window === 'undefined' ||
+    !feedbackId ||
+    !ticket
+  ) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`,
+      JSON.stringify(ticket)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+const TicketDetailSkeleton = () => (
+  <main
+    className="space-y-5 text-base-content"
+    aria-busy="true"
+    aria-label="Đang tải chi tiết phản ánh"
+  >
+    <span className="sr-only" role="status">
+      Đang tải chi tiết phản ánh
+    </span>
+
+    <section className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-sm">
+      <div className="grid animate-pulse gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div>
+          <div className="flex gap-2">
+            <div className="h-7 w-28 rounded-full bg-base-300/40" />
+            <div className="h-7 w-36 rounded-full bg-base-300/35" />
+          </div>
+          <div className="mt-5 h-8 w-72 max-w-[70%] rounded-lg bg-base-300/55" />
+          <div className="mt-4 flex gap-4">
+            <div className="h-3 w-36 rounded bg-base-300/30" />
+            <div className="h-3 w-32 rounded bg-base-300/30" />
+            <div className="h-3 w-36 rounded bg-base-300/30" />
+          </div>
+        </div>
+        <div className="h-36 rounded-[24px] border border-base-300 bg-base-200/45" />
+      </div>
+
+      <div className="grid grid-cols-3 divide-x divide-base-300 border-t border-base-300">
+        {[0, 1, 2].map((item) => (
+          <div key={item} className="animate-pulse px-5 py-4">
+            <div className="h-3 w-24 rounded bg-base-300/35" />
+            <div className="mt-2 h-5 w-32 rounded bg-base-300/50" />
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section className="rounded-[28px] border border-base-300 bg-base-100 p-6 shadow-sm">
+      <div className="animate-pulse">
+        <div className="h-6 w-40 rounded bg-base-300/55" />
+        <div className="mt-2 h-3 w-72 rounded bg-base-300/30" />
+        <div className="mt-7 h-20 rounded-2xl bg-base-200/55" />
+      </div>
+    </section>
+
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="h-72 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
+      <div className="h-72 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
+    </section>
+  </main>
+);
+
 const translateHistoryText = (value) => {
   const original = String(value || '').trim();
   if (!original) return 'Không có ghi chú.';
@@ -257,7 +354,10 @@ export const TicketDetailPage = () => {
     getAttachmentUrl,
   } = useTicketDetail(feedbackId, user);
 
-  const [ticket, setTicket] = useState(null);
+  const [cachedTicket] = useState(() => (
+    readTicketDetailSnapshot(feedbackId)
+  ));
+  const [ticket, setTicket] = useState(cachedTicket);
   const [updateNotice, setUpdateNotice] = useState('');
   const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState(null);
   const [previewSource, setPreviewSource] = useState('detail');
@@ -387,8 +487,14 @@ export const TicketDetailPage = () => {
   };
 
   useEffect(() => {
-    setTicket(fetchedTicket || null);
-  }, [fetchedTicket]);
+    if (!fetchedTicket) return;
+
+    setTicket(fetchedTicket);
+    writeTicketDetailSnapshot(
+      feedbackId,
+      fetchedTicket
+    );
+  }, [feedbackId, fetchedTicket]);
 
   useEffect(() => {
     selectedFilesRef.current = selectedFiles;
@@ -861,6 +967,10 @@ export const TicketDetailPage = () => {
 
       if (refreshedTicket && typeof refreshedTicket === 'object') {
         setTicket(refreshedTicket);
+        writeTicketDetailSnapshot(
+          feedbackId,
+          refreshedTicket
+        );
         setEditAttachments(
           Array.isArray(refreshedTicket.attachments)
             ? refreshedTicket.attachments
@@ -1090,12 +1200,8 @@ export const TicketDetailPage = () => {
     });
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[340px] items-center justify-center rounded-[28px] border border-base-300 bg-base-100 shadow-sm">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+  if (loading && !ticket) {
+    return <TicketDetailSkeleton />;
   }
 
   if (!ticket) {
@@ -1131,6 +1237,17 @@ export const TicketDetailPage = () => {
 
   return (
     <>
+      {loading && ticket ? (
+        <div
+          className="fixed right-5 top-24 z-40 inline-flex items-center gap-2 rounded-full border border-info/20 bg-base-100/95 px-3 py-2 text-xs font-semibold text-info shadow-lg backdrop-blur"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="loading loading-spinner loading-xs" />
+          Đang đồng bộ chi tiết
+        </div>
+      ) : null}
+
       {updateNotice && typeof document !== 'undefined'
         ? createPortal(
             <div

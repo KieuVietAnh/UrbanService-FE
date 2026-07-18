@@ -7,6 +7,38 @@ import { toolsApi } from '@urbanmind/shared-api';
 import { getStatusLabel, managementTypes } from '@urbanmind/shared-types';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 
+const TICKET_LIST_SNAPSHOT_STORAGE_KEY =
+  'urbanmind-service-user-ticket-list-snapshot';
+const TICKET_CATEGORY_SNAPSHOT_STORAGE_KEY =
+  'urbanmind-service-user-ticket-category-snapshot';
+
+const readSessionArray = (storageKey) => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const rawValue = window.sessionStorage.getItem(storageKey);
+    if (!rawValue) return [];
+
+    const parsedValue = JSON.parse(rawValue);
+    return Array.isArray(parsedValue) ? parsedValue : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeSessionArray = (storageKey, items) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify(items)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
 const STATUS_FILTER_VALUES = {
   ALL: '',
   PROCESSING: '__processing__',
@@ -250,12 +282,44 @@ const FilterDropdown = ({
   );
 };
 
+const TicketListSkeleton = () => (
+  <ol className="divide-y divide-base-300" aria-hidden="true">
+    {[0, 1, 2, 3].map((item) => (
+      <li key={item}>
+        <div className="grid animate-pulse gap-4 px-5 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="flex items-start gap-3.5">
+            <div className="h-10 w-10 shrink-0 rounded-2xl bg-base-300/45" />
+            <div className="min-w-0 flex-1">
+              <div className="h-4 w-56 max-w-[70%] rounded bg-base-300/55" />
+              <div className="mt-3 flex gap-4">
+                <div className="h-3 w-28 rounded bg-base-300/30" />
+                <div className="h-3 w-24 rounded bg-base-300/30" />
+                <div className="h-3 w-28 rounded bg-base-300/30" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 pl-[54px] lg:pl-0">
+            <div className="h-7 w-28 rounded-full bg-base-300/35" />
+            <div className="h-9 w-36 rounded-xl bg-base-300/40" />
+          </div>
+        </div>
+      </li>
+    ))}
+  </ol>
+);
+
 export const TicketListPage = () => {
   const pageRootRef = useRef(null);
   const filtersSectionRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tickets, setTickets] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [cachedTickets] = useState(() => (
+    readSessionArray(TICKET_LIST_SNAPSHOT_STORAGE_KEY)
+  ));
+  const [cachedCategories] = useState(() => (
+    readSessionArray(TICKET_CATEGORY_SNAPSHOT_STORAGE_KEY)
+  ));
+  const [tickets, setTickets] = useState(cachedTickets);
+  const [categories, setCategories] = useState(cachedCategories);
   const [search, setSearch] = useState(
     () => searchParams.get('search') || ''
   );
@@ -277,13 +341,25 @@ export const TicketListPage = () => {
       : 'newest';
   });
   const [openMenu, setOpenMenu] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    cachedTickets.length === 0
+  );
+  const [refreshing, setRefreshing] = useState(
+    cachedTickets.length > 0
+  );
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 6;
 
   const loadTickets = useCallback(async () => {
-    setLoading(true);
+    const hasCachedTickets = cachedTickets.length > 0;
+
+    if (hasCachedTickets) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError('');
 
     try {
@@ -291,15 +367,26 @@ export const TicketListPage = () => {
         { pageNumber: 1, pageSize: 100 },
         { role: 'service-user' }
       );
-      setTickets(Array.isArray(response) ? response : []);
+      const nextTickets = Array.isArray(response) ? response : [];
+
+      setTickets(nextTickets);
+      writeSessionArray(
+        TICKET_LIST_SNAPSHOT_STORAGE_KEY,
+        nextTickets
+      );
     } catch (err) {
       console.error('Không thể tải danh sách phản ánh', err);
-      setTickets([]);
+
+      if (!hasCachedTickets) {
+        setTickets([]);
+      }
+
       setError(err?.message || 'Không thể tải danh sách phản ánh.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [cachedTickets.length]);
 
   useEffect(() => {
     loadTickets();
@@ -338,7 +425,17 @@ export const TicketListPage = () => {
     const loadCategories = async () => {
       try {
         const response = await toolsApi.getCategories();
-        if (active) setCategories(Array.isArray(response) ? response : []);
+        const nextCategories = Array.isArray(response)
+          ? response
+          : [];
+
+        if (active) {
+          setCategories(nextCategories);
+          writeSessionArray(
+            TICKET_CATEGORY_SNAPSHOT_STORAGE_KEY,
+            nextCategories
+          );
+        }
       } catch (err) {
         console.warn('Không thể tải danh mục phản ánh', err);
       }
@@ -764,12 +861,20 @@ export const TicketListPage = () => {
               {totalItems} phản ánh phù hợp với bộ lọc hiện tại.
             </p>
           </div>
+
+          {refreshing ? (
+            <span
+              className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-info/8 px-3 py-1.5 text-xs font-semibold text-info"
+              role="status"
+            >
+              <span className="loading loading-spinner loading-xs" />
+              Đang đồng bộ
+            </span>
+          ) : null}
         </header>
 
         {loading ? (
-          <div className="flex min-h-72 items-center justify-center">
-            <span className="loading loading-spinner loading-md text-primary" />
-          </div>
+          <TicketListSkeleton />
         ) : paginatedTickets.length === 0 ? (
           <section className="flex min-h-72 flex-col items-center justify-center px-6 py-10 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-base-200 text-base-content/40" aria-hidden="true">
@@ -853,7 +958,7 @@ export const TicketListPage = () => {
           </ol>
         )}
 
-        {!loading && totalItems > 0 ? (
+        {totalItems > 0 ? (
           <footer className="flex flex-col gap-3 border-t border-base-300 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <p className="text-xs text-base-content/45">
               Hiển thị <strong className="text-base-content">{startIndex + 1}–{endIndex}</strong> trong tổng số <strong className="text-base-content">{totalItems}</strong> phản ánh

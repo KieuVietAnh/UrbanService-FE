@@ -14,6 +14,39 @@ import { ManagerMetricCard, ManagerPageHeader, ManagerSectionHeader } from '../.
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-tracked-area-id';
+const DASHBOARD_SNAPSHOT_STORAGE_KEY =
+  'urbanmind-service-user-dashboard-snapshot';
+
+const readDashboardSnapshot = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawSnapshot = window.sessionStorage.getItem(
+      DASHBOARD_SNAPSHOT_STORAGE_KEY
+    );
+    if (!rawSnapshot) return null;
+
+    const parsedSnapshot = JSON.parse(rawSnapshot);
+    return parsedSnapshot && typeof parsedSnapshot === 'object'
+      ? parsedSnapshot
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeDashboardSnapshot = (snapshot) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      DASHBOARD_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify(snapshot)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
 
 const normalizeTicketCollection = (response) => {
   if (Array.isArray(response)) return response;
@@ -226,14 +259,30 @@ export const Dashboard = () => {
   const currentRole = normalizeRole(user?.role);
   const navigate = useNavigate();
 
-  const [stats, setStats] = useState(SAFE_DASHBOARD_STATS);
-  const [tickets, setTickets] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [areas, setAreas] = useState([]);
+  const [cachedDashboard] = useState(readDashboardSnapshot);
+  const [stats, setStats] = useState(
+    () => cachedDashboard?.stats || SAFE_DASHBOARD_STATS
+  );
+  const [tickets, setTickets] = useState(
+    () => Array.isArray(cachedDashboard?.tickets)
+      ? cachedDashboard.tickets
+      : []
+  );
+  const [categories, setCategories] = useState(
+    () => Array.isArray(cachedDashboard?.categories)
+      ? cachedDashboard.categories
+      : []
+  );
+  const [areas, setAreas] = useState(
+    () => Array.isArray(cachedDashboard?.areas)
+      ? cachedDashboard.areas
+      : []
+  );
   const [selectedAreaId, setSelectedAreaId] = useState(
     readTrackedAreaId
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedDashboard);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchScopedTickets = useCallback(async () => {
     try {
@@ -273,7 +322,14 @@ export const Dashboard = () => {
     if (!user) return;
 
     const loadDashboardContent = async () => {
-      setLoading(true);
+      const hasCachedContent = Boolean(cachedDashboard);
+
+      if (hasCachedContent) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
       try {
         const [
           resStats,
@@ -286,35 +342,51 @@ export const Dashboard = () => {
             ? toolsApi.getAreas().catch(() => [])
             : Promise.resolve([]),
         ]);
-        setStats(normalizeDashboardStats(resStats));
-        setCategories(
-          Array.isArray(fetchedCategories)
-            ? fetchedCategories
-            : []
-        );
-        setAreas(
-          Array.isArray(fetchedAreas)
-            ? fetchedAreas
-            : []
-        );
-
+        const nextStats = normalizeDashboardStats(resStats);
+        const nextCategories = Array.isArray(fetchedCategories)
+          ? fetchedCategories
+          : [];
+        const nextAreas = Array.isArray(fetchedAreas)
+          ? fetchedAreas
+          : [];
         const resTickets = await fetchScopedTickets();
+        const nextTickets = normalizeTicketCollection(resTickets);
 
-        // dashboard data loaded
-        setTickets(normalizeTicketCollection(resTickets));
+        setStats(nextStats);
+        setCategories(nextCategories);
+        setAreas(nextAreas);
+        setTickets(nextTickets);
+
+        if (currentRole === APP_ROLES.SERVICE_USER) {
+          writeDashboardSnapshot({
+            stats: nextStats,
+            categories: nextCategories,
+            areas: nextAreas,
+            tickets: nextTickets,
+          });
+        }
       } catch (err) {
         console.error(err);
-        setStats(SAFE_DASHBOARD_STATS);
-        setCategories([]);
-        setAreas([]);
-        setTickets([]);
+
+        if (!hasCachedContent) {
+          setStats(SAFE_DASHBOARD_STATS);
+          setCategories([]);
+          setAreas([]);
+          setTickets([]);
+        }
       } finally {
         setLoading(false);
+        setRefreshing(false);
       }
     };
 
     loadDashboardContent();
-  }, [user, currentRole, fetchScopedTickets]);
+  }, [
+    user,
+    currentRole,
+    fetchScopedTickets,
+    cachedDashboard,
+  ]);
 
   // realtime updates: refresh dashboard when tickets change
   useEffect(() => {
@@ -719,7 +791,20 @@ export const Dashboard = () => {
     }
 
     return (
-      <main className="space-y-5 text-base-content">
+      <main
+        className="space-y-5 text-base-content"
+        aria-busy={refreshing}
+      >
+        {refreshing ? (
+          <div
+            className="fixed right-5 top-24 z-40 inline-flex items-center gap-2 rounded-full border border-info/20 bg-base-100/95 px-3 py-2 text-xs font-semibold text-info shadow-lg backdrop-blur"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="loading loading-spinner loading-xs" />
+            Đang đồng bộ trang chủ
+          </div>
+        ) : null}
         <section
           className="relative overflow-hidden rounded-[30px] border border-secondary/16 bg-gradient-to-br from-base-100 via-secondary/[0.035] to-primary/[0.08] shadow-[0_20px_54px_rgba(15,23,42,0.09)]"
           aria-labelledby="citizen-dashboard-title"
