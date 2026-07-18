@@ -130,77 +130,23 @@ function AutoFitBounds({ incidents, fitRequestKey }) {
   return null;
 }
 
-export const IncidentMap = ({
-  incidents,
-  fitRequestKey = 0,
-  activeFilter = 'all',
-}) => {
+export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const currentUserId = (
-    user?.userId ||
-    user?.id ||
-    user?.sub ||
-    ''
-  );
-  const currentUserEmail = String(user?.email || '')
-    .trim()
-    .toLocaleLowerCase('en-US');
+  const openFeedbackDetail = (ticket) => {
+    const currentUserId = user?.userId ?? user?.id;
+    const isOwnFeedback =
+      currentUserId != null &&
+      ticket?.reporterUserId != null &&
+      String(ticket.reporterUserId) === String(currentUserId);
 
-  const isOwnedByCurrentUser = (ticket) => {
-    const ownerId = ticket?.ownerId;
-    const ownerEmail = String(ticket?.ownerEmail || '')
-      .trim()
-      .toLocaleLowerCase('en-US');
-
-    if (
-      currentUserId &&
-      ownerId &&
-      String(currentUserId) === String(ownerId)
-    ) {
-      return true;
-    }
-
-    return Boolean(
-      currentUserEmail &&
-      ownerEmail &&
-      currentUserEmail === ownerEmail
+    navigate(
+      isOwnFeedback
+        ? `/tickets/${ticket.feedbackId}`
+        : `/community/feed/${ticket.feedbackId}`,
+      { state: { from: '/community/map' } }
     );
-  };
-
-  const openIncidentDetail = (ticket) => {
-    const feedbackId = ticket?.feedbackId;
-    if (!feedbackId) return;
-
-    const ownFeedback = isOwnedByCurrentUser(ticket);
-    const destination = ownFeedback
-      ? `/tickets/${feedbackId}`
-      : `/community/feed/${feedbackId}`;
-
-    const mapState = {
-      activeFilter,
-      scrollY: window.scrollY,
-    };
-
-    try {
-      window.sessionStorage.setItem(
-        'urbanmind-community-map-view-state',
-        JSON.stringify(mapState)
-      );
-    } catch {
-      // Storage can be unavailable in private mode.
-    }
-
-    navigate(destination, {
-      state: {
-        from: '/community/map',
-        returnLabel: 'Quay lại bản đồ sự cố',
-        source: 'community-map',
-        ticketId: feedbackId,
-        mapState,
-      },
-    });
   };
 
   const markers = useMemo(() => {
@@ -297,7 +243,7 @@ export const IncidentMap = ({
                     <button
                       key={ticket.feedbackId}
                       type="button"
-                      onClick={() => openIncidentDetail(ticket)}
+                      onClick={() => openFeedbackDetail(ticket)}
                       className="w-full text-left rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-primary hover:bg-slate-50"
                     >
                       <div className="truncate font-bold">{ticket.title}</div>
@@ -307,9 +253,6 @@ export const IncidentMap = ({
                         {translateStatus(ticket.status)}
                         {' · '}
                         {translatePriority(ticket.priority)}
-                      </div>
-                      <div className="mt-1.5 text-[10px] font-semibold text-primary">
-                        Xem chi tiết phản ánh →
                       </div>
                     </button>
                   ))}

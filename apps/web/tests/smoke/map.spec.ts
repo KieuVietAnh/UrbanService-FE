@@ -23,6 +23,33 @@ test.describe('Map view', () => {
       }
     });
 
+
+    await page.route('**/api/user/feedbacks**', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              feedbackId: 'feedback-map-smoke-1',
+              userId: 1,
+              title: 'Phản ánh kiểm thử bản đồ',
+              categoryName: 'Street Lighting',
+              status: 'Verified',
+              priority: 'Medium',
+              latitude: 10.77653,
+              longitude: 106.700981,
+            },
+          ],
+        }),
+      });
+    });
+
     await page.goto('/login', { waitUntil: 'domcontentloaded' });
     const loginPage = new LoginPage(page);
     await loginPage.login(validEmail, validPassword);
@@ -34,22 +61,9 @@ test.describe('Map view', () => {
     const mapPage = new MapPage(page);
     await mapPage.expectMapLoaded();
 
-    const markerCount = await mapPage.markerLayer.count();
-
-    if (markerCount === 0) {
-      await expect(mapPage.emptyStateCard).toBeVisible({
-        timeout: 30000,
-      });
-      return;
-    }
-
-    expect(markerCount).toBeGreaterThan(0);
-
+    await expect(mapPage.markerLayer.first()).toBeVisible({ timeout: 10000 });
+    // click first marker and ensure popup appears
     await mapPage.clickFirstMarker();
-    await expect(
-      page.locator('.leaflet-popup-content')
-    ).toBeVisible({
-      timeout: 10000,
-    });
+    await expect(page.locator('.leaflet-popup-content')).toBeVisible();
   });
 });

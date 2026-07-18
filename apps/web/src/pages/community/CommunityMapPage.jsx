@@ -1,6 +1,5 @@
 // src/pages/community/CommunityMapPage.jsx
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { IncidentMap } from '../../components/maps/IncidentMap';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
@@ -10,45 +9,6 @@ const MAP_FILTERS = {
   PROCESSING: 'processing',
   ENDED: 'ended',
   COORDINATES: 'coordinates',
-};
-
-const COMMUNITY_MAP_STATE_STORAGE_KEY =
-  'urbanmind-community-map-view-state';
-
-const isValidMapFilter = (value) => (
-  Object.values(MAP_FILTERS).includes(value)
-);
-
-const readStoredMapState = () => {
-  if (typeof window === 'undefined') return null;
-
-  try {
-    const rawState = window.sessionStorage.getItem(
-      COMMUNITY_MAP_STATE_STORAGE_KEY
-    );
-
-    if (!rawState) return null;
-
-    const parsedState = JSON.parse(rawState);
-    return parsedState && typeof parsedState === 'object'
-      ? parsedState
-      : null;
-  } catch {
-    return null;
-  }
-};
-
-const writeStoredMapState = (mapState) => {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.sessionStorage.setItem(
-      COMMUNITY_MAP_STATE_STORAGE_KEY,
-      JSON.stringify(mapState)
-    );
-  } catch {
-    // Storage can be unavailable in private mode.
-  }
 };
 
 const PROCESSING_STATUSES = new Set([
@@ -128,7 +88,6 @@ const MapMetricSkeleton = ({ tone = 'base' }) => {
 
 const MapCanvasSkeleton = () => (
   <div
-    data-testid="community-map-loading"
     className="relative h-[560px] overflow-hidden rounded-[24px] bg-base-200/65"
     aria-hidden="true"
   >
@@ -176,18 +135,10 @@ const MapCanvasSkeleton = () => (
 );
 
 export const CommunityMapPage = () => {
-  const location = useLocation();
   const { incidents, loading, error } = useIncidentMapData();
-  const [initialMapState] = useState(() => (
-    location.state?.mapState ||
-    readStoredMapState() ||
-    {}
-  ));
-  const [activeFilter, setActiveFilter] = useState(() => (
-    isValidMapFilter(initialMapState.activeFilter)
-      ? initialMapState.activeFilter
-      : MAP_FILTERS.ALL
-  ));
+  const [activeFilter, setActiveFilter] = useState(
+    MAP_FILTERS.ALL
+  );
   const [fitRequestKey, setFitRequestKey] = useState(0);
   const safeIncidents = useMemo(
     () => (Array.isArray(incidents) ? incidents : []),
@@ -239,34 +190,7 @@ export const CommunityMapPage = () => {
   const handleMapFilter = (nextFilter) => {
     setActiveFilter(nextFilter);
     setFitRequestKey((currentKey) => currentKey + 1);
-
-    writeStoredMapState({
-      activeFilter: nextFilter,
-      scrollY: window.scrollY,
-    });
   };
-
-  useEffect(() => {
-    writeStoredMapState({
-      activeFilter,
-      scrollY: window.scrollY,
-    });
-  }, [activeFilter]);
-
-  useEffect(() => {
-    const restoredScrollY = Number(initialMapState.scrollY || 0);
-
-    if (restoredScrollY <= 0) return undefined;
-
-    const frameId = window.requestAnimationFrame(() => {
-      window.scrollTo({
-        top: restoredScrollY,
-        behavior: 'auto',
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [initialMapState.scrollY]);
 
   const activeFilterLabel = {
     [MAP_FILTERS.ALL]: 'Tất cả phản ánh',
@@ -490,7 +414,7 @@ export const CommunityMapPage = () => {
       </section>
 
       <section
-        className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_38px_rgba(15,23,42,0.075)]"
+        className="card overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_38px_rgba(15,23,42,0.075)]"
         aria-labelledby="incident-map-panel-title"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 px-5 py-4 sm:px-6">
@@ -518,18 +442,14 @@ export const CommunityMapPage = () => {
           {loading ? (
             <MapCanvasSkeleton />
           ) : visibleIncidents.length > 0 ? (
-            <div className="overflow-hidden rounded-[24px] border border-base-300">
+            <div data-testid="incident-map-container" className="overflow-hidden rounded-[24px] border border-base-300">
               <IncidentMap
                 incidents={visibleIncidents}
                 fitRequestKey={fitRequestKey}
-                activeFilter={activeFilter}
               />
             </div>
           ) : (
-            <div
-              data-testid="community-map-empty-state"
-              className="flex h-[550px] flex-col items-center justify-center rounded-[24px] border border-dashed border-base-300 bg-base-200/35 px-6 text-center"
-            >
+            <div data-testid="incident-map-empty-state" className="flex h-[550px] flex-col items-center justify-center rounded-[24px] border border-dashed border-base-300 bg-base-200/35 px-6 text-center">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-info/10 text-info">
                 <Lucide.MapPinOff size={24} aria-hidden="true" />
               </span>

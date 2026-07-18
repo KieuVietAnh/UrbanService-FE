@@ -6,37 +6,25 @@ export class MapPage extends BasePage {
   readonly markerLayer;
   readonly mapContainer;
   readonly spinner;
-  readonly loadingState;
   readonly emptyStateCard;
 
   constructor(page: Page) {
     super(page);
     this.leafletContainer = page.locator('.leaflet-container');
     this.markerLayer = page.locator('.leaflet-marker-pane .leaflet-marker-icon');
-    this.mapContainer = page.locator('.leaflet-container');
+    this.mapContainer = page.getByTestId('incident-map-container');
     this.spinner = page.locator('.loading-spinner, .loading.loading-spinner');
-    this.loadingState = page.getByTestId('community-map-loading');
-    this.emptyStateCard = page.getByTestId('community-map-empty-state');
+    this.emptyStateCard = page.getByTestId('incident-map-empty-state');
   }
 
   async expectMapLoaded() {
     await this.page.waitForLoadState('domcontentloaded');
+    await this.spinner.waitFor({ state: 'detached', timeout: 30000 }).catch(() => {});
 
-    await this.page.waitForFunction(() => {
-      const marker = document.querySelector(
-        '.leaflet-marker-pane .leaflet-marker-icon'
-      );
-      const emptyState = document.querySelector(
-        '[data-testid="community-map-empty-state"]'
-      );
-
-      return Boolean(marker || emptyState);
-    }, undefined, { timeout: 60000 });
-
-    await this.loadingState.waitFor({
-      state: 'detached',
-      timeout: 60000,
-    }).catch(() => undefined);
+    await Promise.race([
+      this.markerLayer.first().waitFor({ state: 'visible', timeout: 30000 }),
+      this.emptyStateCard.waitFor({ state: 'visible', timeout: 30000 }),
+    ]);
   }
 
   async hasMarkers() {

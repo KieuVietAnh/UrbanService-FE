@@ -367,8 +367,13 @@ export const CommunityFeedDetailPage = () => {
     });
   };
 
+  const backDestination = location.state?.from || '/community/feed';
+  const backLabel = backDestination === '/community/map'
+    ? 'Quay lại bản đồ sự cố'
+    : '{backLabel}';
+
   const handleBack = () => {
-    navigate(location.state?.from || '/community/feed');
+    navigate(backDestination);
   };
 
   if (loading) {
@@ -404,7 +409,7 @@ export const CommunityFeedDetailPage = () => {
           onClick={handleBack}
           className="btn admin-primary-action mt-5 rounded-2xl"
         >
-          Quay lại bảng tin
+          {backLabel}
         </button>
       </main>
     );
@@ -419,7 +424,7 @@ export const CommunityFeedDetailPage = () => {
           className="inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-base-content/55 transition hover:bg-base-100 hover:text-primary"
         >
           <Lucide.ArrowLeft size={17} aria-hidden="true" />
-          Quay lại bảng tin
+          {backLabel}
         </button>
 
         <article className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_16px_40px_rgba(15,23,42,0.09)]">
