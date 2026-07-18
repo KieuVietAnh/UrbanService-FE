@@ -432,20 +432,37 @@ export const TicketDetailPage = () => {
 
     return {
       from: location.state?.from || matchingStoredContext?.from || '/tickets',
+      returnLabel:
+        location.state?.returnLabel ||
+        (
+          location.state?.from === '/community/map'
+            ? 'Quay lại bản đồ sự cố'
+            : 'Quay lại phản ánh của tôi'
+        ),
       scrollY: Number(matchingStoredContext?.scrollY || 0),
-      ticketId: location.state?.ticketId || matchingStoredContext?.ticketId || feedbackId,
+      ticketId:
+        location.state?.ticketId ||
+        matchingStoredContext?.ticketId ||
+        feedbackId,
+      mapState: location.state?.mapState || null,
     };
   };
 
+  const returnContext = readReturnContext();
+
   const handleBackToList = ({ replace = false, highlight = true } = {}) => {
-    const returnContext = readReturnContext();
+    const returningToMap = returnContext.from === '/community/map';
 
     navigate(returnContext.from, {
       replace,
-      state: {
-        restoreScrollY: returnContext.scrollY,
-        restoreTicketId: highlight ? returnContext.ticketId : null,
-      },
+      state: returningToMap
+        ? {
+          mapState: returnContext.mapState,
+        }
+        : {
+          restoreScrollY: returnContext.scrollY,
+          restoreTicketId: highlight ? returnContext.ticketId : null,
+        },
     });
   };
 
@@ -1223,7 +1240,7 @@ export const TicketDetailPage = () => {
           onClick={() => handleBackToList()}
           className="btn admin-primary-action mt-5 rounded-2xl"
         >
-          Quay lại danh sách
+          {returnContext.returnLabel}
         </button>
       </div>
     );
@@ -1291,7 +1308,7 @@ export const TicketDetailPage = () => {
               className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-base-200 hover:text-primary"
             >
               <Lucide.ArrowLeft size={15} aria-hidden="true" />
-              Quay lại phản ánh của tôi
+              {returnContext.returnLabel}
             </button>
           </nav>
 

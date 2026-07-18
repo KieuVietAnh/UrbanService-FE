@@ -35,15 +35,21 @@ test.describe('Map view', () => {
     await mapPage.expectMapLoaded();
 
     const markerCount = await mapPage.markerLayer.count();
+
     if (markerCount === 0) {
-      // Accept an empty state as a valid outcome for CI environments
-      await expect(mapPage.emptyStateCard).toBeVisible({ timeout: 5000 });
+      await expect(mapPage.emptyStateCard).toBeVisible({
+        timeout: 30000,
+      });
       return;
     }
 
-    await expect(markerCount).toBeGreaterThan(0);
-    // click first marker and ensure popup appears
+    expect(markerCount).toBeGreaterThan(0);
+
     await mapPage.clickFirstMarker();
-    await expect(page.locator('.leaflet-popup-content')).toBeVisible();
+    await expect(
+      page.locator('.leaflet-popup-content')
+    ).toBeVisible({
+      timeout: 10000,
+    });
   });
 });

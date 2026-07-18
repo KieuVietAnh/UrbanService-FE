@@ -36,6 +36,22 @@ const normalizeIncident = (ticket) => {
 
   return {
     feedbackId: ticket?.feedbackId || ticket?.id || ticket?._id || '',
+    ownerId:
+      ticket?.userId ||
+      ticket?.reporterId ||
+      ticket?.createdByUserId ||
+      ticket?.createdById ||
+      ticket?.createdBy?.userId ||
+      ticket?.createdBy?.id ||
+      ticket?.user?.userId ||
+      ticket?.user?.id ||
+      '',
+    ownerEmail:
+      ticket?.reporterEmail ||
+      ticket?.createdByEmail ||
+      ticket?.createdBy?.email ||
+      ticket?.user?.email ||
+      '',
     title:
       ticket?.title ||
       ticket?.summary ||
