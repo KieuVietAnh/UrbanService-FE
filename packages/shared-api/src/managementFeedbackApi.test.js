@@ -7,7 +7,9 @@ import {
   normalizeFeedbackListParams,
   normalizeCommentPayload,
   normalizeProviderReportStatus,
+  normalizeProviderContactLogPayload,
   canTransitionProviderReportStatus,
+  resolveProviderReportById,
 } from './managementFeedbackApi.js';
 
 test('normalizeAiReviewedPayload maps ai-reviewed payloads to queue-ready items', () => {
@@ -94,11 +96,48 @@ test('normalizeCommentPayload keeps only the swagger-accepted content field', ()
   assert.deepEqual(normalized, { content: 'hello' });
 });
 
-test('provider report status helpers enforce the Assigned → InProgress → Completed workflow', () => {
+test('provider report status helpers enforce the Reported → Contacted → Accepted → InProgress → Done workflow', () => {
+  assert.equal(normalizeProviderReportStatus('reported'), 'Reported');
+  assert.equal(normalizeProviderReportStatus('contacted'), 'Contacted');
+  assert.equal(normalizeProviderReportStatus('accepted'), 'Accepted');
   assert.equal(normalizeProviderReportStatus('in_progress'), 'InProgress');
-  assert.equal(normalizeProviderReportStatus('completed'), 'Completed');
-  assert.equal(canTransitionProviderReportStatus('Assigned', 'InProgress'), true);
-  assert.equal(canTransitionProviderReportStatus('Assigned', 'Completed'), false);
-  assert.equal(canTransitionProviderReportStatus('InProgress', 'Completed'), true);
-  assert.equal(canTransitionProviderReportStatus('Completed', 'Assigned'), false);
+  assert.equal(normalizeProviderReportStatus('done'), 'Done');
+  assert.equal(normalizeProviderReportStatus('completed'), 'Done');
+  assert.equal(normalizeProviderReportStatus('failed'), 'Failed');
+  assert.equal(normalizeProviderReportStatus('cancelled'), 'Cancelled');
+
+  assert.equal(canTransitionProviderReportStatus('Reported', 'Contacted'), true);
+  assert.equal(canTransitionProviderReportStatus('Contacted', 'Accepted'), true);
+  assert.equal(canTransitionProviderReportStatus('Accepted', 'InProgress'), true);
+  assert.equal(canTransitionProviderReportStatus('InProgress', 'Done'), true);
+  assert.equal(canTransitionProviderReportStatus('InProgress', 'Failed'), true);
+  assert.equal(canTransitionProviderReportStatus('Reported', 'InProgress'), false);
+  assert.equal(canTransitionProviderReportStatus('Done', 'InProgress'), false);
+});
+
+test('normalizeProviderContactLogPayload converts local datetime values and trims empty fields', () => {
+  const normalized = normalizeProviderContactLogPayload({
+    contactMethod: '  Phone  ',
+    contactResult: '  Reached  ',
+    contactNote: '   ',
+    contactedAt: '2026-07-20T16:30',
+  });
+
+  assert.equal(normalized.contactMethod, 'Phone');
+  assert.equal(normalized.contactResult, 'Reached');
+  assert.equal(normalized.contactNote, null);
+  assert.equal(normalized.contactedAt, new Date('2026-07-20T16:30').toISOString());
+});
+
+test('resolveProviderReportById finds the matching report from feedback-level payloads', () => {
+  const payload = {
+    items: [
+      { providerReportId: 7, feedbackId: 'fb-1', reportStatus: 'Assigned' },
+      { providerReportId: 8, feedbackId: 'fb-1', reportStatus: 'InProgress' },
+    ],
+  };
+
+  assert.equal(resolveProviderReportById(payload, 8)?.providerReportId, 8);
+  assert.equal(resolveProviderReportById(payload, '7')?.reportStatus, 'Assigned');
+  assert.equal(resolveProviderReportById([], 8), null);
 });
