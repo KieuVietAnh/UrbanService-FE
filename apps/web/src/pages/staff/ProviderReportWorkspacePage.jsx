@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { LoadingSpinner, CompletionDocumentsCard, ConfirmationModal } from '@urbanmind/shared-ui';
@@ -36,7 +36,10 @@ const formatContactDateTime = (value) => {
 export const ProviderReportWorkspacePage = () => {
   const { providerReportId } = useParams();
   const navigate = useNavigate();
-  const [report, setReport] = useState(null);
+  const location = useLocation();
+  const feedbackIdFromState = location.state?.feedbackId || location.state?.feedback?.feedbackId || null;
+  const initialReport = location.state?.providerReport || location.state?.report || null;
+  const [report, setReport] = useState(initialReport);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [contactLogs, setContactLogs] = useState([]);
@@ -68,6 +71,10 @@ export const ProviderReportWorkspacePage = () => {
   const [resolutionImages, setResolutionImages] = useState([]);
   const [submittingResolution, setSubmittingResolution] = useState(false);
   const [resolutionError, setResolutionError] = useState('');
+  const [existingResolutions, setExistingResolutions] = useState([]);
+  const [resolutionsLoading, setResolutionsLoading] = useState(false);
+  const [resolutionsError, setResolutionsError] = useState('');
+  const [resolutionPreviewOpen, setResolutionPreviewOpen] = useState(false);
   const [confirmingResolutionSubmit, setConfirmingResolutionSubmit] = useState(false);
   const [statusUpdateForm, setStatusUpdateForm] = useState({ status: '', note: '' });
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -77,23 +84,31 @@ export const ProviderReportWorkspacePage = () => {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    let active = true;
+
     const load = async () => {
       setLoading(true);
       try {
         if (!providerReportId) {
-          setReport(null);
+          if (active) setReport(null);
           return;
         }
-        const res = await managementFeedbackApi.getProviderReportById(providerReportId);
-        setReport(res || null);
+
+        const res = await managementFeedbackApi.getProviderReportById(providerReportId, feedbackIdFromState);
+        if (active) setReport(res || null);
       } catch (err) {
         console.error('Failed to load provider report', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
+
     load();
-  }, [providerReportId]);
+
+    return () => {
+      active = false;
+    };
+  }, [providerReportId, feedbackIdFromState]);
 
   useEffect(() => {
     if (report?.resolution) {
@@ -151,10 +166,58 @@ export const ProviderReportWorkspacePage = () => {
     loadCompletionDocuments();
   }, [providerReportId, activeTab]);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadExistingResolutions = async () => {
+      const feedbackId = report?.feedbackId || report?.feedback?.feedbackId || null;
+      if (!feedbackId || activeTab !== 'resolution') return;
+
+      setResolutionsLoading(true);
+      setResolutionsError('');
+
+      try {
+        const response = await managementFeedbackApi.getResolutions(feedbackId);
+        const nextResolutions = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.items)
+            ? response.items
+            : Array.isArray(response?.data)
+              ? response.data
+              : [];
+
+        if (active) {
+          setExistingResolutions(nextResolutions);
+          setResolutionView(nextResolutions.length > 0 ? 'preview' : 'edit');
+        }
+      } catch (err) {
+        console.error('Failed to load existing resolutions', err);
+        if (active) {
+          setResolutionsError(err?.message || 'Không thể tải dữ liệu resolution hiện có.');
+          setExistingResolutions([]);
+        }
+      } finally {
+        if (active) {
+          setResolutionsLoading(false);
+        }
+      }
+    };
+
+    loadExistingResolutions();
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, report?.feedbackId, report?.feedback?.feedbackId]);
+
   const provider = report?.provider || report?.operator || report?.assignedOperator || {};
   const coordinator = report?.coordinator || report?.contact || {};
+  const providerName = report?.providerName || provider?.operatorName || provider?.providerName || provider?.name || '—';
+  const coordinatorName = report?.coordinatorName || coordinator?.name || coordinator?.contactName || '—';
+  const providerPhone = report?.phoneNumber || coordinator?.phone || provider?.phoneNumber || '—';
+  const providerEmail = report?.email || coordinator?.email || provider?.email || '—';
   const currentProviderReportStatus = normalizeProviderReportStatus(report?.status || report?.reportStatus || '');
-  const canAccessResolution = currentProviderReportStatus === 'Completed';
+  const canAccessResolution = currentProviderReportStatus === 'Done';
   const statusHistoryItems = useMemo(() => {
     const historyFromReport = Array.isArray(report?.statusHistory)
       ? report.statusHistory.map((item) => ({
@@ -326,12 +389,16 @@ export const ProviderReportWorkspacePage = () => {
     }
 
     if (!canTransitionProviderReportStatus(currentProviderReportStatus, nextStatus)) {
-      if (currentProviderReportStatus === 'Completed') {
-        setStatusUpdateError('Provider report đã ở trạng thái Completed và không thể quay lại.');
-      } else if (currentProviderReportStatus === 'Assigned') {
-        setStatusUpdateError('Assigned chỉ có thể chuyển sang InProgress.');
+      if (currentProviderReportStatus === 'Done') {
+        setStatusUpdateError('Provider report đã ở trạng thái Done và không thể quay lại.');
+      } else if (currentProviderReportStatus === 'Reported') {
+        setStatusUpdateError('Reported chỉ có thể chuyển sang Contacted, Accepted, Failed hoặc Cancelled.');
+      } else if (currentProviderReportStatus === 'Contacted') {
+        setStatusUpdateError('Contacted chỉ có thể chuyển sang Accepted, Failed hoặc Cancelled.');
+      } else if (currentProviderReportStatus === 'Accepted') {
+        setStatusUpdateError('Accepted chỉ có thể chuyển sang InProgress, Failed hoặc Cancelled.');
       } else if (currentProviderReportStatus === 'InProgress') {
-        setStatusUpdateError('InProgress chỉ có thể chuyển sang Completed.');
+        setStatusUpdateError('InProgress chỉ có thể chuyển sang Done, Failed hoặc Cancelled.');
       } else {
         setStatusUpdateError('Chuyển trạng thái không hợp lệ cho provider report này.');
       }
@@ -386,6 +453,15 @@ export const ProviderReportWorkspacePage = () => {
       };
 
       await managementFeedbackApi.submitResolution(payload);
+      setExistingResolutions([{ 
+        resolutionSummary: trimmedSummary,
+        actionTaken: trimmedAction,
+        resultNote: trimmedResultNote,
+        status: 'SubmittedForApproval',
+        createdByStaffUserName: 'You',
+        resolvedAt: new Date().toISOString(),
+      }]);
+      setResolutionView('preview');
       openToast('Resolution submitted successfully', 'Kết quả xử lý đã được gửi đi chờ quản lý phê duyệt.');
       navigate(`/staff/feedbacks/${report?.feedbackId || report?.feedback?.feedbackId || report?.id || providerReportId}`);
     } catch (err) {
@@ -404,9 +480,9 @@ export const ProviderReportWorkspacePage = () => {
   if (!report) {
     return (
       <div className="space-y-6 p-4">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm text-center">
-          <h3 className="text-lg font-black">Báo cáo nhà thầu không tìm thấy</h3>
-          <p className="mt-2 text-sm text-slate-500">Không thể tìm thấy báo cáo tương ứng với id cung cấp.</p>
+        <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-6 shadow-sm text-center">
+          <h3 className="text-lg font-black text-slate-900">Báo cáo nhà thầu không tìm thấy</h3>
+          <p className="mt-2 text-sm text-slate-600">Không thể tìm thấy báo cáo tương ứng với id cung cấp.</p>
           <div className="mt-4 flex justify-center gap-2">
             <button onClick={() => navigate(-1)} className="btn btn-outline">Quay lại</button>
           </div>
@@ -459,53 +535,65 @@ export const ProviderReportWorkspacePage = () => {
     }
   };
 
+  const pageTextStyle = `
+    .provider-report-workspace-page .text-slate-700,
+    .provider-report-workspace-page .text-slate-600,
+    .provider-report-workspace-page .text-slate-500,
+    .provider-report-workspace-page .text-slate-400,
+    .provider-report-workspace-page .text-slate-800,
+    .provider-report-workspace-page .text-slate-200 {
+      color: #000 !important;
+    }
+  `;
+
   return (
-    <div className="space-y-6 p-4">
-      <div className="flex items-center justify-between">
+    <div className="provider-report-workspace-page space-y-6 p-4 bg-slate-50/70 min-h-screen text-black">
+      <style>{pageTextStyle}</style>
+      <div className="flex items-center justify-between rounded-[1.5rem] border border-slate-200 bg-white/95 p-5 shadow-sm">
         <div>
-          <div className="text-[11px] font-bold text-slate-400">Provider Report Workspace</div>
-          <h1 className="text-2xl font-black">Báo cáo nhà thầu: {report.providerReportId || report.id || provider.providerId || provider.operatorId}</h1>
-          <div className="mt-2 text-sm text-slate-600">Quản lý vòng đời báo cáo nhà thầu từ một màn hình duy nhất.</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-700">Provider Report Workspace</div>
+          <h1 className="text-2xl font-black text-slate-900">Báo cáo nhà thầu: {report.providerReportId || report.id || provider.providerId || provider.operatorId}</h1>
+          <div className="mt-2 text-sm text-slate-700">Quản lý vòng đời báo cáo nhà thầu từ một màn hình duy nhất.</div>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
-          <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+          <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-sm">
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <div className="text-xs text-slate-500 font-bold">Provider</div>
-                <div className="mt-1 font-semibold text-slate-800">{provider.operatorName || provider.providerName || provider.name || '—'}</div>
+                <div className="text-xs text-slate-700 font-bold">Provider</div>
+                <div className="mt-1 font-semibold text-slate-900">{providerName}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 font-bold">Coordinator</div>
-                <div className="mt-1 font-semibold text-slate-800">{coordinator.name || coordinator.contactName || '—'}</div>
+                <div className="text-xs text-slate-700 font-bold">Coordinator</div>
+                <div className="mt-1 font-semibold text-slate-900">{coordinatorName}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 font-bold">Status</div>
-                <div className="mt-1 font-semibold text-slate-800">{report.status || report.reportStatus || '—'}</div>
+                <div className="text-xs text-slate-700 font-bold">Status</div>
+                <div className="mt-1 font-semibold text-slate-900">{report.status || report.reportStatus || '—'}</div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+          <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <div className="text-xs text-slate-500 font-bold">Assigned Date</div>
-                <div className="mt-1 font-semibold text-slate-800">{report.assignedAt || report.assignedDate || report.createdAt || '—'}</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600">Assigned Date</div>
+                <div className="mt-1 font-semibold text-slate-900">{report.assignedAt || report.assignedDate || report.createdAt || '—'}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 font-bold">Last Updated</div>
-                <div className="mt-1 font-semibold text-slate-800">{report.updatedAt || report.lastUpdated || '—'}</div>
+                <div className="text-xs text-slate-700 font-bold">Last Updated</div>
+                <div className="mt-1 font-semibold text-slate-900">{report.updatedAt || report.lastUpdated || '—'}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 font-bold">Provider Report ID</div>
-                <div className="mt-1 font-semibold text-slate-800">{report.providerReportId || report.id || '—'}</div>
+                <div className="text-xs text-slate-700 font-bold">Provider Report ID</div>
+                <div className="mt-1 font-semibold text-slate-900">{report.providerReportId || report.id || '—'}</div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+          <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setActiveTab('overview')} className={`btn btn-ghost btn-sm ${activeTab === 'overview' ? 'btn-active' : ''}`}>Overview</button>
               <button onClick={() => setActiveTab('status')} className={`btn btn-ghost btn-sm ${activeTab === 'status' ? 'btn-active' : ''}`}>Status</button>
@@ -518,7 +606,7 @@ export const ProviderReportWorkspacePage = () => {
               {activeTab === 'overview' && (
                 <div>
                   <h3 className="font-bold">Overview</h3>
-                  <p className="mt-2 text-sm text-slate-600">Provider report overview scaffold. (Details and actions will be implemented later.)</p>
+                  <p className="mt-2 text-sm text-slate-700">Provider report overview scaffold. (Details and actions will be implemented later.)</p>
                 </div>
               )}
 
@@ -528,9 +616,9 @@ export const ProviderReportWorkspacePage = () => {
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
                         <h3 className="font-bold">Provider Report Status</h3>
-                        <p className="mt-2 text-sm text-slate-600">Advance the provider report through Assigned → InProgress → Completed before submission.</p>
+                        <p className="mt-2 text-sm text-slate-700">Advance the provider report through Reported → Contacted → Accepted → InProgress → Done before submission.</p>
                       </div>
-                      <span className={`badge ${currentProviderReportStatus === 'Completed' ? 'badge-success' : currentProviderReportStatus === 'InProgress' ? 'badge-warning' : 'badge-info'}`}>
+                      <span className={`badge ${currentProviderReportStatus === 'Done' ? 'badge-success' : currentProviderReportStatus === 'InProgress' ? 'badge-warning' : currentProviderReportStatus === 'Failed' ? 'badge-error' : currentProviderReportStatus === 'Cancelled' ? 'badge-neutral' : 'badge-info'}`}>
                         {currentProviderReportStatus || 'Unknown'}
                       </span>
                     </div>
@@ -540,7 +628,7 @@ export const ProviderReportWorkspacePage = () => {
                     <div><ErrorAlert message={statusUpdateError} onClose={() => setStatusUpdateError('')} /></div>
                   ) : null}
 
-                  <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4 space-y-4">
+                  <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 space-y-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                     <div className="grid gap-4 md:grid-cols-[1fr_220px]">
                       <label className="space-y-2">
                         <span className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Provider Report Status</span>
@@ -550,14 +638,18 @@ export const ProviderReportWorkspacePage = () => {
                           className="select select-bordered w-full"
                         >
                           <option value="">-- Chọn trạng thái --</option>
-                          <option value="Assigned" disabled={currentProviderReportStatus !== '' && currentProviderReportStatus !== 'Assigned'}>Assigned</option>
-                          <option value="InProgress" disabled={currentProviderReportStatus !== 'Assigned'}>InProgress</option>
-                          <option value="Completed" disabled={currentProviderReportStatus !== 'InProgress'}>Completed</option>
+                          <option value="Reported" disabled={currentProviderReportStatus !== '' && currentProviderReportStatus !== 'Reported'}>Reported</option>
+                          <option value="Contacted" disabled={!['Reported', 'Contacted'].includes(currentProviderReportStatus)}>Contacted</option>
+                          <option value="Accepted" disabled={!['Reported', 'Contacted', 'Accepted'].includes(currentProviderReportStatus)}>Accepted</option>
+                          <option value="InProgress" disabled={!['Accepted', 'InProgress'].includes(currentProviderReportStatus)}>InProgress</option>
+                          <option value="Done" disabled={currentProviderReportStatus !== 'InProgress'}>Done</option>
+                          <option value="Failed" disabled={!['Reported', 'Contacted', 'Accepted', 'InProgress'].includes(currentProviderReportStatus)}>Failed</option>
+                          <option value="Cancelled" disabled={!['Reported', 'Contacted', 'Accepted', 'InProgress'].includes(currentProviderReportStatus)}>Cancelled</option>
                         </select>
                       </label>
-                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Last updated</div>
-                        <div className="mt-2 font-semibold text-slate-800">{report.updatedAt || report.lastUpdated || '—'}</div>
+                      <div className="rounded-[1rem] border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-600">Last updated</div>
+                        <div className="mt-2 font-semibold text-slate-900">{report.updatedAt || report.lastUpdated || '—'}</div>
                       </div>
                     </div>
 
@@ -585,8 +677,8 @@ export const ProviderReportWorkspacePage = () => {
                     </div>
                   </div>
 
-                  <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
-                    <div className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Status history timeline</div>
+                  <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600">Status history timeline</div>
                     <div className="mt-4 space-y-4">
                       {statusHistoryItems.map((item, index) => (
                         <div key={`${item.status}-${index}`} className="flex gap-3">
@@ -596,10 +688,10 @@ export const ProviderReportWorkspacePage = () => {
                           </div>
                           <div className="flex-1 rounded-[1rem] border border-slate-200 bg-slate-50 p-3">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-semibold text-slate-800">{item.status || 'Unknown'}</span>
-                              <span className="text-xs text-slate-500">{item.updatedAt ? formatContactDateTime(item.updatedAt) : '—'}</span>
+                              <span className="font-semibold text-slate-900">{item.status || 'Unknown'}</span>
+                              <span className="text-xs text-slate-700">{item.updatedAt ? formatContactDateTime(item.updatedAt) : '—'}</span>
                             </div>
-                            {item.note ? <div className="mt-2 text-sm text-slate-600">{item.note}</div> : null}
+                            {item.note ? <div className="mt-2 text-sm text-slate-700">{item.note}</div> : null}
                           </div>
                         </div>
                       ))}
@@ -610,11 +702,11 @@ export const ProviderReportWorkspacePage = () => {
 
               {activeTab === 'contact-logs' && (
                 <div className="space-y-6">
-                  <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+                  <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h3 className="font-bold">Contact Logs</h3>
-                        <p className="mt-2 text-sm text-slate-600">Lịch sử liên hệ với nhà thầu và ghi chú liên hệ mới.</p>
+                        <p className="mt-2 text-sm text-slate-700">Lịch sử liên hệ với nhà thầu và ghi chú liên hệ mới.</p>
                       </div>
                       {sortedContactLogs.length > 0 && (
                         <span className="badge badge-outline lowercase">{sortedContactLogs.length} bản ghi</span>
@@ -636,8 +728,8 @@ export const ProviderReportWorkspacePage = () => {
                             <div key={log.contactLogId || `${log.contactedAt}-${log.contactMethod}` } className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
-                                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Liên hệ lúc</div>
-                                  <div className="mt-1 text-sm font-semibold text-slate-800">{formatContactDateTime(log.contactedAt)}</div>
+                                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-600">Liên hệ lúc</div>
+                                  <div className="mt-1 text-sm font-semibold text-slate-900">{formatContactDateTime(log.contactedAt)}</div>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   <span className="badge badge-outline">Phương thức: {log.contactMethod || '—'}</span>
@@ -647,12 +739,12 @@ export const ProviderReportWorkspacePage = () => {
 
                               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                 <div>
-                                  <div className="text-xs text-slate-500">Người thực hiện</div>
-                                  <div className="mt-1 font-semibold text-slate-800">{log.contactedByUserName || 'Không rõ'}</div>
+                                  <div className="text-xs text-slate-700">Người thực hiện</div>
+                                  <div className="mt-1 font-semibold text-slate-900">{log.contactedByUserName || 'Không rõ'}</div>
                                 </div>
                                 <div>
-                                  <div className="text-xs text-slate-500">Nhà thầu</div>
-                                  <div className="mt-1 font-semibold text-slate-800">{log.providerName || provider.operatorName || provider.providerName || '—'}</div>
+                                  <div className="text-xs text-slate-700">Nhà thầu</div>
+                                  <div className="mt-1 font-semibold text-slate-900">{log.providerName || provider.operatorName || provider.providerName || '—'}</div>
                                 </div>
                               </div>
 
@@ -668,10 +760,10 @@ export const ProviderReportWorkspacePage = () => {
                     </div>
                   </div>
 
-                  <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+                  <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                     <div>
                       <h3 className="font-bold">Ghi nhật ký liên hệ</h3>
-                      <p className="mt-2 text-sm text-slate-600">Ghi lại chi tiết cuộc gọi, email hoặc tin nhắn với nhà thầu.</p>
+                      <p className="mt-2 text-sm text-slate-700">Ghi lại chi tiết cuộc gọi, email hoặc tin nhắn với nhà thầu.</p>
                     </div>
 
                     {logFormError && (
@@ -742,7 +834,7 @@ export const ProviderReportWorkspacePage = () => {
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
                         <h3 className="font-bold">Completion Documents</h3>
-                        <p className="mt-2 text-sm text-slate-600">Tải lên bằng chứng hoàn thành từ nhà thầu và xem lại trước khi duyệt.</p>
+                        <p className="mt-2 text-sm text-slate-700">Tải lên bằng chứng hoàn thành từ nhà thầu và xem lại trước khi duyệt.</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <input
@@ -777,7 +869,7 @@ export const ProviderReportWorkspacePage = () => {
                           className="textarea textarea-bordered w-full"
                         />
                       </label>
-                      <div className="flex items-center justify-between text-xs text-slate-500">
+                      <div className="flex items-center justify-between text-xs text-slate-700">
                         <span>Hỗ trợ: JPG, PNG, PDF</span>
                         <span>{documentDescription.trim().length}/1000</span>
                       </div>
@@ -792,7 +884,7 @@ export const ProviderReportWorkspacePage = () => {
                   ) : documentsError ? (
                     <ErrorAlert message={documentsError} onClose={() => setDocumentsError('')} />
                   ) : documents.length === 0 ? (
-                    <div className="rounded-[1.2rem] border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+                    <div className="rounded-[1.2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-600">
                       Chưa có tài liệu hoàn thành nào được tải lên.
                     </div>
                   ) : (
@@ -812,12 +904,13 @@ export const ProviderReportWorkspacePage = () => {
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
                         <h3 className="font-bold">Resolution</h3>
-                        <p className="mt-2 text-sm text-slate-600">Gửi kết quả xử lý cuối cùng để chuyển sang trạng thái chờ quản lý phê duyệt.</p>
+                        <p className="mt-2 text-sm text-slate-700">Gửi kết quả xử lý cuối cùng để chuyển sang trạng thái chờ quản lý phê duyệt.</p>
                       </div>
-                      <div className="flex gap-2">
-                        <button type="button" className={`btn btn-sm ${resolutionView === 'edit' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setResolutionView('edit')}>Edit Resolution</button>
-                        <button type="button" className={`btn btn-sm ${resolutionView === 'preview' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setResolutionView('preview')}>Preview Resolution</button>
-                      </div>
+                      {existingResolutions.length > 0 ? (
+                        <div className="flex gap-2">
+                          <button type="button" className="btn btn-sm btn-outline" onClick={() => setResolutionPreviewOpen(true)}>Preview Resolution</button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
@@ -827,13 +920,32 @@ export const ProviderReportWorkspacePage = () => {
 
                   {!canAccessResolution ? (
                     <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      <div className="font-semibold">Provider Report must be Completed before submitting Resolution.</div>
-                      <div className="mt-1">Update the provider report status to Completed from the Status tab first.</div>
+                      <div className="font-semibold">Provider Report must be Done before submitting Resolution.</div>
+                      <div className="mt-1">Update the provider report status to Done from the Status tab first.</div>
                     </div>
                   ) : null}
 
-                  {resolutionView === 'edit' ? (
-                    <div className="space-y-4 rounded-[1.2rem] border border-slate-200 bg-white p-4">
+                  {resolutionsLoading ? (
+                    <div className="py-12 flex justify-center"><LoadingSpinner /></div>
+                  ) : resolutionsError ? (
+                    <ErrorAlert message={resolutionsError} onClose={() => setResolutionsError('')} />
+                  ) : existingResolutions.length > 0 || resolutionView === 'preview' ? (
+                    <div className="space-y-4 rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Resolution Summary</div>
+                        <div className="mt-2 font-semibold text-slate-800">{existingResolutions[0]?.resolutionSummary || resolutionForm.resolutionSummary || '—'}</div>
+                      </div>
+                      <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Action Taken</div>
+                        <div className="mt-2 font-semibold text-slate-800">{existingResolutions[0]?.actionTaken || resolutionForm.actionTaken || '—'}</div>
+                      </div>
+                      <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Result Note</div>
+                        <div className="mt-2 font-semibold text-slate-800">{existingResolutions[0]?.resultNote || resolutionForm.resultNote || '—'}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-sm">
                       <label className="block space-y-2">
                         <span className="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Resolution Summary</span>
                         <textarea
@@ -877,7 +989,7 @@ export const ProviderReportWorkspacePage = () => {
                         </div>
 
                         {resolutionImages.length === 0 ? (
-                          <div className="rounded-[1.2rem] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No completion images selected.</div>
+                          <div className="rounded-[1.2rem] border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">No completion images selected.</div>
                         ) : (
                           <div className="grid gap-3 sm:grid-cols-2">
                             {resolutionImages.map((image, index) => (
@@ -898,34 +1010,6 @@ export const ProviderReportWorkspacePage = () => {
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <div className="space-y-4 rounded-[1.2rem] border border-slate-200 bg-white p-4">
-                      <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Resolution Summary</div>
-                        <div className="mt-2 font-semibold text-slate-800">{resolutionForm.resolutionSummary || '—'}</div>
-                      </div>
-                      <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Action Taken</div>
-                        <div className="mt-2 font-semibold text-slate-800">{resolutionForm.actionTaken || '—'}</div>
-                      </div>
-                      <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Result Note</div>
-                        <div className="mt-2 font-semibold text-slate-800">{resolutionForm.resultNote || '—'}</div>
-                      </div>
-
-                      <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Images</div>
-                        {resolutionImages.length === 0 ? (
-                          <div className="mt-3 text-sm text-slate-500">No images selected.</div>
-                        ) : (
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                            {resolutionImages.map((image, index) => (
-                              <img key={`${image.fileName}-${index}`} src={image.previewUrl} alt={image.fileName} className="h-32 w-full rounded-[1rem] object-cover" />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   )}
                 </div>
               )}
@@ -934,17 +1018,17 @@ export const ProviderReportWorkspacePage = () => {
         </div>
 
         <aside className="space-y-4">
-          <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500 font-bold">Feedback</div>
-            <div className="mt-1 font-semibold text-slate-800">{report.feedbackId || report.feedback?.feedbackId || '—'}</div>
+          <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600">Feedback</div>
+            <div className="mt-1 font-semibold text-slate-900">{report.feedbackId || report.feedback?.feedbackId || '—'}</div>
           </div>
 
-          <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500 font-bold">Provider Contact</div>
-            <div className="mt-1 font-semibold text-slate-800">{coordinator.phone || coordinator.email || '—'}</div>
+          <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600">Provider Contact</div>
+            <div className="mt-1 font-semibold text-slate-900">{providerPhone || providerEmail}</div>
           </div>
 
-          <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+          <div className="rounded-[1.35rem] border border-slate-200/80 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
             <button className="btn btn-outline w-full" onClick={() => navigate(`/staff/feedbacks/${report.feedbackId || report.feedback?.feedbackId || ''}`)}>
               Open Feedback Detail
             </button>
@@ -975,6 +1059,41 @@ export const ProviderReportWorkspacePage = () => {
           </div>
         </div>
       ) : null}
+
+      <ConfirmationModal
+        open={resolutionPreviewOpen}
+        title="Resolution Details"
+        message="Thông tin resolution hiện có"
+        confirmLabel="Đóng"
+        cancelLabel="Đóng"
+        onConfirm={() => setResolutionPreviewOpen(false)}
+        onCancel={() => setResolutionPreviewOpen(false)}
+      >
+        <div className="space-y-3 text-sm text-slate-700">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Resolution Summary</div>
+            <div className="mt-1 font-semibold text-slate-800">{existingResolutions[0]?.resolutionSummary || resolutionForm.resolutionSummary || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Action Taken</div>
+            <div className="mt-1 font-semibold text-slate-800">{existingResolutions[0]?.actionTaken || resolutionForm.actionTaken || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Result Note</div>
+            <div className="mt-1 font-semibold text-slate-800">{existingResolutions[0]?.resultNote || resolutionForm.resultNote || '—'}</div>
+          </div>
+          {resolutionImages.length > 0 ? (
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Images</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {resolutionImages.map((image, index) => (
+                  <img key={`${image.fileName}-${index}`} src={image.previewUrl} alt={image.fileName} className="h-24 w-full rounded-[0.9rem] object-cover" />
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </ConfirmationModal>
 
       <ConfirmationModal
         open={confirmingResolutionSubmit}

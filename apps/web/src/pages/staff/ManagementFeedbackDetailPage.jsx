@@ -218,7 +218,12 @@ export const ManagementFeedbackDetailPage = () => {
       const report = Array.isArray(reports) ? reports[0] : (reports && typeof reports === 'object' ? reports : null);
       const providerReportId = report?.providerReportId || report?.id || report?.providerReport?.providerReportId || report?.providerReportId;
       if (providerReportId) {
-        navigate(`/staff/provider-reports/${providerReportId}`);
+        navigate(`/staff/provider-reports/${providerReportId}`, {
+          state: {
+            feedbackId,
+            providerReport: report,
+          },
+        });
       } else {
         setPageMessage({ type: 'error', text: 'Không tìm thấy báo cáo nhà thầu cho phản ánh này.' });
       }
