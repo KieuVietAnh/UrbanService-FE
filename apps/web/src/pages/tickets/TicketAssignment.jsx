@@ -166,7 +166,7 @@ export const TicketAssignment = () => {
       )}
       {/* Title */}
       <div>
-        <h2 className="text-2xl font-black">Điều Phối &amp; Phân Công Xử Lý</h2>
+        <h2 className="text-2xl font-black">Điều Phối & Phân Công Xử Lý</h2>
         <p className="text-xs text-gray-500 font-semibold">Lựa chọn đơn vị thi công phù hợp và thiết lập thời hạn xử lý sự cố dựa trên chuẩn SLA.</p>
       </div>
 

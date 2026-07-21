@@ -59,7 +59,7 @@ export default function ManagementFeedbackListPage() {
       setTotalCount(response?.totalCount || 0);
     } catch (err) {
       console.error('Failed to fetch feedbacks', err);
-      setError('Unable to load feedbacks. Please try again.');
+      setError('Không thể tải danh sách phản ánh. Vui lòng thử lại.');
       setFeedbacks([]);
       setTotalCount(0);
     } finally {

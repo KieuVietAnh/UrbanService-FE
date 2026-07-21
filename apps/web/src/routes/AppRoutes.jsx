@@ -32,9 +32,13 @@ const DuplicateDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailP
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
+const CoordinatorDirectoryPage = lazy(() => import('../pages/staff/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
+const CoordinatorDetailPage = lazy(() => import('../pages/staff/CoordinatorDetailPage').then((m) => ({ default: m.default })));
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
 const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
+
+const ProviderCandidateCheckerPage = lazy(() => import('../pages/staff/ProviderCandidateCheckerPage').then((m) => ({ default: m.default })));
 
 const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspacePage').then((m) => ({ default: m.HelperWorkspacePage })));
 
@@ -234,6 +238,33 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <DuplicateDetection />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/coordinators" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <CoordinatorDirectoryPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/provider-candidates-checker" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ProviderCandidateCheckerPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/coordinators/:coordinatorId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <CoordinatorDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

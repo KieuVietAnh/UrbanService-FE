@@ -297,8 +297,26 @@ export const managementFeedbackApi = {
 
   // Get provider candidates for a feedback (Swagger: /api/management/feedbacks/{feedbackId}/provider-candidates)
   async getProviderCandidates(feedbackId) {
-    const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}/provider-candidates`);
-    return response;
+    const candidates = [
+      `/api/management/feedbacks/${feedbackId}/provider-candidates`,
+      `/api/feedbacks/${feedbackId}/provider-candidates`,
+      `/api/management/feedbacks/${feedbackId}/provider-candidate`,
+      `/api/feedbacks/${feedbackId}/provider-candidate`,
+    ];
+
+    for (const endpoint of candidates) {
+      try {
+        return await axiosClient.get(endpoint);
+      } catch (error) {
+        // try next
+        if (endpoint === candidates[candidates.length - 1]) {
+          // last candidate failed — return empty array to callers
+          return [];
+        }
+      }
+    }
+
+    return [];
   },
 
   async getLinkedFeedbacks(feedbackId) {
@@ -400,6 +418,50 @@ export const managementFeedbackApi = {
   async getProviderReportContactLogs(providerReportId) {
     const response = await axiosClient.get(`/api/management/provider-reports/${providerReportId}/contact-logs`);
     return response;
+  },
+
+  // Get service providers / coordinators directory with filters and pagination
+  async getServiceProviders(params = {}) {
+    try {
+      const response = await axiosClient.get('/api/management/service-providers', { params });
+      return response;
+    } catch (error) {
+      // Return an empty paged response shape on failure to keep callers simple
+      console.warn('managementFeedbackApi.getServiceProviders failed', error);
+      return { items: [], totalCount: 0, page: params?.page || params?.PageNumber || 1, pageSize: params?.pageSize || params?.PageSize || 10 };
+    }
+  },
+
+  // Get a single service provider / coordinator detail
+  async getServiceProviderDetail(coordinatorId) {
+    if (!coordinatorId) return null;
+    try {
+      const response = await axiosClient.get(`/api/management/service-providers/${coordinatorId}`);
+      const payload = response?.data ?? response?.item ?? response?.result ?? response ?? null;
+      return payload;
+    } catch (error) {
+      console.warn('managementFeedbackApi.getServiceProviderDetail failed', error);
+      throw error;
+    }
+  },
+
+  // Get coverages for a coordinator
+  async getCoordinatorCoverages(coordinatorId) {
+    if (!coordinatorId) return [];
+    try {
+      const response = await axiosClient.get(`/api/management/service-providers/${coordinatorId}/coverages`);
+      const payload = response?.data ?? response?.items ?? response ?? [];
+
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.items)) return payload.items;
+      if (Array.isArray(payload?.data)) return payload.data;
+
+      return [];
+    } catch (error) {
+      if (error?.response?.status === 404) return [];
+      console.warn('managementFeedbackApi.getCoordinatorCoverages failed', error);
+      return [];
+    }
   },
 
   async createProviderReportContactLog(providerReportId, payload) {

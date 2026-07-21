@@ -242,11 +242,11 @@ export const ManagementFeedbackDetailPage = () => {
           },
         });
       } else {
-        setPageMessage({ type: 'error', text: 'Không tìm thấy báo cáo nhà thầu cho phản ánh này.' });
+        setPageMessage({ type: 'error', text: 'Không tìm thấy báo cáo xử lý cho phản ánh này.' });
       }
     } catch (err) {
       console.error('Failed to open provider report workspace', err);
-      setPageMessage({ type: 'error', text: 'Không thể mở báo cáo nhà thầu.' });
+      setPageMessage({ type: 'error', text: 'Không thể mở báo cáo xử lý.' });
     }
   };
 
@@ -1402,7 +1402,7 @@ export const ManagementFeedbackDetailPage = () => {
                 className="btn btn-sm w-full btn-outline rounded-lg"
               >
                 <Lucide.FileText size={14} />
-                Mở báo cáo nhà thầu
+                Mở báo cáo xử lý
               </button>
               {nextStatusOptions.length > 0 && (
                 <div className="rounded-2xl bg-slate-50 p-4">
