@@ -206,11 +206,11 @@ export const AssignmentHistoryPage = () => {
                         <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
                           <div className="grid gap-3 text-sm">
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Assigned By</div>
+                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Người phân công</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.assignedBy}</div>
                             </div>
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Assigned To</div>
+                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Được phân công cho</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.assignedTo}</div>
                             </div>
                           </div>
@@ -218,11 +218,11 @@ export const AssignmentHistoryPage = () => {
                         <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
                           <div className="grid gap-3 text-sm">
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Previous Assignee</div>
+                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Người phụ trách cũ</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.previousAssignee}</div>
                             </div>
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Current Assignee</div>
+                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Người phụ trách hiện tại</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.currentAssignee}</div>
                             </div>
                           </div>
@@ -230,7 +230,7 @@ export const AssignmentHistoryPage = () => {
                       </div>
 
                       <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-white p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Notes</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Ghi chú</div>
                         <p className="mt-2 text-sm leading-7 text-slate-600">{event.note}</p>
                       </div>
                     </div>

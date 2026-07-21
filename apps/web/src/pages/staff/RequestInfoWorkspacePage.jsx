@@ -5,6 +5,7 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import PageTransition from '../../components/motion/PageTransition';
 import { managementTypes } from '@urbanmind/shared-types';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 const TEMPLATE_OPTIONS = [
   {
@@ -171,7 +172,7 @@ export const RequestInfoWorkspacePage = () => {
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[1.2rem] border border-slate-200 bg-white p-3 text-sm">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Danh mục</p>
-                  <p className="mt-2 font-semibold text-slate-700">{feedback?.categoryName || '—'}</p>
+                  <p className="mt-2 font-semibold text-slate-700">{getCategoryLabel(feedback?.categoryName || feedback?.category?.name || feedback?.categoryType || feedback?.type, '—')}</p>
                 </div>
                 <div className="rounded-[1.2rem] border border-slate-200 bg-white p-3 text-sm">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Đơn vị xử lý</p>

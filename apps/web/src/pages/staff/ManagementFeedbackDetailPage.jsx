@@ -9,6 +9,7 @@ import { signalrService } from '../../services/socket/signalrService';
 import { LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import IncidentMap from '../../components/maps/IncidentMap';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
 
 export const ManagementFeedbackDetailPage = () => {
@@ -83,7 +84,7 @@ export const ManagementFeedbackDetailPage = () => {
         });
       } catch (err) {
         console.error('Failed to load feedback details', err);
-        setError('Unable to load feedback details.');
+        setError('Không thể tải chi tiết phản ánh. Vui lòng thử lại.');
       } finally {
         setLoading(false);
       }
@@ -541,22 +542,174 @@ export const ManagementFeedbackDetailPage = () => {
                   </button>
                 )}
                 {canAssign && (
-                  <button
-                    onClick={() => setAssignModal(true)}
-                    className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg text-xs font-bold"
-                  >
-                    <Lucide.UserPlus size={14} />
-                    Giao việc
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setAssignModal(true)}
+                      className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg text-xs font-bold"
+                    >
+                      <Lucide.UserPlus size={14} />
+                      Giao việc
+                    </button>
+                    {assignModal && (
+                      <>
+                        <div className="fixed inset-0 z-[9998]" onClick={() => setAssignModal(false)} />
+                        <div className="absolute left-0 top-full mt-2 z-[10000] w-[min(100vw-2rem,28rem)]">
+                          <div className="card max-h-[calc(100vh-6rem)] overflow-y-auto space-y-4 rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
+                            <h3 className="font-bold text-lg text-slate-900">Giao việc cho nhân viên xử lý</h3>
+                            
+                            {candidates.length === 0 ? (
+                              <div className="card bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-3">
+                                <div className="flex gap-2">
+                                  <Lucide.AlertTriangle className="text-amber-600 flex-shrink-0" size={16} />
+                                  <div className="space-y-2 text-xs">
+                                    <p className="font-bold text-amber-900">Không có đơn vị xử lý phù hợp</p>
+                                    <p className="text-amber-800">Không tìm thấy nhà cung cấp phù hợp với khu vực hoặc hạng mục của phản ánh này.</p>
+                                    {candidatesLoadError ? (
+                                      <p className="text-amber-700 italic">Lỗi: {candidatesLoadError}</p>
+                                    ) : (
+                                      <p className="text-amber-700 italic">Vui lòng kiểm tra lại sau hoặc liên hệ với quản trị viên nếu bạn nghĩ có sai sót.</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div>
+                                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Tìm nhà cung cấp</label>
+                                  <input
+                                    placeholder="Tìm theo tên nhà cung cấp hoặc điều phối viên..."
+                                    value={candidateSearch}
+                                    onChange={(e) => setCandidateSearch(e.target.value)}
+                                    className="input input-bordered w-full text-xs h-10 rounded-lg mb-2"
+                                  />
+                                  <select
+                                    value={assignForm.operatorId}
+                                    onChange={(e) => setAssignForm(p => ({ ...p, operatorId: e.target.value }))}
+                                    className="select select-bordered w-full text-xs h-10 rounded-lg"
+                                  >
+                                    <option value="">-- Chọn nhà cung cấp --</option>
+                                    {candidates.filter(c => {
+                                      const q = candidateSearch.trim().toLowerCase();
+                                      if (!q) return true;
+                                      return (c.providerName || '').toLowerCase().includes(q) || (c.coordinatorName || '').toLowerCase().includes(q);
+                                    }).map(c => (
+                                      <option key={c.coordinatorId} value={c.coordinatorId}>
+                                        {`${c.providerName || `Nhà thầu ${c.coordinatorId}`} — ${c.coordinatorName || 'Điều phối viên'}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Ghi chú</label>
+                                  <textarea
+                                    value={assignForm.note}
+                                    onChange={(e) => setAssignForm(p => ({ ...p, note: e.target.value }))}
+                                    placeholder="Nhập ghi chú cho nhân viên..."
+                                    className="textarea textarea-bordered w-full text-xs rounded-lg"
+                                    rows="3"
+                                  />
+                                </div>
+
+                                {assignForm.operatorId && (
+                                  (() => {
+                                    const sel = candidates.find(c => String(c.coordinatorId) === String(assignForm.operatorId));
+                                    if (!sel) return null;
+                                    return (
+                                      <div className="card bg-base-100 border p-3 rounded-lg mt-3 text-xs">
+                                        <div className="font-bold">{sel.providerName || 'Không có tên nhà cung cấp'}</div>
+                                        <div className="text-muted">Điều phối viên: {sel.coordinatorName || '—'}</div>
+                                        <div className="mt-2">Area Match: {sel.areaMatch ?? sel.note ?? 'Không có dữ liệu'}</div>
+                                        <div>Category Match: {sel.categoryMatch ?? (sel.priorityOrder !== undefined ? `priority ${sel.priorityOrder}` : 'Không có dữ liệu')}</div>
+                                      </div>
+                                    );
+                                  })()
+                                )}
+                              </>
+                            )}
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setAssignModal(false)}
+                                className="btn btn-ghost flex-1 rounded-lg text-xs"
+                              >
+                                Hủy
+                              </button>
+                              <button
+                                onClick={handleAssign}
+                                disabled={assignLoading || !assignForm.operatorId || candidates.length === 0}
+                                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none flex-1 rounded-lg text-xs disabled:opacity-50"
+                              >
+                                {assignLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Giao việc'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
                 {canUpdateStatus && (
-                  <button
-                    onClick={() => setStatusModal(true)}
-                    className="btn btn-sm btn-outline border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-bold"
-                  >
-                    <Lucide.RefreshCw size={14} />
-                    Cập nhật
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setStatusModal(true)}
+                      className="btn btn-sm btn-outline border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-bold"
+                    >
+                      <Lucide.RefreshCw size={14} />
+                      Cập nhật
+                    </button>
+                    {statusModal && (
+                      <>
+                        <div className="fixed inset-0 z-[9998]" onClick={() => setStatusModal(false)} />
+                        <div className="absolute left-0 top-full mt-2 z-[10000] w-[min(100vw-2rem,28rem)]">
+                          <div className="card max-h-[calc(100vh-6rem)] overflow-y-auto space-y-4 rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
+                            <h3 className="font-bold text-lg text-slate-900">Cập nhật trạng thái</h3>
+                            
+                            <div>
+                              <label className="text-xs font-bold text-slate-600 block mb-1.5">Trạng thái mới</label>
+                              <select
+                                value={statusForm.status}
+                                onChange={(e) => setStatusForm(p => ({ ...p, status: e.target.value }))}
+                                className="select select-bordered w-full text-xs h-10 rounded-lg"
+                              >
+                                <option value="">Chọn trạng thái</option>
+                                {managementTypes.statusFlow[feedback.status]?.map(s => (
+                                  <option key={s} value={s}>{getStatusLabel(s)}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-600 block mb-1.5">Ghi chú</label>
+                              <textarea
+                                value={statusForm.note}
+                                onChange={(e) => setStatusForm(p => ({ ...p, note: e.target.value }))}
+                                placeholder="Nhập ghi chú..."
+                                className="textarea textarea-bordered w-full text-xs rounded-lg"
+                                rows="3"
+                              />
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setStatusModal(false)}
+                                className="btn btn-ghost flex-1 rounded-lg text-xs"
+                              >
+                                Hủy
+                              </button>
+                              <button
+                                onClick={handleStatusUpdate}
+                                disabled={statusLoading || !statusForm.status}
+                                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none flex-1 rounded-lg text-xs"
+                              >
+                                {statusLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Cập nhật'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
                 <button
                   onClick={() => setIsEditing(!isEditing)}
@@ -584,7 +737,7 @@ export const ManagementFeedbackDetailPage = () => {
                   >
                     <option value="">Chọn danh mục</option>
                     {categories.map(cat => (
-                      <option key={cat.categoryId} value={cat.categoryId}>{cat.categoryName}</option>
+                      <option key={cat.categoryId} value={cat.categoryId}>{getCategoryLabel(cat.categoryName || cat.name || cat.categoryType || cat.type)}</option>
                     ))}
                   </select>
                 </div>
@@ -732,7 +885,7 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
             <div className="card bg-white border border-slate-200 p-4 rounded-xl">
               <div className="text-[10px] text-slate-500 font-bold">Danh mục</div>
-              <div className="text-sm font-bold text-slate-900 mt-1">{feedback.categoryName}</div>
+              <div className="text-sm font-bold text-slate-900 mt-1">{getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type)}</div>
             </div>
             <div className="card bg-white border border-slate-200 p-4 rounded-xl">
               <div className="text-[10px] text-slate-500 font-bold">Địa điểm</div>
@@ -833,7 +986,7 @@ export const ManagementFeedbackDetailPage = () => {
             <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Case tracking</div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Theo dõi hồ sơ</div>
                   <h3 className="mt-1 text-lg font-black text-slate-900">Theo dõi hồ sơ từ đầu đến cuối</h3>
                 </div>
                 <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -880,7 +1033,7 @@ export const ManagementFeedbackDetailPage = () => {
                           <div className="flex items-center justify-between gap-2">
                             <div className={`text-sm font-black ${isActive ? 'text-white' : 'text-slate-900'}`}>{event.title}</div>
                             <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                              {event.type === 'assignment' ? 'Assignment' : event.type === 'approval' ? 'Approval' : 'Status'}
+                              {event.type === 'assignment' ? 'Phân công' : event.type === 'approval' ? 'Phê duyệt' : 'Trạng thái'}
                             </span>
                           </div>
                           <div className={`mt-1 text-sm ${isActive ? 'text-slate-200' : 'text-slate-500'}`}>{event.subtitle}</div>
@@ -900,7 +1053,7 @@ export const ManagementFeedbackDetailPage = () => {
                       <div className="space-y-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Selected milestone</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Mốc đang xem</div>
                             <div className="mt-1 text-xl font-black text-slate-900">{activeEvent.title}</div>
                           </div>
                           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700">
@@ -927,11 +1080,11 @@ export const ManagementFeedbackDetailPage = () => {
 
                         <div className="grid gap-2 sm:grid-cols-2">
                           <div className="rounded-[1rem] border border-slate-200 bg-white p-3 text-sm">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Actor</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Thực hiện bởi</div>
                             <div className="mt-1 font-semibold text-slate-700">{activeEvent.actor}</div>
                           </div>
                           <div className="rounded-[1rem] border border-slate-200 bg-white p-3 text-sm">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Timestamp</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Thời điểm</div>
                             <div className="mt-1 font-semibold text-slate-700">{formatDate(activeEvent.timestamp)}</div>
                           </div>
                         </div>
@@ -949,9 +1102,9 @@ export const ManagementFeedbackDetailPage = () => {
           {/* Timeline Progress */}
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-black text-slate-900">Case progress</h3>
+              <h3 className="font-black text-slate-900">Tiến độ hồ sơ</h3>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                Live
+                Trực tiếp
               </span>
             </div>
             {(() => {
@@ -1086,7 +1239,7 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
               <div>
                 <div className="text-slate-500 font-bold">Danh mục</div>
-                <div className="mt-1 font-bold">{feedback.categoryName}</div>
+                <div className="mt-1 font-bold">{getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type)}</div>
               </div>
               <div>
                 <div className="text-slate-500 font-bold">Đơn vị xử lý</div>
@@ -1097,152 +1250,7 @@ export const ManagementFeedbackDetailPage = () => {
         </div>
       </div>
 
-      {/* Status Update Modal */}
-      {statusModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden">
-          <div className="card fixed left-1/2 top-1/2 z-[10000] w-[min(100%,28rem)] -translate-x-1/2 [--tw-translate-y:calc(calc(2*100%)*-1)] space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="font-bold text-lg text-slate-900">Cập nhật trạng thái</h3>
-            
-            <div>
-              <label className="text-xs font-bold text-slate-600 block mb-1.5">Trạng thái mới</label>
-              <select
-                value={statusForm.status}
-                onChange={(e) => setStatusForm(p => ({ ...p, status: e.target.value }))}
-                className="select select-bordered w-full text-xs h-10 rounded-lg"
-              >
-                <option value="">Chọn trạng thái</option>
-                {managementTypes.statusFlow[feedback.status]?.map(s => (
-                  <option key={s} value={s}>{getStatusLabel(s)}</option>
-                ))}
-              </select>
-            </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-600 block mb-1.5">Ghi chú</label>
-              <textarea
-                value={statusForm.note}
-                onChange={(e) => setStatusForm(p => ({ ...p, note: e.target.value }))}
-                placeholder="Nhập ghi chú..."
-                className="textarea textarea-bordered w-full text-xs rounded-lg"
-                rows="3"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setStatusModal(false)}
-                className="btn btn-ghost flex-1 rounded-lg text-xs"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleStatusUpdate}
-                disabled={statusLoading || !statusForm.status}
-                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none flex-1 rounded-lg text-xs"
-              >
-                {statusLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Cập nhật'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Assign Modal */}
-      {assignModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden">
-          <div className="card fixed left-1/2 top-1/2 z-[10000] w-[min(100%,28rem)] -translate-x-1/2 [--tw-translate-y:calc(calc(2.5*100%)*-1)] space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="font-bold text-lg text-slate-900">Giao việc cho nhân viên xử lý</h3>
-            
-            {candidates.length === 0 ? (
-              <div className="card bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-3">
-                <div className="flex gap-2">
-                  <Lucide.AlertTriangle className="text-amber-600 flex-shrink-0" size={16} />
-                  <div className="space-y-2 text-xs">
-                    <p className="font-bold text-amber-900">Không có đơn vị xử lý phù hợp</p>
-                    <p className="text-amber-800">Không tìm thấy nhà cung cấp phù hợp với khu vực hoặc hạng mục của phản ánh này.</p>
-                    {candidatesLoadError ? (
-                      <p className="text-amber-700 italic">Lỗi: {candidatesLoadError}</p>
-                    ) : (
-                      <p className="text-amber-700 italic">Vui lòng kiểm tra lại sau hoặc liên hệ với quản trị viên nếu bạn nghĩ có sai sót.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Tìm nhà cung cấp</label>
-                  <input
-                    placeholder="Tìm theo tên nhà cung cấp hoặc điều phối viên..."
-                    value={candidateSearch}
-                    onChange={(e) => setCandidateSearch(e.target.value)}
-                    className="input input-bordered w-full text-xs h-10 rounded-lg mb-2"
-                  />
-                  <select
-                    value={assignForm.operatorId}
-                    onChange={(e) => setAssignForm(p => ({ ...p, operatorId: e.target.value }))}
-                    className="select select-bordered w-full text-xs h-10 rounded-lg"
-                  >
-                    <option value="">-- Chọn nhà cung cấp --</option>
-                    {candidates.filter(c => {
-                      const q = candidateSearch.trim().toLowerCase();
-                      if (!q) return true;
-                      return (c.providerName || '').toLowerCase().includes(q) || (c.coordinatorName || '').toLowerCase().includes(q);
-                    }).map(c => (
-                      <option key={c.coordinatorId} value={c.coordinatorId}>
-                        {`${c.providerName || `Nhà thầu ${c.coordinatorId}`} — ${c.coordinatorName || 'Điều phối viên'}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Ghi chú</label>
-                  <textarea
-                    value={assignForm.note}
-                    onChange={(e) => setAssignForm(p => ({ ...p, note: e.target.value }))}
-                    placeholder="Nhập ghi chú cho nhân viên..."
-                    className="textarea textarea-bordered w-full text-xs rounded-lg"
-                    rows="3"
-                  />
-                </div>
-
-                {/* Selected candidate details */}
-                {assignForm.operatorId && (
-                  (() => {
-                    const sel = candidates.find(c => String(c.coordinatorId) === String(assignForm.operatorId));
-                    if (!sel) return null;
-                    return (
-                      <div className="card bg-base-100 border p-3 rounded-lg mt-3 text-xs">
-                        <div className="font-bold">{sel.providerName || 'Không có tên nhà cung cấp'}</div>
-                        <div className="text-muted">Điều phối viên: {sel.coordinatorName || '—'}</div>
-                        <div className="mt-2">Area Match: {sel.areaMatch ?? sel.note ?? 'Không có dữ liệu'}</div>
-                        <div>Category Match: {sel.categoryMatch ?? (sel.priorityOrder !== undefined ? `priority ${sel.priorityOrder}` : 'Không có dữ liệu')}</div>
-                      </div>
-                    );
-                  })()
-                )}
-              </>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setAssignModal(false)}
-                className="btn btn-ghost flex-1 rounded-lg text-xs"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleAssign}
-                disabled={assignLoading || !assignForm.operatorId || candidates.length === 0}
-                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none flex-1 rounded-lg text-xs disabled:opacity-50"
-              >
-                {assignLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Giao việc'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Attachment Preview Modal */}
       {previewAttachment && (
