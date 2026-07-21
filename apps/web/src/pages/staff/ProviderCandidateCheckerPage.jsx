@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
@@ -27,25 +27,25 @@ export default function ProviderCandidateCheckerPage() {
     }
   };
 
-  const firstCoverage = (c) => {
+  const firstCoverage = useCallback((c) => {
     if (!c) return null;
     if (Array.isArray(c.coverages) && c.coverages.length) return c.coverages[0];
     if (Array.isArray(c.coverage) && c.coverage.length) return c.coverage[0];
     if (Array.isArray(c.coverageList) && c.coverageList.length) return c.coverageList[0];
     if (c.coverage && typeof c.coverage === 'object') return c.coverage;
     return null;
-  };
+  }, []);
 
 
-  const isPrimaryFlag = (c) => {
+  const isPrimaryFlag = useCallback((c) => {
     const cov = firstCoverage(c);
     return Boolean(c?.isPrimary ?? c?.primary ?? c?.is_primary ?? c?.primaryFlag ?? cov?.isPrimary ?? cov?.is_primary ?? false);
-  };
+  }, [firstCoverage]);
 
-  const isActiveFlag = (c) => {
+  const isActiveFlag = useCallback((c) => {
     const cov = firstCoverage(c);
     return Boolean(c?.isActive ?? c?.active ?? c?.is_active ?? cov?.isActive ?? cov?.is_active ?? false);
-  };
+  }, [firstCoverage]);
 
   const filtered = useMemo(() => {
     if (!search) return candidates;
@@ -61,7 +61,7 @@ export default function ProviderCandidateCheckerPage() {
     const primary = candidates.filter((c) => isPrimaryFlag(c)).length;
     const active = candidates.filter((c) => isActiveFlag(c)).length;
     return { total, primary, active };
-  }, [candidates]);
+  }, [candidates, isPrimaryFlag, isActiveFlag]);
 
   return (
     <div className="space-y-6 p-4">

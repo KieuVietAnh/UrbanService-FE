@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { LoadingSpinner, EmptyState } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import * as Lucide from 'lucide-react';
+// Lucide icons not used in this file
 
 export default function CoordinatorDetailPage() {
   const { coordinatorId } = useParams();
