@@ -30,6 +30,14 @@ export default defineConfig({
         path.resolve(__dirname),
       ],
     },
+    proxy: {
+      '/api': {
+        target: 'https://api.urbanservice.me',
+        changeOrigin: true,
+        secure: false,
+        xfwd: true,
+      },
+    },
     // Avoid watching/generated Playwright artifacts during test runs which
     // can trigger HMR reloads and cause navigation timeouts in CI.
     watch: {

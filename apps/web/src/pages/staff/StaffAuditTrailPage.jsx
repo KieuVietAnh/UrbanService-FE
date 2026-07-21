@@ -110,7 +110,7 @@ export const StaffAuditTrailPage = () => {
             <div className="max-w-2xl space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] backdrop-blur">
                 <Lucide.ShieldCheck size={14} />
-                Enterprise Audit Trail
+                Nhật ký kiểm toán
               </div>
               <div>
                 <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Theo dõi toàn bộ hành động quan trọng</h1>
@@ -204,15 +204,15 @@ export const StaffAuditTrailPage = () => {
 
                         <div className="mt-4 grid gap-3 xl:grid-cols-2">
                           <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Feedback</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Mã phản ánh</div>
                             <div className="mt-2 font-semibold text-slate-700">{log.entityId || '—'}</div>
                           </div>
                           <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Old value</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Giá trị cũ</div>
                             <div className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{readValue(log.oldValues)}</div>
                           </div>
                           <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4 xl:col-span-2">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">New value</div>
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Giá trị mới</div>
                             <div className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{readValue(log.newValues)}</div>
                           </div>
                         </div>

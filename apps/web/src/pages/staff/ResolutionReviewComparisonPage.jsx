@@ -6,6 +6,7 @@ import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import PageTransition from '../../components/motion/PageTransition';
 import { ConfirmationModal } from '@urbanmind/shared-ui';
 import DelightToast from '../../components/delight/DelightToast';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 const buildImageList = (attachments = []) => {
   if (!Array.isArray(attachments) || attachments.length === 0) return [];
@@ -119,7 +120,7 @@ export const ResolutionReviewComparisonPage = () => {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700">
                 <Lucide.GitCompareArrows size={14} />
-                Resolution review
+                Xem xét kết quả xử lý
               </div>
               <div>
                 <h1 className="text-2xl font-black text-slate-900">So sánh kết quả trước và sau xử lý</h1>
@@ -137,11 +138,11 @@ export const ResolutionReviewComparisonPage = () => {
             <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Original Report</div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Phản ánh ban đầu</div>
                   <h2 className="mt-1 text-lg font-black text-slate-900">{feedback?.title || '—'}</h2>
                 </div>
                 <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  {feedback?.categoryName || '—'}
+                  {getCategoryLabel(feedback?.categoryName || feedback?.category?.name || feedback?.categoryType || feedback?.type, '—')}
                 </div>
               </div>
 
@@ -164,31 +165,31 @@ export const ResolutionReviewComparisonPage = () => {
             <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Before / After</div>
-                  <h2 className="mt-1 text-lg font-black text-slate-900">Comparison workspace</h2>
+                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Trước / Sau</div>
+                  <h2 className="mt-1 text-lg font-black text-slate-900">So sánh hình ảnh</h2>
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
-                  <button type="button" onClick={() => setActiveImage('before')} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${activeImage === 'before' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>Before</button>
-                  <button type="button" onClick={() => setActiveImage('after')} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${activeImage === 'after' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>After</button>
+                  <button type="button" onClick={() => setActiveImage('before')} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${activeImage === 'before' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>Trước</button>
+                  <button type="button" onClick={() => setActiveImage('after')} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${activeImage === 'after' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>Sau</button>
                 </div>
               </div>
 
               <div className="mt-4 hidden gap-4 lg:grid lg:grid-cols-2">
                 <div className="rounded-[1.4rem] border border-rose-200 bg-rose-50 p-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-rose-600">Before Images</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-rose-600">Ảnh trước xử lý</div>
                   <div className="mt-3 grid gap-3">
                     {beforeImages.length > 0 ? beforeImages.map((image, index) => (
-                      <img key={`${image}-${index}`} src={image} alt={`Before ${index + 1}`} className="h-48 w-full rounded-[1.1rem] object-cover" />
+                      <img key={`${image}-${index}`} src={image} alt={`Trước ${index + 1}`} className="h-48 w-full rounded-[1.1rem] object-cover" />
                     )) : (
                       <div className="flex h-48 items-center justify-center rounded-[1.1rem] border border-dashed border-rose-200 bg-white/70 text-sm text-slate-500">Không có hình ảnh trước xử lý.</div>
                     )}
                   </div>
                 </div>
                 <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 p-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">After Images</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">Ảnh sau xử lý</div>
                   <div className="mt-3 grid gap-3">
                     {afterImages.length > 0 ? afterImages.map((image, index) => (
-                      <img key={`${image}-${index}`} src={image} alt={`After ${index + 1}`} className="h-48 w-full rounded-[1.1rem] object-cover" />
+                      <img key={`${image}-${index}`} src={image} alt={`Sau ${index + 1}`} className="h-48 w-full rounded-[1.1rem] object-cover" />
                     )) : (
                       <div className="flex h-48 items-center justify-center rounded-[1.1rem] border border-dashed border-emerald-200 bg-white/70 text-sm text-slate-500">Không có hình ảnh sau xử lý.</div>
                     )}
@@ -206,14 +207,14 @@ export const ResolutionReviewComparisonPage = () => {
 
           <div className="space-y-6">
             <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Resolution Notes</div>
+              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Ghi chú kết quả xử lý</div>
               <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">
                 {feedback?.resolution?.resolutionSummary || feedback?.resolution?.notes || 'Không có ghi chú từ đơn vị xử lý.'}
               </div>
             </section>
 
             <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Operator Information</div>
+              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Thông tin đơn vị xử lý</div>
               <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-black text-white">
@@ -228,7 +229,7 @@ export const ResolutionReviewComparisonPage = () => {
             </section>
 
             <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Decision</div>
+              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Quyết định</div>
               <div className="mt-4 space-y-3">
                 <textarea
                   rows="4"
@@ -239,13 +240,13 @@ export const ResolutionReviewComparisonPage = () => {
                 />
                 <div className="grid gap-2 sm:grid-cols-3">
                   <button type="button" onClick={() => handleDecisionRequest('approve')} disabled={submitting} className="btn btn-success rounded-2xl text-sm">
-                    <Lucide.CheckCircle2 size={16} className="mr-2" />{submitting && pendingDecision === 'approve' ? 'Đang xử lý...' : 'Approve'}
+                    <Lucide.CheckCircle2 size={16} className="mr-2" />{submitting && pendingDecision === 'approve' ? 'Đang xử lý...' : 'Phê duyệt'}
                   </button>
                   <button type="button" onClick={() => handleDecisionRequest('reject')} disabled={submitting} className="btn btn-error rounded-2xl text-sm">
-                    <Lucide.XCircle size={16} className="mr-2" />{submitting && pendingDecision === 'reject' ? 'Đang xử lý...' : 'Reject'}
+                    <Lucide.XCircle size={16} className="mr-2" />{submitting && pendingDecision === 'reject' ? 'Đang xử lý...' : 'Từ chối'}
                   </button>
                   <button type="button" onClick={() => handleDecisionRequest('rework')} disabled={submitting} className="btn btn-outline rounded-2xl text-sm">
-                    <Lucide.RefreshCw size={16} className="mr-2" />{submitting && pendingDecision === 'rework' ? 'Đang xử lý...' : 'Request Rework'}
+                    <Lucide.RefreshCw size={16} className="mr-2" />{submitting && pendingDecision === 'rework' ? 'Đang xử lý...' : 'Yêu cầu làm lại'}
                   </button>
                 </div>
               </div>
