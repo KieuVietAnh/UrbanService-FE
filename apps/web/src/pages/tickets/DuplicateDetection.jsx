@@ -128,13 +128,13 @@ export const DuplicateDetection = () => {
               <table className="table table-zebra w-full text-sm">
                 <thead>
                   <tr>
-                    <th>Duplicate Candidate ID</th>
-                    <th>Primary Feedback</th>
-                    <th>Duplicate Feedback</th>
-                    <th>Confidence Score</th>
-                    <th>Created Date</th>
-                    <th>Status</th>
-                    <th>View Detail</th>
+                    <th>Mã ứng viên trùng</th>
+                    <th>Phản ánh chính</th>
+                    <th>Phản ánh trùng</th>
+                    <th>Điểm độ tin cậy</th>
+                    <th>Ngày tạo</th>
+                    <th>Trạng thái</th>
+                    <th>Xem chi tiết</th>
                   </tr>
                 </thead>
                 <tbody>

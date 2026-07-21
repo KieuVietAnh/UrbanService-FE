@@ -642,7 +642,7 @@ export const InteractionApprovalDetailPage = () => {
                   <ResolutionField label="Hành động đã thực hiện">{latestResolution.actionTaken}</ResolutionField>
                   <ResolutionField label="Ghi chú kết quả">{latestResolution.resultNote}</ResolutionField>
                   <ResolutionField label="Người gửi kết quả">{latestResolution.createdByStaffUserName || 'Không xác định'}</ResolutionField>
-                  <ResolutionField label="Mã báo cáo đơn vị">{latestResolution.providerReportId || 'Không liên kết'}</ResolutionField>
+                  <ResolutionField label="Mã báo cáo xử lý">{latestResolution.providerReportId || 'Không liên kết'}</ResolutionField>
                 </dl>
               ) : (
                 <p className="mt-4 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
@@ -657,12 +657,12 @@ export const InteractionApprovalDetailPage = () => {
                 <dl className="mt-5 space-y-4">
                   <MetaItem label="Đơn vị">{providerReport.providerName || 'Chưa xác định'}</MetaItem>
                   <MetaItem label="Điều phối viên">{providerReport.coordinatorName || 'Chưa xác định'}</MetaItem>
-                  <MetaItem label="Trạng thái báo cáo">{providerReport.reportStatus || 'Chưa xác định'}</MetaItem>
+                  <MetaItem label="Trạng thái báo cáo xử lý">{providerReport.reportStatus || 'Chưa xác định'}</MetaItem>
                   <MetaItem label="Thời điểm chuyển">{formatDateTime(providerReport.reportedAt)}</MetaItem>
                   {providerReport.reportNote ? <MetaItem label="Ghi chú phối hợp">{providerReport.reportNote}</MetaItem> : null}
                 </dl>
               ) : (
-                <p className="mt-4 text-sm leading-6 text-slate-500 dark:text-slate-400">Chưa có báo cáo đơn vị được liên kết với phản ánh này.</p>
+                <p className="mt-4 text-sm leading-6 text-slate-500 dark:text-slate-400">Chưa có báo cáo xử lý được liên kết với phản ánh này.</p>
               )}
             </aside>
           </section>

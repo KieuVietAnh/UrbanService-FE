@@ -665,7 +665,7 @@ export const ProviderReportWorkspacePage = () => {
       if (auto) {
         openToast('Tự động cập nhật trạng thái', `Trạng thái đã chuyển sang ${nextStatus}.`);
       } else {
-        openToast('Đã cập nhật trạng thái', 'Trạng thái báo cáo nhà thầu đã được cập nhật.');
+        openToast('Đã cập nhật trạng thái', 'Trạng thái báo cáo xử lý đã được cập nhật.');
       }
       return refreshed;
     } catch (err) {
@@ -757,7 +757,7 @@ export const ProviderReportWorkspacePage = () => {
       <div style={{ padding: '1.5rem' }}>
         <div style={{ ...card, padding: '3rem 1.5rem', textAlign: 'center' }}>
           <Lucide.FileX size={32} style={{ margin: '0 auto 1rem', color: '#94a3b8' }} aria-hidden="true" />
-          <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>Báo cáo nhà thầu không tìm thấy</h2>
+          <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>Báo cáo xử lý không tìm thấy</h2>
           <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>Không thể tìm thấy báo cáo tương ứng với id cung cấp.</p>
           <div style={{ marginTop: '1.25rem' }}>
             <button type="button" className="btn btn-outline" onClick={() => navigate(-1)}>Quay lại</button>
@@ -792,7 +792,7 @@ export const ProviderReportWorkspacePage = () => {
               aria-label="Quay lại"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8125rem', fontWeight: 500, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem 0' }}
             >
-              <Lucide.ChevronLeft size={14} /> Báo cáo nhà thầu
+              <Lucide.ChevronLeft size={14} /> Báo cáo xử lý
             </button>
             <span style={{ color: '#cbd5e1' }}>/</span>
             <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0f172a' }}>
@@ -818,7 +818,7 @@ export const ProviderReportWorkspacePage = () => {
           <MetaField label="Điều phối viên" value={coordinatorName} />
           <MetaField label="Liên hệ"        value={[providerPhone !== '—' ? providerPhone : null, providerEmail !== '—' ? providerEmail : null].filter(Boolean).join(' · ') || '—'} />
           <MetaField label="Ngày phân công" value={report.assignedAt || report.assignedDate || report.createdAt ? formatContactDateTime(report.assignedAt || report.assignedDate || report.createdAt) : '—'} />
-          <MetaField label="Mã báo cáo"    value={report.providerReportId || report.id} mono />
+          <MetaField label="Mã báo cáo xử lý"    value={report.providerReportId || report.id} mono />
           {feedbackId && <MetaField label="Mã phản ánh" value={feedbackId} mono />}
         </div>
       </header>
@@ -1137,7 +1137,7 @@ export const ProviderReportWorkspacePage = () => {
                 <div style={{ margin: '0 1.25rem 1rem', padding: '0.75rem 1rem', borderRadius: '0.875rem', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(180,83,9,0.18)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
                   <Lucide.AlertTriangle size={15} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
                   <div style={{ fontSize: '0.8125rem', color: 'var(--color-warning)', lineHeight: 1.45 }}>
-                    <strong>Bước tiếp theo bị khóa.</strong> Bạn cần cập nhật trạng thái báo cáo nhà thầu thành <strong>Hoàn thành (Done)</strong> từ bước Tổng quan trước khi có thể gửi Kết quả xử lý.
+                    <strong>Bước tiếp theo bị khóa.</strong> Bạn cần cập nhật trạng thái báo cáo xử lý thành <strong>Hoàn thành (Done)</strong> từ bước Tổng quan trước khi có thể gửi Kết quả xử lý.
                   </div>
                 </div>
               )}
@@ -1166,7 +1166,7 @@ export const ProviderReportWorkspacePage = () => {
                   <div style={{ marginBottom: '1rem', padding: '0.875rem 1rem', borderRadius: '0.875rem', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(180,83,9,0.2)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
                     <Lucide.AlertTriangle size={15} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: '1px' }} />
                     <div style={{ fontSize: '0.8125rem', color: 'var(--color-warning)', lineHeight: 1.45 }}>
-                      <strong>Báo cáo nhà thầu phải ở trạng thái Hoàn thành (Done)</strong> trước khi gửi Kết quả xử lý. Quay lại bước Tổng quan để cập nhật.
+                      <strong>Báo cáo xử lý phải ở trạng thái Hoàn thành (Done)</strong> trước khi gửi Kết quả xử lý. Quay lại bước Tổng quan để cập nhật.
                     </div>
                   </div>
                 )}

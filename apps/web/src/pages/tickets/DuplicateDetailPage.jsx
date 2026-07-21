@@ -257,7 +257,7 @@ export const DuplicateDetailPage = () => {
           <div className="card bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Confidence Score</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Điểm độ tin cậy</div>
                 <div className="text-2xl font-black text-slate-900">{candidate?.confidenceScore ?? candidate?.confidence ?? '—'}</div>
               </div>
               <div className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">
@@ -268,14 +268,14 @@ export const DuplicateDetailPage = () => {
 
           {reasoning && (
             <div className="card bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
-              <h3 className="text-sm font-black text-slate-900">Duplicate Reasoning</h3>
+              <h3 className="text-sm font-black text-slate-900">Lý giải trùng lặp</h3>
               <p className="mt-2 text-sm text-slate-700 whitespace-pre-line">{reasoning}</p>
             </div>
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {renderFeedbackCard(primaryFeedback, 'Primary Feedback')}
-            {renderFeedbackCard(duplicateFeedback, 'Candidate Duplicate')}
+            {renderFeedbackCard(primaryFeedback, 'Phản ánh chính')}
+            {renderFeedbackCard(duplicateFeedback, 'Phản ánh trùng')}
           </div>
         </>
       )}

@@ -199,7 +199,7 @@ export const ResolutionReviewComparisonPage = () => {
 
               <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-3 lg:hidden">
                 <div className="rounded-[1.1rem] border border-slate-200 bg-white p-2">
-                  <img src={activeImage === 'before' ? (beforeImages[0] || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80') : (afterImages[0] || 'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=900&q=80')} alt={activeImage === 'before' ? 'Before' : 'After'} className="h-64 w-full rounded-[0.9rem] object-cover" />
+                  <img src={activeImage === 'before' ? (beforeImages[0] || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80') : (afterImages[0] || 'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=900&q=80')} alt={activeImage === 'before' ? 'Trước' : 'Sau'} className="h-64 w-full rounded-[0.9rem] object-cover" />
                 </div>
               </div>
             </section>
