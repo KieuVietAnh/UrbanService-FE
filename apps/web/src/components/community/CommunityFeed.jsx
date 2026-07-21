@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementTypes } from '@urbanmind/shared-types';
 import { normalizeTicketsResponse } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import { getCommunityFeed } from '../../services/api/feedApi';
-import { ticketApi } from '../../services/api/ticketApi';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  getCommunityFeed,
+  getCommunityFeedDetail,
+} from '../../services/api/feedApi';
 import { signalrService } from '../../services/socket/signalrService';
+import {
+  COMMUNITY_FEED_CACHE_TTL_MS,
+  readCommunityFeedCache,
+  writeCommunityFeedCache,
+} from '../../services/cache/communityFeedCache';
 import CommunityFeedItem from './CommunityFeedItem';
 import CommentDrawer from './CommentDrawer';
 
@@ -155,10 +163,21 @@ const FeedSkeleton = () => (
 
 export default function CommunityFeed({ initialTab = 'Latest' }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const cacheOwnerKey = (
+    user?.userId || user?.id || user?.email || 'service-user'
+  );
   const [restoredContext] = useState(readCommunityReturnContext);
   const restoreContextRef = useRef(restoredContext);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [cachedSnapshot] = useState(() => (
+    readCommunityFeedCache(cacheOwnerKey)
+  ));
+  const cachedItems = Array.isArray(cachedSnapshot?.items)
+    ? cachedSnapshot.items
+    : [];
+  const [items, setItems] = useState(cachedItems);
+  const itemsRef = useRef(cachedItems);
+  const [loading, setLoading] = useState(cachedItems.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(() => (
     Math.max(1, Number(restoredContext?.page) || 1)
@@ -171,7 +190,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
   const [error, setError] = useState('');
   const [openCommentsFor, setOpenCommentsFor] = useState(null);
   const isFetchingRef = useRef(false);
-  const hasLoadedSnapshotRef = useRef(false);
+  const hasLoadedSnapshotRef = useRef(cachedItems.length > 0);
   const hasInitializedFiltersRef = useRef(false);
   const filterSectionRef = useRef(null);
   const feedListSectionRef = useRef(null);
@@ -179,6 +198,14 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     id: 0,
     target: 'controls',
   });
+
+  useEffect(() => {
+    itemsRef.current = items;
+
+    if (hasLoadedSnapshotRef.current) {
+      writeCommunityFeedCache(cacheOwnerKey, items);
+    }
+  }, [cacheOwnerKey, items]);
 
   const loadFeedSnapshot = useCallback(async ({
     background = false,
@@ -229,15 +256,49 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
         filterPublicItems(fetchedItems)
       );
 
-      setItems(publicItems);
+      const previousItemsById = new Map(
+        itemsRef.current.map((item) => [getItemId(item), item])
+      );
+      const itemsWithMediaState = publicItems.map((item) => {
+        const feedbackId = getItemId(item);
+        const directAttachments = Array.isArray(item?.attachments)
+          ? item.attachments
+          : [];
+        const previousItem = previousItemsById.get(feedbackId);
+        const previousAttachments = Array.isArray(previousItem?.attachments)
+          ? previousItem.attachments
+          : [];
+        const attachmentCount = Number(item?.attachmentCount || 0);
+
+        if (directAttachments.length > 0) {
+          return {
+            ...item,
+            __mediaState: 'ready',
+          };
+        }
+
+        if (
+          previousAttachments.length > 0 &&
+          previousAttachments.length >= attachmentCount
+        ) {
+          return {
+            ...item,
+            attachments: previousAttachments,
+            __mediaState: 'ready',
+          };
+        }
+
+        return {
+          ...item,
+          __mediaState: attachmentCount > 0 ? 'loading' : 'empty',
+        };
+      });
+
+      setItems(itemsWithMediaState);
       hasLoadedSnapshotRef.current = true;
 
-      const itemsMissingPreview = publicItems.filter((item) => (
-        item?.attachmentCount > 0 &&
-        !(
-          Array.isArray(item?.attachments) &&
-          item.attachments.length > 0
-        )
+      const itemsMissingPreview = itemsWithMediaState.filter((item) => (
+        item?.__mediaState === 'loading'
       ));
 
       if (itemsMissingPreview.length > 0) {
@@ -246,16 +307,16 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
             const feedbackId = getItemId(item);
 
             try {
-              const detail = await ticketApi.getTicketById(
-                feedbackId,
-                { role: 'service-user' }
-              );
+              const detail = await getCommunityFeedDetail(feedbackId);
+
+              const attachments = Array.isArray(detail?.attachments)
+                ? detail.attachments
+                : [];
 
               return {
                 feedbackId,
-                attachments: Array.isArray(detail?.attachments)
-                  ? detail.attachments
-                  : [],
+                attachments,
+                mediaState: attachments.length > 0 ? 'ready' : 'empty',
               };
             } catch (previewError) {
               console.warn(
@@ -266,36 +327,26 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
               return {
                 feedbackId,
                 attachments: [],
+                mediaState: 'error',
               };
             }
           })
         ).then((results) => {
-          const attachmentMap = new Map(
-            results.map((result) => [
-              result.feedbackId,
-              result.attachments,
-            ])
+          const mediaResultMap = new Map(
+            results.map((result) => [result.feedbackId, result])
           );
 
           setItems((currentItems) => currentItems.map((item) => {
             const feedbackId = getItemId(item);
-            const attachments = attachmentMap.get(feedbackId);
+            const mediaResult = mediaResultMap.get(feedbackId);
 
-            if (
-              attachments &&
-              attachments.length > 0 &&
-              !(
-                Array.isArray(item?.attachments) &&
-                item.attachments.length > 0
-              )
-            ) {
-              return {
-                ...item,
-                attachments,
-              };
-            }
+            if (!mediaResult) return item;
 
-            return item;
+            return {
+              ...item,
+              attachments: mediaResult.attachments,
+              __mediaState: mediaResult.mediaState,
+            };
           }));
         });
       }
@@ -314,8 +365,20 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
   }, []);
 
   useEffect(() => {
-    loadFeedSnapshot();
-  }, [loadFeedSnapshot]);
+    const hasCachedItems = cachedItems.length > 0;
+    const cacheAge = hasCachedItems
+      ? Date.now() - Number(cachedSnapshot?.updatedAt || 0)
+      : Number.POSITIVE_INFINITY;
+
+    if (!hasCachedItems) {
+      loadFeedSnapshot();
+      return;
+    }
+
+    if (cacheAge >= COMMUNITY_FEED_CACHE_TTL_MS) {
+      loadFeedSnapshot({ background: true });
+    }
+  }, [cachedItems.length, cachedSnapshot?.updatedAt, loadFeedSnapshot]);
 
   useEffect(() => {
     if (!hasInitializedFiltersRef.current) {
@@ -428,9 +491,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
     const handleResolutionRefresh = async (incomingFeedbackId) => {
       try {
-        const detail = await ticketApi.getTicketById(incomingFeedbackId, {
-          role: 'service-user',
-        });
+        const detail = await getCommunityFeedDetail(incomingFeedbackId);
         setItems((currentItems) => currentItems.map((item) => (
           getItemId(item) === incomingFeedbackId
             ? { ...item, ...detail }
@@ -462,7 +523,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const savedContext = restoreContextRef.current;
     if (!savedContext || loading || items.length === 0) return undefined;
 
@@ -485,7 +546,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
       if (targetRow) {
         targetRow.scrollIntoView({
-          behavior: 'smooth',
+          behavior: 'auto',
           block: 'center',
         });
         setHighlightedFeedbackId(String(savedContext.feedbackId));
@@ -507,17 +568,16 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
       window.scrollTo({
         top: Number(savedContext.scrollY) || 0,
-        behavior: 'smooth',
+        behavior: 'auto',
       });
       window.sessionStorage.removeItem(COMMUNITY_RETURN_STORAGE_KEY);
       restoreContextRef.current = null;
     };
 
-    const timer = window.setTimeout(restorePosition, 80);
+    restorePosition();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
   }, [items, loading]);
 

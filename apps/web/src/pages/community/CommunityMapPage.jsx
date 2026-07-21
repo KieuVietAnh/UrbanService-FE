@@ -257,12 +257,7 @@ export const CommunityMapPage = () => {
 
         <div className="relative px-5 py-6 sm:px-7 sm:py-7">
           <header className="max-w-3xl">
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-info/15 bg-base-100/75 text-info shadow-sm backdrop-blur">
-                <Lucide.MapPinned size={21} aria-hidden="true" />
-              </span>
-              <span className="h-px w-16 bg-gradient-to-r from-info/40 to-transparent" />
-            </div>
+
 
             <h1
               id="community-map-title"

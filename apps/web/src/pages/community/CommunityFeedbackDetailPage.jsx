@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { managementTypes } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import useTicketDetail from '../../hooks/useTicketDetail';
+import { getCommunityFeedDetail } from '../../services/api/feedApi';
+import { patchCommunityFeedCacheItem } from '../../services/cache/communityFeedCache';
 import SupportButton from '../../components/community/SupportButton';
 
 const CATEGORY_LABELS = {
@@ -187,6 +189,57 @@ const normalizeCommentText = (value) => (
     .toLocaleLowerCase('vi-VN')
 );
 
+const DetailSmartCityBackdrop = () => (
+  <div
+    className="pointer-events-none absolute inset-0 overflow-hidden"
+    aria-hidden="true"
+  >
+    <svg
+      viewBox="0 0 1400 320"
+      preserveAspectRatio="none"
+      className="absolute inset-0 h-full w-full text-primary"
+      fill="none"
+    >
+      <path
+        d="M-40 250C135 210 185 72 365 96C515 116 515 260 690 243C836 229 856 81 1018 90C1165 98 1192 214 1445 142"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeOpacity="0.075"
+      />
+      <path
+        d="M-15 278C180 238 222 129 397 145C564 160 614 294 786 262C934 234 964 126 1131 124C1250 122 1320 171 1435 188"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="9 12"
+        strokeOpacity="0.06"
+      />
+      <path
+        d="M722 -25C761 70 742 145 802 207C872 278 1014 280 1075 194C1129 118 1091 38 1173 -28"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeOpacity="0.055"
+      />
+      <circle cx="365" cy="96" r="7" fill="currentColor" fillOpacity="0.075" />
+      <circle cx="690" cy="243" r="9" fill="currentColor" fillOpacity="0.06" />
+      <circle cx="1018" cy="90" r="6" fill="currentColor" fillOpacity="0.09" />
+      <circle cx="1131" cy="124" r="18" stroke="currentColor" strokeOpacity="0.06" />
+    </svg>
+
+    <div className="absolute -left-20 -top-24 h-72 w-72 rounded-full bg-secondary/[0.045] blur-3xl" />
+    <div className="absolute -bottom-28 right-[10%] h-72 w-72 rounded-full bg-info/[0.065] blur-3xl" />
+
+    <span className="absolute left-[56%] top-[18%] hidden h-8 w-8 items-center justify-center rounded-full border border-primary/10 bg-base-100/55 text-primary/35 shadow-sm backdrop-blur lg:flex">
+      <Lucide.MapPin size={14} />
+    </span>
+    <span className="absolute bottom-[16%] left-[66%] hidden h-7 w-7 items-center justify-center rounded-full border border-success/10 bg-base-100/55 text-success/35 shadow-sm backdrop-blur lg:flex">
+      <Lucide.Check size={13} />
+    </span>
+    <span className="absolute right-[22%] top-[16%] hidden h-7 w-7 items-center justify-center rounded-full border border-secondary/10 bg-base-100/55 text-secondary/35 shadow-sm backdrop-blur lg:flex">
+      <Lucide.Radio size={13} />
+    </span>
+  </div>
+);
+
 const dedupeComments = (commentItems = []) => {
   const uniqueComments = [];
   const seenIds = new Set();
@@ -232,6 +285,9 @@ export const CommunityFeedDetailPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const cacheOwnerKey = (
+    user?.userId || user?.id || user?.email || 'service-user'
+  );
 
   const {
     ticket,
@@ -242,10 +298,13 @@ export const CommunityFeedDetailPage = () => {
     error,
     handleSendChat,
     getAttachmentUrl,
-  } = useTicketDetail(feedbackId, user);
+  } = useTicketDetail(feedbackId, user, getCommunityFeedDetail);
 
   const [previewIndex, setPreviewIndex] = useState(null);
   const [visibleCommentCount, setVisibleCommentCount] = useState(3);
+  const [displaySupportCount, setDisplaySupportCount] = useState(0);
+  const commentsSectionRef = useRef(null);
+  const commentInputRef = useRef(null);
 
   const attachments = Array.isArray(ticket?.attachments)
     ? ticket.attachments
@@ -263,6 +322,12 @@ export const CommunityFeedDetailPage = () => {
   useEffect(() => {
     setVisibleCommentCount(3);
   }, [feedbackId]);
+
+  useEffect(() => {
+    setDisplaySupportCount(
+      Number(ticket?.supportCount || ticket?.supports || 0)
+    );
+  }, [feedbackId, ticket?.supportCount, ticket?.supports]);
 
   useEffect(() => {
     if (!activeAttachment) return undefined;
@@ -332,7 +397,7 @@ export const CommunityFeedDetailPage = () => {
   const commentCount = uniqueComments.length > 0
     ? uniqueComments.length
     : Number(ticket?.commentCount || 0);
-  const supportCount = Number(ticket?.supportCount || ticket?.supports || 0);
+  const supportCount = displaySupportCount;
   const orderedComments = [...uniqueComments].sort((firstComment, secondComment) => (
     getCommentTimestamp(secondComment) - getCommentTimestamp(firstComment)
   ));
@@ -346,6 +411,32 @@ export const CommunityFeedDetailPage = () => {
     orderedComments[0]?.createdDate ||
     updatedAt
   );
+
+  useEffect(() => {
+    if (!ticket || !feedbackId) return;
+
+    patchCommunityFeedCacheItem(
+      cacheOwnerKey,
+      feedbackId,
+      (cachedItem) => ({
+        ...ticket,
+        attachments: Array.isArray(ticket?.attachments)
+          ? ticket.attachments
+          : cachedItem?.attachments,
+        supportCount,
+        commentCount,
+        __mediaState: Array.isArray(ticket?.attachments)
+          ? (ticket.attachments.length > 0 ? 'ready' : 'empty')
+          : cachedItem?.__mediaState,
+      })
+    );
+  }, [
+    cacheOwnerKey,
+    commentCount,
+    feedbackId,
+    supportCount,
+    ticket,
+  ]);
 
   const matchedJourneyIndex = JOURNEY_STEPS.findIndex((step) => (
     step.statuses.includes(ticket?.status)
@@ -370,10 +461,25 @@ export const CommunityFeedDetailPage = () => {
   const backDestination = location.state?.from || '/community/feed';
   const backLabel = backDestination === '/community/map'
     ? 'Quay lại bản đồ sự cố'
-    : '{backLabel}';
+    : 'Quay lại bảng tin';
 
   const handleBack = () => {
     navigate(backDestination);
+  };
+
+  const handleJumpToComments = () => {
+    const prefersReducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
+
+    commentsSectionRef.current?.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+
+    window.setTimeout(() => {
+      commentInputRef.current?.focus({ preventScroll: true });
+    }, prefersReducedMotion ? 0 : 420);
   };
 
   if (loading) {
@@ -427,8 +533,10 @@ export const CommunityFeedDetailPage = () => {
           {backLabel}
         </button>
 
-        <article className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_16px_40px_rgba(15,23,42,0.09)]">
-          <div className="grid gap-6 px-5 py-5 sm:px-7 sm:py-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+        <article className="relative overflow-hidden rounded-[28px] border border-primary/15 bg-gradient-to-br from-base-100 via-secondary/[0.025] to-primary/[0.06] shadow-[0_18px_44px_rgba(15,23,42,0.09)]">
+          <DetailSmartCityBackdrop />
+
+          <div className="relative grid gap-6 px-5 py-5 sm:px-7 sm:py-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
             <header className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-secondary/15 bg-secondary/8 px-3 py-1.5 text-xs font-semibold text-secondary">
@@ -477,7 +585,7 @@ export const CommunityFeedDetailPage = () => {
               </div>
             </header>
 
-            <aside className="rounded-[22px] border border-base-300 bg-base-200/40 p-4">
+            <aside className="rounded-[22px] border border-base-300/85 bg-base-100/78 p-4 shadow-sm backdrop-blur">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-base-content/45">
                   Trạng thái hiện tại
@@ -496,24 +604,47 @@ export const CommunityFeedDetailPage = () => {
                   feedbackId={feedbackId}
                   initialCount={supportCount}
                   initialSupported={ticket?.isSupportedByCurrentUser}
+                  onChange={({ count, isSupported }) => {
+                    const nextSupportCount = Math.max(
+                      0,
+                      Number(count) || 0
+                    );
+
+                    setDisplaySupportCount(nextSupportCount);
+                    patchCommunityFeedCacheItem(
+                      cacheOwnerKey,
+                      feedbackId,
+                      {
+                        supportCount: nextSupportCount,
+                        isSupportedByCurrentUser: Boolean(isSupported),
+                      }
+                    );
+                  }}
                   className="h-10"
                 />
-                <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-semibold text-base-content/60">
+                <button
+                  type="button"
+                  onClick={handleJumpToComments}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-semibold text-base-content/60 transition hover:border-primary/25 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label={`Đi tới phần ${commentCount} bình luận`}
+                >
                   <Lucide.MessageCircle size={16} aria-hidden="true" />
                   {commentCount} bình luận
-                </span>
+                </button>
               </div>
             </aside>
           </div>
         </article>
 
-        <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5" aria-labelledby="community-progress-title">
+        <section className="relative overflow-hidden rounded-[28px] border border-primary/12 bg-gradient-to-r from-base-100 via-base-100 to-primary/[0.035] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.075)] sm:p-5" aria-labelledby="community-progress-title">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-primary/[0.04] blur-3xl" aria-hidden="true" />
+          <div className="relative">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 id="community-progress-title" className="text-lg font-bold">
                 Tiến độ xử lý công khai
               </h2>
-              <p className="mt-1 text-sm text-base-content/55">
+              <p className="mt-1 text-sm text-base-content/60">
                 Các mốc chính giúp cộng đồng theo dõi quá trình xử lý.
               </p>
             </div>
@@ -535,8 +666,8 @@ export const CommunityFeedDetailPage = () => {
                       <span
                         className={`absolute left-[calc(50%+20px)] right-[calc(-50%+20px)] top-[18px] h-0.5 ${
                           index < currentJourneyIndex
-                            ? 'bg-primary'
-                            : 'bg-base-300'
+                            ? 'bg-primary/75'
+                            : 'bg-base-content/15'
                         }`}
                         aria-hidden="true"
                       />
@@ -545,10 +676,10 @@ export const CommunityFeedDetailPage = () => {
                     <span
                       className={`relative z-10 mx-auto flex h-9 w-9 items-center justify-center rounded-full border ${
                         completed
-                          ? 'border-primary bg-primary text-primary-content'
+                          ? 'border-primary bg-primary text-primary-content shadow-sm'
                           : active
-                            ? 'border-primary bg-primary/10 text-primary ring-4 ring-primary/10'
-                            : 'border-base-300 bg-base-100 text-base-content/30'
+                            ? 'border-primary bg-primary/12 text-primary ring-4 ring-primary/12 shadow-[0_0_0_1px_rgba(59,130,246,0.12)]'
+                            : 'border-base-content/20 bg-base-100 text-base-content/45 shadow-sm'
                       }`}
                     >
                       {completed ? (
@@ -560,11 +691,15 @@ export const CommunityFeedDetailPage = () => {
                     <p className={`mt-2 text-sm font-semibold ${
                       active || completed
                         ? 'text-base-content'
-                        : 'text-base-content/40'
+                        : 'text-base-content/60'
                     }`}>
                       {step.title}
                     </p>
-                    <p className="mt-0.5 text-xs text-base-content/45">
+                    <p className={`mt-0.5 text-xs ${
+                      active || completed
+                        ? 'text-base-content/55'
+                        : 'text-base-content/48'
+                    }`}>
                       {step.description}
                     </p>
                   </li>
@@ -572,10 +707,13 @@ export const CommunityFeedDetailPage = () => {
               })}
             </ol>
           </div>
+          </div>
         </section>
 
         <section className="space-y-4">
-          <article className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
+          <article className="relative overflow-hidden rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
+            <div className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-info/[0.055] blur-3xl" aria-hidden="true" />
+            <div className="relative">
             <header className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold">Nội dung phản ánh</h2>
@@ -595,13 +733,16 @@ export const CommunityFeedDetailPage = () => {
               </p>
             </div>
 
-            <section className="mt-4" aria-labelledby="community-evidence-title">
-              <h3 id="community-evidence-title" className="text-sm font-semibold">
+            <section className="relative mt-4 rounded-[22px] border border-base-300/85 bg-gradient-to-br from-base-200/55 via-base-100 to-primary/[0.025] p-3 sm:p-4" aria-labelledby="community-evidence-title">
+              <div className="pointer-events-none absolute right-4 top-3 text-primary/[0.05]" aria-hidden="true">
+                <Lucide.Images size={64} strokeWidth={1.25} />
+              </div>
+              <h3 id="community-evidence-title" className="relative text-sm font-semibold">
                 Hình ảnh và video
               </h3>
 
               {attachments.length > 0 ? (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="relative mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {attachments.map((attachment, index) => {
                     const attachmentUrl = getAttachmentUrl(attachment);
                     const video = isVideoAttachment(
@@ -666,14 +807,17 @@ export const CommunityFeedDetailPage = () => {
                 </div>
               )}
             </section>
+            </div>
           </article>
 
           <section
-            className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_32px_rgba(15,23,42,0.07)]"
+            ref={commentsSectionRef}
+            className="scroll-mt-24 overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_32px_rgba(15,23,42,0.07)]"
             aria-labelledby="community-comments-title"
           >
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 px-5 py-5 sm:px-6">
-              <div>
+            <header className="relative flex flex-wrap items-start justify-between gap-3 overflow-hidden border-b border-base-300 bg-gradient-to-r from-base-100 via-primary/[0.018] to-secondary/[0.04] px-5 py-5 sm:px-6">
+              <div className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-secondary/[0.07] blur-3xl" aria-hidden="true" />
+              <div className="relative">
                 <h2 id="community-comments-title" className="text-lg font-bold">
                   Trao đổi cộng đồng
                 </h2>
@@ -681,7 +825,7 @@ export const CommunityFeedDetailPage = () => {
                   Chia sẻ thông tin hữu ích và trao đổi văn minh về phản ánh.
                 </p>
               </div>
-              <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/15 bg-primary/8 px-3 text-xs font-semibold text-primary">
+              <span className="relative inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/15 bg-primary/8 px-3 text-xs font-semibold text-primary">
                 <Lucide.MessageCircle size={14} aria-hidden="true" />
                 {commentCount} bình luận
               </span>
@@ -703,6 +847,7 @@ export const CommunityFeedDetailPage = () => {
                         Viết bình luận công khai
                       </label>
                       <textarea
+                        ref={commentInputRef}
                         id="community-detail-comment"
                         rows="2"
                         value={chatInput}
@@ -764,15 +909,33 @@ export const CommunityFeedDetailPage = () => {
                       );
                     })
                   ) : (
-                    <div className="flex min-h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-base-300 bg-base-100 px-4 py-6 text-center">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/8 text-primary">
-                        <Lucide.MessageCircle size={20} aria-hidden="true" />
+                    <div className="relative flex min-h-40 flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-primary/20 bg-gradient-to-br from-base-100 via-primary/[0.018] to-secondary/[0.045] px-4 py-7 text-center">
+                      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+                        <svg
+                          viewBox="0 0 760 180"
+                          preserveAspectRatio="none"
+                          className="h-full w-full text-primary"
+                          fill="none"
+                        >
+                          <path
+                            d="M-20 132C104 116 145 46 263 58C368 68 404 142 520 127C620 114 651 63 790 72"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeDasharray="8 11"
+                            strokeOpacity="0.08"
+                          />
+                          <circle cx="263" cy="58" r="6" fill="currentColor" fillOpacity="0.08" />
+                          <circle cx="520" cy="127" r="7" fill="currentColor" fillOpacity="0.065" />
+                        </svg>
+                      </div>
+                      <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/12 bg-base-100/85 text-primary shadow-sm backdrop-blur">
+                        <Lucide.MessagesSquare size={21} aria-hidden="true" />
                       </span>
-                      <p className="mt-3 text-sm font-semibold text-base-content/65">
+                      <p className="relative mt-3 text-sm font-semibold text-base-content/70">
                         Chưa có bình luận nào
                       </p>
-                      <p className="mt-1 text-xs text-base-content/42">
-                        Hãy là người đầu tiên chia sẻ thông tin hữu ích.
+                      <p className="relative mt-1 max-w-sm text-xs leading-5 text-base-content/45">
+                        Hãy là người đầu tiên bổ sung thông tin hữu ích để cộng đồng cùng theo dõi phản ánh này.
                       </p>
                     </div>
                   )}

@@ -141,3 +141,47 @@ export const getCommunityFeed = async (params = {}) => {
 
   return normalizeFeedPayload(payload);
 };
+
+export const getCommunityFeedDetail = async (feedbackId) => {
+  if (!feedbackId) {
+    throw new Error('Feedback ID is required.');
+  }
+
+  const baseUrl = getBaseUrl();
+  const endpoint = `${baseUrl}/api/user/feedbacks/feed/${encodeURIComponent(feedbackId)}`;
+  const token = getAuthToken();
+  const headers = {
+    Accept: 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    credentials: 'include',
+    headers,
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message = response.status === 401
+      ? 'Unauthorized. Please log in.'
+      : response.status === 403
+        ? 'Forbidden. You do not have permission to view this feedback.'
+        : `Request failed with status ${response.status} ${response.statusText}`;
+    throw new Error(`${message} ${typeof payload === 'string' ? payload.slice(0, 300) : JSON.stringify(payload)}`);
+  }
+
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected JSON response but got ${contentType}`);
+  }
+
+  if (payload?.data && typeof payload.data === 'object') {
+    return payload.data;
+  }
+
+  return payload;
+};

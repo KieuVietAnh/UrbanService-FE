@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { getAttachmentUrl } from '@urbanmind/shared-utils';
 import { managementTypes } from '@urbanmind/shared-types';
@@ -139,6 +139,13 @@ const MediaTile = ({
 }) => {
   const mediaUrl = getAttachmentUrl(attachment);
   const video = isVideoAttachment(attachment);
+  const [mediaStatus, setMediaStatus] = useState(
+    mediaUrl ? 'loading' : 'error'
+  );
+
+  useEffect(() => {
+    setMediaStatus(mediaUrl ? 'loading' : 'error');
+  }, [mediaUrl]);
 
   return (
     <button
@@ -148,33 +155,59 @@ const MediaTile = ({
       aria-label={`Mở ${itemTitle || `minh chứng ${index + 1}`}`}
     >
       {mediaUrl ? (
-        video ? (
-          <>
-            <video
+        <>
+          {video ? (
+            <>
+              <video
+                src={mediaUrl}
+                className={`h-full w-full object-cover transition-opacity duration-200 ${
+                  mediaStatus === 'ready' ? 'opacity-100' : 'opacity-0'
+                }`}
+                muted
+                playsInline
+                preload="metadata"
+                onLoadedData={() => setMediaStatus('ready')}
+                onError={() => setMediaStatus('error')}
+              />
+              {mediaStatus === 'ready' ? (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition group-hover/media:bg-black/25">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/55 shadow-lg backdrop-blur">
+                    <Lucide.Play
+                      size={17}
+                      fill="currentColor"
+                      aria-hidden="true"
+                    />
+                  </span>
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <img
               src={mediaUrl}
-              className="h-full w-full object-cover"
-              muted
-              playsInline
-              preload="metadata"
+              alt={itemTitle || `Minh chứng ${index + 1}`}
+              className={`h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.012] ${
+                mediaStatus === 'ready' ? 'opacity-100' : 'opacity-0'
+              }`}
+              loading="lazy"
+              onLoad={() => setMediaStatus('ready')}
+              onError={() => setMediaStatus('error')}
             />
-            <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition group-hover/media:bg-black/25">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/55 shadow-lg backdrop-blur">
-                <Lucide.Play
-                  size={17}
-                  fill="currentColor"
-                  aria-hidden="true"
-                />
-              </span>
+          )}
+
+          {mediaStatus === 'loading' ? (
+            <span className="absolute inset-0 animate-pulse bg-base-300/55" aria-hidden="true">
+              <span className="absolute inset-x-6 bottom-5 h-3 rounded-full bg-base-100/55" />
+              <span className="absolute bottom-10 left-6 h-3 w-2/5 rounded-full bg-base-100/45" />
             </span>
-          </>
-        ) : (
-          <img
-            src={mediaUrl}
-            alt={itemTitle || `Minh chứng ${index + 1}`}
-            className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.012]"
-            loading="lazy"
-          />
-        )
+          ) : null}
+
+          {mediaStatus === 'error' ? (
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-base-200 px-4 text-center text-sm text-base-content/45">
+              <Lucide.ImageOff size={19} aria-hidden="true" />
+              Không thể hiển thị tệp
+            </span>
+          ) : null}
+        </>
       ) : (
         <span className="flex h-full min-h-28 items-center justify-center text-sm text-base-content/40">
           Không thể hiển thị tệp
@@ -207,6 +240,13 @@ const CommunityFeedItem = ({
     : fallbackAttachment
       ? [fallbackAttachment]
       : [];
+  const mediaState = item?.__mediaState || (
+    mediaItems.length > 0
+      ? 'ready'
+      : Number(item?.attachmentCount || 0) > 0
+        ? 'loading'
+        : 'empty'
+  );
   const authorName = getAuthorName(item);
   const areaName = getAreaName(item);
   const statusMeta = STATUS_META[item?.status] || {
@@ -310,11 +350,31 @@ const CommunityFeedItem = ({
       </div>
 
       <div className="px-5 sm:px-6">
-        {mediaItems.length === 0 ? (
+        {mediaState === 'loading' ? (
+          <div
+            className="h-44 animate-pulse overflow-hidden rounded-2xl border border-base-300 bg-base-300/45 sm:h-52"
+            role="status"
+            aria-label="Đang tải hình ảnh minh chứng"
+          >
+            <span className="sr-only">Đang tải hình ảnh minh chứng</span>
+            <div className="mx-6 mt-6 h-3 w-2/5 rounded-full bg-base-100/55" />
+            <div className="mx-6 mt-3 h-3 w-3/5 rounded-full bg-base-100/45" />
+          </div>
+        ) : mediaState === 'error' ? (
           <button
             type="button"
             onClick={() => onOpen(item)}
-            className="flex h-24 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-base-300 bg-base-200/30 text-sm text-base-content/42"
+            className="flex h-44 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-error/25 bg-error/5 px-4 text-center text-sm text-base-content/50 sm:h-52"
+          >
+            <Lucide.ImageOff size={20} className="text-error/60" aria-hidden="true" />
+            <span className="font-semibold">Không thể tải hình ảnh</span>
+            <span className="text-xs text-base-content/40">Mở chi tiết để thử lại</span>
+          </button>
+        ) : mediaItems.length === 0 ? (
+          <button
+            type="button"
+            onClick={() => onOpen(item)}
+            className="flex h-44 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-base-300 bg-base-200/30 text-sm text-base-content/42 sm:h-52"
           >
             <Lucide.ImageOff size={18} aria-hidden="true" />
             Chưa có hình ảnh công khai
