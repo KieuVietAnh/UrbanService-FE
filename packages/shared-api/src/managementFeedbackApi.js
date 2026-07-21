@@ -301,6 +301,30 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  async getLinkedFeedbacks(feedbackId) {
+    const response = await axiosClient.get(`/api/staff/feedbacks/${feedbackId}/linked-feedbacks`);
+    const payload = response?.data ?? response?.item ?? response?.result ?? response ?? {};
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.items)) return payload.items;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.results)) return payload.results;
+
+    return [];
+  },
+
+  async getRelatedFeedbacks(feedbackId) {
+    const response = await axiosClient.get(`/api/feedbacks/${feedbackId}/related`);
+    const payload = response?.data ?? response?.item ?? response?.result ?? response ?? {};
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.items)) return payload.items;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.results)) return payload.results;
+
+    return [];
+  },
+
   // Get a single provider report by its id.
   // The backend currently exposes provider report data through the feedback-level list endpoint,
   // so we prefer that shape and can scan feedbacks when the page is opened without navigation state.

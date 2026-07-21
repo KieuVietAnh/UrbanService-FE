@@ -28,6 +28,7 @@ const SettingsPage = lazy(() => import('../pages/settings/SettingsPage').then((m
 
 const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then((m) => ({ default: m.AIReviewDetail })));
 const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
+const DuplicateDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.DuplicateDetailPage })));
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
@@ -233,6 +234,15 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <DuplicateDetection />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/duplicates/:duplicateCandidateId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <DuplicateDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
