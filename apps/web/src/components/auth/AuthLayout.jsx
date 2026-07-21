@@ -189,6 +189,47 @@ export const AuthLayout = ({
   return (
     <main className="auth-page relative min-h-[100svh] overflow-x-hidden bg-slate-50 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-100">
     <style>{`
+      @keyframes auth-panel-enter-left {
+        from {
+          opacity: 0;
+          transform: translate3d(-20px, 0, 0);
+        }
+        to {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+      }
+
+      @keyframes auth-panel-enter-right {
+        from {
+          opacity: 0;
+          transform: translate3d(20px, 0, 0);
+        }
+        to {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+      }
+
+      @keyframes auth-panel-enter-up {
+        from {
+          opacity: 0;
+          transform: translate3d(0, 16px, 0);
+        }
+        to {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+      }
+
+      .auth-story-panel {
+        animation: auth-panel-enter-left 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
+      .auth-form-column {
+        animation: auth-panel-enter-right 680ms 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+
       .auth-story-panel--compact {
         min-height: 585px;
       }
@@ -442,6 +483,18 @@ export const AuthLayout = ({
         .auth-main-grid {
           padding-top: 2rem;
           padding-bottom: 2rem;
+        }
+
+        .auth-form-column {
+          animation-name: auth-panel-enter-up;
+          animation-delay: 40ms;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .auth-story-panel,
+        .auth-form-column {
+          animation: none;
         }
       }
 
