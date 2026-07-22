@@ -3,7 +3,7 @@ import * as Lucide from 'lucide-react';
 
 const AuthPageArtwork = () => (
   <svg
-    className="pointer-events-none absolute inset-0 h-full w-full text-blue-600"
+    className="auth-page-artwork pointer-events-none absolute inset-0 h-full w-full text-blue-600"
     viewBox="0 0 1600 920"
     fill="none"
     preserveAspectRatio="xMidYMid slice"
@@ -42,7 +42,7 @@ const AuthPageArtwork = () => (
 
 const AuthCityArtwork = () => (
   <svg
-    className="pointer-events-none absolute inset-0 h-full w-full"
+    className="auth-city-artwork pointer-events-none absolute inset-0 h-full w-full"
     viewBox="0 0 760 760"
     fill="none"
     aria-hidden="true"
@@ -230,6 +230,33 @@ export const AuthLayout = ({
         animation: auth-panel-enter-right 680ms 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
       }
 
+      .auth-header {
+        position: relative;
+        z-index: 20;
+      }
+
+      .auth-header::after {
+        content: "";
+        pointer-events: none;
+        position: absolute;
+        left: 50%;
+        bottom: -1rem;
+        width: 100vw;
+        height: 1px;
+        transform: translateX(-50%);
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(148, 163, 184, 0.18) 7%,
+          rgba(59, 130, 246, 0.26) 28%,
+          rgba(148, 163, 184, 0.28) 50%,
+          rgba(59, 130, 246, 0.26) 72%,
+          rgba(148, 163, 184, 0.18) 93%,
+          transparent 100%
+        );
+        box-shadow: 0 1px 16px rgba(59, 130, 246, 0.06);
+      }
+
       .auth-story-panel--compact {
         min-height: 585px;
       }
@@ -380,6 +407,10 @@ export const AuthLayout = ({
           min-height: 40px;
         }
 
+        .auth-header::after {
+          bottom: -0.7rem;
+        }
+
         .auth-brand-icon {
           width: 2.35rem;
           height: 2.35rem;
@@ -487,8 +518,265 @@ export const AuthLayout = ({
 
         .auth-form-column {
           animation-name: auth-panel-enter-up;
-          animation-delay: 40ms;
+          animation-duration: 600ms;
+          animation-delay: 70ms;
         }
+      }
+
+
+      /*
+       * Auth pages use the application's data-theme attribute instead of a
+       * Tailwind .dark class. These scoped selectors prevent the global legacy
+       * dark overrides from washing out the artwork and keep Login, Register
+       * and OTP on the same deep-navy visual system.
+       */
+      html[data-theme="dark"] .auth-page {
+        background:
+          radial-gradient(circle at 10% 12%, rgba(37, 99, 235, 0.2), transparent 30%),
+          radial-gradient(circle at 88% 82%, rgba(20, 184, 166, 0.12), transparent 28%),
+          linear-gradient(135deg, #071120 0%, #09162a 48%, #07101f 100%) !important;
+        color: #e8eef8 !important;
+      }
+
+      html[data-theme="dark"] .auth-page-background {
+        background:
+          radial-gradient(circle at 10% 15%, rgba(37, 99, 235, 0.18), transparent 34%),
+          radial-gradient(circle at 88% 82%, rgba(20, 184, 166, 0.11), transparent 32%),
+          radial-gradient(circle at 52% 48%, rgba(99, 102, 241, 0.07), transparent 28%),
+          linear-gradient(135deg, rgba(4, 12, 27, 0.28), rgba(10, 23, 45, 0.2)) !important;
+      }
+
+      html[data-theme="dark"] .auth-page-artwork {
+        color: #60a5fa !important;
+        opacity: 0.78;
+      }
+
+      html[data-theme="dark"] .auth-story-panel {
+        border-color: rgba(96, 165, 250, 0.2) !important;
+        background:
+          radial-gradient(circle at 86% 16%, rgba(56, 189, 248, 0.09), transparent 25%),
+          radial-gradient(circle at 16% 84%, rgba(37, 99, 235, 0.12), transparent 32%),
+          linear-gradient(145deg, rgba(15, 31, 57, 0.98), rgba(8, 20, 40, 0.98) 55%, rgba(14, 24, 52, 0.98)) !important;
+        box-shadow:
+          0 30px 90px rgba(0, 0, 0, 0.44),
+          inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+      }
+
+      html[data-theme="dark"] .auth-story-panel::after {
+        content: "";
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background:
+          linear-gradient(rgba(96, 165, 250, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(96, 165, 250, 0.035) 1px, transparent 1px);
+        background-size: 42px 42px;
+        mask-image: linear-gradient(to bottom right, rgba(0, 0, 0, 0.78), transparent 82%);
+      }
+
+      html[data-theme="dark"] .auth-city-artwork {
+        opacity: 1;
+        filter: saturate(1.08);
+      }
+
+      html[data-theme="dark"] .auth-story-title,
+      html[data-theme="dark"] .auth-brand-title,
+      html[data-theme="dark"] .auth-login-title,
+      html[data-theme="dark"] .auth-feature-card h2,
+      html[data-theme="dark"] .auth-login-card h2,
+      html[data-theme="dark"] .auth-login-card legend {
+        color: #f8fafc !important;
+      }
+
+      html[data-theme="dark"] .auth-story-description,
+      html[data-theme="dark"] .auth-brand-subtitle,
+      html[data-theme="dark"] .auth-feature-copy,
+      html[data-theme="dark"] .auth-login-description {
+        color: #aebdd1 !important;
+      }
+
+      html[data-theme="dark"] .auth-story-badge,
+      html[data-theme="dark"] .auth-login-badge {
+        border-color: rgba(96, 165, 250, 0.24) !important;
+        background: rgba(30, 64, 175, 0.24) !important;
+        color: #bfdbfe !important;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+
+      html[data-theme="dark"] .auth-feature-card,
+      html[data-theme="dark"] .auth-production-route,
+      html[data-theme="dark"] .auth-quick-access {
+        border-color: rgba(148, 163, 184, 0.16) !important;
+        background: rgba(15, 29, 52, 0.72) !important;
+        box-shadow:
+          0 14px 35px rgba(0, 0, 0, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+      }
+
+      html[data-theme="dark"] .auth-feature-card:hover,
+      html[data-theme="dark"] .auth-role-card:hover {
+        border-color: rgba(96, 165, 250, 0.35) !important;
+        background: rgba(19, 42, 76, 0.78) !important;
+      }
+
+      html[data-theme="dark"] .auth-route-decoration > span:first-child {
+        border-color: rgba(96, 165, 250, 0.5) !important;
+        background: #0b1830 !important;
+        box-shadow: 0 0 0 7px rgba(59, 130, 246, 0.09) !important;
+      }
+
+      html[data-theme="dark"] .auth-route-decoration > span:last-child {
+        border-color: rgba(52, 211, 153, 0.32) !important;
+        background: rgba(6, 78, 59, 0.36) !important;
+        color: #6ee7b7 !important;
+      }
+
+      html[data-theme="dark"] .auth-login-card {
+        border-color: rgba(148, 163, 184, 0.2) !important;
+        background:
+          radial-gradient(circle at 95% 2%, rgba(37, 99, 235, 0.1), transparent 24%),
+          linear-gradient(155deg, rgba(10, 22, 43, 0.98), rgba(6, 14, 30, 0.98)) !important;
+        box-shadow:
+          0 30px 85px rgba(0, 0, 0, 0.52),
+          inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+      }
+
+      html[data-theme="dark"] .auth-page input,
+      html[data-theme="dark"] .auth-page select,
+      html[data-theme="dark"] .auth-page textarea {
+        border-color: rgba(100, 116, 139, 0.5) !important;
+        background: rgba(12, 25, 48, 0.9) !important;
+        color: #f8fafc !important;
+        caret-color: #60a5fa;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+      }
+
+      html[data-theme="dark"] .auth-page input:hover,
+      html[data-theme="dark"] .auth-page select:hover,
+      html[data-theme="dark"] .auth-page textarea:hover {
+        border-color: rgba(148, 163, 184, 0.66) !important;
+      }
+
+      html[data-theme="dark"] .auth-page input:focus,
+      html[data-theme="dark"] .auth-page select:focus,
+      html[data-theme="dark"] .auth-page textarea:focus {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.14) !important;
+      }
+
+      html[data-theme="dark"] .auth-page input::placeholder,
+      html[data-theme="dark"] .auth-page textarea::placeholder {
+        color: #64748b !important;
+      }
+
+      html[data-theme="dark"] .auth-page label,
+      html[data-theme="dark"] .auth-page fieldset legend {
+        color: #cbd5e1 !important;
+      }
+
+      html[data-theme="dark"] .auth-login-divider > span:first-child,
+      html[data-theme="dark"] .auth-login-divider > span:last-child {
+        background: rgba(71, 85, 105, 0.65) !important;
+      }
+
+      html[data-theme="dark"] .auth-security-note,
+      html[data-theme="dark"] .auth-login-card aside,
+      html[data-theme="dark"] .auth-login-card section[aria-labelledby="send-code-title"] {
+        border-color: rgba(96, 165, 250, 0.18) !important;
+        background: rgba(12, 28, 54, 0.74) !important;
+        color: #b7c5d8 !important;
+      }
+
+      html[data-theme="dark"] .auth-register-verification-note {
+        border-color: rgba(96, 165, 250, 0.26) !important;
+        background:
+          linear-gradient(135deg, rgba(30, 64, 175, 0.2), rgba(12, 28, 54, 0.82)) !important;
+        color: #cbd5e1 !important;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.035),
+          0 10px 24px rgba(0, 0, 0, 0.14) !important;
+      }
+
+      html[data-theme="dark"] .auth-register-verification-note svg {
+        color: #7dd3fc !important;
+      }
+
+      html[data-theme="dark"] .auth-login-card section[aria-labelledby="send-code-title"] > div > span,
+      html[data-theme="dark"] .auth-security-note > span {
+        background: rgba(30, 64, 175, 0.28) !important;
+        color: #bfdbfe !important;
+      }
+
+      html[data-theme="dark"] .auth-page .alert {
+        border: 1px solid rgba(148, 163, 184, 0.16) !important;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2) !important;
+      }
+
+      html[data-theme="dark"] .auth-page .alert-error {
+        border-color: rgba(251, 113, 133, 0.34) !important;
+        background: rgba(127, 29, 29, 0.38) !important;
+        color: #fecdd3 !important;
+      }
+
+      html[data-theme="dark"] .auth-page .alert-success {
+        border-color: rgba(52, 211, 153, 0.3) !important;
+        background: rgba(6, 78, 59, 0.4) !important;
+        color: #a7f3d0 !important;
+      }
+
+      html[data-theme="dark"] .auth-page .alert-info {
+        border-color: rgba(96, 165, 250, 0.3) !important;
+        background: rgba(30, 64, 175, 0.34) !important;
+        color: #bfdbfe !important;
+      }
+
+      html[data-theme="dark"] .auth-page .alert-warning {
+        border-color: rgba(251, 191, 36, 0.28) !important;
+        background: rgba(120, 53, 15, 0.38) !important;
+        color: #fde68a !important;
+      }
+
+      html[data-theme="dark"] .auth-back-link {
+        border-color: rgba(148, 163, 184, 0.2) !important;
+        background: rgba(9, 20, 39, 0.82) !important;
+        color: #cbd5e1 !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22) !important;
+      }
+
+      html[data-theme="dark"] .auth-back-link:hover {
+        border-color: rgba(96, 165, 250, 0.35) !important;
+        background: rgba(15, 31, 57, 0.94) !important;
+        color: #f8fafc !important;
+      }
+
+      html[data-theme="dark"] .auth-header::after {
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(51, 65, 85, 0.28) 7%,
+          rgba(59, 130, 246, 0.42) 28%,
+          rgba(71, 85, 105, 0.5) 50%,
+          rgba(56, 189, 248, 0.34) 72%,
+          rgba(51, 65, 85, 0.28) 93%,
+          transparent 100%
+        );
+        box-shadow: 0 1px 18px rgba(59, 130, 246, 0.12);
+      }
+
+      html[data-theme="dark"] .auth-form-column::before {
+        content: "";
+        pointer-events: none;
+        position: absolute;
+        inset: -7rem -5rem;
+        z-index: -1;
+        background: radial-gradient(circle, rgba(37, 99, 235, 0.12), transparent 62%);
+        filter: blur(8px);
+      }
+
+      html[data-theme="dark"] .auth-footer {
+        border-color: rgba(51, 65, 85, 0.8) !important;
+        color: #8091a7 !important;
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -531,7 +819,7 @@ export const AuthLayout = ({
       }
     `}</style>
 
-    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_15%,rgba(37,99,235,0.12),transparent_34%),radial-gradient(circle_at_88%_82%,rgba(16,185,129,0.09),transparent_32%),radial-gradient(circle_at_52%_48%,rgba(99,102,241,0.035),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(239,246,255,0.38))] dark:bg-[radial-gradient(circle_at_10%_15%,rgba(37,99,235,0.16),transparent_34%),radial-gradient(circle_at_88%_82%,rgba(16,185,129,0.10),transparent_32%)]" />
+    <div className="auth-page-background pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_15%,rgba(37,99,235,0.12),transparent_34%),radial-gradient(circle_at_88%_82%,rgba(16,185,129,0.09),transparent_32%),radial-gradient(circle_at_52%_48%,rgba(99,102,241,0.035),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.78),rgba(239,246,255,0.38))] dark:bg-[radial-gradient(circle_at_10%_15%,rgba(37,99,235,0.16),transparent_34%),radial-gradient(circle_at_88%_82%,rgba(16,185,129,0.10),transparent_32%)]" />
     <AuthPageArtwork />
 
     <div className="auth-shell relative flex min-h-[100svh] w-full flex-col px-5 py-5 sm:px-7 lg:px-10 lg:py-6 2xl:px-14">

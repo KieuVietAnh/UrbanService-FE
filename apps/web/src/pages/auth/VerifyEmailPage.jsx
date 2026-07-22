@@ -9,6 +9,7 @@ import * as Lucide from 'lucide-react';
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 const OTP_VALIDITY_MINUTES = 5;
+const REGISTER_DRAFT_STORAGE_KEY = 'urbanmind:registration-draft';
 
 const normalizeRole = (role) => {
   const normalized = String(role || '').trim().toLowerCase();
@@ -274,10 +275,18 @@ export const VerifyEmailPage = () => {
       setOtpSent(true);
       setCountdown(Math.max(0, RESEND_COOLDOWN_SECONDS - elapsedSeconds));
       if (routeDelivery?.status === 'sent') {
-        setSuccess('Mã xác thực đã được gửi đến email của bạn.');
+        setSuccess(location.state?.emailChanged
+          ? 'Thông tin đã được cập nhật và mã OTP mới đã được gửi đến email mới.'
+          : 'Mã xác thực đã được gửi đến email của bạn.');
+      } else if (location.state?.registrationUpdated) {
+        setSuccess('Thông tin đăng ký đã được cập nhật. Bạn có thể tiếp tục xác thực email.');
       }
       focusOtpInput(0);
       return;
+    }
+
+    if (location.state?.registrationUpdated) {
+      setSuccess('Thông tin đăng ký đã được cập nhật. Bạn có thể tiếp tục xác thực email.');
     }
 
     if (routeDelivery?.status === 'failed') {
@@ -408,6 +417,7 @@ export const VerifyEmailPage = () => {
     try {
       const result = await verifyOtp(otpCode);
       window.sessionStorage.removeItem(sessionKey);
+      window.sessionStorage.removeItem(REGISTER_DRAFT_STORAGE_KEY);
       setSuccess('Email đã được xác thực thành công. Đang chuyển bạn vào hệ thống...');
 
       const verifiedUser = result?.user || { ...user, isVerified: true };
@@ -426,8 +436,17 @@ export const VerifyEmailPage = () => {
     }
   };
 
+  const handleEditRegistration = () => {
+    navigate('/register?mode=edit', {
+      state: {
+        from: '/verify-email',
+      },
+    });
+  };
+
   const handleLogout = async () => {
     window.sessionStorage.removeItem(sessionKey);
+    window.sessionStorage.removeItem(REGISTER_DRAFT_STORAGE_KEY);
     await logout();
     navigate('/login', { replace: true });
   };
@@ -473,6 +492,14 @@ export const VerifyEmailPage = () => {
             Nhập mã gồm 6 chữ số được gửi đến{' '}
             <strong className="font-semibold text-slate-700 dark:text-slate-200">{user.email}</strong>.
           </p>
+          <button
+            type="button"
+            onClick={handleEditRegistration}
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 transition hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:text-blue-300 dark:hover:text-blue-200"
+          >
+            <Lucide.PencilLine size={14} aria-hidden="true" />
+            Sửa email hoặc thông tin đăng ký
+          </button>
         </header>
 
         <ol className="relative z-10 mt-5 grid grid-cols-[auto_1fr_auto_1fr_auto] items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400" aria-label="Tiến trình tạo tài khoản">

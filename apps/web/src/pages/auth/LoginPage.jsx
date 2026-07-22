@@ -31,7 +31,7 @@ const normalizeRole = (role) => {
 const getRoleDashboard = (role) => {
   const normalizedRole = normalizeRole(role);
   const roleMap = {
-    'service-user': '/dashboard',
+    'service-user': '/',
     'system-staff': '/staff/queue',
     'service-provider': '/provider/tasks',
     'interaction-manager': '/manager/interactions',
@@ -53,6 +53,24 @@ const getSafeInternalPath = (candidate) => {
   const normalized = String(candidate).trim();
   if (!normalized.startsWith('/') || normalized.startsWith('//')) return '';
   return normalized;
+};
+
+const LOGIN_INTENT_META = {
+  'create-feedback': {
+    icon: Lucide.MessageSquarePlus,
+    title: 'Đăng nhập để gửi phản ánh',
+    description: 'Sau khi đăng nhập, bạn sẽ được đưa thẳng đến biểu mẫu gửi phản ánh.',
+  },
+  'my-feedbacks': {
+    icon: Lucide.FolderClock,
+    title: 'Đăng nhập để xem phản ánh của bạn',
+    description: 'UrbanMind sẽ mở danh sách phản ánh và tiến độ xử lý ngay sau khi đăng nhập.',
+  },
+  'community-interaction': {
+    icon: Lucide.MessagesSquare,
+    title: 'Đăng nhập để tham gia trao đổi',
+    description: 'Bạn vẫn có thể xem thông tin công khai; đăng nhập là cần thiết khi bình luận hoặc bày tỏ quan tâm.',
+  },
 };
 
 const TEST_ROLE_ACCOUNTS = [
@@ -84,7 +102,7 @@ const TEST_ROLE_ACCOUNTS = [
 
 // Keep this switch while the team is validating role-specific UI.
 // Set to true whenever quick role access is needed during testing.
-const SHOW_TEST_ROLE_ACCOUNTS = true;
+const SHOW_TEST_ROLE_ACCOUNTS = false;
 
 const GoogleLogo = () => (
   <svg aria-label="Google" width="17" height="17" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -104,6 +122,8 @@ export const LoginPage = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const sessionExpired = searchParams.get('reason') === 'session-expired';
+  const loginIntent = LOGIN_INTENT_META[searchParams.get('intent')];
+  const LoginIntentIcon = loginIntent?.icon;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -277,6 +297,20 @@ export const LoginPage = () => {
         </header>
 
         <div className="auth-login-alerts relative z-10 mt-6 space-y-4">
+          {loginIntent && !error ? (
+            <div role="status" className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-3.5 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/35 dark:text-blue-100">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/70 dark:text-blue-200">
+                <LoginIntentIcon size={16} aria-hidden="true" />
+              </span>
+              <div>
+                <strong className="block font-bold">{loginIntent.title}</strong>
+                <p className="mt-1 leading-5 text-blue-800/75 dark:text-blue-200/75">
+                  {loginIntent.description}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           {sessionExpired && !error ? (
             <div role="status" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
               <Lucide.ClockAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -385,6 +419,22 @@ export const LoginPage = () => {
             Đăng ký ngay
           </Link>
         </p>
+
+        <aside
+          className="auth-security-note relative z-10 mt-5 flex items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50/65 px-4 py-2.5 text-xs leading-5 text-slate-600 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-slate-300"
+          aria-label="Bảo mật đăng nhập"
+        >
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300"
+            aria-hidden="true"
+          >
+            <Lucide.ShieldCheck size={16} />
+          </span>
+          <p className="flex-1 font-medium">
+            Đăng nhập an toàn, đúng quyền truy cập.
+          </p>
+        </aside>
+
         {SHOW_TEST_ROLE_ACCOUNTS ? (
           <details className="relative z-10 mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 lg:hidden dark:border-slate-700 dark:bg-slate-950/60">
             <summary className="cursor-pointer list-none text-sm font-semibold text-slate-700 dark:text-slate-200">

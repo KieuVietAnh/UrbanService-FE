@@ -10,6 +10,7 @@ import { authApi } from '../services/api/authApi';
 import { tokenStorage } from '../services/storage/tokenStorage';
 import { getInternalRole } from '../utils/roleMap';
 import {
+  axiosClient,
   refreshAuthSession,
   setUnauthorizedHandler,
 } from '@urbanmind/shared-api';
@@ -17,6 +18,7 @@ import { SessionExpiredDialog } from '../components/auth/SessionExpiredDialog';
 
 const AuthContext = createContext(null);
 const REFRESH_EARLY_MS = 60 * 1000;
+const PENDING_ACCOUNT_UPDATE_PATH = '/api/auth/pending-account';
 
 const normalizeRole = (role) => getInternalRole(role);
 
@@ -251,6 +253,57 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updatePendingRegistration = async ({
+    fullName,
+    email,
+    phoneNumber,
+    newPassword,
+  }) => {
+    setLoading(true);
+    try {
+      const response = await axiosClient.patch(PENDING_ACCOUNT_UPDATE_PATH, {
+        fullName,
+        email,
+        phoneNumber,
+        ...(newPassword ? { newPassword } : {}),
+      });
+      const payload = response?.data ?? response;
+      const responseUser = payload?.user ?? payload;
+      const accessToken = (
+        response?.accessToken ||
+        response?.token ||
+        payload?.accessToken ||
+        payload?.token ||
+        payload?.data?.accessToken ||
+        payload?.data?.token
+      );
+      const refreshToken = (
+        response?.refreshToken ||
+        payload?.refreshToken ||
+        payload?.data?.refreshToken
+      );
+
+      if (accessToken) tokenStorage.setToken(accessToken);
+      if (refreshToken) tokenStorage.setRefreshToken(refreshToken);
+
+      const updatedUser = {
+        ...user,
+        fullName: responseUser?.fullName ?? fullName,
+        email: responseUser?.email ?? email,
+        phoneNumber: responseUser?.phoneNumber ?? phoneNumber,
+        role: normalizeRole(responseUser?.roleName ?? responseUser?.role ?? user?.role),
+        isVerified: responseUser?.isVerified ?? user?.isVerified ?? false,
+      };
+
+      tokenStorage.setUser(updatedUser);
+      setTokenRevision((current) => current + 1);
+      setUser(updatedUser);
+      return updatedUser;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     setLoading(true);
     setSessionExpired(false);
@@ -272,6 +325,7 @@ export const AuthProvider = ({ children }) => {
     verifyOtp,
     googleLogin,
     sendOtp,
+    updatePendingRegistration,
     logout,
     isAuthenticated: Boolean(user),
   };

@@ -1,6 +1,6 @@
 // src/pages/auth/RegisterPage.jsx
-import { useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
@@ -8,6 +8,27 @@ import { AuthLayout } from '../../components/auth/AuthLayout';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^0\d{9}$/;
+const REGISTER_DRAFT_STORAGE_KEY = 'urbanmind:registration-draft';
+
+
+const readRegistrationDraft = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const rawValue = window.sessionStorage.getItem(REGISTER_DRAFT_STORAGE_KEY);
+    return rawValue ? JSON.parse(rawValue) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeRegistrationDraft = (draft) => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(REGISTER_DRAFT_STORAGE_KEY, JSON.stringify({
+    fullName: draft.fullName || '',
+    email: draft.email || '',
+    phone: draft.phone || '',
+  }));
+};
 
 const FieldError = ({ id, message }) => {
   if (!message) return null;
@@ -25,6 +46,7 @@ const REGISTER_FIELD_IDS = {
   email: 'register-email',
   phone: 'register-phone',
   password: 'register-password',
+  confirmPassword: 'register-confirm-password',
 };
 
 const normalizeForMatch = (value) => String(value || '')
@@ -345,18 +367,50 @@ const getOtpDeliveryError = (err) => {
 };
 
 export const RegisterPage = () => {
-  const { register, sendOtp } = useAuth();
+  const {
+    user,
+    register,
+    sendOtp,
+    updatePendingRegistration,
+  } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isEditingRegistration = (
+    searchParams.get('mode') === 'edit' &&
+    Boolean(user) &&
+    !user?.isVerified
+  );
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const submitInFlightRef = useRef(false);
+  const draftHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (draftHydratedRef.current) return;
+    draftHydratedRef.current = true;
+
+    const routeDraft = location.state?.registrationDraft;
+    const storedDraft = readRegistrationDraft();
+    const draft = routeDraft || storedDraft || {};
+
+    setFullName(draft.fullName || user?.fullName || '');
+    setEmail(draft.email || user?.email || '');
+    setPhone(draft.phone || user?.phoneNumber || '');
+  }, [location.state, user]);
+
+  useEffect(() => {
+    if (!fullName && !email && !phone) return;
+    writeRegistrationDraft({ fullName, email, phone });
+  }, [email, fullName, phone]);
 
   const clearFieldError = (fieldName) => {
     setFieldErrors((currentErrors) => {
@@ -400,10 +454,20 @@ export const RegisterPage = () => {
       nextErrors.phone = 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.';
     }
 
-    if (!password) {
-      nextErrors.password = 'Vui lòng nhập mật khẩu.';
-    } else if (password.length < 8) {
-      nextErrors.password = 'Mật khẩu phải có ít nhất 8 ký tự.';
+    if (!isEditingRegistration || password || confirmPassword) {
+      if (!password) {
+        nextErrors.password = isEditingRegistration
+          ? 'Vui lòng nhập mật khẩu mới.'
+          : 'Vui lòng nhập mật khẩu.';
+      } else if (password.length < 8) {
+        nextErrors.password = 'Mật khẩu phải có ít nhất 8 ký tự.';
+      }
+
+      if (!confirmPassword) {
+        nextErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu.';
+      } else if (password !== confirmPassword) {
+        nextErrors.confirmPassword = 'Mật khẩu xác nhận chưa khớp.';
+      }
     }
 
     setFieldErrors(nextErrors);
@@ -435,6 +499,58 @@ export const RegisterPage = () => {
     setLoading(true);
 
     try {
+      if (isEditingRegistration) {
+        const previousEmail = String(user?.email || '').trim().toLowerCase();
+        const nextEmail = normalizedValues.email.toLowerCase();
+        const emailChanged = previousEmail !== nextEmail;
+        const previousSessionKey = getOtpSessionKey(user, user?.email);
+
+        const updatedUser = await updatePendingRegistration({
+          fullName: normalizedValues.fullName,
+          email: normalizedValues.email,
+          phoneNumber: normalizedValues.phone,
+          newPassword: password || undefined,
+        });
+
+        writeRegistrationDraft({
+          fullName: normalizedValues.fullName,
+          email: normalizedValues.email,
+          phone: normalizedValues.phone,
+        });
+        setPassword('');
+        setConfirmPassword('');
+
+        let otpDelivery;
+        if (emailChanged) {
+          window.sessionStorage.removeItem(previousSessionKey);
+          try {
+            await sendOtp();
+            const sentAt = Date.now();
+            const nextSessionKey = getOtpSessionKey(updatedUser, normalizedValues.email);
+            window.sessionStorage.setItem(nextSessionKey, JSON.stringify({
+              sentAt,
+              email: updatedUser?.email || normalizedValues.email,
+            }));
+            otpDelivery = { status: 'sent', sentAt };
+          } catch (otpError) {
+            otpDelivery = {
+              status: 'failed',
+              error: getOtpDeliveryError(otpError),
+            };
+          }
+        }
+
+        navigate('/verify-email', {
+          replace: true,
+          state: {
+            registrationUpdated: true,
+            emailChanged,
+            otpDelivery,
+          },
+        });
+        return;
+      }
+
       const registeredUser = await register(
         normalizedValues.fullName,
         normalizedValues.email,
@@ -465,6 +581,10 @@ export const RegisterPage = () => {
       });
     } catch (err) {
       const registerError = getRegisterErrorDetails(err);
+      if (isEditingRegistration && registerError.title === 'Không thể đăng ký') {
+        registerError.title = 'Không thể cập nhật thông tin';
+        registerError.message = 'Hệ thống chưa thể lưu thay đổi. Vui lòng thử lại.';
+      }
       setError({
         title: registerError.title,
         message: registerError.message,
@@ -522,16 +642,18 @@ export const RegisterPage = () => {
         <header className="relative z-10">
           <span className="auth-login-badge inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
             <Lucide.UserPlus size={14} aria-hidden="true" />
-            Tài khoản người dân UrbanMind
+            {isEditingRegistration ? 'Thông tin đăng ký UrbanMind' : 'Tài khoản người dân UrbanMind'}
           </span>
           <h1
             id="auth-page-title"
             className="auth-login-title mt-5 text-[30px] font-bold leading-tight tracking-[-0.035em] text-slate-950 dark:text-white"
           >
-            Tạo tài khoản mới
+            {isEditingRegistration ? 'Chỉnh sửa thông tin đăng ký' : 'Tạo tài khoản mới'}
           </h1>
           <p className="auth-login-description mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-            Đăng ký để gửi phản ánh, theo dõi tiến độ và tham gia trao đổi cùng cộng đồng.
+            {isEditingRegistration
+              ? 'Cập nhật thông tin đăng ký. Nếu đổi email, hệ thống sẽ gửi mã OTP mới.'
+              : 'Đăng ký để gửi phản ánh, theo dõi tiến độ và tham gia trao đổi cùng cộng đồng.'}
           </p>
         </header>
 
@@ -605,6 +727,11 @@ export const RegisterPage = () => {
               />
             </div>
             <FieldError id="register-email-error" message={fieldErrors.email} />
+            {isEditingRegistration ? (
+              <p className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                Đổi email sẽ hủy mã cũ và gửi OTP mới đến địa chỉ vừa cập nhật.
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-1.5">
@@ -645,9 +772,10 @@ export const RegisterPage = () => {
             )}
           </div>
 
-          <div className="space-y-1.5 sm:col-span-2">
+          <div className="space-y-1.5">
             <label htmlFor="register-password" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Mật khẩu <span className="text-red-500" aria-hidden="true">*</span>
+              {isEditingRegistration ? 'Mật khẩu mới' : 'Mật khẩu'}{' '}
+              {!isEditingRegistration ? <span className="text-red-500" aria-hidden="true">*</span> : null}
             </label>
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
@@ -663,12 +791,13 @@ export const RegisterPage = () => {
                 onChange={(event) => {
                   setPassword(event.target.value);
                   clearFieldError('password');
+                  clearFieldError('confirmPassword');
                 }}
                 className={getInputClassName('password', 'pl-11 pr-12')}
                 aria-invalid={Boolean(fieldErrors.password)}
                 aria-describedby={fieldErrors.password ? 'register-password-error' : 'register-password-help'}
                 minLength={8}
-                required
+                required={!isEditingRegistration}
               />
               <button
                 type="button"
@@ -688,14 +817,67 @@ export const RegisterPage = () => {
               <FieldError id="register-password-error" message={fieldErrors.password} />
             ) : (
               <p id="register-password-help" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
-                Sử dụng ít nhất 8 ký tự.
+                {isEditingRegistration ? 'Bỏ trống nếu không muốn đổi mật khẩu.' : 'Sử dụng ít nhất 8 ký tự.'}
               </p>
             )}
           </div>
 
-          <div className="sm:col-span-2 flex items-start gap-2.5 rounded-2xl border border-blue-100 bg-blue-50/65 px-3.5 py-3 text-xs leading-5 text-slate-600 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-slate-300">
+          <div className="space-y-1.5">
+            <label htmlFor="register-confirm-password" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              {isEditingRegistration ? 'Xác nhận mật khẩu mới' : 'Xác nhận mật khẩu'}{' '}
+              {!isEditingRegistration ? <span className="text-red-500" aria-hidden="true">*</span> : null}
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
+                <Lucide.KeyRound size={17} />
+              </span>
+              <input
+                id="register-confirm-password"
+                name="confirmPassword"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(event) => {
+                  setConfirmPassword(event.target.value);
+                  clearFieldError('confirmPassword');
+                }}
+                className={getInputClassName('confirmPassword', 'pl-11 pr-12')}
+                aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                aria-describedby={fieldErrors.confirmPassword ? 'register-confirm-password-error' : 'register-confirm-password-help'}
+                minLength={8}
+                required={!isEditingRegistration}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-2xl text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:hover:text-slate-200"
+                aria-label={showPassword ? 'Ẩn mật khẩu xác nhận' : 'Hiện mật khẩu xác nhận'}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? (
+                  <Lucide.EyeOff size={17} aria-hidden="true" />
+                ) : (
+                  <Lucide.Eye size={17} aria-hidden="true" />
+                )}
+              </button>
+            </div>
+            {fieldErrors.confirmPassword ? (
+              <FieldError id="register-confirm-password-error" message={fieldErrors.confirmPassword} />
+            ) : (
+              <p id="register-confirm-password-help" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                {isEditingRegistration ? 'Chỉ cần nhập khi thay đổi mật khẩu.' : 'Nhập lại để tránh sai mật khẩu.'}
+              </p>
+            )}
+          </div>
+
+          <div className="auth-register-verification-note sm:col-span-2 flex items-start gap-2.5 rounded-2xl border border-blue-100 bg-blue-50/65 px-3.5 py-3 text-xs leading-5 text-slate-600 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-slate-300">
             <Lucide.MailCheck size={16} className="mt-0.5 shrink-0 text-blue-700 dark:text-blue-300" aria-hidden="true" />
-            <p>Sau khi đăng ký, hệ thống sẽ chuyển bạn sang bước xác thực email.</p>
+            <p>
+              {isEditingRegistration
+                ? 'Có thể sửa email và mật khẩu trước khi xác thực. Đổi email sẽ tạo mã OTP mới.'
+                : 'Sau khi đăng ký, hệ thống sẽ chuyển bạn sang bước xác thực email.'}
+            </p>
           </div>
 
           <button
@@ -706,11 +888,11 @@ export const RegisterPage = () => {
             {loading ? (
               <>
                 <span className="loading loading-spinner loading-sm" aria-hidden="true" />
-                Đang tạo tài khoản...
+                {isEditingRegistration ? 'Đang lưu thay đổi...' : 'Đang tạo tài khoản...'}
               </>
             ) : (
               <>
-                Đăng ký tài khoản
+                {isEditingRegistration ? 'Lưu thay đổi' : 'Đăng ký tài khoản'}
                 <Lucide.ArrowRight size={16} aria-hidden="true" />
               </>
             )}
@@ -718,10 +900,18 @@ export const RegisterPage = () => {
         </form>
 
         <p className="auth-login-register relative z-10 mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
-          Đã có tài khoản?{' '}
-          <Link to="/login" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
-            Đăng nhập ngay
-          </Link>
+          {isEditingRegistration ? (
+            <Link to="/verify-email" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+              Quay lại xác thực email
+            </Link>
+          ) : (
+            <>
+              Đã có tài khoản?{' '}
+              <Link to="/login" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+                Đăng nhập ngay
+              </Link>
+            </>
+          )}
         </p>
       </article>
     </AuthLayout>
