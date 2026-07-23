@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ticketApi } from '../services/api/ticketApi';
 import { signalrService } from '../services/socket/signalrService';
 
-export function useTicketDetail(feedbackId, user) {
+export function useTicketDetail(feedbackId, user, detailFetcher) {
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
   const [history, setHistory] = useState([]);
@@ -34,7 +34,9 @@ export function useTicketDetail(feedbackId, user) {
         };
 
         const role = resolveRole(user?.role);
-        const resTicket = await ticketApi.getTicketById(feedbackId, { role });
+        const resTicket = detailFetcher
+          ? await detailFetcher(feedbackId)
+          : await ticketApi.getTicketById(feedbackId, { role });
         const ticketData = resTicket;
         if (!ticketData) throw new Error('Empty ticket data received');
         setTicket(ticketData);
@@ -107,7 +109,7 @@ export function useTicketDetail(feedbackId, user) {
       signalrService.off('ResolutionRejected', handleResolutionEvents);
       signalrService.stop();
     };
-  }, [feedbackId, user?.role]);
+  }, [detailFetcher, feedbackId, user?.role]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -146,7 +148,9 @@ export function useTicketDetail(feedbackId, user) {
           };
 
           const role = resolveRole(user?.role);
-          const resTicket = await ticketApi.getTicketById(feedbackId, { role });
+          const resTicket = detailFetcher
+            ? await detailFetcher(feedbackId)
+            : await ticketApi.getTicketById(feedbackId, { role });
           const ticketData = resTicket;
           if (!ticketData) throw new Error('Empty ticket data received');
           setTicket(ticketData);

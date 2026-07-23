@@ -1,8 +1,10 @@
 // src/pages/community/CommunityMapPage.jsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Lucide from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { IncidentMap } from '../../components/maps/IncidentMap';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
+import PublicPageMotion from '../../components/public/PublicPageMotion';
 
 const MAP_FILTERS = {
   ALL: 'all',
@@ -88,7 +90,7 @@ const MapMetricSkeleton = ({ tone = 'base' }) => {
 
 const MapCanvasSkeleton = () => (
   <div
-    className="relative h-[560px] overflow-hidden rounded-[24px] bg-base-200/65"
+    className="public-loading-surface relative h-[550px] overflow-hidden bg-base-200/65"
     aria-hidden="true"
   >
     <div className="absolute inset-0 animate-pulse">
@@ -134,7 +136,63 @@ const MapCanvasSkeleton = () => (
   </div>
 );
 
+const CommunityMapThemeStyles = () => (
+  <style>{`
+    .community-map-page .community-map-hero,
+    .community-map-page .community-map-panel,
+    .community-map-page .community-map-guide,
+    .community-map-page .community-map-data-note {
+      border-color: var(--public-border) !important;
+      box-shadow: var(--public-shadow);
+    }
+
+    .community-map-page .community-map-panel,
+    .community-map-page .community-map-guide {
+      background: var(--public-surface) !important;
+    }
+
+    .community-map-page .community-map-canvas-frame {
+      border-color: var(--public-border) !important;
+      background: var(--public-surface-soft) !important;
+    }
+
+    .community-map-page .community-map-data-note {
+      background: linear-gradient(
+        145deg,
+        rgba(239, 246, 255, 0.96),
+        rgba(255, 255, 255, 0.94)
+      ) !important;
+    }
+
+    html[data-theme="dark"] .community-map-page .community-map-hero {
+      border-color: rgba(96, 165, 250, 0.2) !important;
+      background:
+        radial-gradient(circle at 88% 12%, rgba(14, 165, 233, 0.1), transparent 26%),
+        linear-gradient(145deg, rgba(13, 29, 54, 0.98), rgba(7, 20, 39, 0.98)) !important;
+    }
+
+    html[data-theme="dark"] .community-map-page .community-map-panel,
+    html[data-theme="dark"] .community-map-page .community-map-guide,
+    html[data-theme="dark"] .community-map-page .community-map-data-note {
+      border-color: rgba(96, 165, 250, 0.19) !important;
+      background:
+        radial-gradient(circle at 94% 4%, rgba(37, 99, 235, 0.08), transparent 26%),
+        linear-gradient(145deg, rgba(13, 29, 54, 0.98), rgba(8, 20, 40, 0.98)) !important;
+      box-shadow:
+        0 24px 64px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+    }
+
+    html[data-theme="dark"] .community-map-page .community-map-guide-item {
+      border: 1px solid rgba(96, 165, 250, 0.12);
+      background: rgba(7, 20, 39, 0.62) !important;
+    }
+  `}</style>
+);
+
 export const CommunityMapPage = () => {
+  const location = useLocation();
+  const mapPanelRef = useRef(null);
   const { incidents, loading, error } = useIncidentMapData();
   const [activeFilter, setActiveFilter] = useState(
     MAP_FILTERS.ALL
@@ -199,10 +257,38 @@ export const CommunityMapPage = () => {
     [MAP_FILTERS.COORDINATES]: 'Có tọa độ',
   }[activeFilter];
 
+  useEffect(() => {
+    const shouldFocusMap = (
+      location.hash === '#incident-map' ||
+      location.state?.focusMap === true
+    );
+
+    if (!shouldFocusMap) return undefined;
+
+    const timer = window.setTimeout(() => {
+      mapPanelRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [location.hash, location.key, location.state]);
+
   return (
-    <main className="space-y-5 text-base-content">
-      <section
-        className="relative isolate overflow-hidden rounded-[30px] border border-info/15 bg-gradient-to-br from-base-100 via-info/[0.03] to-primary/[0.075] shadow-[0_18px_48px_rgba(15,23,42,0.085)]"
+    <PublicPageMotion>
+      <main
+        data-public-reveal
+        className="community-map-page relative isolate space-y-5 text-base-content"
+      >
+        <CommunityMapThemeStyles />
+        <div
+          className="pointer-events-none absolute -inset-x-3 -inset-y-5 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-6"
+          aria-hidden="true"
+        />
+        <section
+        data-public-reveal
+        className="community-map-hero relative isolate overflow-hidden rounded-[30px] border border-info/15 bg-gradient-to-br from-base-100 via-info/[0.03] to-primary/[0.075] shadow-[0_18px_48px_rgba(15,23,42,0.085)]"
         aria-labelledby="community-map-title"
       >
         <div
@@ -257,12 +343,6 @@ export const CommunityMapPage = () => {
 
         <div className="relative px-5 py-6 sm:px-7 sm:py-7">
           <header className="max-w-3xl">
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-info/15 bg-base-100/75 text-info shadow-sm backdrop-blur">
-                <Lucide.MapPinned size={21} aria-hidden="true" />
-              </span>
-              <span className="h-px w-16 bg-gradient-to-r from-info/40 to-transparent" />
-            </div>
 
             <h1
               id="community-map-title"
@@ -414,10 +494,13 @@ export const CommunityMapPage = () => {
       </section>
 
       <section
-        className="card overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_38px_rgba(15,23,42,0.075)]"
+        data-public-reveal
+        id="incident-map"
+        ref={mapPanelRef}
+        className="community-map-panel relative z-0 scroll-mt-[96px] overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
         aria-labelledby="incident-map-panel-title"
       >
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 px-5 py-4 sm:px-6">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--public-border-soft)] px-5 py-4 sm:px-6">
           <div>
             <h2
               id="incident-map-panel-title"
@@ -438,39 +521,43 @@ export const CommunityMapPage = () => {
           ) : null}
         </header>
 
-        <div className="p-3 sm:p-4">
-          {loading ? (
-            <MapCanvasSkeleton />
-          ) : visibleIncidents.length > 0 ? (
-            <div data-testid="incident-map-container" className="overflow-hidden rounded-[24px] border border-base-300">
-              <IncidentMap
-                incidents={visibleIncidents}
-                fitRequestKey={fitRequestKey}
-              />
-            </div>
-          ) : (
-            <div data-testid="incident-map-empty-state" className="flex h-[550px] flex-col items-center justify-center rounded-[24px] border border-dashed border-base-300 bg-base-200/35 px-6 text-center">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-info/10 text-info">
-                <Lucide.MapPinOff size={24} aria-hidden="true" />
-              </span>
-              <h2 className="mt-4 text-lg font-bold">
-                Không có điểm phù hợp với bộ lọc
-              </h2>
-              <p className="mt-2 max-w-md text-sm leading-6 text-base-content/50">
-                Nhóm “{activeFilterLabel}” hiện chưa có phản ánh nào có tọa độ hợp lệ để hiển thị.
-              </p>
-              {activeFilter !== MAP_FILTERS.ALL ? (
-                <button
-                  type="button"
-                  onClick={() => handleMapFilter(MAP_FILTERS.ALL)}
-                  className="btn btn-outline btn-sm mt-5 rounded-xl"
-                >
-                  <Lucide.RotateCcw size={14} aria-hidden="true" />
-                  Hiện tất cả phản ánh
-                </button>
-              ) : null}
-            </div>
-          )}
+        <div className="px-5 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5">
+          <div
+            className="community-map-canvas-frame isolate overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] shadow-inner"
+          >
+            {loading ? (
+              <MapCanvasSkeleton />
+            ) : visibleIncidents.length > 0 ? (
+              <div data-testid="incident-map-container" className="overflow-hidden">
+                <IncidentMap
+                  incidents={visibleIncidents}
+                  fitRequestKey={fitRequestKey}
+                />
+              </div>
+            ) : (
+              <div data-testid="incident-map-empty-state" className="flex h-[550px] flex-col items-center justify-center bg-base-200/35 px-6 text-center">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-info/10 text-info">
+                  <Lucide.MapPinOff size={24} aria-hidden="true" />
+                </span>
+                <h2 className="mt-4 text-lg font-bold">
+                  Không có điểm phù hợp với bộ lọc
+                </h2>
+                <p className="mt-2 max-w-md text-sm leading-6 text-base-content/50">
+                  Nhóm “{activeFilterLabel}” hiện chưa có phản ánh nào có tọa độ hợp lệ để hiển thị.
+                </p>
+                {activeFilter !== MAP_FILTERS.ALL ? (
+                  <button
+                    type="button"
+                    onClick={() => handleMapFilter(MAP_FILTERS.ALL)}
+                    className="btn btn-outline btn-sm mt-5 rounded-xl"
+                  >
+                    <Lucide.RotateCcw size={14} aria-hidden="true" />
+                    Hiện tất cả phản ánh
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
 
           {error ? (
             <div
@@ -495,8 +582,8 @@ export const CommunityMapPage = () => {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.42fr)]">
-        <article className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
+      <section data-public-reveal className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.42fr)]">
+        <article className="community-map-guide rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
           <div className="flex items-start gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/8 text-primary">
               <Lucide.MousePointerClick size={18} aria-hidden="true" />
@@ -510,7 +597,7 @@ export const CommunityMapPage = () => {
           </div>
 
           <ul className="mt-4 grid gap-3 text-sm text-base-content/60 sm:grid-cols-3">
-            <li className="rounded-2xl bg-base-200/45 px-4 py-3">
+            <li className="community-map-guide-item rounded-2xl bg-base-200/45 px-4 py-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-info/10 text-info">
                 <Lucide.MapPin size={15} aria-hidden="true" />
               </span>
@@ -521,7 +608,7 @@ export const CommunityMapPage = () => {
                 Xem nhanh thông tin phản ánh tại vị trí đã chọn.
               </p>
             </li>
-            <li className="rounded-2xl bg-base-200/45 px-4 py-3">
+            <li className="community-map-guide-item rounded-2xl bg-base-200/45 px-4 py-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-secondary/10 text-secondary">
                 <Lucide.ZoomIn size={15} aria-hidden="true" />
               </span>
@@ -532,7 +619,7 @@ export const CommunityMapPage = () => {
                 Quan sát tổng thể hoặc đi sâu vào một khu vực cụ thể.
               </p>
             </li>
-            <li className="rounded-2xl bg-base-200/45 px-4 py-3">
+            <li className="community-map-guide-item rounded-2xl bg-base-200/45 px-4 py-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-success/10 text-success">
                 <Lucide.ExternalLink size={15} aria-hidden="true" />
               </span>
@@ -546,7 +633,7 @@ export const CommunityMapPage = () => {
           </ul>
         </article>
 
-        <aside className="rounded-[24px] border border-info/15 bg-gradient-to-br from-info/8 via-base-100 to-primary/6 p-5 shadow-sm">
+        <aside className="community-map-data-note rounded-[26px] border border-[var(--public-border)] bg-gradient-to-br from-info/8 via-base-100 to-primary/6 p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-info/10 text-info">
             <Lucide.Info size={18} aria-hidden="true" />
           </span>
@@ -556,6 +643,7 @@ export const CommunityMapPage = () => {
           </p>
         </aside>
       </section>
-    </main>
+      </main>
+    </PublicPageMotion>
   );
 };

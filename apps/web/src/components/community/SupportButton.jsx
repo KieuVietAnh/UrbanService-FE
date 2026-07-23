@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function SupportButton({
   feedbackId,
@@ -7,7 +9,12 @@ export default function SupportButton({
   initialSupported = false,
   className = '',
   onChange,
+  isAuthenticated,
+  onRequireAuth,
 }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isSupported, setIsSupported] = useState(Boolean(initialSupported));
   const [count, setCount] = useState(initialCount || 0);
   const [loading, setLoading] = useState(false);
@@ -22,7 +29,23 @@ export default function SupportButton({
 
   const toggle = async (event) => {
     event?.stopPropagation();
+
+    if (isAuthenticated === false) {
+      onRequireAuth?.();
+      return;
+    }
+
     if (loading) return;
+
+    if (!user) {
+      const redirect = `${location.pathname}${location.search}${location.hash}`;
+      const params = new URLSearchParams({
+        redirect,
+        intent: 'community-interaction',
+      });
+      navigate(`/login?${params.toString()}`);
+      return;
+    }
 
     const previousSupported = isSupported;
     const previousCount = count;

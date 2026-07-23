@@ -1,151 +1,919 @@
 // src/pages/auth/RegisterPage.jsx
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import * as Lucide from 'lucide-react';
+import { AuthLayout } from '../../components/auth/AuthLayout';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_PATTERN = /^0\d{9}$/;
+const REGISTER_DRAFT_STORAGE_KEY = 'urbanmind:registration-draft';
+
+
+const readRegistrationDraft = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const rawValue = window.sessionStorage.getItem(REGISTER_DRAFT_STORAGE_KEY);
+    return rawValue ? JSON.parse(rawValue) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeRegistrationDraft = (draft) => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(REGISTER_DRAFT_STORAGE_KEY, JSON.stringify({
+    fullName: draft.fullName || '',
+    email: draft.email || '',
+    phone: draft.phone || '',
+  }));
+};
+
+const FieldError = ({ id, message }) => {
+  if (!message) return null;
+
+  return (
+    <p id={id} className="mt-1.5 flex items-start gap-1.5 text-xs leading-5 text-red-600 dark:text-red-400">
+      <Lucide.CircleAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <span>{message}</span>
+    </p>
+  );
+};
+
+const REGISTER_FIELD_IDS = {
+  fullName: 'register-fullname',
+  email: 'register-email',
+  phone: 'register-phone',
+  password: 'register-password',
+  confirmPassword: 'register-confirm-password',
+};
+
+const normalizeForMatch = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd')
+  .replace(/Đ/g, 'D')
+  .toLowerCase()
+  .trim();
+
+const toMessageList = (value) => {
+  if (!value) return [];
+  if (typeof value === 'string') return [value.trim()].filter(Boolean);
+  if (Array.isArray(value)) return value.flatMap(toMessageList);
+  if (typeof value !== 'object') return [];
+
+  const priorityKeys = ['msg', 'message', 'error', 'detail', 'title'];
+  const priorityMessages = priorityKeys.flatMap((key) => toMessageList(value[key]));
+  const validationMessages = value.errors && typeof value.errors === 'object'
+    ? Object.values(value.errors).flatMap(toMessageList)
+    : [];
+
+  return [...priorityMessages, ...validationMessages];
+};
+
+const getServerValidationFields = (data) => {
+  const errors = data?.errors;
+  if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return {};
+
+  const mappedErrors = {};
+  Object.entries(errors).forEach(([key, messages]) => {
+    const normalizedKey = normalizeForMatch(key).replace(/[^a-z]/g, '');
+    const rawMessage = toMessageList(messages)[0] || '';
+
+    if (normalizedKey.includes('email')) mappedErrors.email = rawMessage;
+    else if (normalizedKey.includes('phone')) mappedErrors.phone = rawMessage;
+    else if (normalizedKey.includes('password')) mappedErrors.password = rawMessage;
+    else if (normalizedKey.includes('fullname') || normalizedKey.includes('name')) {
+      mappedErrors.fullName = rawMessage;
+    }
+  });
+
+  return mappedErrors;
+};
+
+const getRegisterErrorDetails = (err) => {
+  const status = err?.status ?? err?.response?.status;
+  const responseData = err?.response?.data;
+  const messages = [
+    ...toMessageList(responseData),
+    ...toMessageList(err?.message),
+  ].filter(Boolean);
+  const combinedMessage = messages.join(' ');
+  const normalizedMessage = normalizeForMatch(combinedMessage);
+  const backendFieldErrors = getServerValidationFields(responseData);
+  const fieldErrors = {};
+
+  const hasEmailReference = normalizedMessage.includes('email') || normalizedMessage.includes('e-mail');
+  const hasPhoneReference = (
+    normalizedMessage.includes('so dien thoai') ||
+    normalizedMessage.includes('phone') ||
+    normalizedMessage.includes('mobile')
+  );
+  const isDuplicate = (
+    status === 409 ||
+    normalizedMessage.includes('da duoc su dung') ||
+    normalizedMessage.includes('da ton tai') ||
+    normalizedMessage.includes('already exists') ||
+    normalizedMessage.includes('already registered') ||
+    normalizedMessage.includes('duplicate') ||
+    normalizedMessage.includes('is taken') ||
+    normalizedMessage.includes('has been used')
+  );
+
+  if (isDuplicate && hasEmailReference) {
+    const message = 'Email này đã được sử dụng. Vui lòng dùng email khác.';
+    return {
+      title: 'Email đã được sử dụng',
+      message,
+      fieldErrors: { email: message },
+    };
+  }
+
+  if (isDuplicate && hasPhoneReference) {
+    const message = 'Số điện thoại này đã được sử dụng. Vui lòng dùng số điện thoại khác.';
+    return {
+      title: 'Số điện thoại đã được sử dụng',
+      message,
+      fieldErrors: { phone: message },
+    };
+  }
+
+  if (isDuplicate) {
+    return {
+      title: 'Tài khoản đã tồn tại',
+      message: 'Email hoặc số điện thoại đã được đăng ký. Vui lòng kiểm tra lại.',
+      fieldErrors,
+    };
+  }
+
+  if (
+    normalizedMessage.includes('invalid email') ||
+    normalizedMessage.includes('email is invalid') ||
+    normalizedMessage.includes('email khong hop le') ||
+    normalizedMessage.includes('email khong dung dinh dang')
+  ) {
+    const message = 'Địa chỉ email không hợp lệ. Vui lòng kiểm tra lại.';
+    return {
+      title: 'Email không hợp lệ',
+      message,
+      fieldErrors: { email: message },
+    };
+  }
+
+  if (
+    normalizedMessage.includes('invalid phone') ||
+    normalizedMessage.includes('phone number') ||
+    normalizedMessage.includes('so dien thoai khong hop le')
+  ) {
+    const message = 'Số điện thoại không hợp lệ. Vui lòng nhập 10 chữ số và bắt đầu bằng 0.';
+    return {
+      title: 'Số điện thoại không hợp lệ',
+      message,
+      fieldErrors: { phone: message },
+    };
+  }
+
+  if (
+    normalizedMessage.includes('password') ||
+    normalizedMessage.includes('mat khau')
+  ) {
+    const message = (
+      normalizedMessage.includes('uppercase') ||
+      normalizedMessage.includes('lowercase') ||
+      normalizedMessage.includes('digit') ||
+      normalizedMessage.includes('special') ||
+      normalizedMessage.includes('non alphanumeric') ||
+      normalizedMessage.includes('bao mat') ||
+      normalizedMessage.includes('weak')
+    )
+      ? 'Mật khẩu chưa đủ mạnh. Hãy thêm chữ hoa, chữ thường, số hoặc ký tự đặc biệt.'
+      : 'Mật khẩu chưa đáp ứng yêu cầu của hệ thống. Vui lòng kiểm tra lại.';
+
+    return {
+      title: 'Mật khẩu chưa hợp lệ',
+      message,
+      fieldErrors: { password: message },
+    };
+  }
+
+  if (
+    normalizedMessage.includes('full name') ||
+    normalizedMessage.includes('fullname') ||
+    normalizedMessage.includes('ho va ten')
+  ) {
+    const message = 'Họ và tên chưa hợp lệ. Vui lòng kiểm tra lại.';
+    return {
+      title: 'Họ và tên chưa hợp lệ',
+      message,
+      fieldErrors: { fullName: message },
+    };
+  }
+
+  if (Object.keys(backendFieldErrors).length > 0) {
+    Object.entries(backendFieldErrors).forEach(([fieldName]) => {
+      if (fieldName === 'email') fieldErrors.email = 'Địa chỉ email chưa hợp lệ.';
+      if (fieldName === 'phone') fieldErrors.phone = 'Số điện thoại chưa hợp lệ.';
+      if (fieldName === 'password') fieldErrors.password = 'Mật khẩu chưa hợp lệ.';
+      if (fieldName === 'fullName') fieldErrors.fullName = 'Họ và tên chưa hợp lệ.';
+    });
+
+    return {
+      title: 'Thông tin chưa hợp lệ',
+      message: 'Vui lòng kiểm tra lại các trường được đánh dấu bên dưới.',
+      fieldErrors,
+    };
+  }
+
+  if (
+    err?.code === 'ECONNABORTED' ||
+    normalizedMessage.includes('timeout') ||
+    normalizedMessage.includes('timed out')
+  ) {
+    return {
+      title: 'Yêu cầu quá thời gian',
+      message: 'Hệ thống phản hồi quá chậm. Vui lòng thử đăng ký lại.',
+      fieldErrors,
+    };
+  }
+
+  if (
+    !err?.response ||
+    normalizedMessage.includes('network error') ||
+    normalizedMessage.includes('failed to fetch') ||
+    normalizedMessage.includes('connection') ||
+    normalizedMessage.includes('khong the ket noi')
+  ) {
+    return {
+      title: 'Không thể kết nối',
+      message: 'Không thể kết nối đến hệ thống. Vui lòng kiểm tra mạng và thử lại.',
+      fieldErrors,
+    };
+  }
+
+  if (status === 429) {
+    return {
+      title: 'Bạn thao tác quá nhanh',
+      message: 'Có quá nhiều yêu cầu đăng ký. Vui lòng chờ một lúc rồi thử lại.',
+      fieldErrors,
+    };
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      title: 'Yêu cầu bị từ chối',
+      message: 'Hệ thống chưa thể xử lý yêu cầu đăng ký. Vui lòng tải lại trang và thử lại.',
+      fieldErrors,
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      title: 'Hệ thống đang gặp sự cố',
+      message: 'Máy chủ chưa thể xử lý đăng ký lúc này. Vui lòng thử lại sau.',
+      fieldErrors,
+    };
+  }
+
+  if (status === 400 || status === 422) {
+    const safeBackendMessage = messages.find((message) => {
+      const normalized = normalizeForMatch(message);
+      return (
+        message.length <= 180 &&
+        !normalized.includes('request failed with status code') &&
+        !normalized.includes('bad request') &&
+        !normalized.includes('validation failed')
+      );
+    });
+
+    return {
+      title: 'Thông tin đăng ký chưa hợp lệ',
+      message: safeBackendMessage || 'Vui lòng kiểm tra lại thông tin và thử đăng ký lần nữa.',
+      fieldErrors,
+    };
+  }
+
+  return {
+    title: 'Không thể đăng ký',
+    message: 'Đã xảy ra lỗi ngoài dự kiến. Vui lòng thử lại.',
+    fieldErrors,
+  };
+};
+
+const getOtpSessionKey = (user, fallbackEmail = '') => {
+  const identity = user?.userId || user?.email || fallbackEmail || 'current-user';
+  return `urbanmind:otp-sent:${identity}`;
+};
+
+const getOtpDeliveryError = (err) => {
+  const status = err?.status ?? err?.response?.status;
+  const messages = [
+    ...toMessageList(err?.response?.data),
+    ...toMessageList(err?.message),
+  ].filter(Boolean);
+  const rawMessage = messages[0] || '';
+  const normalizedMessage = normalizeForMatch(messages.join(' '));
+
+  if (
+    err?.code === 'ERR_NETWORK' ||
+    normalizedMessage.includes('network error') ||
+    normalizedMessage.includes('failed to fetch')
+  ) {
+    return {
+      title: 'Chưa thể gửi mã xác thực',
+      message: 'Không thể kết nối đến máy chủ. Bạn có thể thử gửi lại mã ở bước tiếp theo.',
+    };
+  }
+
+  if (err?.code === 'ECONNABORTED' || normalizedMessage.includes('timeout')) {
+    return {
+      title: 'Gửi mã mất quá nhiều thời gian',
+      message: 'Máy chủ phản hồi chậm. Bạn có thể thử gửi lại mã ở bước tiếp theo.',
+    };
+  }
+
+  if (status === 429 || normalizedMessage.includes('too many') || normalizedMessage.includes('qua nhieu')) {
+    return {
+      title: 'Bạn thao tác quá nhanh',
+      message: 'Vui lòng chờ một lúc rồi gửi lại mã xác thực.',
+    };
+  }
+
+  if (
+    normalizedMessage.includes('brevo') ||
+    normalizedMessage.includes('email service') ||
+    normalizedMessage.includes('mail service') ||
+    normalizedMessage.includes('gui email')
+  ) {
+    return {
+      title: 'Chưa thể gửi email',
+      message: 'Tài khoản đã được tạo nhưng dịch vụ gửi email đang gián đoạn. Vui lòng thử gửi lại mã.',
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      title: 'Chưa thể gửi mã xác thực',
+      message: 'Tài khoản đã được tạo nhưng máy chủ chưa thể gửi mã lúc này. Vui lòng thử lại sau.',
+    };
+  }
+
+  return {
+    title: 'Chưa thể gửi mã xác thực',
+    message: rawMessage && rawMessage.length <= 180
+      ? rawMessage
+      : 'Tài khoản đã được tạo. Vui lòng thử gửi lại mã ở bước tiếp theo.',
+  };
+};
 
 export const RegisterPage = () => {
-  const { register } = useAuth();
+  const {
+    user,
+    register,
+    sendOtp,
+    updatePendingRegistration,
+  } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isEditingRegistration = (
+    searchParams.get('mode') === 'edit' &&
+    Boolean(user) &&
+    !user?.isVerified
+  );
 
-  // Registration Form States
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const submitInFlightRef = useRef(false);
+  const draftHydratedRef = useRef(false);
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (!fullName || !email || !password || !phone) {
-      setError('Vui lòng điền đầy đủ thông tin bắt buộc.');
-      return;
+  useEffect(() => {
+    if (draftHydratedRef.current) return;
+    draftHydratedRef.current = true;
+
+    const routeDraft = location.state?.registrationDraft;
+    const storedDraft = readRegistrationDraft();
+    const draft = routeDraft || storedDraft || {};
+
+    setFullName(draft.fullName || user?.fullName || '');
+    setEmail(draft.email || user?.email || '');
+    setPhone(draft.phone || user?.phoneNumber || '');
+  }, [location.state, user]);
+
+  useEffect(() => {
+    if (!fullName && !email && !phone) return;
+    writeRegistrationDraft({ fullName, email, phone });
+  }, [email, fullName, phone]);
+
+  const clearFieldError = (fieldName) => {
+    setFieldErrors((currentErrors) => {
+      if (!currentErrors[fieldName]) return currentErrors;
+      const nextErrors = { ...currentErrors };
+      delete nextErrors[fieldName];
+      return nextErrors;
+    });
+    setError(null);
+  };
+
+  const getInputClassName = (fieldName, paddingClass) => [
+    'h-12 w-full rounded-2xl border bg-white text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 dark:bg-slate-950 dark:text-white',
+    paddingClass,
+    fieldErrors[fieldName]
+      ? 'border-red-400 hover:border-red-500 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 dark:border-red-500/80'
+      : 'border-slate-300 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:hover:border-slate-600',
+  ].join(' ');
+
+  const validateForm = () => {
+    const normalizedFullName = fullName.trim();
+    const normalizedEmail = email.trim();
+    const normalizedPhone = phone.trim();
+    const nextErrors = {};
+
+    if (!normalizedFullName) {
+      nextErrors.fullName = 'Vui lòng nhập họ và tên.';
+    } else if (normalizedFullName.length < 2) {
+      nextErrors.fullName = 'Họ và tên phải có ít nhất 2 ký tự.';
     }
-    setError('');
+
+    if (!normalizedEmail) {
+      nextErrors.email = 'Vui lòng nhập địa chỉ email.';
+    } else if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      nextErrors.email = 'Địa chỉ email không đúng định dạng.';
+    }
+
+    if (!normalizedPhone) {
+      nextErrors.phone = 'Vui lòng nhập số điện thoại.';
+    } else if (!PHONE_PATTERN.test(normalizedPhone)) {
+      nextErrors.phone = 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.';
+    }
+
+    if (!isEditingRegistration || password || confirmPassword) {
+      if (!password) {
+        nextErrors.password = isEditingRegistration
+          ? 'Vui lòng nhập mật khẩu mới.'
+          : 'Vui lòng nhập mật khẩu.';
+      } else if (password.length < 8) {
+        nextErrors.password = 'Mật khẩu phải có ít nhất 8 ký tự.';
+      }
+
+      if (!confirmPassword) {
+        nextErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu.';
+      } else if (password !== confirmPassword) {
+        nextErrors.confirmPassword = 'Mật khẩu xác nhận chưa khớp.';
+      }
+    }
+
+    setFieldErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      setError({
+        title: 'Thông tin chưa đầy đủ',
+        message: 'Vui lòng kiểm tra lại các trường được đánh dấu bên dưới.',
+      });
+      return null;
+    }
+
+    return {
+      fullName: normalizedFullName,
+      email: normalizedEmail,
+      phone: normalizedPhone,
+    };
+  };
+
+  const handleRegister = async (event) => {
+    event.preventDefault();
+    if (submitInFlightRef.current) return;
+
+    const normalizedValues = validateForm();
+    if (!normalizedValues) return;
+
+    submitInFlightRef.current = true;
+    setError(null);
     setLoading(true);
+
     try {
-      await register(fullName, email, password, phone);
-      // Redirect to email verification page
-      navigate('/verify-email');
+      if (isEditingRegistration) {
+        const previousEmail = String(user?.email || '').trim().toLowerCase();
+        const nextEmail = normalizedValues.email.toLowerCase();
+        const emailChanged = previousEmail !== nextEmail;
+        const previousSessionKey = getOtpSessionKey(user, user?.email);
+
+        const updatedUser = await updatePendingRegistration({
+          fullName: normalizedValues.fullName,
+          email: normalizedValues.email,
+          phoneNumber: normalizedValues.phone,
+          newPassword: password || undefined,
+        });
+
+        writeRegistrationDraft({
+          fullName: normalizedValues.fullName,
+          email: normalizedValues.email,
+          phone: normalizedValues.phone,
+        });
+        setPassword('');
+        setConfirmPassword('');
+
+        let otpDelivery;
+        if (emailChanged) {
+          window.sessionStorage.removeItem(previousSessionKey);
+          try {
+            await sendOtp();
+            const sentAt = Date.now();
+            const nextSessionKey = getOtpSessionKey(updatedUser, normalizedValues.email);
+            window.sessionStorage.setItem(nextSessionKey, JSON.stringify({
+              sentAt,
+              email: updatedUser?.email || normalizedValues.email,
+            }));
+            otpDelivery = { status: 'sent', sentAt };
+          } catch (otpError) {
+            otpDelivery = {
+              status: 'failed',
+              error: getOtpDeliveryError(otpError),
+            };
+          }
+        }
+
+        navigate('/verify-email', {
+          replace: true,
+          state: {
+            registrationUpdated: true,
+            emailChanged,
+            otpDelivery,
+          },
+        });
+        return;
+      }
+
+      const registeredUser = await register(
+        normalizedValues.fullName,
+        normalizedValues.email,
+        password,
+        normalizedValues.phone,
+      );
+
+      let otpDelivery;
+      try {
+        await sendOtp();
+        const sentAt = Date.now();
+        const sessionKey = getOtpSessionKey(registeredUser, normalizedValues.email);
+        window.sessionStorage.setItem(sessionKey, JSON.stringify({
+          sentAt,
+          email: registeredUser?.email || normalizedValues.email,
+        }));
+        otpDelivery = { status: 'sent', sentAt };
+      } catch (otpError) {
+        otpDelivery = {
+          status: 'failed',
+          error: getOtpDeliveryError(otpError),
+        };
+      }
+
+      navigate('/verify-email', {
+        replace: true,
+        state: { otpDelivery },
+      });
     } catch (err) {
-      setError(err.message || 'Đăng ký thất bại.');
+      const registerError = getRegisterErrorDetails(err);
+      if (isEditingRegistration && registerError.title === 'Không thể đăng ký') {
+        registerError.title = 'Không thể cập nhật thông tin';
+        registerError.message = 'Hệ thống chưa thể lưu thay đổi. Vui lòng thử lại.';
+      }
+      setError({
+        title: registerError.title,
+        message: registerError.message,
+      });
+
+      if (Object.keys(registerError.fieldErrors).length > 0) {
+        setFieldErrors((currentErrors) => ({
+          ...currentErrors,
+          ...registerError.fieldErrors,
+        }));
+
+        const firstInvalidField = Object.keys(registerError.fieldErrors)[0];
+        window.requestAnimationFrame(() => {
+          document.getElementById(REGISTER_FIELD_IDS[firstInvalidField])?.focus();
+        });
+      }
     } finally {
+      submitInFlightRef.current = false;
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-screen bg-gradient-to-br from-base-200 via-base-300 to-primary/10 flex items-center justify-center p-6 font-sans">
-      <div className="card w-full max-w-lg bg-base-100 border border-base-300 shadow-2xl p-8 rounded-3xl space-y-6">
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <Link to="/" className="inline-flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary text-primary-content">
-              <Lucide.Cpu size={24} className="animate-pulse" />
-            </div>
-            <span className="font-extrabold text-2xl tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              UrbanMind
-            </span>
-          </Link>
-          <h2 className="text-lg font-bold text-gray-500">ĐĂNG KÝ TÀI KHOẢN NGƯỜI DÂN</h2>
+    <AuthLayout>
+      <article className="auth-login-card auth-register-card relative overflow-hidden rounded-[28px] border border-slate-200/90 bg-white p-6 shadow-[0_24px_65px_rgba(15,23,42,0.13)] sm:p-8 dark:border-slate-700 dark:bg-slate-900">
+        <svg
+          className="pointer-events-none absolute right-0 top-0 h-36 w-60 text-blue-600"
+          viewBox="0 0 240 144"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M20 98C72 61 111 118 164 72C193 47 212 41 252 48"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            className="opacity-[0.07]"
+          />
+          <path
+            d="M34 116C83 82 121 128 176 89C202 70 222 67 254 73"
+            stroke="currentColor"
+            strokeWidth="1"
+            strokeDasharray="5 8"
+            className="opacity-[0.055]"
+          />
+          <circle cx="164" cy="72" r="5" className="fill-blue-500/10" />
+          <circle cx="208" cy="48" r="7" className="fill-emerald-500/10" />
+          <circle cx="208" cy="48" r="15" stroke="currentColor" className="opacity-[0.05]" />
+        </svg>
+
+        <div
+          className="pointer-events-none absolute -bottom-20 -left-16 h-40 w-40 rounded-full bg-blue-50/65 blur-2xl dark:bg-blue-950/20"
+          aria-hidden="true"
+        />
+
+        <header className="relative z-10">
+          <span className="auth-login-badge inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+            <Lucide.UserPlus size={14} aria-hidden="true" />
+            {isEditingRegistration ? 'Thông tin đăng ký UrbanMind' : 'Tài khoản người dân UrbanMind'}
+          </span>
+          <h1
+            id="auth-page-title"
+            className="auth-login-title mt-5 text-[30px] font-bold leading-tight tracking-[-0.035em] text-slate-950 dark:text-white"
+          >
+            {isEditingRegistration ? 'Chỉnh sửa thông tin đăng ký' : 'Tạo tài khoản mới'}
+          </h1>
+          <p className="auth-login-description mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            {isEditingRegistration
+              ? 'Cập nhật thông tin đăng ký. Nếu đổi email, hệ thống sẽ gửi mã OTP mới.'
+              : 'Đăng ký để gửi phản ánh, theo dõi tiến độ và tham gia trao đổi cùng cộng đồng.'}
+          </p>
+        </header>
+
+        <div className="auth-login-alerts relative z-10 mt-6" aria-live="polite">
+          {error ? (
+            <ErrorAlert
+              title={error.title}
+              message={error.message}
+              onClose={() => setError(null)}
+            />
+          ) : null}
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <ErrorAlert 
-            title="Lỗi đăng ký"
-            message={error}
-            onClose={() => setError('')}
-          />
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="form-control md:col-span-2">
-            <label htmlFor="register-fullname" className="label">
-              <span className="label-text font-bold text-xs">Họ và tên *</span>
+        <form
+          onSubmit={handleRegister}
+          noValidate
+          className="auth-login-form relative z-10 mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2"
+        >
+          <div className="space-y-1.5 sm:col-span-2">
+            <label htmlFor="register-fullname" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Họ và tên <span className="text-red-500" aria-hidden="true">*</span>
             </label>
-            <input 
-              id="register-fullname"
-              name="fullName"
-              type="text" 
-              autoComplete="name"
-              placeholder="Nguyễn Văn A"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="input input-bordered w-full text-xs font-medium rounded-xl h-11"
-              required
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
+                <Lucide.UserRound size={17} />
+              </span>
+              <input
+                id="register-fullname"
+                name="fullName"
+                type="text"
+                autoComplete="name"
+                placeholder="Nguyễn Văn A"
+                value={fullName}
+                onChange={(event) => {
+                  setFullName(event.target.value);
+                  clearFieldError('fullName');
+                }}
+                className={getInputClassName('fullName', 'pl-11 pr-4')}
+                aria-invalid={Boolean(fieldErrors.fullName)}
+                aria-describedby={fieldErrors.fullName ? 'register-fullname-error' : undefined}
+                required
+              />
+            </div>
+            <FieldError id="register-fullname-error" message={fieldErrors.fullName} />
           </div>
 
-          <div className="form-control">
-            <label htmlFor="register-email" className="label">
-              <span className="label-text font-bold text-xs">Email liên lạc *</span>
+          <div className="space-y-1.5">
+            <label htmlFor="register-email" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Email liên lạc <span className="text-red-500" aria-hidden="true">*</span>
             </label>
-            <input 
-              id="register-email"
-              name="email"
-              type="email" 
-              autoComplete="email"
-              placeholder="user@urbanmind.vn"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input input-bordered w-full text-xs font-medium rounded-xl h-11"
-              required
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
+                <Lucide.AtSign size={17} />
+              </span>
+              <input
+                id="register-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                placeholder="name@email.com"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  clearFieldError('email');
+                }}
+                className={getInputClassName('email', 'pl-11 pr-4')}
+                aria-invalid={Boolean(fieldErrors.email)}
+                aria-describedby={fieldErrors.email ? 'register-email-error' : undefined}
+                required
+              />
+            </div>
+            <FieldError id="register-email-error" message={fieldErrors.email} />
+            {isEditingRegistration ? (
+              <p className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                Đổi email sẽ hủy mã cũ và gửi OTP mới đến địa chỉ vừa cập nhật.
+              </p>
+            ) : null}
           </div>
 
-          <div className="form-control">
-            <label htmlFor="register-phone" className="label">
-              <span className="label-text font-bold text-xs">Số điện thoại *</span>
+          <div className="space-y-1.5">
+            <label htmlFor="register-phone" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Số điện thoại <span className="text-red-500" aria-hidden="true">*</span>
             </label>
-            <input 
-              id="register-phone"
-              type="tel" 
-              placeholder="09XXXXXXXX"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="input input-bordered w-full text-xs font-medium rounded-xl h-11"
-              required
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
+                <Lucide.Phone size={17} />
+              </span>
+              <input
+                id="register-phone"
+                name="phone"
+                type="tel"
+                autoComplete="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={10}
+                placeholder="09xxxxxxxx"
+                value={phone}
+                onChange={(event) => {
+                  const digitsOnly = event.target.value.replace(/\D/g, '').slice(0, 10);
+                  setPhone(digitsOnly);
+                  clearFieldError('phone');
+                }}
+                className={getInputClassName('phone', 'pl-11 pr-4')}
+                aria-invalid={Boolean(fieldErrors.phone)}
+                aria-describedby={fieldErrors.phone ? 'register-phone-error' : 'register-phone-help'}
+                required
+              />
+            </div>
+            {fieldErrors.phone ? (
+              <FieldError id="register-phone-error" message={fieldErrors.phone} />
+            ) : (
+              <p id="register-phone-help" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                Nhập 10 chữ số và bắt đầu bằng 0.
+              </p>
+            )}
           </div>
 
-          <div className="form-control md:col-span-2">
-            <label htmlFor="register-password" className="label">
-              <span className="label-text font-bold text-xs">Mật khẩu bảo mật *</span>
+          <div className="space-y-1.5">
+            <label htmlFor="register-password" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              {isEditingRegistration ? 'Mật khẩu mới' : 'Mật khẩu'}{' '}
+              {!isEditingRegistration ? <span className="text-red-500" aria-hidden="true">*</span> : null}
             </label>
-            <input 
-              id="register-password"
-              name="password"
-              type="password" 
-              autoComplete="new-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input input-bordered w-full text-xs font-medium rounded-xl h-11"
-              required
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
+                <Lucide.Lock size={17} />
+              </span>
+              <input
+                id="register-password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  clearFieldError('password');
+                  clearFieldError('confirmPassword');
+                }}
+                className={getInputClassName('password', 'pl-11 pr-12')}
+                aria-invalid={Boolean(fieldErrors.password)}
+                aria-describedby={fieldErrors.password ? 'register-password-error' : 'register-password-help'}
+                minLength={8}
+                required={!isEditingRegistration}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-2xl text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:hover:text-slate-200"
+                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? (
+                  <Lucide.EyeOff size={17} aria-hidden="true" />
+                ) : (
+                  <Lucide.Eye size={17} aria-hidden="true" />
+                )}
+              </button>
+            </div>
+            {fieldErrors.password ? (
+              <FieldError id="register-password-error" message={fieldErrors.password} />
+            ) : (
+              <p id="register-password-help" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                {isEditingRegistration ? 'Bỏ trống nếu không muốn đổi mật khẩu.' : 'Sử dụng ít nhất 8 ký tự.'}
+              </p>
+            )}
           </div>
 
-          <button 
-            type="submit" 
-            className="btn btn-primary md:col-span-2 w-full rounded-xl font-bold shadow-lg shadow-primary/20 h-11 text-xs mt-2"
+          <div className="space-y-1.5">
+            <label htmlFor="register-confirm-password" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              {isEditingRegistration ? 'Xác nhận mật khẩu mới' : 'Xác nhận mật khẩu'}{' '}
+              {!isEditingRegistration ? <span className="text-red-500" aria-hidden="true">*</span> : null}
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
+                <Lucide.KeyRound size={17} />
+              </span>
+              <input
+                id="register-confirm-password"
+                name="confirmPassword"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(event) => {
+                  setConfirmPassword(event.target.value);
+                  clearFieldError('confirmPassword');
+                }}
+                className={getInputClassName('confirmPassword', 'pl-11 pr-12')}
+                aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                aria-describedby={fieldErrors.confirmPassword ? 'register-confirm-password-error' : 'register-confirm-password-help'}
+                minLength={8}
+                required={!isEditingRegistration}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-2xl text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:hover:text-slate-200"
+                aria-label={showPassword ? 'Ẩn mật khẩu xác nhận' : 'Hiện mật khẩu xác nhận'}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? (
+                  <Lucide.EyeOff size={17} aria-hidden="true" />
+                ) : (
+                  <Lucide.Eye size={17} aria-hidden="true" />
+                )}
+              </button>
+            </div>
+            {fieldErrors.confirmPassword ? (
+              <FieldError id="register-confirm-password-error" message={fieldErrors.confirmPassword} />
+            ) : (
+              <p id="register-confirm-password-help" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                {isEditingRegistration ? 'Chỉ cần nhập khi thay đổi mật khẩu.' : 'Nhập lại để tránh sai mật khẩu.'}
+              </p>
+            )}
+          </div>
+
+          <div className="auth-register-verification-note sm:col-span-2 flex items-start gap-2.5 rounded-2xl border border-blue-100 bg-blue-50/65 px-3.5 py-3 text-xs leading-5 text-slate-600 dark:border-blue-900/50 dark:bg-blue-950/25 dark:text-slate-300">
+            <Lucide.MailCheck size={16} className="mt-0.5 shrink-0 text-blue-700 dark:text-blue-300" aria-hidden="true" />
+            <p>
+              {isEditingRegistration
+                ? 'Có thể sửa email và mật khẩu trước khi xác thực. Đổi email sẽ tạo mã OTP mới.'
+                : 'Sau khi đăng ký, hệ thống sẽ chuyển bạn sang bước xác thực email.'}
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            className="sm:col-span-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 hover:shadow-blue-600/25 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={loading}
           >
-            {loading ? <span className="loading loading-spinner"></span> : 'ĐĂNG KÝ TÀI KHOẢN'}
+            {loading ? (
+              <>
+                <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+                {isEditingRegistration ? 'Đang lưu thay đổi...' : 'Đang tạo tài khoản...'}
+              </>
+            ) : (
+              <>
+                {isEditingRegistration ? 'Lưu thay đổi' : 'Đăng ký tài khoản'}
+                <Lucide.ArrowRight size={16} aria-hidden="true" />
+              </>
+            )}
           </button>
         </form>
 
-        {/* Back to login */}
-        <div className="text-center text-xs font-semibold text-gray-500">
-          Đã có tài khoản?{' '}
-          <Link to="/login" className="text-primary hover:underline font-bold">
-            Đăng nhập tại đây
-          </Link>
-        </div>
-      </div>
-    </div>
+        <p className="auth-login-register relative z-10 mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
+          {isEditingRegistration ? (
+            <Link to="/verify-email" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+              Quay lại xác thực email
+            </Link>
+          ) : (
+            <>
+              Đã có tài khoản?{' '}
+              <Link to="/login" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+                Đăng nhập ngay
+              </Link>
+            </>
+          )}
+        </p>
+      </article>
+    </AuthLayout>
   );
 };

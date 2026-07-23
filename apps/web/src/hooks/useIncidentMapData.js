@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { ticketApi } from '../services/api/ticketApi';
+import { getCommunityFeed } from '../services/api/feedApi';
 
 const isValidCoordinate = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 const isValidLocation = (latitude, longitude) => isValidCoordinate(latitude, -90, 90) && isValidCoordinate(longitude, -180, 180);
@@ -67,17 +68,18 @@ export function useIncidentMapData() {
   const [error, setError] = useState('');
 
   const loadIncidents = useCallback(async () => {
-    if (!role) {
-      setIncidents([]);
-      return;
-    }
-
     setLoading(true);
     setError('');
 
     try {
-      const response = await ticketApi.getTickets({}, { role });
-      const tickets = Array.isArray(response) ? response : [];
+      const response = role
+        ? await ticketApi.getTickets({}, { role })
+        : await getCommunityFeed({ PageNumber: 1, PageSize: 100 });
+      const tickets = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.items)
+          ? response.items
+          : [];
       const validIncidents = tickets
         .map(normalizeIncident)
         .filter((incident) => isValidLocation(incident.latitude, incident.longitude));

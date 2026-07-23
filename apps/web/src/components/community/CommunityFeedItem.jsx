@@ -1,8 +1,30 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { getAttachmentUrl } from '@urbanmind/shared-utils';
 import { managementTypes } from '@urbanmind/shared-types';
 import SupportButton from './SupportButton';
+
+const loadedMediaUrls = new Set();
+const mediaKeepers = new Map();
+
+const rememberLoadedMedia = (mediaUrl, mediaElement) => {
+  if (!mediaUrl) return;
+
+  loadedMediaUrls.add(mediaUrl);
+
+  if (mediaKeepers.has(mediaUrl)) return;
+
+  if (mediaElement?.cloneNode) {
+    mediaKeepers.set(mediaUrl, mediaElement.cloneNode(false));
+    return;
+  }
+
+  if (typeof Image !== 'undefined') {
+    const keeper = new Image();
+    keeper.src = mediaUrl;
+    mediaKeepers.set(mediaUrl, keeper);
+  }
+};
 
 const STATUS_META = {
   [managementTypes.feedbackStatus.VERIFIED]: {
@@ -135,10 +157,36 @@ const MediaTile = ({
   itemTitle,
   index,
   onOpen,
+  priority = false,
   className = '',
 }) => {
   const mediaUrl = getAttachmentUrl(attachment);
   const video = isVideoAttachment(attachment);
+  const [mediaStatus, setMediaStatus] = useState(() => (
+    mediaUrl
+      ? (loadedMediaUrls.has(mediaUrl) ? 'ready' : 'loading')
+      : 'error'
+  ));
+
+  useEffect(() => {
+    setMediaStatus(
+      mediaUrl
+        ? (loadedMediaUrls.has(mediaUrl) ? 'ready' : 'loading')
+        : 'error'
+    );
+
+    if (!mediaUrl || loadedMediaUrls.has(mediaUrl)) return undefined;
+
+    const timeoutId = globalThis.setTimeout(() => {
+      setMediaStatus((currentStatus) => (
+        currentStatus === 'loading' ? 'error' : currentStatus
+      ));
+    }, 15000);
+
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, [mediaUrl]);
 
   return (
     <button
@@ -148,33 +196,75 @@ const MediaTile = ({
       aria-label={`Mở ${itemTitle || `minh chứng ${index + 1}`}`}
     >
       {mediaUrl ? (
-        video ? (
-          <>
-            <video
+        <>
+          {video ? (
+            <>
+              <video
+                src={mediaUrl}
+                className={`h-full w-full object-cover transition-opacity duration-200 ${
+                  mediaStatus === 'ready' ? 'opacity-100' : 'opacity-0'
+                }`}
+                muted
+                playsInline
+                preload="metadata"
+                onLoadedData={(event) => {
+                  rememberLoadedMedia(mediaUrl, event.currentTarget);
+                  setMediaStatus('ready');
+                }}
+                onError={() => {
+                  loadedMediaUrls.delete(mediaUrl);
+                  mediaKeepers.delete(mediaUrl);
+                  setMediaStatus('error');
+                }}
+              />
+              {mediaStatus === 'ready' ? (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition group-hover/media:bg-black/25">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/55 shadow-lg backdrop-blur">
+                    <Lucide.Play
+                      size={17}
+                      fill="currentColor"
+                      aria-hidden="true"
+                    />
+                  </span>
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <img
               src={mediaUrl}
-              className="h-full w-full object-cover"
-              muted
-              playsInline
-              preload="metadata"
+              alt={itemTitle || `Minh chứng ${index + 1}`}
+              className={`h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.012] ${
+                mediaStatus === 'ready' ? 'opacity-100' : 'opacity-0'
+              }`}
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : 'auto'}
+              decoding="async"
+              onLoad={(event) => {
+                rememberLoadedMedia(mediaUrl, event.currentTarget);
+                setMediaStatus('ready');
+              }}
+              onError={() => {
+                loadedMediaUrls.delete(mediaUrl);
+                mediaKeepers.delete(mediaUrl);
+                setMediaStatus('error');
+              }}
             />
-            <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition group-hover/media:bg-black/25">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/55 shadow-lg backdrop-blur">
-                <Lucide.Play
-                  size={17}
-                  fill="currentColor"
-                  aria-hidden="true"
-                />
-              </span>
+          )}
+
+          {mediaStatus === 'loading' ? (
+            <span className="absolute inset-0 animate-pulse bg-base-300/55" aria-hidden="true">
+              <span className="absolute inset-x-6 bottom-5 h-3 rounded-full bg-base-100/55" />
+              <span className="absolute bottom-10 left-6 h-3 w-2/5 rounded-full bg-base-100/45" />
             </span>
-          </>
-        ) : (
-          <img
-            src={mediaUrl}
-            alt={itemTitle || `Minh chứng ${index + 1}`}
-            className="h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.012]"
-            loading="lazy"
-          />
-        )
+          ) : null}
+
+          {mediaStatus === 'error' ? (
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-base-200 px-4 text-center text-sm text-base-content/45">
+              <Lucide.ImageOff size={19} aria-hidden="true" />
+              Không thể hiển thị tệp
+            </span>
+          ) : null}
+        </>
       ) : (
         <span className="flex h-full min-h-28 items-center justify-center text-sm text-base-content/40">
           Không thể hiển thị tệp
@@ -186,6 +276,7 @@ const MediaTile = ({
 
 const CommunityFeedItem = ({
   item,
+  priority = false,
   highlighted = false,
   onOpenComments,
   onOpen,
@@ -207,6 +298,13 @@ const CommunityFeedItem = ({
     : fallbackAttachment
       ? [fallbackAttachment]
       : [];
+  const mediaState = item?.__mediaState || (
+    mediaItems.length > 0
+      ? 'ready'
+      : Number(item?.attachmentCount || 0) > 0
+        ? 'loading'
+        : 'empty'
+  );
   const authorName = getAuthorName(item);
   const areaName = getAreaName(item);
   const statusMeta = STATUS_META[item?.status] || {
@@ -233,10 +331,10 @@ const CommunityFeedItem = ({
   return (
     <article
       data-community-feedback-id={feedbackId}
-      className={`relative overflow-hidden rounded-[26px] border bg-base-100 shadow-[0_8px_24px_rgba(15,23,42,0.055)] transition duration-200 hover:border-primary/18 hover:shadow-[0_12px_28px_rgba(15,23,42,0.075)] ${
+      className={`group/feed-card relative overflow-hidden rounded-[26px] border bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_18px_40px_rgba(15,23,42,0.11)] ${
         highlighted
-          ? 'border-primary/45 ring-2 ring-primary/20'
-          : 'border-base-300'
+          ? 'border-primary/50 ring-2 ring-primary/20'
+          : 'border-[var(--public-border)]'
       }`}
     >
       <span
@@ -244,17 +342,17 @@ const CommunityFeedItem = ({
         aria-hidden="true"
       />
 
-      <header className="flex items-start justify-between gap-3 px-5 pb-2.5 pt-5 sm:px-6">
+      <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-5 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-content shadow-sm">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-gradient-to-br from-primary to-info text-sm font-bold text-primary-content shadow-[0_8px_18px_rgba(37,99,235,0.22)]">
             {authorName.charAt(0).toUpperCase()}
           </span>
 
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
+            <p className="truncate text-sm font-semibold text-[var(--public-title)]">
               {authorName}
             </p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/48">
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--public-muted)]">
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <Lucide.MapPin
                   size={13}
@@ -282,10 +380,10 @@ const CommunityFeedItem = ({
         </span>
       </header>
 
-      <div className="px-5 pb-3 sm:px-6">
+      <div className="px-5 pb-3.5 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
           {categoryName ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/8 px-2.5 py-1 text-[11px] font-semibold text-secondary">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-secondary/15 bg-secondary/8 px-2.5 py-1 text-[11px] font-semibold text-secondary">
               <Lucide.Tag size={12} aria-hidden="true" />
               {categoryName}
             </span>
@@ -297,44 +395,66 @@ const CommunityFeedItem = ({
           onClick={() => onOpen(item)}
           className="mt-2 block w-full text-left"
         >
-          <h2 className="text-lg font-bold leading-7 tracking-tight transition hover:text-primary sm:text-xl">
+          <h2 className="text-lg font-bold leading-7 tracking-tight text-[var(--public-title)] transition group-hover/feed-card:text-primary sm:text-xl">
             {item?.title || 'Phản ánh đô thị'}
           </h2>
         </button>
 
         {item?.description ? (
-          <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-base-content/58">
+          <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-[var(--public-copy)]">
             {item.description}
           </p>
         ) : null}
       </div>
 
       <div className="px-5 sm:px-6">
-        {mediaItems.length === 0 ? (
+        {mediaState === 'loading' ? (
+          <div
+            className="h-44 animate-pulse overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] sm:h-52"
+            role="status"
+            aria-label="Đang tải hình ảnh minh chứng"
+          >
+            <span className="sr-only">Đang tải hình ảnh minh chứng</span>
+            <div className="mx-6 mt-6 h-3 w-2/5 rounded-full bg-base-100/55" />
+            <div className="mx-6 mt-3 h-3 w-3/5 rounded-full bg-base-100/45" />
+          </div>
+        ) : mediaState === 'error' ? (
           <button
             type="button"
             onClick={() => onOpen(item)}
-            className="flex h-24 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-base-300 bg-base-200/30 text-sm text-base-content/42"
+            className="flex h-44 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-error/25 bg-error/5 px-4 text-center text-sm text-base-content/50 sm:h-52"
+          >
+            <Lucide.ImageOff size={20} className="text-error/60" aria-hidden="true" />
+            <span className="font-semibold">Không thể tải hình ảnh</span>
+            <span className="text-xs text-base-content/40">Mở chi tiết để thử lại</span>
+          </button>
+        ) : mediaItems.length === 0 ? (
+          <button
+            type="button"
+            onClick={() => onOpen(item)}
+            className="flex h-44 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] text-sm text-[var(--public-muted)] transition hover:border-primary/25 hover:text-primary sm:h-52"
           >
             <Lucide.ImageOff size={18} aria-hidden="true" />
             Chưa có hình ảnh công khai
           </button>
         ) : mediaItems.length === 1 ? (
-          <div className="h-44 overflow-hidden rounded-2xl border border-base-300 sm:h-52">
+          <div className="h-44 overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] shadow-inner sm:h-52">
             <MediaTile
               attachment={mediaItems[0]}
               itemTitle={item?.title}
               index={0}
+              priority={priority}
               onOpen={() => onOpen(item)}
               className="h-full w-full"
             />
           </div>
         ) : (
-          <div className="grid h-44 grid-cols-[minmax(0,1.7fr)_minmax(110px,0.7fr)] gap-1 overflow-hidden rounded-2xl border border-base-300 sm:h-52">
+          <div className="grid h-44 grid-cols-[minmax(0,1.7fr)_minmax(110px,0.7fr)] gap-1 overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] shadow-inner sm:h-52">
             <MediaTile
               attachment={mediaItems[0]}
               itemTitle={item?.title}
               index={0}
+              priority={priority}
               onOpen={() => onOpen(item)}
               className="h-full w-full"
             />
@@ -383,7 +503,7 @@ const CommunityFeedItem = ({
         )}
       </div>
 
-      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 bg-base-200/20 px-5 py-3 sm:px-6">
+      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--public-border-soft)] bg-[var(--public-surface-soft)]/75 px-5 py-3 sm:px-6">
         <div className="flex items-center gap-2">
           <SupportButton
             feedbackId={feedbackId}
@@ -400,7 +520,7 @@ const CommunityFeedItem = ({
           <button
             type="button"
             onClick={handleComments}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-semibold text-base-content/58 transition hover:border-primary/20 hover:bg-primary/5 hover:text-primary"
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-copy)] transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary"
           >
             <Lucide.MessageCircle
               size={16}
@@ -413,7 +533,7 @@ const CommunityFeedItem = ({
         <button
           type="button"
           onClick={() => onOpen(item)}
-          className="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-primary/8"
+          className="inline-flex h-9 items-center gap-2 rounded-xl border border-transparent px-3 text-sm font-semibold text-primary transition hover:border-primary/15 hover:bg-primary/8"
         >
           Xem chi tiết
           <Lucide.ArrowRight

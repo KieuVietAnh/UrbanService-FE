@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import * as Lucide from 'lucide-react';
 import { managementTypes } from '@urbanmind/shared-types';
 import { normalizeTicketsResponse } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import { getCommunityFeed } from '../../services/api/feedApi';
-import { ticketApi } from '../../services/api/ticketApi';
+import {
+  getCommunityFeed,
+  getCommunityFeedPreview,
+} from '../../services/api/feedApi';
 import { signalrService } from '../../services/socket/signalrService';
+import {
+  readCommunityFeedCache,
+  writeCommunityFeedCache,
+} from '../../services/cache/communityFeedCache';
 import CommunityFeedItem from './CommunityFeedItem';
 import CommentDrawer from './CommentDrawer';
 
@@ -14,7 +21,30 @@ const COMMUNITY_RETURN_STORAGE_KEY = 'urbanmind-community-feed-return';
 const COMMUNITY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const COMMUNITY_REFERENCE_TIMESTAMP = Date.now();
 const COMMUNITY_FEED_PAGE_SIZE = 10;
-const COMMUNITY_SNAPSHOT_PAGE_SIZE = 100;
+const COMMUNITY_PREVIEW_CONCURRENCY = 3;
+const COMMUNITY_FEED_BACKGROUND_REFRESH_MS = 30 * 1000;
+
+const mapWithConcurrency = async (items, limit, mapper) => {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  };
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(Math.max(1, limit), items.length) },
+      () => worker()
+    )
+  );
+
+  return results;
+};
 
 const readCommunityReturnContext = () => {
   if (typeof window === 'undefined') return null;
@@ -123,12 +153,56 @@ const filterPublicItems = (feedItems = []) => (
   })
 );
 
+const mergeFeedMediaFromCache = (incomingItems = [], cachedItems = []) => {
+  const cachedById = new Map(
+    cachedItems
+      .map((item) => [String(getItemId(item) || ''), item])
+      .filter(([itemId]) => itemId)
+  );
+
+  return incomingItems.map((item) => {
+    const cachedItem = cachedById.get(String(getItemId(item) || ''));
+    if (!cachedItem) return item;
+
+    const incomingAttachments = Array.isArray(item?.attachments)
+      ? item.attachments
+      : [];
+    const cachedAttachments = Array.isArray(cachedItem?.attachments)
+      ? cachedItem.attachments
+      : [];
+    const hasIncomingMedia = (
+      incomingAttachments.length > 0 ||
+      item?.imageUrl ||
+      item?.coverImageUrl ||
+      item?.thumbnailUrl ||
+      item?.mediaUrl ||
+      item?.attachmentUrl
+    );
+
+    return {
+      ...item,
+      description: item?.description || cachedItem?.description,
+      attachments: incomingAttachments.length > 0
+        ? incomingAttachments
+        : cachedAttachments,
+      imageUrl: item?.imageUrl || cachedItem?.imageUrl,
+      coverImageUrl: item?.coverImageUrl || cachedItem?.coverImageUrl,
+      thumbnailUrl: item?.thumbnailUrl || cachedItem?.thumbnailUrl,
+      mediaUrl: item?.mediaUrl || cachedItem?.mediaUrl,
+      attachmentUrl: item?.attachmentUrl || cachedItem?.attachmentUrl,
+      __mediaState: hasIncomingMedia
+        ? (item?.__mediaState || 'ready')
+        : cachedItem?.__mediaState || item?.__mediaState,
+    };
+  });
+};
+
 const FeedSkeleton = () => (
   <div className="space-y-4" aria-hidden="true">
     {[0, 1, 2].map((item) => (
       <div
         key={item}
-        className="animate-pulse overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-sm"
+        className="public-loading-surface animate-pulse overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-sm"
       >
         <div className="flex items-center gap-3 px-5 py-5 sm:px-6">
           <div className="h-11 w-11 rounded-2xl bg-base-300/65" />
@@ -155,24 +229,58 @@ const FeedSkeleton = () => (
 
 export default function CommunityFeed({ initialTab = 'Latest' }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const cacheOwnerKey = (
+    user?.userId || user?.id || user?.email || 'service-user'
+  );
   const [restoredContext] = useState(readCommunityReturnContext);
   const restoreContextRef = useRef(restoredContext);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialCache] = useState(() => (
+    readCommunityFeedCache(cacheOwnerKey)
+  ));
+  const [items, setItems] = useState(() => (
+    Array.isArray(initialCache?.items) ? initialCache.items : []
+  ));
+  const [loading, setLoading] = useState(() => (
+    !(Array.isArray(initialCache?.items) && initialCache.items.length > 0)
+  ));
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(() => (
-    Math.max(1, Number(restoredContext?.page) || 1)
+    Math.max(
+      1,
+      Number(restoredContext?.page) ||
+      Number(initialCache?.page) ||
+      1
+    )
+  ));
+  const [loadedServerPage, setLoadedServerPage] = useState(() => (
+    Math.max(0, Number(initialCache?.loadedServerPage) || 0)
+  ));
+  const [totalPages, setTotalPages] = useState(() => (
+    Math.max(1, Number(initialCache?.totalPages) || 1)
+  ));
+  const [totalItems, setTotalItems] = useState(() => (
+    Math.max(0, Number(initialCache?.totalItems) || 0)
   ));
   const [tab, setTab] = useState(() => (
-    normalizeFeedTab(restoredContext?.tab, initialTab)
+    normalizeFeedTab(
+      restoredContext?.tab || initialCache?.tab,
+      initialTab
+    )
   ));
-  const [query, setQuery] = useState(restoredContext?.query || '');
+  const [query, setQuery] = useState(() => (
+    restoredContext?.query || initialCache?.query || ''
+  ));
   const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(null);
   const [error, setError] = useState('');
   const [openCommentsFor, setOpenCommentsFor] = useState(null);
   const isFetchingRef = useRef(false);
-  const hasLoadedSnapshotRef = useRef(false);
+  const hasLoadedSnapshotRef = useRef(
+    Array.isArray(initialCache?.items) && initialCache.items.length > 0
+  );
   const hasInitializedFiltersRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const loadSessionRef = useRef(0);
   const filterSectionRef = useRef(null);
   const feedListSectionRef = useRef(null);
   const [scrollRequest, setScrollRequest] = useState({
@@ -180,8 +288,128 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     target: 'controls',
   });
 
+  const normalizePageItems = useCallback((rawItems = []) => {
+    const publicItems = dedupeFeedItems(
+      filterPublicItems(normalizeTicketsResponse(rawItems))
+    );
+
+    return publicItems.map((item) => {
+      const hasAttachments = (
+        Array.isArray(item?.attachments) && item.attachments.length > 0
+      );
+
+      if (hasAttachments || Number(item?.attachmentCount || 0) <= 0) {
+        return item;
+      }
+
+      return {
+        ...item,
+        __mediaState: 'loading',
+      };
+    });
+  }, []);
+
+  const requestFeedPage = useCallback(async (
+    pageNumber,
+    { force = false } = {}
+  ) => {
+    const response = await getCommunityFeed(
+      {
+        PageNumber: pageNumber,
+        PageSize: COMMUNITY_FEED_PAGE_SIZE,
+      },
+      { force }
+    );
+
+    return {
+      items: normalizePageItems(response?.items || []),
+      pageNumber: Math.max(1, Number(response?.pageNumber) || pageNumber),
+      totalPages: Math.max(1, Number(response?.totalPages) || 1),
+      totalItems: Math.max(0, Number(response?.totalItems) || 0),
+    };
+  }, [normalizePageItems]);
+
+  const hydrateFeedPreviews = useCallback(async (feedItems, sessionId) => {
+    const candidates = feedItems.filter((item) => (
+      item?.attachmentCount > 0 &&
+      !(Array.isArray(item?.attachments) && item.attachments.length > 0)
+    ));
+
+    if (candidates.length === 0) return;
+
+    const results = await mapWithConcurrency(
+      candidates,
+      COMMUNITY_PREVIEW_CONCURRENCY,
+      async (item) => {
+        const feedbackId = getItemId(item);
+
+        try {
+          const preview = await getCommunityFeedPreview(feedbackId);
+          const attachments = Array.isArray(preview?.attachments)
+            ? preview.attachments
+            : [];
+          const fallbackMedia = (
+            preview?.imageUrl ||
+            preview?.image ||
+            preview?.coverImageUrl ||
+            preview?.thumbnailUrl ||
+            preview?.mediaUrl ||
+            preview?.attachmentUrl ||
+            ''
+          );
+
+          return {
+            feedbackId,
+            patch: {
+              attachments,
+              description: item?.description || preview?.description,
+              imageUrl: item?.imageUrl || preview?.imageUrl,
+              coverImageUrl: item?.coverImageUrl || preview?.coverImageUrl,
+              thumbnailUrl: item?.thumbnailUrl || preview?.thumbnailUrl,
+              __mediaState: attachments.length > 0 || fallbackMedia
+                ? 'ready'
+                : 'error',
+            },
+          };
+        } catch (previewError) {
+          console.warn(
+            'Không thể tải minh chứng công khai cho bảng tin',
+            feedbackId,
+            previewError?.message || previewError
+          );
+
+          return {
+            feedbackId,
+            patch: {
+              __mediaState: 'error',
+            },
+          };
+        }
+      }
+    );
+
+    if (
+      !isMountedRef.current ||
+      sessionId !== loadSessionRef.current
+    ) {
+      return;
+    }
+
+    const patchMap = new Map(
+      results
+        .filter((result) => result?.feedbackId)
+        .map((result) => [String(result.feedbackId), result.patch])
+    );
+
+    setItems((currentItems) => currentItems.map((item) => {
+      const patch = patchMap.get(String(getItemId(item)));
+      return patch ? { ...item, ...patch } : item;
+    }));
+  }, []);
+
   const loadFeedSnapshot = useCallback(async ({
     background = false,
+    force = false,
   } = {}) => {
     if (isFetchingRef.current) return;
 
@@ -199,106 +427,48 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
       setRefreshing(true);
     }
 
-    try {
-      const firstResponse = await getCommunityFeed({
-        PageNumber: 1,
-        PageSize: COMMUNITY_SNAPSHOT_PAGE_SIZE,
-      });
-      const totalPages = Math.max(
-        1,
-        Number(firstResponse?.totalPages) || 1
-      );
-      const responses = [firstResponse];
+    const sessionId = loadSessionRef.current + 1;
+    loadSessionRef.current = sessionId;
 
-      for (
-        let pageNumber = 2;
-        pageNumber <= totalPages;
-        pageNumber += 1
-      ) {
-        const pageResponse = await getCommunityFeed({
-          PageNumber: pageNumber,
-          PageSize: COMMUNITY_SNAPSHOT_PAGE_SIZE,
-        });
-        responses.push(pageResponse);
+    try {
+      const firstPage = await requestFeedPage(1, { force });
+      const restoredPage = background
+        ? 1
+        : Math.max(1, Number(restoreContextRef.current?.page) || 1);
+      const targetPage = Math.min(restoredPage, firstPage.totalPages);
+      const pageResults = [firstPage];
+
+      for (let pageNumber = 2; pageNumber <= targetPage; pageNumber += 1) {
+        pageResults.push(await requestFeedPage(pageNumber, { force }));
       }
 
-      const fetchedItems = responses.flatMap((response) => (
-        normalizeTicketsResponse(response?.items || [])
-      ));
-      const publicItems = dedupeFeedItems(
-        filterPublicItems(fetchedItems)
-      );
+      if (
+        !isMountedRef.current ||
+        sessionId !== loadSessionRef.current
+      ) {
+        return;
+      }
 
-      setItems(publicItems);
+      const cachedSnapshot = readCommunityFeedCache(
+        cacheOwnerKey,
+        { allowStale: true }
+      );
+      const mergedItems = mergeFeedMediaFromCache(
+        dedupeFeedItems(
+          pageResults.flatMap((result) => result.items)
+        ),
+        cachedSnapshot?.items || []
+      );
+      const lastPage = pageResults[pageResults.length - 1] || firstPage;
+
+      setItems(mergedItems);
+      setLoadedServerPage(lastPage.pageNumber);
+      setTotalPages(firstPage.totalPages);
+      setTotalItems(firstPage.totalItems);
+      setPage(targetPage);
       hasLoadedSnapshotRef.current = true;
 
-      const itemsMissingPreview = publicItems.filter((item) => (
-        item?.attachmentCount > 0 &&
-        !(
-          Array.isArray(item?.attachments) &&
-          item.attachments.length > 0
-        )
-      ));
-
-      if (itemsMissingPreview.length > 0) {
-        Promise.all(
-          itemsMissingPreview.map(async (item) => {
-            const feedbackId = getItemId(item);
-
-            try {
-              const detail = await ticketApi.getTicketById(
-                feedbackId,
-                { role: 'service-user' }
-              );
-
-              return {
-                feedbackId,
-                attachments: Array.isArray(detail?.attachments)
-                  ? detail.attachments
-                  : [],
-              };
-            } catch (previewError) {
-              console.warn(
-                'Không thể tải minh chứng cho bảng tin',
-                feedbackId,
-                previewError?.message || previewError
-              );
-              return {
-                feedbackId,
-                attachments: [],
-              };
-            }
-          })
-        ).then((results) => {
-          const attachmentMap = new Map(
-            results.map((result) => [
-              result.feedbackId,
-              result.attachments,
-            ])
-          );
-
-          setItems((currentItems) => currentItems.map((item) => {
-            const feedbackId = getItemId(item);
-            const attachments = attachmentMap.get(feedbackId);
-
-            if (
-              attachments &&
-              attachments.length > 0 &&
-              !(
-                Array.isArray(item?.attachments) &&
-                item.attachments.length > 0
-              )
-            ) {
-              return {
-                ...item,
-                attachments,
-              };
-            }
-
-            return item;
-          }));
-        });
-      }
+      hydrateFeedPreviews(mergedItems, sessionId);
     } catch (loadError) {
       console.error('CommunityFeed load error', loadError);
       setError(
@@ -307,15 +477,149 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
         'Không thể tải bảng tin cộng đồng.'
       );
     } finally {
-      setLoading(false);
-      setRefreshing(false);
-      isFetchingRef.current = false;
+      if (
+        isMountedRef.current &&
+        sessionId === loadSessionRef.current
+      ) {
+        setLoading(false);
+        setRefreshing(false);
+        isFetchingRef.current = false;
+      }
     }
-  }, []);
+  }, [cacheOwnerKey, hydrateFeedPreviews, requestFeedPage]);
+
+  const loadNextServerPage = useCallback(async () => {
+    if (
+      isFetchingRef.current ||
+      loadedServerPage >= totalPages
+    ) {
+      return;
+    }
+
+    isFetchingRef.current = true;
+    setRefreshing(true);
+    setError('');
+
+    const sessionId = loadSessionRef.current;
+    const nextPageNumber = loadedServerPage + 1;
+
+    try {
+      const nextPage = await requestFeedPage(nextPageNumber);
+
+      if (
+        !isMountedRef.current ||
+        sessionId !== loadSessionRef.current
+      ) {
+        return;
+      }
+
+      setItems((currentItems) => dedupeFeedItems([
+        ...currentItems,
+        ...nextPage.items,
+      ]));
+      setLoadedServerPage(nextPage.pageNumber);
+      setTotalPages(nextPage.totalPages);
+      setTotalItems(nextPage.totalItems);
+      setPage((currentPage) => Math.max(
+        currentPage + 1,
+        nextPage.pageNumber
+      ));
+
+      hydrateFeedPreviews(nextPage.items, sessionId);
+    } catch (loadError) {
+      console.error('CommunityFeed next page error', loadError);
+      setError(
+        loadError?.response?.data?.message ||
+        loadError?.message ||
+        'Không thể tải thêm phản ánh.'
+      );
+    } finally {
+      if (
+        isMountedRef.current &&
+        sessionId === loadSessionRef.current
+      ) {
+        setRefreshing(false);
+        isFetchingRef.current = false;
+      }
+    }
+  }, [
+    hydrateFeedPreviews,
+    loadedServerPage,
+    requestFeedPage,
+    totalPages,
+  ]);
 
   useEffect(() => {
-    loadFeedSnapshot();
-  }, [loadFeedSnapshot]);
+    // React StrictMode mounts, cleans up, then mounts effects again in development.
+    // Reset these guards on every effect setup so the second mount can finish.
+    isMountedRef.current = true;
+    isFetchingRef.current = false;
+
+    const cachedSnapshot = readCommunityFeedCache(cacheOwnerKey);
+    const returningFromDetail = Boolean(
+      restoreContextRef.current &&
+      Array.isArray(cachedSnapshot?.items) &&
+      cachedSnapshot.items.length > 0
+    );
+
+    if (cachedSnapshot?.items?.length) {
+      setItems(cachedSnapshot.items);
+      setPage(Math.max(1, Number(cachedSnapshot.page) || 1));
+      setLoadedServerPage(
+        Math.max(1, Number(cachedSnapshot.loadedServerPage) || 1)
+      );
+      setTotalPages(Math.max(1, Number(cachedSnapshot.totalPages) || 1));
+      setTotalItems(
+        Math.max(
+          cachedSnapshot.items.length,
+          Number(cachedSnapshot.totalItems) || 0
+        )
+      );
+      setLoading(false);
+      hasLoadedSnapshotRef.current = true;
+
+      const shouldRefreshInBackground = (
+        !returningFromDetail &&
+        Date.now() - Number(cachedSnapshot.updatedAt || 0) >=
+          COMMUNITY_FEED_BACKGROUND_REFRESH_MS
+      );
+
+      if (shouldRefreshInBackground) {
+        loadFeedSnapshot({ background: true });
+      }
+    } else {
+      loadFeedSnapshot();
+    }
+
+    return () => {
+      isMountedRef.current = false;
+      isFetchingRef.current = false;
+      loadSessionRef.current += 1;
+    };
+  }, [cacheOwnerKey, loadFeedSnapshot]);
+
+  useEffect(() => {
+    if (!hasLoadedSnapshotRef.current || items.length === 0) return;
+
+    writeCommunityFeedCache(cacheOwnerKey, {
+      items,
+      page,
+      loadedServerPage,
+      totalPages,
+      totalItems,
+      tab,
+      query,
+    });
+  }, [
+    cacheOwnerKey,
+    items,
+    loadedServerPage,
+    page,
+    query,
+    tab,
+    totalItems,
+    totalPages,
+  ]);
 
   useEffect(() => {
     if (!hasInitializedFiltersRef.current) {
@@ -428,8 +732,8 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
     const handleResolutionRefresh = async (incomingFeedbackId) => {
       try {
-        const detail = await ticketApi.getTicketById(incomingFeedbackId, {
-          role: 'service-user',
+        const detail = await getCommunityFeedPreview(incomingFeedbackId, {
+          force: true,
         });
         setItems((currentItems) => currentItems.map((item) => (
           getItemId(item) === incomingFeedbackId
@@ -565,7 +869,10 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     0,
     page * COMMUNITY_FEED_PAGE_SIZE
   );
-  const hasMore = visibleItems.length < sortedItems.length;
+  const hasMore = (
+    visibleItems.length < sortedItems.length ||
+    loadedServerPage < totalPages
+  );
 
   const trendingItems = [...items]
     .sort((left, right) => (
@@ -624,6 +931,16 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
     const feedbackId = getItemId(item);
     if (!feedbackId) return;
 
+    writeCommunityFeedCache(cacheOwnerKey, {
+      items,
+      page,
+      loadedServerPage,
+      totalPages,
+      totalItems,
+      tab,
+      query,
+    });
+
     try {
       window.sessionStorage.setItem(
         COMMUNITY_RETURN_STORAGE_KEY,
@@ -647,17 +964,24 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
   const retryLoad = () => {
     loadFeedSnapshot({
       background: items.length > 0,
+      force: true,
     });
   };
 
   const handleLoadMore = () => {
-    if (!hasMore) return;
-    setPage((currentPage) => currentPage + 1);
+    if (!hasMore || refreshing) return;
+
+    if (visibleItems.length < sortedItems.length) {
+      setPage((currentPage) => currentPage + 1);
+      return;
+    }
+
+    loadNextServerPage();
   };
 
   return (
     <>
-      <section className="relative isolate overflow-hidden rounded-[28px] border border-primary/15 bg-gradient-to-br from-base-100 via-info/[0.025] to-primary/[0.075] shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
+      <section data-public-reveal className="relative isolate overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]">
         <div
           className="pointer-events-none absolute inset-0 overflow-hidden"
           aria-hidden="true"
@@ -733,10 +1057,10 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
 
         <div className="relative grid gap-6 px-6 py-7 sm:px-8 sm:py-8 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
           <div className="max-w-3xl">
-            <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-[var(--public-title)] sm:text-4xl">
               Bảng tin đô thị
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-base-content/60">
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--public-copy)]">
               Theo dõi các phản ánh đã được xác minh, cùng trao đổi và giám sát tiến độ xử lý trong cộng đồng.
             </p>
 
@@ -753,7 +1077,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
               <button
                 type="button"
                 onClick={() => handleFeedTabChange('Latest')}
-                className="group min-w-[118px] rounded-2xl border border-base-300 bg-base-100/85 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+                className="group min-w-[118px] rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)]/90 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md"
               >
                 <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
                   Tổng công khai
@@ -767,7 +1091,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                   {initialLoading ? (
                     <span className="inline-block h-7 w-8 animate-pulse rounded bg-base-300/55" />
                   ) : (
-                    items.length
+                    totalItems || items.length
                   )}
                 </dd>
                 <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-primary">
@@ -778,7 +1102,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
               <button
                 type="button"
                 onClick={() => handleFeedTabChange('Processing')}
-                className="group min-w-[118px] rounded-2xl border border-warning/20 bg-warning/5 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-warning/35 hover:shadow-md"
+                className="group min-w-[118px] rounded-2xl border border-warning/25 bg-[var(--public-surface-strong)]/90 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-warning/40 hover:shadow-md"
               >
                 <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
                   Đang xử lý
@@ -803,7 +1127,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
               <button
                 type="button"
                 onClick={() => handleFeedTabChange('Ended')}
-                className="group min-w-[118px] rounded-2xl border border-success/20 bg-success/5 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-success/35 hover:shadow-md"
+                className="group min-w-[118px] rounded-2xl border border-success/25 bg-[var(--public-surface-strong)]/90 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-success/40 hover:shadow-md"
               >
                 <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
                   Đã kết thúc
@@ -829,15 +1153,15 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
         </div>
       </section>
 
-      <section className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
+      <section data-public-reveal className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
         <div className="min-w-0 space-y-4">
           <section
             ref={filterSectionRef}
-            className="scroll-mt-28 rounded-[22px] border border-base-300 bg-base-100 p-3 shadow-[0_8px_24px_rgba(15,23,42,0.055)] sm:p-4"
+            className="scroll-mt-28 rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-3 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-4"
           >
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div
-                className="flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-base-200/60 p-1"
+                className="flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--public-border-soft)] bg-[var(--public-surface-soft)] p-1"
                 role="tablist"
                 aria-label="Lọc bảng tin"
               >
@@ -854,8 +1178,8 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                       aria-selected={active}
                       className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${
                         active
-                          ? 'bg-base-100 text-primary shadow-sm ring-1 ring-base-300'
-                          : 'text-base-content/52 hover:bg-base-100/75 hover:text-base-content'
+                          ? 'bg-[var(--public-surface-strong)] text-primary shadow-sm ring-1 ring-[var(--public-border)]'
+                          : 'text-[var(--public-copy)] hover:bg-[var(--public-surface-strong)]/75 hover:text-[var(--public-title)]'
                       }`}
                     >
                       <Icon size={15} aria-hidden="true" />
@@ -869,7 +1193,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                 <span className="sr-only">Tìm kiếm trong bảng tin</span>
                 <Lucide.Search
                   size={17}
-                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/35"
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--public-muted)]"
                   aria-hidden="true"
                 />
                 <input
@@ -878,16 +1202,16 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                   onFocus={handleQueryFocus}
                   onChange={handleQueryChange}
                   placeholder="Tìm tiêu đề, khu vực, danh mục..."
-                  className="input input-bordered h-10 w-full rounded-xl bg-base-100 pl-10 text-sm"
+                  className="input input-bordered h-10 w-full rounded-xl border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-10 text-sm text-[var(--public-title)] placeholder:text-[var(--public-muted)] focus:border-primary/45 focus:outline-none"
                 />
               </label>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-base-content/45">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-[var(--public-muted)]">
               <span>
                 {initialLoading
                   ? 'Đang tải dữ liệu bảng tin...'
-                  : `${sortedItems.length} phản ánh phù hợp`}
+                  : `${sortedItems.length}${loadedServerPage < totalPages ? '+' : ''} phản ánh phù hợp`}
               </span>
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${
                 refreshing
@@ -935,6 +1259,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                 <CommunityFeedItem
                   key={getItemId(item) || index}
                   item={item}
+                  priority={index < 2}
                   highlighted={
                     String(getItemId(item)) ===
                     String(highlightedFeedbackId)
@@ -991,9 +1316,14 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                 type="button"
                 onClick={handleLoadMore}
                 className="btn btn-outline min-w-52 rounded-xl"
+                disabled={refreshing}
               >
-                <Lucide.Plus size={16} aria-hidden="true" />
-                Hiện thêm phản ánh
+                {refreshing ? (
+                  <span className="loading loading-spinner loading-sm" aria-hidden="true" />
+                ) : (
+                  <Lucide.Plus size={16} aria-hidden="true" />
+                )}
+                {refreshing ? 'Đang tải thêm...' : 'Hiện thêm phản ánh'}
               </button>
             </div>
           ) : null}
@@ -1011,11 +1341,11 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
         </div>
 
         <aside className="space-y-4">
-          <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
+          <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="font-bold">Được quan tâm</h2>
-                <p className="mt-1 text-xs text-base-content/45">
+                <h2 className="font-bold text-[var(--public-title)]">Được quan tâm</h2>
+                <p className="mt-1 text-xs text-[var(--public-muted)]">
                   Phản ánh có nhiều tương tác
                 </p>
               </div>
@@ -1031,16 +1361,16 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                     <button
                       type="button"
                       onClick={() => openDetail(item)}
-                      className="group flex w-full items-start gap-3 rounded-2xl border border-transparent px-2 py-2.5 text-left transition hover:border-base-300 hover:bg-base-200/45"
+                      className="group flex w-full items-start gap-3 rounded-2xl border border-transparent px-2 py-2.5 text-left transition hover:border-[var(--public-border)] hover:bg-[var(--public-surface-soft)]"
                     >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-xs font-bold text-primary">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/8 text-xs font-bold text-primary">
                         {index + 1}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 text-sm font-semibold leading-5 transition group-hover:text-primary">
+                        <span className="line-clamp-2 text-sm font-semibold leading-5 text-[var(--public-title)] transition group-hover:text-primary">
                           {item?.title || 'Phản ánh đô thị'}
                         </span>
-                        <span className="mt-1 flex items-center gap-3 text-[11px] text-base-content/45">
+                        <span className="mt-1 flex items-center gap-3 text-[11px] text-[var(--public-muted)]">
                           <span className="inline-flex items-center gap-1">
                             <Lucide.Heart size={11} aria-hidden="true" />
                             {getSupportCount(item)}
@@ -1053,7 +1383,7 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                       </span>
                       <Lucide.ChevronRight
                         size={15}
-                        className="mt-1 shrink-0 text-base-content/25"
+                        className="mt-1 shrink-0 text-[var(--public-muted)] transition group-hover:translate-x-0.5 group-hover:text-primary"
                         aria-hidden="true"
                       />
                     </button>
@@ -1061,62 +1391,62 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
                 ))}
               </ol>
             ) : (
-              <p className="mt-4 rounded-2xl bg-base-200/45 px-4 py-5 text-center text-sm text-base-content/45">
+              <p className="mt-4 rounded-2xl border border-[var(--public-border-soft)] bg-[var(--public-surface-soft)] px-4 py-5 text-center text-sm text-[var(--public-muted)]">
                 Chưa có dữ liệu xu hướng.
               </p>
             )}
           </section>
 
-          <section className="overflow-hidden rounded-[24px] border border-primary/15 bg-gradient-to-br from-primary/8 via-base-100 to-secondary/8 p-5 shadow-sm">
+          <section className="overflow-hidden rounded-[24px] border border-primary/18 bg-gradient-to-br from-primary/8 via-[var(--public-surface)] to-secondary/8 p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Lucide.Activity size={19} aria-hidden="true" />
               </span>
               <div>
-                <h2 className="font-bold">Hoạt động cộng đồng</h2>
-                <p className="mt-0.5 text-xs text-base-content/45">
+                <h2 className="font-bold text-[var(--public-title)]">Hoạt động cộng đồng</h2>
+                <p className="mt-0.5 text-xs text-[var(--public-muted)]">
                   Dựa trên toàn bộ bảng tin
                 </p>
               </div>
             </div>
 
             <dl className="mt-4 space-y-2">
-              <div className="flex items-center justify-between rounded-xl border border-base-300/75 bg-base-100/80 px-3 py-3">
-                <dt className="text-xs text-base-content/50">
+              <div className="flex items-center justify-between rounded-xl border border-[var(--public-border-soft)] bg-[var(--public-surface-strong)]/88 px-3 py-3">
+                <dt className="text-xs text-[var(--public-copy)]">
                   Phản ánh mới trong 7 ngày
                 </dt>
                 <dd className="text-sm font-bold text-info">
                   {recentPublicCount}
                 </dd>
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-base-300/75 bg-base-100/80 px-3 py-3">
-                <dt className="text-xs text-base-content/50">
+              <div className="flex items-center justify-between rounded-xl border border-[var(--public-border-soft)] bg-[var(--public-surface-strong)]/88 px-3 py-3">
+                <dt className="text-xs text-[var(--public-copy)]">
                   Tổng lượt tương tác
                 </dt>
                 <dd className="text-sm font-bold text-secondary">
                   {loadedInteractionCount}
                 </dd>
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-base-300/75 bg-base-100/80 px-3 py-3">
-                <dt className="text-xs text-base-content/50">
+              <div className="flex items-center justify-between rounded-xl border border-[var(--public-border-soft)] bg-[var(--public-surface-strong)]/88 px-3 py-3">
+                <dt className="text-xs text-[var(--public-copy)]">
                   Cập nhật gần nhất
                 </dt>
-                <dd className="text-xs font-semibold">
+                <dd className="text-xs font-semibold text-[var(--public-title)]">
                   {latestActivityText}
                 </dd>
               </div>
             </dl>
           </section>
 
-          <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
-            <h2 className="font-bold">Khám phá theo khu vực</h2>
-            <p className="mt-1 text-xs leading-5 text-base-content/45">
+          <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+            <h2 className="font-bold text-[var(--public-title)]">Khám phá theo khu vực</h2>
+            <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">
               Xem các phản ánh trên bản đồ để nắm tình hình xung quanh bạn.
             </p>
             <button
               type="button"
               onClick={() => navigate('/community/map')}
-              className="btn btn-outline mt-4 w-full rounded-xl"
+              className="btn btn-outline mt-4 w-full rounded-xl border-[var(--public-border)] bg-[var(--public-surface-strong)] text-[var(--public-title)] hover:border-primary/30 hover:bg-primary/8 hover:text-primary"
             >
               <Lucide.Map size={16} aria-hidden="true" />
               Mở bản đồ sự cố

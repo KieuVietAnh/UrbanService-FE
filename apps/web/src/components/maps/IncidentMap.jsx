@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import {
   MapContainer,
   Marker,
@@ -130,9 +131,148 @@ function AutoFitBounds({ incidents, fitRequestKey }) {
   return null;
 }
 
+const IncidentMapThemeStyles = () => (
+  <style>{`
+    .incident-map-shell {
+      position: relative;
+      isolation: isolate;
+      z-index: 0;
+      border-color: rgba(203, 213, 225, 0.82);
+      background: #ffffff;
+    }
+
+    .incident-map-shell .leaflet-container {
+      position: relative;
+      z-index: 0;
+      height: 100%;
+      width: 100%;
+      background: #dbeafe;
+    }
+
+    .incident-map-shell .leaflet-control-zoom,
+    .incident-map-shell .leaflet-control-attribution {
+      border: 1px solid rgba(148, 163, 184, 0.5) !important;
+      border-radius: 12px !important;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14) !important;
+    }
+
+    .incident-map-shell .leaflet-control-zoom a {
+      border-color: rgba(203, 213, 225, 0.78) !important;
+      background: rgba(255, 255, 255, 0.94) !important;
+      color: #334155 !important;
+    }
+
+    .incident-map-shell .leaflet-control-zoom a:hover {
+      background: #eff6ff !important;
+      color: #1d4ed8 !important;
+    }
+
+    .incident-map-shell .leaflet-control-attribution {
+      background: rgba(255, 255, 255, 0.86) !important;
+      color: #64748b !important;
+      backdrop-filter: blur(8px);
+    }
+
+    .incident-map-shell .leaflet-popup-content-wrapper,
+    .incident-map-shell .leaflet-popup-tip,
+    .incident-map-shell .leaflet-tooltip {
+      border: 1px solid rgba(203, 213, 225, 0.82);
+      background: rgba(255, 255, 255, 0.97);
+      color: #334155;
+      box-shadow: 0 18px 46px rgba(15, 23, 42, 0.18);
+    }
+
+    .incident-map-shell .leaflet-popup-content-wrapper {
+      border-radius: 16px;
+    }
+
+    .incident-map-shell .leaflet-popup-close-button {
+      color: #64748b !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell {
+      border-color: rgba(96, 165, 250, 0.2);
+      background: #0a1930;
+      box-shadow:
+        0 22px 58px rgba(0, 0, 0, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-container {
+      background: #10223a;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-tile-pane {
+      filter:
+        invert(0.74)
+        hue-rotate(176deg)
+        brightness(0.9)
+        contrast(0.82)
+        saturate(0.62);
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-tile {
+      opacity: 0.96;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-control-zoom,
+    html[data-theme="dark"] .incident-map-shell .leaflet-control-attribution {
+      border-color: rgba(96, 165, 250, 0.22) !important;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28) !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-control-zoom a,
+    html[data-theme="dark"] .incident-map-shell .leaflet-control-attribution {
+      border-color: rgba(96, 165, 250, 0.18) !important;
+      background: rgba(7, 20, 39, 0.92) !important;
+      color: #dbeafe !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-control-zoom a:hover {
+      background: rgba(17, 38, 70, 0.98) !important;
+      color: #ffffff !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-popup-content-wrapper,
+    html[data-theme="dark"] .incident-map-shell .leaflet-popup-tip,
+    html[data-theme="dark"] .incident-map-shell .leaflet-tooltip {
+      border-color: rgba(96, 165, 250, 0.2) !important;
+      background: rgba(11, 24, 48, 0.97) !important;
+      color: #dbeafe !important;
+      box-shadow: 0 22px 54px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-popup-close-button {
+      color: #93c5fd !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-popup-content button {
+      border-color: rgba(96, 165, 250, 0.2) !important;
+      background: rgba(13, 29, 54, 0.92) !important;
+      color: #e8eef8 !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-popup-content button:hover {
+      border-color: rgba(56, 189, 248, 0.4) !important;
+      background: rgba(17, 38, 70, 0.98) !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-popup-content .text-slate-900,
+    html[data-theme="dark"] .incident-map-shell .leaflet-tooltip .text-slate-900 {
+      color: #f8fafc !important;
+    }
+
+    html[data-theme="dark"] .incident-map-shell .leaflet-popup-content .text-slate-500 {
+      color: #9fb0c7 !important;
+    }
+  `}</style>
+);
+
 export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { theme } = useTheme();
 
   const openFeedbackDetail = (ticket) => {
     const currentUserId = user?.userId ?? user?.id;
@@ -176,23 +316,26 @@ export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
   }, [incidents]);
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 shadow-sm h-[550px] transition-shadow duration-200 ease-out map-interaction">
-      <MapContainer
-        center={DEFAULT_CENTER}
-        zoom={DEFAULT_ZOOM}
-        scrollWheelZoom={true}
-        className="w-full h-full"
-        zoomControl={true}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <AutoFitBounds
-          incidents={markers}
-          fitRequestKey={fitRequestKey}
-        />
-        {markers.map((marker) => (
+    <>
+      <IncidentMapThemeStyles />
+      <div className="public-map-stack incident-map-shell h-[550px] w-full overflow-hidden border-0 shadow-none transition-shadow duration-200 ease-out map-interaction">
+        <MapContainer
+          center={DEFAULT_CENTER}
+          zoom={DEFAULT_ZOOM}
+          scrollWheelZoom={true}
+          className="relative z-0 h-full w-full"
+          zoomControl={true}
+        >
+          <TileLayer
+            key={theme}
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <AutoFitBounds
+            incidents={markers}
+            fitRequestKey={fitRequestKey}
+          />
+          {markers.map((marker) => (
           <Marker
             key={`${marker.latitude}-${marker.longitude}`}
             position={[marker.latitude, marker.longitude]}
@@ -259,10 +402,11 @@ export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
                 </div>
               </div>
             </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
-    </div>
+            </Marker>
+          ))}
+        </MapContainer>
+      </div>
+    </>
   );
 };
 
