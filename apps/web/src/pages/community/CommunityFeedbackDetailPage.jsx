@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { managementTypes } from '@urbanmind/shared-types';
@@ -8,6 +8,7 @@ import useTicketDetail from '../../hooks/useTicketDetail';
 import { getCommunityFeedDetail } from '../../services/api/feedApi';
 import { patchCommunityFeedCacheItem } from '../../services/cache/communityFeedCache';
 import SupportButton from '../../components/community/SupportButton';
+import PublicPageMotion from '../../components/public/PublicPageMotion';
 
 const CATEGORY_LABELS = {
   'garbage collection': 'Thu gom rác',
@@ -240,6 +241,30 @@ const DetailSmartCityBackdrop = () => (
   </div>
 );
 
+const CommunityDetailShell = ({ children }) => (
+  <PublicPageMotion>
+    <div data-public-reveal className="text-[var(--public-title)]">
+      {children}
+    </div>
+  </PublicPageMotion>
+);
+
+const DetailBackButton = ({ label, onClick, className = '' }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`group inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-xs font-semibold text-[var(--public-copy)] shadow-sm transition hover:-translate-x-0.5 hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 ${className}`}
+    aria-label={label}
+  >
+    <Lucide.ArrowLeft
+      size={15}
+      className="transition-transform group-hover:-translate-x-0.5"
+      aria-hidden="true"
+    />
+    <span>{label}</span>
+  </button>
+);
+
 const dedupeComments = (commentItems = []) => {
   const uniqueComments = [];
   const seenIds = new Set();
@@ -305,6 +330,30 @@ export const CommunityFeedDetailPage = () => {
   const [displaySupportCount, setDisplaySupportCount] = useState(0);
   const commentsSectionRef = useRef(null);
   const commentInputRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const rootElement = document.documentElement;
+    const previousScrollBehavior = rootElement.style.scrollBehavior;
+
+    rootElement.style.scrollBehavior = 'auto';
+    window.scrollTo(0, 0);
+    rootElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    const frameId = window.requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      rootElement.style.scrollBehavior = previousScrollBehavior;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      rootElement.style.scrollBehavior = previousScrollBehavior;
+    };
+  }, [feedbackId]);
 
   const attachments = Array.isArray(ticket?.attachments)
     ? ticket.attachments
@@ -484,8 +533,9 @@ export const CommunityFeedDetailPage = () => {
 
   if (loading) {
     return (
+      <CommunityDetailShell>
       <main className="space-y-4" aria-busy="true" aria-label="Đang tải chi tiết phản ánh cộng đồng">
-        <div className="h-8 w-44 animate-pulse rounded-lg bg-base-300/60" />
+        <DetailBackButton label={backLabel} onClick={handleBack} />
         <section className="h-64 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
         <section className="h-40 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
@@ -493,12 +543,14 @@ export const CommunityFeedDetailPage = () => {
           <div className="h-80 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
         </section>
       </main>
+      </CommunityDetailShell>
     );
   }
 
   if (!ticket) {
     return (
-      <main className="rounded-[28px] border border-base-300 bg-base-100 px-6 py-16 text-center shadow-sm">
+      <CommunityDetailShell>
+      <main className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] px-6 py-16 text-center shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
         <Lucide.FileWarning
           size={34}
           className="mx-auto text-base-content/35"
@@ -518,38 +570,37 @@ export const CommunityFeedDetailPage = () => {
           {backLabel}
         </button>
       </main>
+      </CommunityDetailShell>
     );
   }
 
   return (
     <>
-      <main className="space-y-4 text-base-content">
-        <button
-          type="button"
-          onClick={handleBack}
-          className="inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold text-base-content/55 transition hover:bg-base-100 hover:text-primary"
-        >
-          <Lucide.ArrowLeft size={17} aria-hidden="true" />
-          {backLabel}
-        </button>
+      <CommunityDetailShell>
+        <main className="relative isolate space-y-4 text-[var(--public-title)]">
+          <div
+            className="pointer-events-none absolute -inset-x-3 -inset-y-4 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-5"
+            aria-hidden="true"
+          />
 
-        <article className="relative overflow-hidden rounded-[28px] border border-primary/15 bg-gradient-to-br from-base-100 via-secondary/[0.025] to-primary/[0.06] shadow-[0_18px_44px_rgba(15,23,42,0.09)]">
+        <article className="relative isolate overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]">
           <DetailSmartCityBackdrop />
 
-          <div className="relative grid gap-6 px-5 py-5 sm:px-7 sm:py-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+          <div className="relative grid gap-6 px-5 py-5 sm:px-7 sm:py-6 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-center">
             <header className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-secondary/15 bg-secondary/8 px-3 py-1.5 text-xs font-semibold text-secondary">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <DetailBackButton label={backLabel} onClick={handleBack} />
+                <span
+                  className="hidden h-5 w-px bg-[var(--public-border)] sm:block"
+                  aria-hidden="true"
+                />
+                <span className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-secondary/15 bg-secondary/8 px-3 text-xs font-semibold text-secondary">
                   <Lucide.Tag size={13} aria-hidden="true" />
                   {categoryLabel}
                 </span>
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${statusMeta.className}`}>
-                  <StatusIcon size={13} aria-hidden="true" />
-                  {statusMeta.label}
-                </span>
               </div>
 
-              <h1 className="mt-4 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
+              <h1 className="mt-5 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
                 {ticket.title || 'Phản ánh đô thị'}
               </h1>
 
@@ -585,47 +636,40 @@ export const CommunityFeedDetailPage = () => {
               </div>
             </header>
 
-            <aside className="rounded-[22px] border border-base-300/85 bg-base-100/78 p-4 shadow-sm backdrop-blur">
+            <aside className="rounded-2xl border border-warning/25 bg-[var(--public-surface-strong)]/90 px-4 py-4 shadow-sm backdrop-blur">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-base-content/45">
-                  Trạng thái hiện tại
-                </span>
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${statusMeta.className}`}>
-                  <StatusIcon size={13} aria-hidden="true" />
-                  {statusMeta.label}
-                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-[var(--public-muted)]">
+                    Trạng thái xử lý
+                  </p>
+                  <p className="mt-1 truncate text-lg font-bold text-warning">
+                    {statusMeta.label}
+                  </p>
+                </div>
+                <StatusIcon size={18} className="shrink-0 text-warning" aria-hidden="true" />
               </div>
-              <p className="mt-3 text-sm leading-6 text-base-content/60">
+              <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">
                 {statusMeta.description}
               </p>
-
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <SupportButton
                   feedbackId={feedbackId}
                   initialCount={supportCount}
                   initialSupported={ticket?.isSupportedByCurrentUser}
                   onChange={({ count, isSupported }) => {
-                    const nextSupportCount = Math.max(
-                      0,
-                      Number(count) || 0
-                    );
-
+                    const nextSupportCount = Math.max(0, Number(count) || 0);
                     setDisplaySupportCount(nextSupportCount);
-                    patchCommunityFeedCacheItem(
-                      cacheOwnerKey,
-                      feedbackId,
-                      {
-                        supportCount: nextSupportCount,
-                        isSupportedByCurrentUser: Boolean(isSupported),
-                      }
-                    );
+                    patchCommunityFeedCacheItem(cacheOwnerKey, feedbackId, {
+                      supportCount: nextSupportCount,
+                      isSupportedByCurrentUser: Boolean(isSupported),
+                    });
                   }}
-                  className="h-10"
+                  className="h-9"
                 />
                 <button
                   type="button"
                   onClick={handleJumpToComments}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-semibold text-base-content/60 transition hover:border-primary/25 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 text-sm font-semibold text-[var(--public-copy)] transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   aria-label={`Đi tới phần ${commentCount} bình luận`}
                 >
                   <Lucide.MessageCircle size={16} aria-hidden="true" />
@@ -636,9 +680,8 @@ export const CommunityFeedDetailPage = () => {
           </div>
         </article>
 
-        <section className="relative overflow-hidden rounded-[28px] border border-primary/12 bg-gradient-to-r from-base-100 via-base-100 to-primary/[0.035] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.075)] sm:p-5" aria-labelledby="community-progress-title">
-          <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-primary/[0.04] blur-3xl" aria-hidden="true" />
-          <div className="relative">
+        <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5" aria-labelledby="community-progress-title">
+          <div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 id="community-progress-title" className="text-lg font-bold">
@@ -711,7 +754,7 @@ export const CommunityFeedDetailPage = () => {
         </section>
 
         <section className="space-y-4">
-          <article className="relative overflow-hidden rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
+          <article className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
             <div className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-info/[0.055] blur-3xl" aria-hidden="true" />
             <div className="relative">
             <header className="flex flex-wrap items-start justify-between gap-3">
@@ -727,13 +770,13 @@ export const CommunityFeedDetailPage = () => {
               </span>
             </header>
 
-            <div className="mt-4 rounded-2xl border border-base-300 bg-base-200/45 px-4 py-4 sm:px-5">
+            <div className="mt-4 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 py-4 sm:px-5">
               <p className="whitespace-pre-wrap text-sm leading-7 text-base-content/75">
                 {ticket.description || 'Không có mô tả chi tiết.'}
               </p>
             </div>
 
-            <section className="relative mt-4 rounded-[22px] border border-base-300/85 bg-gradient-to-br from-base-200/55 via-base-100 to-primary/[0.025] p-3 sm:p-4" aria-labelledby="community-evidence-title">
+            <section className="relative mt-4 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] p-3 sm:p-4" aria-labelledby="community-evidence-title">
               <div className="pointer-events-none absolute right-4 top-3 text-primary/[0.05]" aria-hidden="true">
                 <Lucide.Images size={64} strokeWidth={1.25} />
               </div>
@@ -755,7 +798,7 @@ export const CommunityFeedDetailPage = () => {
                         key={attachment?.attachmentId || attachment?.id || index}
                         type="button"
                         onClick={() => setPreviewIndex(index)}
-                        className="group overflow-hidden rounded-2xl border border-base-300 bg-base-200 text-left transition hover:border-primary/25 hover:shadow-md"
+                        className="group overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] text-left transition hover:border-primary/25 hover:shadow-md"
                       >
                         <span className="relative flex h-44 items-center justify-center overflow-hidden sm:h-48">
                           {attachmentUrl ? (
@@ -790,7 +833,7 @@ export const CommunityFeedDetailPage = () => {
                             />
                           )}
                         </span>
-                        <span className="flex items-center justify-between gap-2 border-t border-base-300 bg-base-100 px-3 py-2.5">
+                        <span className="flex items-center justify-between gap-2 border-t border-[var(--public-border-soft)] bg-[var(--public-surface-soft)] px-3 py-2.5">
                           <span className="truncate text-xs font-semibold">
                             Tệp {index + 1}
                           </span>
@@ -801,7 +844,7 @@ export const CommunityFeedDetailPage = () => {
                   })}
                 </div>
               ) : (
-                <div className="mt-3 flex items-center gap-3 rounded-2xl border border-dashed border-base-300 bg-base-200/30 px-4 py-5 text-sm text-base-content/45">
+                <div className="mt-3 flex items-center gap-3 rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] px-4 py-5 text-sm text-base-content/45">
                   <Lucide.ImageOff size={19} aria-hidden="true" />
                   Phản ánh chưa có minh chứng công khai.
                 </div>
@@ -812,10 +855,10 @@ export const CommunityFeedDetailPage = () => {
 
           <section
             ref={commentsSectionRef}
-            className="scroll-mt-24 overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_32px_rgba(15,23,42,0.07)]"
+            className="scroll-mt-24 rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"
             aria-labelledby="community-comments-title"
           >
-            <header className="relative flex flex-wrap items-start justify-between gap-3 overflow-hidden border-b border-base-300 bg-gradient-to-r from-base-100 via-primary/[0.018] to-secondary/[0.04] px-5 py-5 sm:px-6">
+            <header className="flex flex-wrap items-start justify-between gap-3">
               <div className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-secondary/[0.07] blur-3xl" aria-hidden="true" />
               <div className="relative">
                 <h2 id="community-comments-title" className="text-lg font-bold">
@@ -831,11 +874,11 @@ export const CommunityFeedDetailPage = () => {
               </span>
             </header>
 
-            <div className="grid gap-5 bg-base-200/18 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
-              <div className="min-w-0 space-y-4">
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-stretch">
+              <div className="flex min-h-full min-w-0 flex-col gap-4">
                 <form
                   onSubmit={handleSendChat}
-                  className="rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4"
+                  className="rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] p-3 shadow-sm sm:p-4"
                 >
                   <div className="flex items-start gap-3">
                     <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-content shadow-sm">
@@ -853,7 +896,7 @@ export const CommunityFeedDetailPage = () => {
                         value={chatInput}
                         onChange={(event) => setChatInput(event.target.value)}
                         placeholder="Bạn nghĩ gì về phản ánh này?"
-                        className="textarea textarea-bordered min-h-[72px] max-h-40 w-full resize-y rounded-xl border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 focus:border-primary/40 focus:outline-none"
+                        className="textarea textarea-bordered min-h-[72px] max-h-40 w-full resize-y rounded-xl border-[var(--public-border)] bg-[var(--public-surface)] px-4 py-3 text-sm leading-6 focus:border-primary/40 focus:outline-none"
                       />
 
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -874,7 +917,7 @@ export const CommunityFeedDetailPage = () => {
                   </div>
                 </form>
 
-                <div className="space-y-3">
+                <div className={visibleComments.length > 0 ? 'space-y-3' : 'flex flex-1'}>
                   {visibleComments.length > 0 ? (
                     visibleComments.map((comment, index) => {
                       const commentAuthor = getCommentAuthor(comment);
@@ -909,7 +952,7 @@ export const CommunityFeedDetailPage = () => {
                       );
                     })
                   ) : (
-                    <div className="relative flex min-h-40 flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-primary/20 bg-gradient-to-br from-base-100 via-primary/[0.018] to-secondary/[0.045] px-4 py-7 text-center">
+                    <div className="relative flex min-h-[270px] flex-1 flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 py-7 text-center">
                       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
                         <svg
                           viewBox="0 0 760 180"
@@ -928,7 +971,7 @@ export const CommunityFeedDetailPage = () => {
                           <circle cx="520" cy="127" r="7" fill="currentColor" fillOpacity="0.065" />
                         </svg>
                       </div>
-                      <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/12 bg-base-100/85 text-primary shadow-sm backdrop-blur">
+                      <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/12 bg-[var(--public-surface)] text-primary shadow-sm backdrop-blur">
                         <Lucide.MessagesSquare size={21} aria-hidden="true" />
                       </span>
                       <p className="relative mt-3 text-sm font-semibold text-base-content/70">
@@ -973,8 +1016,8 @@ export const CommunityFeedDetailPage = () => {
                 ) : null}
               </div>
 
-              <aside className="space-y-4 xl:sticky xl:top-24">
-                <section className="overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/8 via-base-100 to-secondary/8 p-4 shadow-sm">
+              <aside className="grid h-full grid-rows-2 gap-4">
+                <section className="overflow-hidden rounded-2xl border border-primary/15 bg-[var(--public-surface-strong)] p-4 shadow-sm">
                   <div className="flex items-center gap-3">
                     <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                       <Lucide.ChartNoAxesColumnIncreasing size={19} aria-hidden="true" />
@@ -988,7 +1031,7 @@ export const CommunityFeedDetailPage = () => {
                   </div>
 
                   <dl className="mt-4 grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
+                    <div className="rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-3">
                       <dt className="text-[11px] text-base-content/45">
                         Bình luận
                       </dt>
@@ -996,7 +1039,7 @@ export const CommunityFeedDetailPage = () => {
                         {commentCount}
                       </dd>
                     </div>
-                    <div className="rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
+                    <div className="rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-3">
                       <dt className="text-[11px] text-base-content/45">
                         Lượt hỗ trợ
                       </dt>
@@ -1006,7 +1049,7 @@ export const CommunityFeedDetailPage = () => {
                     </div>
                   </dl>
 
-                  <div className="mt-2 rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
+                  <div className="mt-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-3">
                     <p className="text-[11px] text-base-content/45">
                       Hoạt động gần nhất
                     </p>
@@ -1049,7 +1092,8 @@ export const CommunityFeedDetailPage = () => {
             </div>
           </section>
         </section>
-      </main>
+        </main>
+      </CommunityDetailShell>
 
       {activeAttachment && typeof document !== 'undefined'
         ? createPortal(
