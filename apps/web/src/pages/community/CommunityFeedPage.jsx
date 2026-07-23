@@ -6,10 +6,10 @@ export const CommunityFeedPage = () => {
     <PublicPageMotion>
       <main
         data-public-reveal
-        className="relative isolate text-base-content"
+        className="relative isolate text-[var(--public-title)]"
       >
         <div
-          className="pointer-events-none absolute -inset-x-3 -inset-y-4 -z-10 rounded-[36px] bg-base-200/45 sm:-inset-x-5 sm:-inset-y-5"
+          className="pointer-events-none absolute -inset-x-3 -inset-y-5 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-6"
           aria-hidden="true"
         />
         <CommunityFeed />

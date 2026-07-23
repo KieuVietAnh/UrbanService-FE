@@ -331,10 +331,10 @@ const CommunityFeedItem = ({
   return (
     <article
       data-community-feedback-id={feedbackId}
-      className={`relative overflow-hidden rounded-[26px] border bg-base-100 shadow-[0_8px_24px_rgba(15,23,42,0.055)] transition duration-200 hover:border-primary/18 hover:shadow-[0_12px_28px_rgba(15,23,42,0.075)] ${
+      className={`group/feed-card relative overflow-hidden rounded-[26px] border bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_18px_40px_rgba(15,23,42,0.11)] ${
         highlighted
-          ? 'border-primary/45 ring-2 ring-primary/20'
-          : 'border-base-300'
+          ? 'border-primary/50 ring-2 ring-primary/20'
+          : 'border-[var(--public-border)]'
       }`}
     >
       <span
@@ -342,17 +342,17 @@ const CommunityFeedItem = ({
         aria-hidden="true"
       />
 
-      <header className="flex items-start justify-between gap-3 px-5 pb-2.5 pt-5 sm:px-6">
+      <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-5 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-content shadow-sm">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-gradient-to-br from-primary to-info text-sm font-bold text-primary-content shadow-[0_8px_18px_rgba(37,99,235,0.22)]">
             {authorName.charAt(0).toUpperCase()}
           </span>
 
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
+            <p className="truncate text-sm font-semibold text-[var(--public-title)]">
               {authorName}
             </p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/48">
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--public-muted)]">
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <Lucide.MapPin
                   size={13}
@@ -380,10 +380,10 @@ const CommunityFeedItem = ({
         </span>
       </header>
 
-      <div className="px-5 pb-3 sm:px-6">
+      <div className="px-5 pb-3.5 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
           {categoryName ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/8 px-2.5 py-1 text-[11px] font-semibold text-secondary">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-secondary/15 bg-secondary/8 px-2.5 py-1 text-[11px] font-semibold text-secondary">
               <Lucide.Tag size={12} aria-hidden="true" />
               {categoryName}
             </span>
@@ -395,13 +395,13 @@ const CommunityFeedItem = ({
           onClick={() => onOpen(item)}
           className="mt-2 block w-full text-left"
         >
-          <h2 className="text-lg font-bold leading-7 tracking-tight transition hover:text-primary sm:text-xl">
+          <h2 className="text-lg font-bold leading-7 tracking-tight text-[var(--public-title)] transition group-hover/feed-card:text-primary sm:text-xl">
             {item?.title || 'Phản ánh đô thị'}
           </h2>
         </button>
 
         {item?.description ? (
-          <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-base-content/58">
+          <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-[var(--public-copy)]">
             {item.description}
           </p>
         ) : null}
@@ -410,7 +410,7 @@ const CommunityFeedItem = ({
       <div className="px-5 sm:px-6">
         {mediaState === 'loading' ? (
           <div
-            className="h-44 animate-pulse overflow-hidden rounded-2xl border border-base-300 bg-base-300/45 sm:h-52"
+            className="h-44 animate-pulse overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] sm:h-52"
             role="status"
             aria-label="Đang tải hình ảnh minh chứng"
           >
@@ -432,13 +432,13 @@ const CommunityFeedItem = ({
           <button
             type="button"
             onClick={() => onOpen(item)}
-            className="flex h-44 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-base-300 bg-base-200/30 text-sm text-base-content/42 sm:h-52"
+            className="flex h-44 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] text-sm text-[var(--public-muted)] transition hover:border-primary/25 hover:text-primary sm:h-52"
           >
             <Lucide.ImageOff size={18} aria-hidden="true" />
             Chưa có hình ảnh công khai
           </button>
         ) : mediaItems.length === 1 ? (
-          <div className="h-44 overflow-hidden rounded-2xl border border-base-300 sm:h-52">
+          <div className="h-44 overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] shadow-inner sm:h-52">
             <MediaTile
               attachment={mediaItems[0]}
               itemTitle={item?.title}
@@ -449,7 +449,7 @@ const CommunityFeedItem = ({
             />
           </div>
         ) : (
-          <div className="grid h-44 grid-cols-[minmax(0,1.7fr)_minmax(110px,0.7fr)] gap-1 overflow-hidden rounded-2xl border border-base-300 sm:h-52">
+          <div className="grid h-44 grid-cols-[minmax(0,1.7fr)_minmax(110px,0.7fr)] gap-1 overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] shadow-inner sm:h-52">
             <MediaTile
               attachment={mediaItems[0]}
               itemTitle={item?.title}
@@ -503,7 +503,7 @@ const CommunityFeedItem = ({
         )}
       </div>
 
-      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 bg-base-200/20 px-5 py-3 sm:px-6">
+      <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--public-border-soft)] bg-[var(--public-surface-soft)]/75 px-5 py-3 sm:px-6">
         <div className="flex items-center gap-2">
           <SupportButton
             feedbackId={feedbackId}
@@ -520,7 +520,7 @@ const CommunityFeedItem = ({
           <button
             type="button"
             onClick={handleComments}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 text-sm font-semibold text-base-content/58 transition hover:border-primary/20 hover:bg-primary/5 hover:text-primary"
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-copy)] transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary"
           >
             <Lucide.MessageCircle
               size={16}
@@ -533,7 +533,7 @@ const CommunityFeedItem = ({
         <button
           type="button"
           onClick={() => onOpen(item)}
-          className="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-primary/8"
+          className="inline-flex h-9 items-center gap-2 rounded-xl border border-transparent px-3 text-sm font-semibold text-primary transition hover:border-primary/15 hover:bg-primary/8"
         >
           Xem chi tiết
           <Lucide.ArrowRight
