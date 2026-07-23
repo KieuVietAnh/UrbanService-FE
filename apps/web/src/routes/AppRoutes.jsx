@@ -1,12 +1,14 @@
 // src/routes/AppRoutes.jsx
 import { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../contexts/AuthContext';
 import { ProtectedRoute } from '../guards/ProtectedRoute';
 import { RoleGuard } from '../guards/RoleGuard';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
+import PublicLayout from '../components/public/PublicLayout';
 import LoadingSkeleton from '../components/design-system/LoadingSkeleton';
+import { normalizeRole } from '../utils/roleMap';
 
 const LandingPage = lazy(() => import('../pages/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LoginPage = lazy(() => import('../pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
@@ -56,25 +58,143 @@ const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ def
 const StaffAuditTrailPage = lazy(() => import('../pages/staff/StaffAuditTrailPage').then((m) => ({ default: m.StaffAuditTrailPage })));
 const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
 
-const RouteFallback = () => (
-  <div className="min-h-[calc(100vh-12rem)] flex items-center justify-center p-6">
-    <div className="w-full max-w-4xl space-y-6 rounded-3xl bg-white border border-slate-200 p-6 shadow-sm">
-      <div className="h-6 w-1/3 rounded-full bg-slate-100 animate-pulse" />
-      <LoadingSkeleton rows={5} className="space-y-3" />
+const RouteFallback = ({ isAuthenticated = false }) => {
+  const location = useLocation();
+  const isPublicRoute = (
+    location.pathname === '/' ||
+    location.pathname.startsWith('/community/')
+  );
+
+  if (isPublicRoute && !isAuthenticated) {
+    return (
+      <PublicLayout>
+        <main className="relative isolate min-h-[calc(100vh-8rem)] overflow-hidden px-4 py-10 sm:px-6 lg:px-8">
+          <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+            <div className="absolute left-[8%] top-14 h-64 w-64 rounded-full bg-blue-300/20 blur-3xl dark:bg-blue-500/10" />
+            <div className="absolute right-[8%] top-24 h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
+          </div>
+          <div className="public-loading-surface mx-auto w-full max-w-[1380px] overflow-hidden rounded-[30px] border border-slate-200/80 bg-white/90 p-5 shadow-[0_24px_70px_rgba(15,23,42,0.1)] sm:p-8 dark:border-white/10 dark:bg-[#0a182d]/92">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 animate-pulse rounded-2xl bg-blue-100 dark:bg-blue-500/15" />
+              <div className="space-y-2">
+                <div className="h-4 w-40 animate-pulse rounded-full bg-slate-200 dark:bg-white/10" />
+                <div className="h-3 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-white/[0.07]" />
+              </div>
+            </div>
+            <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+              <div className="h-[360px] animate-pulse rounded-[24px] bg-slate-100 dark:bg-white/[0.055]" />
+              <div className="space-y-4">
+                <div className="h-24 animate-pulse rounded-[22px] bg-slate-100 dark:bg-white/[0.055]" />
+                <div className="h-24 animate-pulse rounded-[22px] bg-slate-100 dark:bg-white/[0.055]" />
+                <div className="h-24 animate-pulse rounded-[22px] bg-slate-100 dark:bg-white/[0.055]" />
+              </div>
+            </div>
+            <div className="mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-300">
+              <span className="loading loading-spinner loading-sm text-blue-600" />
+              Đang chuẩn bị nội dung công khai
+            </div>
+          </div>
+        </main>
+      </PublicLayout>
+    );
+  }
+
+  return (
+    <div className="min-h-[calc(100vh-12rem)] flex items-center justify-center p-6">
+      <div className="w-full max-w-4xl space-y-6 rounded-3xl bg-white border border-slate-200 p-6 shadow-sm">
+        <div className="h-6 w-1/3 rounded-full bg-slate-100 animate-pulse" />
+        <LoadingSkeleton rows={5} className="space-y-3" />
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+
+const getSafeInternalPath = (candidate) => {
+  if (!candidate) return '';
+
+  if (typeof candidate === 'object') {
+    const pathname = candidate.pathname || '';
+    const search = candidate.search || '';
+    const hash = candidate.hash || '';
+    return getSafeInternalPath(`${pathname}${search}${hash}`);
+  }
+
+  const normalized = String(candidate).trim();
+  if (!normalized.startsWith('/') || normalized.startsWith('//')) return '';
+  return normalized;
+};
+
+const LoginRoute = ({ isAuthenticated, fallbackPath }) => {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  if (!isAuthenticated) return <LoginPage />;
+
+  const redirect = (
+    getSafeInternalPath(searchParams.get('redirect')) ||
+    getSafeInternalPath(location.state?.from) ||
+    fallbackPath
+  );
+
+  return <Navigate to={redirect} replace />;
+};
+
+const roleEntryPaths = {
+  [APP_ROLES.SERVICE_USER]: '/',
+  [APP_ROLES.SYSTEM_STAFF]: '/staff/queue',
+  [APP_ROLES.SERVICE_PROVIDER]: '/provider/tasks',
+  [APP_ROLES.INTERACTION_MANAGER]: '/manager/interactions',
+  [APP_ROLES.ADMINISTRATOR]: '/admin/audit',
+};
 
 export const AppRoutes = () => {
   const { isAuthenticated, user } = useAuth();
-  const authRedirect = user?.isVerified ? '/dashboard' : '/verify-email';
+  const currentRole = normalizeRole(user?.role);
+  const roleEntryPath = roleEntryPaths[currentRole] || '/dashboard';
+  const authRedirect = user?.isVerified ? roleEntryPath : '/verify-email';
+  const isCitizen = currentRole === APP_ROLES.SERVICE_USER;
+  const renderCommunityPage = (page) => (
+    isAuthenticated ? (
+      <DashboardLayout>{page}</DashboardLayout>
+    ) : (
+      <PublicLayout>
+        <div className="mx-auto w-full max-w-[1440px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
+          {page}
+        </div>
+      </PublicLayout>
+    )
+  );
 
   return (
-    <Suspense fallback={<RouteFallback />}>
+    <Suspense fallback={<RouteFallback isAuthenticated={isAuthenticated} />}>
       <Routes>
       {/* Public Pages */}
-      <Route path="/" element={isAuthenticated ? <Navigate to={authRedirect} replace /> : <LandingPage />} />
-      <Route path="/login" element={isAuthenticated ? <Navigate to={authRedirect} replace /> : <LoginPage />} />
+      <Route
+        path="/"
+        element={
+          !isAuthenticated ? (
+            <LandingPage />
+          ) : !user?.isVerified ? (
+            <Navigate to="/verify-email" replace />
+          ) : isCitizen ? (
+            <DashboardLayout>
+              <Dashboard />
+            </DashboardLayout>
+          ) : (
+            <Navigate to={roleEntryPath} replace />
+          )
+        }
+      />
+      <Route
+        path="/login"
+        element={
+          <LoginRoute
+            isAuthenticated={isAuthenticated}
+            fallbackPath={authRedirect}
+          />
+        }
+      />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/verify-email" element={isAuthenticated ? <VerifyEmailPage /> : <Navigate to="/login" replace />} />
       <Route path="/about" element={<AboutPage />} />
@@ -82,9 +202,13 @@ export const AppRoutes = () => {
       {/* Protected Pages (All Auth Roles) */}
       <Route path="/dashboard" element={
         <ProtectedRoute>
-          <DashboardLayout>
-            <Dashboard />
-          </DashboardLayout>
+          {isCitizen ? (
+            <Navigate to="/" replace />
+          ) : (
+            <DashboardLayout>
+              <Dashboard />
+            </DashboardLayout>
+          )}
         </ProtectedRoute>
       } />
       <Route path="/tickets" element={
@@ -137,23 +261,18 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/community/feed" element={
-          <DashboardLayout>
-            <CommunityFeedPage />
-          </DashboardLayout>
-      } />
-      <Route path="/community/feed/:id" element={
-          <DashboardLayout>
-            <CommunityFeedbackDetailPage />
-          </DashboardLayout>
-      } />
-      <Route path="/community/map" element={
-        <ProtectedRoute>
-          <DashboardLayout>
-            <CommunityMapPage />
-          </DashboardLayout>
-        </ProtectedRoute>
-      } />
+      <Route
+        path="/community/feed"
+        element={renderCommunityPage(<CommunityFeedPage />)}
+      />
+      <Route
+        path="/community/feed/:id"
+        element={renderCommunityPage(<CommunityFeedbackDetailPage />)}
+      />
+      <Route
+        path="/community/map"
+        element={renderCommunityPage(<CommunityMapPage />)}
+      />
       <Route path="/notifications" element={
         <ProtectedRoute>
           <DashboardLayout>

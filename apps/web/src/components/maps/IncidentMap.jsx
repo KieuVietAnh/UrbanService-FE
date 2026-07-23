@@ -176,12 +176,12 @@ export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
   }, [incidents]);
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200 shadow-sm h-[550px] transition-shadow duration-200 ease-out map-interaction">
+    <div className="public-map-stack relative isolate z-0 h-[550px] overflow-hidden rounded-3xl border border-slate-200 shadow-sm transition-shadow duration-200 ease-out map-interaction">
       <MapContainer
         center={DEFAULT_CENTER}
         zoom={DEFAULT_ZOOM}
         scrollWheelZoom={true}
-        className="w-full h-full"
+        className="relative z-0 h-full w-full"
         zoomControl={true}
       >
         <TileLayer

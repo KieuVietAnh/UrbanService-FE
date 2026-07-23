@@ -1,6 +1,11 @@
 import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function CommentForm({ feedbackId, onPosted }) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -8,6 +13,17 @@ export default function CommentForm({ feedbackId, onPosted }) {
   const submit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!user) {
+      const redirect = `${location.pathname}${location.search}${location.hash}`;
+      const params = new URLSearchParams({
+        redirect,
+        intent: 'community-interaction',
+      });
+      navigate(`/login?${params.toString()}`);
+      return;
+    }
+
     if (!text.trim()) return setError('Vui lòng nhập nội dung.');
     setLoading(true);
     try {

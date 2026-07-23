@@ -1,4 +1,4 @@
-export const COMMUNITY_FEED_CACHE_TTL_MS = 60 * 1000;
+export const COMMUNITY_FEED_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const snapshotsByOwner = new Map();
 
@@ -10,23 +10,45 @@ const getFeedbackId = (item) => (
   item?.feedbackId || item?.id || item?.ticketId
 );
 
-export const readCommunityFeedCache = (ownerKey) => {
+export const readCommunityFeedCache = (
+  ownerKey,
+  { allowStale = false } = {}
+) => {
   const snapshot = snapshotsByOwner.get(normalizeOwnerKey(ownerKey));
 
   if (!snapshot || !Array.isArray(snapshot.items)) {
     return null;
   }
 
+  if (
+    !allowStale &&
+    Date.now() - Number(snapshot.updatedAt || 0) > COMMUNITY_FEED_CACHE_TTL_MS
+  ) {
+    return null;
+  }
+
   return snapshot;
 };
 
-export const writeCommunityFeedCache = (ownerKey, items) => {
+export const writeCommunityFeedCache = (ownerKey, snapshotOrItems) => {
+  const normalizedOwnerKey = normalizeOwnerKey(ownerKey);
+  const currentSnapshot = snapshotsByOwner.get(normalizedOwnerKey) || {};
+  const incomingSnapshot = Array.isArray(snapshotOrItems)
+    ? { items: snapshotOrItems }
+    : (snapshotOrItems || {});
+
   const nextSnapshot = {
-    items: Array.isArray(items) ? items : [],
+    ...currentSnapshot,
+    ...incomingSnapshot,
+    items: Array.isArray(incomingSnapshot.items)
+      ? incomingSnapshot.items
+      : Array.isArray(currentSnapshot.items)
+        ? currentSnapshot.items
+        : [],
     updatedAt: Date.now(),
   };
 
-  snapshotsByOwner.set(normalizeOwnerKey(ownerKey), nextSnapshot);
+  snapshotsByOwner.set(normalizedOwnerKey, nextSnapshot);
   return nextSnapshot;
 };
 
@@ -68,10 +90,20 @@ export const patchCommunityFeedCacheItem = (
   if (!changed) return currentSnapshot;
 
   const nextSnapshot = {
+    ...currentSnapshot,
     items: nextItems,
-    updatedAt: currentSnapshot.updatedAt,
+    updatedAt: Date.now(),
   };
 
   snapshotsByOwner.set(normalizedOwnerKey, nextSnapshot);
   return nextSnapshot;
+};
+
+export const clearCommunityFeedCache = (ownerKey) => {
+  if (ownerKey !== undefined && ownerKey !== null) {
+    snapshotsByOwner.delete(normalizeOwnerKey(ownerKey));
+    return;
+  }
+
+  snapshotsByOwner.clear();
 };

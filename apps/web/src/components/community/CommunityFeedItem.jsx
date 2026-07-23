@@ -4,6 +4,28 @@ import { getAttachmentUrl } from '@urbanmind/shared-utils';
 import { managementTypes } from '@urbanmind/shared-types';
 import SupportButton from './SupportButton';
 
+const loadedMediaUrls = new Set();
+const mediaKeepers = new Map();
+
+const rememberLoadedMedia = (mediaUrl, mediaElement) => {
+  if (!mediaUrl) return;
+
+  loadedMediaUrls.add(mediaUrl);
+
+  if (mediaKeepers.has(mediaUrl)) return;
+
+  if (mediaElement?.cloneNode) {
+    mediaKeepers.set(mediaUrl, mediaElement.cloneNode(false));
+    return;
+  }
+
+  if (typeof Image !== 'undefined') {
+    const keeper = new Image();
+    keeper.src = mediaUrl;
+    mediaKeepers.set(mediaUrl, keeper);
+  }
+};
+
 const STATUS_META = {
   [managementTypes.feedbackStatus.VERIFIED]: {
     label: 'Đã xác minh',
@@ -135,16 +157,35 @@ const MediaTile = ({
   itemTitle,
   index,
   onOpen,
+  priority = false,
   className = '',
 }) => {
   const mediaUrl = getAttachmentUrl(attachment);
   const video = isVideoAttachment(attachment);
-  const [mediaStatus, setMediaStatus] = useState(
-    mediaUrl ? 'loading' : 'error'
-  );
+  const [mediaStatus, setMediaStatus] = useState(() => (
+    mediaUrl
+      ? (loadedMediaUrls.has(mediaUrl) ? 'ready' : 'loading')
+      : 'error'
+  ));
 
   useEffect(() => {
-    setMediaStatus(mediaUrl ? 'loading' : 'error');
+    setMediaStatus(
+      mediaUrl
+        ? (loadedMediaUrls.has(mediaUrl) ? 'ready' : 'loading')
+        : 'error'
+    );
+
+    if (!mediaUrl || loadedMediaUrls.has(mediaUrl)) return undefined;
+
+    const timeoutId = globalThis.setTimeout(() => {
+      setMediaStatus((currentStatus) => (
+        currentStatus === 'loading' ? 'error' : currentStatus
+      ));
+    }, 15000);
+
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+    };
   }, [mediaUrl]);
 
   return (
@@ -166,8 +207,15 @@ const MediaTile = ({
                 muted
                 playsInline
                 preload="metadata"
-                onLoadedData={() => setMediaStatus('ready')}
-                onError={() => setMediaStatus('error')}
+                onLoadedData={(event) => {
+                  rememberLoadedMedia(mediaUrl, event.currentTarget);
+                  setMediaStatus('ready');
+                }}
+                onError={() => {
+                  loadedMediaUrls.delete(mediaUrl);
+                  mediaKeepers.delete(mediaUrl);
+                  setMediaStatus('error');
+                }}
               />
               {mediaStatus === 'ready' ? (
                 <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-white transition group-hover/media:bg-black/25">
@@ -188,9 +236,18 @@ const MediaTile = ({
               className={`h-full w-full object-cover transition duration-200 group-hover/media:scale-[1.012] ${
                 mediaStatus === 'ready' ? 'opacity-100' : 'opacity-0'
               }`}
-              loading="lazy"
-              onLoad={() => setMediaStatus('ready')}
-              onError={() => setMediaStatus('error')}
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : 'auto'}
+              decoding="async"
+              onLoad={(event) => {
+                rememberLoadedMedia(mediaUrl, event.currentTarget);
+                setMediaStatus('ready');
+              }}
+              onError={() => {
+                loadedMediaUrls.delete(mediaUrl);
+                mediaKeepers.delete(mediaUrl);
+                setMediaStatus('error');
+              }}
             />
           )}
 
@@ -219,6 +276,7 @@ const MediaTile = ({
 
 const CommunityFeedItem = ({
   item,
+  priority = false,
   highlighted = false,
   onOpenComments,
   onOpen,
@@ -385,6 +443,7 @@ const CommunityFeedItem = ({
               attachment={mediaItems[0]}
               itemTitle={item?.title}
               index={0}
+              priority={priority}
               onOpen={() => onOpen(item)}
               className="h-full w-full"
             />
@@ -395,6 +454,7 @@ const CommunityFeedItem = ({
               attachment={mediaItems[0]}
               itemTitle={item?.title}
               index={0}
+              priority={priority}
               onOpen={() => onOpen(item)}
               className="h-full w-full"
             />

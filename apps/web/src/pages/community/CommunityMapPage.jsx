@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { IncidentMap } from '../../components/maps/IncidentMap';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
+import PublicPageMotion from '../../components/public/PublicPageMotion';
 
 const MAP_FILTERS = {
   ALL: 'all',
@@ -88,7 +89,7 @@ const MapMetricSkeleton = ({ tone = 'base' }) => {
 
 const MapCanvasSkeleton = () => (
   <div
-    className="relative h-[560px] overflow-hidden rounded-[24px] bg-base-200/65"
+    className="public-loading-surface relative h-[560px] overflow-hidden rounded-[24px] bg-base-200/65"
     aria-hidden="true"
   >
     <div className="absolute inset-0 animate-pulse">
@@ -200,8 +201,10 @@ export const CommunityMapPage = () => {
   }[activeFilter];
 
   return (
-    <main className="space-y-5 text-base-content">
+    <PublicPageMotion>
+      <main className="space-y-5 text-base-content">
       <section
+        data-public-reveal
         className="relative isolate overflow-hidden rounded-[30px] border border-info/15 bg-gradient-to-br from-base-100 via-info/[0.03] to-primary/[0.075] shadow-[0_18px_48px_rgba(15,23,42,0.085)]"
         aria-labelledby="community-map-title"
       >
@@ -257,7 +260,6 @@ export const CommunityMapPage = () => {
 
         <div className="relative px-5 py-6 sm:px-7 sm:py-7">
           <header className="max-w-3xl">
-
 
             <h1
               id="community-map-title"
@@ -409,6 +411,7 @@ export const CommunityMapPage = () => {
       </section>
 
       <section
+        data-public-reveal
         className="card overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_38px_rgba(15,23,42,0.075)]"
         aria-labelledby="incident-map-panel-title"
       >
@@ -490,7 +493,7 @@ export const CommunityMapPage = () => {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.42fr)]">
+      <section data-public-reveal className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.42fr)]">
         <article className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm">
           <div className="flex items-start gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/8 text-primary">
@@ -551,6 +554,7 @@ export const CommunityMapPage = () => {
           </p>
         </aside>
       </section>
-    </main>
+      </main>
+    </PublicPageMotion>
   );
 };
