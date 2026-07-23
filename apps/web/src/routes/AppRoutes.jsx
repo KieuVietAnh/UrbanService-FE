@@ -30,14 +30,17 @@ const SettingsPage = lazy(() => import('../pages/settings/SettingsPage').then((m
 
 const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then((m) => ({ default: m.AIReviewDetail })));
 const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
+const DuplicateDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.DuplicateDetailPage })));
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
-const CompletedTicketReview = lazy(() => import('../pages/tickets/CompletedTicketReview').then((m) => ({ default: m.CompletedTicketReview })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
+const CoordinatorDirectoryPage = lazy(() => import('../pages/staff/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
+const CoordinatorDetailPage = lazy(() => import('../pages/staff/CoordinatorDetailPage').then((m) => ({ default: m.default })));
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
-const ResolutionReviewComparisonPage = lazy(() => import('../pages/staff/ResolutionReviewComparisonPage').then((m) => ({ default: m.ResolutionReviewComparisonPage })));
 const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
+
+const ProviderCandidateCheckerPage = lazy(() => import('../pages/staff/ProviderCandidateCheckerPage').then((m) => ({ default: m.default })));
 
 const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspacePage').then((m) => ({ default: m.HelperWorkspacePage })));
 
@@ -55,7 +58,6 @@ const CategoryManagement = lazy(() => import('../pages/management/CategoryManage
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
 const IntegrationSettings = lazy(() => import('../pages/management/IntegrationSettings').then((m) => ({ default: m.IntegrationSettings })));
 const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ default: m.AuditLog })));
-const StaffAuditTrailPage = lazy(() => import('../pages/staff/StaffAuditTrailPage').then((m) => ({ default: m.StaffAuditTrailPage })));
 const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
 
 const RouteFallback = ({ isAuthenticated = false }) => {
@@ -350,24 +352,6 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/staff/audit" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <StaffAuditTrailPage />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
-      <Route path="/staff/review/:feedbackId/compare" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <ResolutionReviewComparisonPage />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
       <Route path="/staff/duplicates" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
@@ -377,11 +361,38 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/staff/review" element={
+      <Route path="/staff/coordinators" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <CoordinatorDirectoryPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/provider-candidates-checker" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ProviderCandidateCheckerPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/coordinators/:coordinatorId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <CoordinatorDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/duplicates/:duplicateCandidateId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
-              <CompletedTicketReview />
+              <DuplicateDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

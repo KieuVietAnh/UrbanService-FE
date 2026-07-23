@@ -1,209 +1,204 @@
 // src/pages/tickets/DuplicateDetection.jsx
-import { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { ticketApi } from '../../services/api/ticketApi';
-import { toolsApi } from '@urbanmind/shared-api';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { duplicateManagementApi } from '@urbanmind/shared-api';
 import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
-import { managementTypes } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
 
+const PAGE_SIZE = 10;
+
+const formatDate = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+const getStatusLabel = (status) => {
+  switch (status) {
+    case 'Pending':
+      return 'Chờ xử lý';
+    case 'Confirmed':
+      return 'Đã xác nhận';
+    case 'Rejected':
+      return 'Đã từ chối';
+    default:
+      return status || 'Không xác định';
+  }
+};
+
 export const DuplicateDetection = () => {
-  const { user } = useAuth();
-  const [tickets, setTickets] = useState([]);
-  
-  // Selection states
-  const [selectedGroup, setSelectedGroup] = useState([]);
-  const [masterId, setMasterId] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [summary, setSummary] = useState({ pending: 0, confirmed: 0, rejected: 0, total: 0 });
+  const [items, setItems] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: PAGE_SIZE, totalCount: 0, totalPages: 0 });
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
-    const loadDuplicates = async () => {
-      const tickets = await toolsApi.getTickets();
-      const all = Array.isArray(tickets) ? tickets.filter((t) => t.status !== managementTypes.feedbackStatus.CLOSED) : [];
+    const successMessage = location.state?.successMessage;
+    if (successMessage) {
+      setMessage({ type: 'success', text: successMessage });
+    }
+  }, [location.state]);
 
-      // Group tickets by proximity to mock duplication queue (e.g. group tickets in same category and near coordinates)
-      const groups = [];
-      const visited = new Set();
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [summaryResponse, candidatesResponse] = await Promise.all([
+          duplicateManagementApi.getDuplicateSummary(),
+          duplicateManagementApi.getDuplicateCandidates({ status: 'Pending', page, pageSize: PAGE_SIZE }),
+        ]);
 
-        for (let i = 0; i < all.length; i++) {
-        if (visited.has(all[i].feedbackId)) continue;
-        const group = [all[i]];
-        visited.add(all[i].feedbackId);
-
-        for (let j = i + 1; j < all.length; j++) {
-          if (visited.has(all[j].feedbackId)) continue;
-          // Check same category and proximity
-          const distLat = Math.abs(all[i].latitude - all[j].latitude);
-          const distLng = Math.abs(all[i].longitude - all[j].longitude);
-          if (all[i].categoryId === all[j].categoryId && distLat < 0.008 && distLng < 0.008) {
-            group.push(all[j]);
-            visited.add(all[j].feedbackId);
-          }
-        }
-
-        if (group.length > 1) {
-          groups.push(group);
-        }
-      }
-
-      setTickets(groups);
-      if (groups.length > 0) {
-        setSelectedGroup(groups[0]);
-        setMasterId(groups[0][0].feedbackId);
+        setSummary(summaryResponse || { pending: 0, confirmed: 0, rejected: 0, total: 0 });
+        setItems(Array.isArray(candidatesResponse?.items) ? candidatesResponse.items : []);
+        setPagination(candidatesResponse?.pagination || { page, pageSize: PAGE_SIZE, totalCount: 0, totalPages: 0 });
+      } catch (err) {
+        console.error(err);
+        setMessage({ type: 'error', text: err?.message || 'Không thể tải danh sách phản ánh trùng lặp.' });
+      } finally {
+        setLoading(false);
       }
     };
 
-    loadDuplicates();
-  }, [success]);
+    loadData();
+  }, [page]);
 
-  const handleMerge = async () => {
-    if (!masterId || selectedGroup.length < 2) return;
-    setLoading(true);
-    try {
-      const duplicates = selectedGroup
-        .map(t => t.feedbackId)
-        .filter(id => id !== masterId);
-
-      await ticketApi.mergeTickets(masterId, duplicates, user.userId);
-      setSuccess(!success); // trigger reload
-      setMessage({ type: 'success', text: `Gộp thành công! Thiết lập ${masterId} thành Master Ticket và đóng các phản ánh trùng lặp khác.` });
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: err?.message || 'Không thể hợp nhất các phản ánh trùng lặp.' });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const pageNumbers = useMemo(() => {
+    const totalPages = pagination?.totalPages || 0;
+    if (!totalPages) return [];
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }, [pagination]);
 
   return (
     <div className="space-y-6">
       {message.type === 'success' && (
-        <SuccessAlert
-          message={message.text}
-          onClose={() => setMessage({ type: '', text: '' })}
-        />
+        <SuccessAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />
       )}
       {message.type === 'error' && (
-        <ErrorAlert
-          message={message.text}
-          onClose={() => setMessage({ type: '', text: '' })}
-        />
+        <ErrorAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />
       )}
-      {/* Title */}
+
       <div>
         <h2 className="text-2xl font-black">Xử Lý Phản Ánh Trùng Lặp</h2>
-        <p className="text-xs text-gray-500 font-semibold">Gộp các phản ánh trùng lặp xảy ra cùng địa điểm, thời gian vào một sự cố chính (Master Ticket) để hợp nhất đầu mối xử lý.</p>
+        <p className="text-xs text-gray-500 font-semibold">Danh sách các trường hợp phản ánh trùng lặp đang chờ xem xét từ hệ thống.</p>
       </div>
 
-      {tickets.length === 0 ? (
-        <div className="card bg-base-100 border border-base-300 p-12 text-center rounded-3xl space-y-4">
-          <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-            <Lucide.ShieldCheck size={32} />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Chờ xử lý', value: summary.pending, tone: 'bg-amber-50 text-amber-700 border-amber-200' },
+          { label: 'Đã xác nhận', value: summary.confirmed, tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+          { label: 'Đã từ chối', value: summary.rejected, tone: 'bg-rose-50 text-rose-700 border-rose-200' },
+          { label: 'Tổng cộng', value: summary.total, tone: 'bg-slate-50 text-slate-700 border-slate-200' },
+        ].map((card) => (
+          <div key={card.label} className={`rounded-2xl border p-4 ${card.tone}`}>
+            <div className="text-[11px] font-bold uppercase tracking-wide">{card.label}</div>
+            <div className="mt-2 text-2xl font-black">{card.value}</div>
           </div>
+        ))}
+      </div>
+
+      <div className="card bg-base-100 border border-base-300 rounded-3xl shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-base-300 px-6 py-4">
           <div>
-            <h3 className="font-extrabold text-sm">Không Phát Hiện Sự Cố Trùng Lặp</h3>
-            <p className="text-xs text-gray-500 font-semibold mt-1">Các phản ánh hiện hữu có vị trí phân tán, không có trùng lặp chồng lấn về mặt không gian địa lý.</p>
+            <h3 className="font-extrabold text-sm">Danh sách ứng viên trùng lặp</h3>
+            <p className="text-xs text-gray-500 font-semibold">Hiển thị các mục đang ở trạng thái Pending từ endpoint backend.</p>
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Duplicate Groups Column */}
-          <div className="card bg-base-100 border border-base-300 p-4 rounded-3xl shadow-sm space-y-3 h-[600px] overflow-y-auto">
-            <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400 px-2">Nhóm nghi trùng do AI phát hiện ({tickets.length})</h4>
-            <div className="space-y-3">
-              {tickets.map((group, idx) => (
-                <div 
-                  key={idx}
-                  onClick={() => {
-                    setSelectedGroup(group);
-                    setMasterId(group[0].feedbackId);
-                  }}
-                  className={`p-3 rounded-2xl border cursor-pointer transition-all duration-200 text-xs flex flex-col gap-1.5 ${
-                    selectedGroup === group 
-                      ? 'border-primary bg-primary/5 shadow-sm' 
-                      : 'border-base-300 hover:bg-base-200/50'
-                  }`}
-                >
-                  <div className="flex justify-between items-center text-[10px] font-bold text-primary">
-                    <span>Nhóm #{idx + 1}</span>
-                    <span>{group.length} Phản ánh</span>
-                  </div>
-                  <h5 className="font-extrabold truncate text-base-content">{group[0].title}</h5>
-                  <span className="text-[10px] font-semibold text-gray-400 line-clamp-1">{group[0].locationText}</span>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          {/* Merge & Side by Side Comparison Column */}
-          {selectedGroup.length > 0 && (
-            <div className="lg:col-span-2 flex flex-col gap-6 h-[600px] overflow-y-auto">
-              
-              {/* Compare List */}
-              <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-4">
-                <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400 border-b border-base-300 pb-2">So Sánh Chi Tiết Nhóm Trùng Lặp</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {selectedGroup.map((t) => (
-                    <div 
-                      key={t.feedbackId}
-                      className={`p-4 rounded-2xl border transition-all ${
-                        masterId === t.feedbackId 
-                          ? 'border-primary bg-primary/5 shadow-sm ring-2 ring-primary/10' 
-                          : 'border-base-300'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[9px] font-bold text-gray-400">{t.feedbackId}</span>
-                        <button 
-                          onClick={() => setMasterId(t.feedbackId)}
-                          className={`btn btn-xs rounded-lg font-bold text-[9px] ${
-                            masterId === t.feedbackId ? 'btn-primary' : 'btn-outline'
-                          }`}
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-sm text-gray-500">
+            <span className="loading loading-spinner loading-sm mr-2" />
+            Đang tải dữ liệu trùng lặp...
+          </div>
+        ) : message.type === 'error' && !items.length ? (
+          <div className="p-8 text-center text-sm text-gray-500">{message.text}</div>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center text-sm text-gray-500">Không có dữ liệu trùng lặp nào ở trạng thái Pending.</div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="table table-zebra w-full text-sm">
+                <thead>
+                  <tr>
+                    <th>Mã ứng viên trùng</th>
+                    <th>Phản ánh chính</th>
+                    <th>Phản ánh trùng</th>
+                    <th>Điểm độ tin cậy</th>
+                    <th>Ngày tạo</th>
+                    <th>Trạng thái</th>
+                    <th>Xem chi tiết</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.duplicateCandidateId || item.id}>
+                      <td className="font-semibold">{item.duplicateCandidateId || item.id || '—'}</td>
+                      <td>{item.primaryFeedbackId || item.primaryFeedback?.feedbackId || item.primaryFeedback?.id || '—'}</td>
+                      <td>{item.duplicateFeedbackId || item.duplicateFeedback?.feedbackId || item.duplicateFeedback?.id || '—'}</td>
+                      <td>{item.confidenceScore ?? item.confidence ?? '—'}</td>
+                      <td>{formatDate(item.createdAt || item.createdDate)}</td>
+                      <td>
+                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                          {getStatusLabel(item.status || 'Pending')}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/staff/duplicates/${item.duplicateCandidateId || item.id}`)}
+                          className="btn btn-xs btn-outline rounded-lg"
                         >
-                          {masterId === t.feedbackId ? 'Master Ticket' : 'Chọn làm Master'}
+                          <Lucide.Eye size={14} />
+                          Xem
                         </button>
-                      </div>
-                      <h5 className="font-extrabold text-xs text-base-content mb-1">{t.title}</h5>
-                      <p className="text-[10px] text-gray-500 font-medium mb-3 italic">"{t.description}"</p>
-                      
-                      {t.attachments && t.attachments.length > 0 && (
-                        <img src={t.attachments[0]} alt="Duplicate proof" className="w-full aspect-video object-cover rounded-xl border border-base-300 mb-2" />
-                      )}
-                      
-                      <div className="text-[9px] font-bold text-gray-400 flex items-center gap-1">
-                        <Lucide.MapPin size={10} className="text-primary" />
-                        <span className="truncate">{t.locationText}</span>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </div>
-
-              {/* Action Merge Card */}
-              <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-4">
-                <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400">Tiến Hành Gộp Sự Cố</h4>
-                <p className="text-xs text-gray-500 font-semibold leading-relaxed">
-                  Thiết lập phản ánh <span className="font-bold text-primary">{masterId}</span> làm sự cố chính. Tất cả phản ánh khác trong nhóm sẽ được liên kết và đóng lại. Chủ sở hữu các phản ánh phụ sẽ nhận được thông báo liên thông để theo dõi sự cố chính.
-                </p>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <button 
-                    onClick={handleMerge}
-                    disabled={loading}
-                    className="btn btn-primary px-8 rounded-xl font-bold text-xs"
-                  >
-                    {loading ? <span className="loading loading-spinner"></span> : 'Gộp Phản Ánh Trùng Lặp'}
-                  </button>
-                </div>
-              </div>
-
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
-      )}
+
+            {pageNumbers.length > 1 && (
+              <div className="flex items-center justify-end gap-2 border-t border-base-300 px-6 py-4">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline rounded-lg"
+                  disabled={page <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Trước
+                </button>
+                {pageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    className={`btn btn-sm rounded-lg ${pageNumber === page ? 'btn-primary' : 'btn-outline'}`}
+                    onClick={() => setPage(pageNumber)}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline rounded-lg"
+                  disabled={page >= pagination.totalPages}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Sau
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

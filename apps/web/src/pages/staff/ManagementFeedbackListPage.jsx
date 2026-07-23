@@ -7,6 +7,7 @@ import { toolsApi } from '@urbanmind/shared-api';
 import { PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES, managementTypes } from '@urbanmind/shared-types';
 import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
 
 export default function ManagementFeedbackListPage() {
@@ -58,7 +59,7 @@ export default function ManagementFeedbackListPage() {
       setTotalCount(response?.totalCount || 0);
     } catch (err) {
       console.error('Failed to fetch feedbacks', err);
-      setError('Unable to load feedbacks. Please try again.');
+      setError('Không thể tải danh sách phản ánh. Vui lòng thử lại.');
       setFeedbacks([]);
       setTotalCount(0);
     } finally {
@@ -229,7 +230,7 @@ export default function ManagementFeedbackListPage() {
             <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="select select-bordered rounded-2xl border-slate-200 bg-slate-50 text-sm">
               <option value="">Tất cả danh mục</option>
               {categories.map((category) => (
-                <option key={category.id || category.categoryId} value={category.id || category.categoryId}>{category.name || category.categoryName}</option>
+                <option key={category.id || category.categoryId} value={category.id || category.categoryId}>{getCategoryLabel(category.name || category.categoryName || category.categoryType || category.type)}</option>
               ))}
             </select>
           </div>
@@ -262,7 +263,7 @@ export default function ManagementFeedbackListPage() {
                     </div>
                   </div>
                   <div className="text-sm text-slate-500">
-                    <div className="font-semibold text-slate-700">{item.categoryName || item.category?.name || '—'}</div>
+                    <div className="font-semibold text-slate-700">{getCategoryLabel(item.categoryName || item.category?.name || item.categoryType || item.type, '—')}</div>
                     <div className="mt-1">{formatDate(item.createdAt)}</div>
                   </div>
                 </div>

@@ -11,6 +11,7 @@ import { normalizeRole } from '../../utils/roleMap';
 import { APP_ROLES, managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { ManagerMetricCard, ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-tracked-area-id';
@@ -560,7 +561,8 @@ export const Dashboard = () => {
   };
 
   const getCategoryName = (categoryId) => {
-    return categories.find((category) => category.categoryId === categoryId)?.categoryName || 'Khác';
+    const matchedCategory = categories.find((category) => category.categoryId === categoryId);
+    return getCategoryLabel(matchedCategory?.categoryName || matchedCategory?.name || matchedCategory?.categoryType || matchedCategory?.type, 'Khác');
   };
 
   const residentTickets = Array.isArray(tickets) ? tickets : [];
@@ -1452,7 +1454,8 @@ export const Dashboard = () => {
     };
 
     const getCategoryName = categoryId => {
-      return categories.find(c => c.categoryId === categoryId)?.categoryName || 'Chưa phân loại';
+      const matchedCategory = categories.find(c => c.categoryId === categoryId);
+      return getCategoryLabel(matchedCategory?.categoryName || matchedCategory?.name || matchedCategory?.categoryType || matchedCategory?.type, 'Chưa phân loại');
     };
 
     const operatorStats = [
@@ -1836,7 +1839,7 @@ export const Dashboard = () => {
                         <span className="flex min-w-0 items-center gap-3">
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700" aria-hidden="true">{index + 1}</span>
                           <span className="min-w-0">
-                            <h3 className="truncate text-sm font-semibold text-slate-950">{category.categoryName || category.name || 'Chưa phân loại'}</h3>
+                            <h3 className="truncate text-sm font-semibold text-slate-950">{getCategoryLabel(category.categoryName || category.name || category.categoryType || category.type, 'Chưa phân loại')}</h3>
                             <p className="mt-1 text-xs text-slate-500">Khối lượng phản ánh trong dữ liệu tổng hợp</p>
                           </span>
                         </span>

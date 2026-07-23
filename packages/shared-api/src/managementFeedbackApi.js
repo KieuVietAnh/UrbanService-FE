@@ -147,11 +147,57 @@ export const normalizeProviderReportStatus = (value = '') => {
   if (!rawValue) return '';
 
   const normalizedValue = rawValue.toLowerCase();
-  if (normalizedValue === 'assigned') return 'Assigned';
+  if (normalizedValue === 'reported') return 'Reported';
+  if (normalizedValue === 'contacted') return 'Contacted';
+  if (normalizedValue === 'accepted') return 'Accepted';
   if (['inprogress', 'in_progress', 'in progress'].includes(normalizedValue)) return 'InProgress';
-  if (['completed', 'complete'].includes(normalizedValue)) return 'Completed';
+  if (['done', 'completed', 'complete'].includes(normalizedValue)) return 'Done';
+  if (normalizedValue === 'failed') return 'Failed';
+  if (normalizedValue === 'cancelled' || normalizedValue === 'canceled') return 'Cancelled';
 
   return rawValue;
+};
+
+export const normalizeProviderContactLogPayload = (payload = {}) => {
+  const normalizeOptionalString = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'string') return value ?? null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  };
+
+  const normalizeDateTime = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value !== 'string') {
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const date = new Date(trimmed);
+    if (Number.isNaN(date.getTime())) {
+      const fallback = new Date(`${trimmed}:00`);
+      return Number.isNaN(fallback.getTime()) ? null : fallback.toISOString();
+    }
+
+    return date.toISOString();
+  };
+
+  const normalized = {
+    contactMethod: normalizeOptionalString(payload?.contactMethod),
+    contactResult: normalizeOptionalString(payload?.contactResult),
+    contactNote: normalizeOptionalString(payload?.contactNote),
+    contactedAt: normalizeDateTime(payload?.contactedAt),
+  };
+
+  if (normalized.contactMethod === null) delete normalized.contactMethod;
+  if (normalized.contactResult === null) delete normalized.contactResult;
+  if (normalized.contactNote === null) delete normalized.contactNote;
+  if (normalized.contactedAt === null) delete normalized.contactedAt;
+
+  return normalized;
 };
 
 export const canTransitionProviderReportStatus = (currentStatus, nextStatus) => {
@@ -159,12 +205,29 @@ export const canTransitionProviderReportStatus = (currentStatus, nextStatus) => 
   const next = normalizeProviderReportStatus(nextStatus);
 
   const allowedTransitions = {
-    Assigned: ['InProgress'],
-    InProgress: ['Completed'],
-    Completed: [],
+    Reported: ['Contacted', 'Accepted', 'Failed', 'Cancelled'],
+    Contacted: ['Accepted', 'Failed', 'Cancelled'],
+    Accepted: ['InProgress', 'Failed', 'Cancelled'],
+    InProgress: ['Done', 'Failed', 'Cancelled'],
+    Done: [],
+    Failed: [],
+    Cancelled: [],
   };
 
   return Boolean(allowedTransitions[current]?.includes(next));
+};
+
+export const resolveProviderReportById = (payload, providerReportId) => {
+  const targetId = Number(providerReportId);
+  const candidates = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+      ? payload.items
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
+
+  return candidates.find((item) => Number(item?.providerReportId ?? item?.id) === targetId) || null;
 };
 
 export const managementFeedbackApi = {
@@ -234,14 +297,122 @@ export const managementFeedbackApi = {
 
   // Get provider candidates for a feedback (Swagger: /api/management/feedbacks/{feedbackId}/provider-candidates)
   async getProviderCandidates(feedbackId) {
-    const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}/provider-candidates`);
-    return response;
+    const candidates = [
+      `/api/management/feedbacks/${feedbackId}/provider-candidates`,
+      `/api/feedbacks/${feedbackId}/provider-candidates`,
+      `/api/management/feedbacks/${feedbackId}/provider-candidate`,
+      `/api/feedbacks/${feedbackId}/provider-candidate`,
+    ];
+
+    for (const endpoint of candidates) {
+      try {
+        return await axiosClient.get(endpoint);
+      } catch (error) {
+        // try next
+        if (endpoint === candidates[candidates.length - 1]) {
+          // last candidate failed — return empty array to callers
+          return [];
+        }
+      }
+    }
+
+    return [];
   },
 
-  // Get a single provider report by its id
-  async getProviderReportById(providerReportId) {
-    const response = await axiosClient.get(`/api/management/provider-reports/${providerReportId}`);
-    return response;
+  async getLinkedFeedbacks(feedbackId) {
+    const response = await axiosClient.get(`/api/staff/feedbacks/${feedbackId}/linked-feedbacks`);
+    const payload = response?.data ?? response?.item ?? response?.result ?? response ?? {};
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.items)) return payload.items;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.results)) return payload.results;
+
+    return [];
+  },
+
+  async getRelatedFeedbacks(feedbackId) {
+    const response = await axiosClient.get(`/api/feedbacks/${feedbackId}/related`);
+    const payload = response?.data ?? response?.item ?? response?.result ?? response ?? {};
+
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.items)) return payload.items;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.results)) return payload.results;
+
+    return [];
+  },
+
+  // Get a single provider report by its id.
+  // The backend currently exposes provider report data through the feedback-level list endpoint,
+  // so we prefer that shape and can scan feedbacks when the page is opened without navigation state.
+  async getProviderReportById(providerReportId, feedbackId = null) {
+    const normalizedId = String(providerReportId ?? '').trim();
+    if (!normalizedId) {
+      return null;
+    }
+
+    if (feedbackId) {
+      try {
+        const listResponse = await axiosClient.get(`/api/management/feedbacks/${feedbackId}/provider-reports`);
+        const matchedReport = resolveProviderReportById(listResponse, normalizedId);
+        if (matchedReport) {
+          return matchedReport;
+        }
+      } catch (error) {
+        if (error?.response?.status !== 404) {
+          throw error;
+        }
+      }
+    }
+
+    try {
+      const feedbacksResponse = await axiosClient.get('/api/management/feedbacks', {
+        params: {
+          PageNumber: 1,
+          PageSize: 100,
+        },
+      });
+
+      const feedbackItems = Array.isArray(feedbacksResponse)
+        ? feedbacksResponse
+        : Array.isArray(feedbacksResponse?.items)
+          ? feedbacksResponse.items
+          : Array.isArray(feedbacksResponse?.data)
+            ? feedbacksResponse.data
+            : [];
+
+      for (const feedback of feedbackItems) {
+        const currentFeedbackId = feedback?.feedbackId || feedback?.id;
+        if (!currentFeedbackId) continue;
+
+        try {
+          const listResponse = await axiosClient.get(`/api/management/feedbacks/${currentFeedbackId}/provider-reports`);
+          const matchedReport = resolveProviderReportById(listResponse, normalizedId);
+          if (matchedReport) {
+            return matchedReport;
+          }
+        } catch (error) {
+          if (error?.response?.status === 404) {
+            continue;
+          }
+          throw error;
+        }
+      }
+    } catch (error) {
+      if (error?.response?.status !== 404) {
+        throw error;
+      }
+    }
+
+    try {
+      return await axiosClient.get(`/api/management/provider-reports/${normalizedId}`);
+    } catch (error) {
+      if (error?.response?.status !== 404) {
+        throw error;
+      }
+      return null;
+    }
   },
 
   async getProviderReportContactLogs(providerReportId) {
@@ -249,10 +420,55 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  // Get service providers / coordinators directory with filters and pagination
+  async getServiceProviders(params = {}) {
+    try {
+      const response = await axiosClient.get('/api/management/service-providers', { params });
+      return response;
+    } catch (error) {
+      // Return an empty paged response shape on failure to keep callers simple
+      console.warn('managementFeedbackApi.getServiceProviders failed', error);
+      return { items: [], totalCount: 0, page: params?.page || params?.PageNumber || 1, pageSize: params?.pageSize || params?.PageSize || 10 };
+    }
+  },
+
+  // Get a single service provider / coordinator detail
+  async getServiceProviderDetail(coordinatorId) {
+    if (!coordinatorId) return null;
+    try {
+      const response = await axiosClient.get(`/api/management/service-providers/${coordinatorId}`);
+      const payload = response?.data ?? response?.item ?? response?.result ?? response ?? null;
+      return payload;
+    } catch (error) {
+      console.warn('managementFeedbackApi.getServiceProviderDetail failed', error);
+      throw error;
+    }
+  },
+
+  // Get coverages for a coordinator
+  async getCoordinatorCoverages(coordinatorId) {
+    if (!coordinatorId) return [];
+    try {
+      const response = await axiosClient.get(`/api/management/service-providers/${coordinatorId}/coverages`);
+      const payload = response?.data ?? response?.items ?? response ?? [];
+
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.items)) return payload.items;
+      if (Array.isArray(payload?.data)) return payload.data;
+
+      return [];
+    } catch (error) {
+      if (error?.response?.status === 404) return [];
+      console.warn('managementFeedbackApi.getCoordinatorCoverages failed', error);
+      return [];
+    }
+  },
+
   async createProviderReportContactLog(providerReportId, payload) {
+    const normalizedPayload = normalizeProviderContactLogPayload(payload);
     const response = await axiosClient.post(
       `/api/management/provider-reports/${providerReportId}/contact-logs`,
-      payload
+      normalizedPayload
     );
     return response;
   },
@@ -298,14 +514,11 @@ export const managementFeedbackApi = {
 
   async uploadCompletionDocument(providerReportId, file, metadata = {}) {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('Files', file);
 
-    if (metadata.fileName) {
-      formData.append('fileName', metadata.fileName);
-    }
-
-    if (metadata.uploadedBy) {
-      formData.append('uploadedBy', metadata.uploadedBy);
+    const description = typeof metadata?.description === 'string' ? metadata.description.trim() : '';
+    if (description) {
+      formData.append('Description', description);
     }
 
     const response = await axiosClient.post(

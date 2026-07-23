@@ -6,6 +6,7 @@ import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import useTicketDetail from '../../hooks/useTicketDetail';
 import { getCommunityFeedDetail } from '../../services/api/feedApi';
+import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { patchCommunityFeedCacheItem } from '../../services/cache/communityFeedCache';
 import SupportButton from '../../components/community/SupportButton';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
@@ -107,6 +108,14 @@ const JOURNEY_STEPS = [
     icon: Lucide.CircleCheckBig,
   },
 ];
+
+const getStatusLabel = (value) => {
+  const statusMeta = STATUS_META[value];
+  if (statusMeta?.label) return statusMeta.label;
+
+  const normalizedValue = String(value || '').trim();
+  return normalizedValue || 'Đang cập nhật';
+};
 
 const translateCategoryName = (categoryName) => {
   const normalizedCategory = String(categoryName || '')
@@ -328,6 +337,9 @@ export const CommunityFeedDetailPage = () => {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [visibleCommentCount, setVisibleCommentCount] = useState(3);
   const [displaySupportCount, setDisplaySupportCount] = useState(0);
+  const [relatedFeedbacks, setRelatedFeedbacks] = useState([]);
+  const [relatedFeedbacksLoading, setRelatedFeedbacksLoading] = useState(false);
+  const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
   const commentsSectionRef = useRef(null);
   const commentInputRef = useRef(null);
 
@@ -377,6 +389,30 @@ export const CommunityFeedDetailPage = () => {
       Number(ticket?.supportCount || ticket?.supports || 0)
     );
   }, [feedbackId, ticket?.supportCount, ticket?.supports]);
+
+  useEffect(() => {
+    const loadRelatedFeedbacks = async () => {
+      if (!feedbackId) return;
+
+      setRelatedFeedbacksLoading(true);
+      setRelatedFeedbacksError('');
+
+      try {
+        const response = await managementFeedbackApi.getRelatedFeedbacks(feedbackId);
+        setRelatedFeedbacks(Array.isArray(response) ? response : []);
+      } catch (err) {
+        console.error('Failed to load related feedbacks', err);
+        setRelatedFeedbacks([]);
+        setRelatedFeedbacksError(
+          err?.message || 'Không thể tải danh sách phản ánh liên quan.'
+        );
+      } finally {
+        setRelatedFeedbacksLoading(false);
+      }
+    };
+
+    loadRelatedFeedbacks();
+  }, [feedbackId]);
 
   useEffect(() => {
     if (!activeAttachment) return undefined;
@@ -925,6 +961,91 @@ export const CommunityFeedDetailPage = () => {
             </section>
             </div>
           </article>
+
+          <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold">Phản ánh liên quan</h2>
+                <p className="mt-1 text-sm text-base-content/55">
+                  Các phản ánh có thể thuộc cùng một vấn đề hoặc khu vực.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/45 px-3 py-1.5 text-xs font-semibold text-base-content/55">
+                {relatedFeedbacks.length} mục
+              </span>
+            </div>
+
+            {relatedFeedbacksLoading ? (
+              <div className="mt-4 flex items-center justify-center rounded-2xl border border-dashed border-base-300 bg-base-200/35 px-4 py-6 text-sm text-base-content/55">
+                <Lucide.LoaderCircle size={16} className="mr-2 animate-spin" aria-hidden="true" />
+                Đang tải phản ánh liên quan...
+              </div>
+            ) : relatedFeedbacksError ? (
+              <div className="mt-4 rounded-2xl border border-error/20 bg-error/8 px-4 py-4 text-sm text-error">
+                {relatedFeedbacksError}
+              </div>
+            ) : relatedFeedbacks.length === 0 ? (
+              <div className="mt-4 rounded-2xl border border-dashed border-base-300 bg-base-200/35 px-4 py-6 text-center text-sm text-base-content/50">
+                Chưa có phản ánh liên quan nào.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {relatedFeedbacks.map((item, index) => {
+                  const relatedId = item?.feedbackId || item?.id;
+                  return (
+                    <div key={relatedId || index} className="rounded-2xl border border-base-300 bg-base-200/35 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                            Feedback ID
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-base-content">{relatedId || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                            Trạng thái
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-base-content">
+                            {getStatusLabel(item?.status)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                            Danh mục
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-base-content">
+                            {translateCategoryName(item?.categoryName || item?.category?.name || item?.categoryType || item?.type)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                            Ngày tạo
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-base-content">
+                            {formatDateTime(item?.createdAt || item?.createdDate)}
+                          </div>
+                        </div>
+                      </div>
+                      {relatedId ? (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/community/feed/${relatedId}`)}
+                            className="btn btn-outline btn-sm rounded-xl"
+                          >
+                            <Lucide.ExternalLink size={14} aria-hidden="true" />
+                            Xem chi tiết
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
           <section
             id="community-comments"
