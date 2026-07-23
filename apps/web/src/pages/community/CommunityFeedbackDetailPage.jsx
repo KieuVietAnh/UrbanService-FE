@@ -516,7 +516,23 @@ export const CommunityFeedDetailPage = () => {
     navigate(backDestination);
   };
 
-  const handleJumpToComments = () => {
+  const detailPath = `${location.pathname}${location.search}`;
+  const commentReturnPath = `${detailPath}#community-comments`;
+
+  const redirectToLoginForInteraction = () => {
+    const loginPath = (
+      `/login?intent=community-interaction&redirect=${encodeURIComponent(commentReturnPath)}`
+    );
+
+    navigate(loginPath, {
+      state: {
+        from: commentReturnPath,
+        intent: 'community-interaction',
+      },
+    });
+  };
+
+  const scrollToComments = () => {
     const prefersReducedMotion = window.matchMedia?.(
       '(prefers-reduced-motion: reduce)'
     ).matches;
@@ -531,18 +547,73 @@ export const CommunityFeedDetailPage = () => {
     }, prefersReducedMotion ? 0 : 420);
   };
 
+  const handleJumpToComments = () => {
+    if (!user) {
+      redirectToLoginForInteraction();
+      return;
+    }
+
+    scrollToComments();
+  };
+
+  useEffect(() => {
+    if (
+      !user ||
+      loading ||
+      location.hash !== '#community-comments'
+    ) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const prefersReducedMotion = window.matchMedia?.(
+        '(prefers-reduced-motion: reduce)'
+      ).matches;
+
+      commentsSectionRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
+
+      window.setTimeout(() => {
+        commentInputRef.current?.focus({ preventScroll: true });
+      }, prefersReducedMotion ? 0 : 420);
+    }, 80);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [feedbackId, loading, location.hash, user]);
+
   if (loading) {
     return (
       <CommunityDetailShell>
-      <main className="space-y-4" aria-busy="true" aria-label="Đang tải chi tiết phản ánh cộng đồng">
-        <DetailBackButton label={backLabel} onClick={handleBack} />
-        <section className="h-64 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
-        <section className="h-40 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-          <div className="h-96 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
-          <div className="h-80 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
-        </section>
-      </main>
+        <main
+          className="space-y-4"
+          aria-busy="true"
+          aria-label="Đang tải chi tiết phản ánh cộng đồng"
+        >
+          <section className="relative h-[224px] overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]">
+            <DetailSmartCityBackdrop />
+            <div className="relative grid h-full gap-6 px-6 py-7 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-center">
+              <div className="space-y-4">
+                <div className="h-7 w-32 animate-pulse rounded-full bg-base-content/8" />
+                <div className="h-9 w-[min(520px,78%)] animate-pulse rounded-xl bg-base-content/10" />
+                <div className="flex flex-wrap gap-3">
+                  <div className="h-8 w-32 animate-pulse rounded-xl bg-base-content/8" />
+                  <div className="h-8 w-44 animate-pulse rounded-xl bg-base-content/8" />
+                  <div className="h-8 w-36 animate-pulse rounded-xl bg-base-content/8" />
+                </div>
+              </div>
+              <div className="hidden h-36 animate-pulse rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] xl:block" />
+            </div>
+          </section>
+
+          <section className="h-44 animate-pulse rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" />
+
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="h-[420px] animate-pulse rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" />
+            <div className="h-[280px] animate-pulse rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" />
+          </section>
+        </main>
       </CommunityDetailShell>
     );
   }
@@ -656,6 +727,8 @@ export const CommunityFeedDetailPage = () => {
                   feedbackId={feedbackId}
                   initialCount={supportCount}
                   initialSupported={ticket?.isSupportedByCurrentUser}
+                  isAuthenticated={Boolean(user)}
+                  onRequireAuth={redirectToLoginForInteraction}
                   onChange={({ count, isSupported }) => {
                     const nextSupportCount = Math.max(0, Number(count) || 0);
                     setDisplaySupportCount(nextSupportCount);
@@ -854,6 +927,7 @@ export const CommunityFeedDetailPage = () => {
           </article>
 
           <section
+            id="community-comments"
             ref={commentsSectionRef}
             className="scroll-mt-24 rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"
             aria-labelledby="community-comments-title"
@@ -877,7 +951,15 @@ export const CommunityFeedDetailPage = () => {
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-stretch">
               <div className="flex min-h-full min-w-0 flex-col gap-4">
                 <form
-                  onSubmit={handleSendChat}
+                  onSubmit={(event) => {
+                    if (!user) {
+                      event.preventDefault();
+                      redirectToLoginForInteraction();
+                      return;
+                    }
+
+                    handleSendChat(event);
+                  }}
                   className="rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] p-3 shadow-sm sm:p-4"
                 >
                   <div className="flex items-start gap-3">
@@ -894,8 +976,18 @@ export const CommunityFeedDetailPage = () => {
                         id="community-detail-comment"
                         rows="2"
                         value={chatInput}
+                        readOnly={!user}
+                        onFocus={() => {
+                          if (!user) {
+                            redirectToLoginForInteraction();
+                          }
+                        }}
                         onChange={(event) => setChatInput(event.target.value)}
-                        placeholder="Bạn nghĩ gì về phản ánh này?"
+                        placeholder={
+                          user
+                            ? 'Bạn nghĩ gì về phản ánh này?'
+                            : 'Đăng nhập để tham gia bình luận'
+                        }
                         className="textarea textarea-bordered min-h-[72px] max-h-40 w-full resize-y rounded-xl border-[var(--public-border)] bg-[var(--public-surface)] px-4 py-3 text-sm leading-6 focus:border-primary/40 focus:outline-none"
                       />
 
@@ -905,12 +997,26 @@ export const CommunityFeedDetailPage = () => {
                           Nội dung được hiển thị công khai.
                         </p>
                         <button
-                          type="submit"
-                          disabled={!chatInput?.trim()}
+                          type={user ? 'submit' : 'button'}
+                          onClick={
+                            user
+                              ? undefined
+                              : redirectToLoginForInteraction
+                          }
+                          disabled={user ? !chatInput?.trim() : false}
                           className="btn admin-primary-action h-10 min-h-10 rounded-xl px-4"
                         >
-                          <Lucide.Send size={14} aria-hidden="true" />
-                          Gửi bình luận
+                          {user ? (
+                            <>
+                              <Lucide.Send size={14} aria-hidden="true" />
+                              Gửi bình luận
+                            </>
+                          ) : (
+                            <>
+                              <Lucide.LogIn size={14} aria-hidden="true" />
+                              Đăng nhập để bình luận
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>

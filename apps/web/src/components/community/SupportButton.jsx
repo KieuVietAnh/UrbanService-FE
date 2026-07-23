@@ -9,6 +9,8 @@ export default function SupportButton({
   initialSupported = false,
   className = '',
   onChange,
+  isAuthenticated,
+  onRequireAuth,
 }) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -27,6 +29,12 @@ export default function SupportButton({
 
   const toggle = async (event) => {
     event?.stopPropagation();
+
+    if (isAuthenticated === false) {
+      onRequireAuth?.();
+      return;
+    }
+
     if (loading) return;
 
     if (!user) {
