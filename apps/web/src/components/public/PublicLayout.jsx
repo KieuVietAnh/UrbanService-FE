@@ -84,6 +84,33 @@ const PublicThemeStyles = () => (
       color: #f8fafc !important;
     }
 
+    .public-page .public-nav-link-active {
+      border-color: rgba(147, 197, 253, 0.8) !important;
+      background: linear-gradient(
+        145deg,
+        rgba(239, 246, 255, 0.98),
+        rgba(224, 242, 254, 0.88)
+      ) !important;
+      color: #1d4ed8 !important;
+      box-shadow:
+        0 8px 20px rgba(37, 99, 235, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    }
+
+    html[data-theme="dark"] .public-page .public-nav-link-active,
+    html[data-theme="dark"] .public-page .public-nav-link-active:hover {
+      border-color: rgba(56, 189, 248, 0.34) !important;
+      background: linear-gradient(
+        145deg,
+        rgba(30, 64, 175, 0.3),
+        rgba(8, 47, 73, 0.42)
+      ) !important;
+      color: #dbeafe !important;
+      box-shadow:
+        0 10px 24px rgba(2, 8, 23, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.055);
+    }
+
     .public-hero,
     .public-quick-section,
     .public-recent-section,

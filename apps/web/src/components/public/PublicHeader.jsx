@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -11,11 +11,36 @@ const navigationItems = [
   { label: 'Bản đồ sự cố', to: '/community/map' },
 ];
 
-const NavigationItem = ({ item, className }) => (
-  <Link to={item.to} className={className}>{item.label}</Link>
+const isNavigationItemActive = (pathname, item) => {
+  if (item.to === '/') {
+    return pathname === '/';
+  }
+
+  if (item.to === '/community/feed') {
+    return (
+      pathname === '/community/feed' ||
+      pathname.startsWith('/community/feed/')
+    );
+  }
+
+  return (
+    pathname === item.to ||
+    pathname.startsWith(`${item.to}/`)
+  );
+};
+
+const NavigationItem = ({ item, className, isActive }) => (
+  <Link
+    to={item.to}
+    className={className}
+    aria-current={isActive ? 'page' : undefined}
+  >
+    {item.label}
+  </Link>
 );
 
 export const PublicHeader = () => {
+  const location = useLocation();
   const { theme, toggle } = useTheme();
 
   return (
@@ -30,15 +55,15 @@ export const PublicHeader = () => {
           aria-label="UrbanMind - Trang chủ"
         >
           <span className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.26)]">
-            <Lucide.MapPinned size={20} aria-hidden="true" />
+            <Lucide.MapPinned size={21} aria-hidden="true" />
             <span className="absolute -bottom-3 -right-3 h-8 w-8 rounded-full bg-white/15" aria-hidden="true" />
           </span>
           <span>
-            <strong className="public-header-brand-title block text-[18px] font-bold leading-none tracking-[-0.025em]">
+            <strong className="public-header-brand-title block text-[18px] font-bold tracking-[-0.025em]">
               UrbanMind
             </strong>
-            <span className="public-header-brand-subtitle mt-1 hidden text-[10px] font-semibold uppercase tracking-[0.14em] sm:block">
-              Cổng thông tin đô thị
+            <span className="public-header-brand-subtitle mt-0.5 hidden text-[11px] font-medium sm:block">
+              Cổng phản ánh đô thị
             </span>
           </span>
         </Link>
@@ -48,7 +73,15 @@ export const PublicHeader = () => {
             <li key={item.to}>
               <NavigationItem
                 item={item}
-                className="public-nav-link inline-flex h-10 items-center rounded-xl px-3.5 text-sm font-semibold transition hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25"
+                isActive={isNavigationItemActive(
+                  location.pathname,
+                  item
+                )}
+                className={`public-nav-link inline-flex h-10 items-center rounded-xl border px-3.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25 ${
+                  isNavigationItemActive(location.pathname, item)
+                    ? 'public-nav-link-active border-blue-200/80 bg-blue-50 text-blue-700 shadow-sm'
+                    : 'border-transparent hover:border-blue-100 hover:bg-blue-50 hover:text-blue-700'
+                }`}
               />
             </li>
           ))}
@@ -99,7 +132,15 @@ export const PublicHeader = () => {
                 <li key={item.to}>
                   <NavigationItem
                     item={item}
-                    className="flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-slate-900"
+                    isActive={isNavigationItemActive(
+                      location.pathname,
+                      item
+                    )}
+                    className={`public-nav-link flex min-h-11 items-center rounded-xl border px-3 text-sm font-medium transition ${
+                      isNavigationItemActive(location.pathname, item)
+                        ? 'public-nav-link-active border-blue-200/80 bg-blue-50 text-blue-700'
+                        : 'border-transparent text-slate-700 hover:bg-slate-100 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-slate-900'
+                    }`}
                   />
                 </li>
               ))}
