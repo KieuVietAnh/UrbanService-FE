@@ -9,15 +9,15 @@ import { ThemeToggle } from '../../components/design-system';
 import { normalizeRole } from '../../utils/roleMap';
 
 const citizenNavigation = [
-  { label: 'Trang chủ', to: '/dashboard', end: true },
+  { label: 'Trang chủ', to: '/', end: true },
   { label: 'Phản ánh của tôi', to: '/tickets', end: true },
   { label: 'Bảng tin', to: '/community/feed' },
   { label: 'Bản đồ sự cố', to: '/community/map' },
 ];
 
 const isCitizenNavigationActive = (targetPath, pathname) => {
-  if (targetPath === '/dashboard') {
-    return pathname === '/dashboard';
+  if (targetPath === '/') {
+    return pathname === '/' || pathname === '/dashboard';
   }
 
   if (targetPath === '/tickets') {
@@ -83,7 +83,7 @@ const CitizenHeader = ({ user, logout, navigate, pathname }) => (
   <header className="sticky top-0 z-40 shrink-0 border-b border-slate-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.02)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/95">
     <div className="grid h-[72px] w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 px-5 sm:px-6 lg:px-8 2xl:px-10">
       <Link
-        to="/dashboard"
+        to="/"
         className="group flex min-w-fit items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
         aria-label="Về trang chủ UrbanMind"
       >
