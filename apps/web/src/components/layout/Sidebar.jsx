@@ -1,7 +1,7 @@
 // src/components/layout/Sidebar.jsx
 
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -9,7 +9,7 @@ import { normalizeRole } from '../../utils/roleMap';
 
 // Import all sidebar menus
 import userMenu from '../../roles/service-user/sidebarMenu';
-import staffMenu from '../../roles/system-staff/sidebarMenu';
+import staffMenu, { isSystemStaffMenuItemActive } from '../../roles/system-staff/sidebarMenu';
 import providerMenu from '../../roles/service-provider/sidebarMenu';
 import managerMenu from '../../roles/interaction-manager/sidebarMenu';
 import adminMenu from '../../roles/administrator/sidebarMenu';
@@ -51,6 +51,7 @@ const getUserInitials = (value = '') => {
 export const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [avatarError, setAvatarError] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -62,6 +63,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const displayName = user.fullName || user.email || 'Người dùng';
   const userInitials = getUserInitials(displayName);
   const showAvatarImage = Boolean(user.avatarUrl) && !avatarError;
+  const currentPathname = location.pathname;
 
   const handleLogoutClick = () => {
     setIsLogoutModalOpen(true);
@@ -145,32 +147,32 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
         {/* Navigation Menu */}
         <nav className="admin-sidebar-nav min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2.5 py-2">
-          {menuItems.map((item, index) => (
-            <NavLink
-              key={index}
-              to={item.path}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `group relative flex items-center gap-3 rounded-xl border px-2.5 py-2 text-[13px] font-semibold transition-colors duration-150 focus:outline-none focus-visible:outline-none active:outline-none ${isActive
+          {menuItems.map((item, index) => {
+            const isActive = currentRole === APP_ROLES.SYSTEM_STAFF
+              ? isSystemStaffMenuItemActive(item, currentPathname)
+              : currentPathname === item.path || currentPathname.startsWith(`${item.path}/`);
+
+            return (
+              <NavLink
+                key={index}
+                to={item.path}
+                onClick={onClose}
+                className={`group relative flex items-center gap-3 rounded-xl border px-2.5 py-2 text-[13px] font-semibold transition-colors duration-150 focus:outline-none focus-visible:outline-none active:outline-none ${isActive
                   ? 'admin-sidebar-link-active border-blue-200/70 bg-blue-50 text-blue-700 shadow-sm shadow-blue-100/70'
                   : 'admin-sidebar-link border-transparent text-slate-600 hover:border-slate-200/80 hover:bg-white/75 hover:text-slate-950 hover:shadow-sm hover:shadow-blue-100/40'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span
-                    className={`absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full transition-opacity ${isActive ? 'bg-blue-600 opacity-100' : 'opacity-0'}`}
-                    aria-hidden
-                  />
-                  <span className={`admin-sidebar-link-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-transparent text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-700'}`}>
-                    {renderIcon(item.icon, 'h-[18px] w-[18px]')}
-                  </span>
-                  <span className="min-w-0 truncate">{item.name}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
+                }`}
+              >
+                <span
+                  className={`absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full transition-opacity ${isActive ? 'bg-blue-600 opacity-100' : 'opacity-0'}`}
+                  aria-hidden
+                />
+                <span className={`admin-sidebar-link-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-transparent text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-700'}`}>
+                  {renderIcon(item.icon, 'h-[18px] w-[18px]')}
+                </span>
+                <span className="min-w-0 truncate">{item.name}</span>
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Footer Actions */}

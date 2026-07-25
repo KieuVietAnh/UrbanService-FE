@@ -109,6 +109,16 @@ test('normalizeFeedbackListParams maps UI pagination to swagger query parameters
   });
 });
 
+test('normalizeFeedbackListParams converts AI Reviewed to the backend-compatible status value', () => {
+  const normalized = normalizeFeedbackListParams({
+    status: 'AI Reviewed',
+  });
+
+  assert.deepEqual(normalized, {
+    Status: 'AiReviewed',
+  });
+});
+
 test('normalizeCommentPayload keeps only the swagger-accepted content field', () => {
   const normalized = normalizeCommentPayload({
     userId: 'u-1',
