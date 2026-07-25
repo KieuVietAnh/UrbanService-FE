@@ -42,6 +42,32 @@ test('normalizeAiReviewedPayload maps ai-reviewed payloads to queue-ready items'
   assert.equal(normalized[0].detectedCategoryName, 'Hạ tầng');
 });
 
+test('normalizeAiReviewedPayload falls back to title when description is missing', () => {
+  const normalized = normalizeAiReviewedPayload({
+    items: [
+      {
+        feedback: {
+          feedbackId: 'fb-2',
+          title: 'Đèn đường bị hỏng',
+          categoryId: 2,
+          priority: 'Medium',
+          reporterName: 'Kieu Viet Anh',
+          locationText: '12 Nguyễn Huệ',
+        },
+        analysisResult: {
+          confidenceScore: 0.95,
+          sentiment: 'Negative',
+          summary: 'Sự cố đèn đường',
+          detectedCategoryName: 'Street Lighting',
+        },
+      },
+    ],
+  });
+
+  assert.equal(normalized[0].title, 'Đèn đường bị hỏng');
+  assert.equal(normalized[0].description, '');
+});
+
 test('normalizeStaffFeedbackUpdatePayload converts edit values to backend-safe types', () => {
   const normalized = normalizeStaffFeedbackUpdatePayload({
     categoryId: '12',
