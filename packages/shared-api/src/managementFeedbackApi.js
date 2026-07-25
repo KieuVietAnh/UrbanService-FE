@@ -8,21 +8,52 @@ export const normalizeAiReviewedPayload = (payload = {}) => {
     const feedback = item?.feedback || {};
     const analysisResult = item?.analysisResult || {};
 
+    const normalizeStringArray = (value) => {
+      if (Array.isArray(value)) {
+        return value.filter((entry) => typeof entry === 'string' && entry.trim()).map((entry) => entry.trim());
+      }
+      if (typeof value === 'string' && value.trim()) {
+        return value.split(/,|\n/).map((entry) => entry.trim()).filter(Boolean);
+      }
+      return [];
+    };
+
+    const rawResponse = analysisResult.rawResponse || '';
+    let parsedRawResponse = null;
+    if (typeof rawResponse === 'string' && rawResponse.trim()) {
+      try {
+        parsedRawResponse = JSON.parse(rawResponse);
+      } catch {
+        parsedRawResponse = null;
+      }
+    }
+
+    const riskNotes = normalizeStringArray(parsedRawResponse?.riskNotes || analysisResult.riskNotes || []);
+    const keywords = normalizeStringArray(parsedRawResponse?.keywords || analysisResult.keywords || []);
+    const normalizedTitle = feedback.title || feedback.description || feedback.content || 'Không có tiêu đề';
+    const normalizedDescription = feedback.description || feedback.content || feedback.details || feedback.message || feedback.title || '';
+
     return {
       ...feedback,
       feedbackId: feedback.feedbackId || feedback.id || item?.feedbackId || '',
-      title: feedback.title || feedback.description || 'Không có tiêu đề',
-      description: feedback.description || feedback.content || '',
-      reporterName: feedback.reporterName || feedback.reporter?.name || 'Không rõ',
-      locationText: feedback.locationText || feedback.location || '',
+      title: normalizedTitle,
+      description: normalizedDescription,
+      reporterName: feedback.reporterName || feedback.reporter?.name || feedback.userName || 'Không rõ',
+      locationText: feedback.locationText || feedback.location || feedback.address || '',
       categoryId: feedback.categoryId ?? analysisResult.detectedCategoryId ?? '',
+      categoryName: feedback.categoryName || analysisResult.detectedCategoryName || '',
       priority: feedback.priority || 'Medium',
+      areaName: feedback.areaName || feedback.area?.name || '',
       createdAt: feedback.createdAt || analysisResult.createdAt || null,
-      summary: analysisResult.summary || '',
-      confidenceScore: analysisResult.confidenceScore ?? 0,
-      sentiment: analysisResult.sentiment || 'Unknown',
-      detectedCategoryName: analysisResult.detectedCategoryName || '',
-      rawResponse: analysisResult.rawResponse || '',
+      updatedAt: feedback.updatedAt || feedback.updatedDate || null,
+      summary: analysisResult.summary || parsedRawResponse?.summary || '',
+      confidenceScore: analysisResult.confidenceScore ?? parsedRawResponse?.confidenceScore ?? 0,
+      sentiment: analysisResult.sentiment || parsedRawResponse?.sentiment || 'Unknown',
+      urgencyLevel: analysisResult.urgencyLevel || parsedRawResponse?.urgencyLevel || '',
+      detectedCategoryName: analysisResult.detectedCategoryName || parsedRawResponse?.detectedCategoryName || feedback.categoryName || '',
+      keywords,
+      riskNotes,
+      rawResponse,
       analysisResult,
     };
   });
@@ -230,6 +261,43 @@ export const resolveProviderReportById = (payload, providerReportId) => {
   return candidates.find((item) => Number(item?.providerReportId ?? item?.id) === targetId) || null;
 };
 
+export const getResolutionSubmitEndpoints = (feedbackId) => {
+  const normalizedFeedbackId = String(feedbackId ?? '').trim();
+  const endpoints = [];
+
+  if (normalizedFeedbackId) {
+    endpoints.push(`/api/management/feedbacks/${normalizedFeedbackId}/resolutions`);
+  }
+
+  endpoints.push('/api/management/feedbacks/submit-resolution');
+  return endpoints;
+};
+
+const normalizeResolutionItems = (payload = {}) => {
+  const candidates = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+      ? payload.items
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.resolutions)
+          ? payload.resolutions
+          : [];
+
+  if (candidates.length > 0) {
+    return candidates;
+  }
+
+  if (payload && typeof payload === 'object') {
+    const directResolution = payload.resolution || payload.result || payload.item || payload.data || payload.resultData || null;
+    if (directResolution && typeof directResolution === 'object') {
+      return [directResolution];
+    }
+  }
+
+  return [];
+};
+
 export const managementFeedbackApi = {
   // Get all feedbacks with pagination and filters
   async getFeedbacks(params = {}) {
@@ -248,12 +316,11 @@ export const managementFeedbackApi = {
 
   // Step 19: get the resolution history submitted for this feedback.
   async getResolutions(feedbackId) {
-    const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}/resolutions`);
-    if (Array.isArray(response)) return response;
-    if (Array.isArray(response?.items)) return response.items;
-    if (Array.isArray(response?.data)) return response.data;
-    if (Array.isArray(response?.resolutions)) return response.resolutions;
-    return response ? [response] : [];
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) return [];
+
+    const response = await axiosClient.get(`/api/management/feedbacks/${normalizedFeedbackId}/resolutions`);
+    return normalizeResolutionItems(response);
   },
 
   // Update feedback details
@@ -547,9 +614,31 @@ export const managementFeedbackApi = {
   },
 
   // Submit a resolution from an operator
-  async submitResolution(resolutionData) {
-    const response = await axiosClient.post('/api/management/feedbacks/submit-resolution', resolutionData);
-    return response;
+  async submitResolution(feedbackId, resolutionData = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) {
+      throw new Error('Thiếu feedbackId để gửi resolution.');
+    }
+
+    const payload = {
+      ...resolutionData,
+      feedbackId: normalizedFeedbackId,
+    };
+
+    const endpoints = getResolutionSubmitEndpoints(normalizedFeedbackId);
+
+    for (const endpoint of endpoints) {
+      try {
+        return await axiosClient.post(endpoint, payload);
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status !== 404 && status !== 405) {
+          throw error;
+        }
+      }
+    }
+
+    return null;
   },
 
   // Get feedbacks that have already been reviewed by AI

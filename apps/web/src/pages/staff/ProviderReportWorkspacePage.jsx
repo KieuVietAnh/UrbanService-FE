@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
@@ -194,7 +194,7 @@ const MetaField = ({ label, value, mono }) => (
 );
 
 /** Step navigation footer — Next / Back */
-const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextDisabled, nextLoading, nextVariant = 'primary' }) => {
+const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextDisabled, nextLoading, nextVariant = 'primary', hideNext = false }) => {
   const isFirst = currentIndex === 0;
   const isLast  = currentIndex === totalSteps - 1;
   return (
@@ -222,7 +222,7 @@ const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextD
           Quay lại
         </button>
       )}
-      {!isLast && (
+      {!isLast && !hideNext && (
         <button
           type="button"
           className={`btn btn-sm ${nextVariant === 'primary' ? 'btn-primary' : 'btn-success'}`}
@@ -306,6 +306,10 @@ export const ProviderReportWorkspacePage = () => {
 
   /* ── Derive active step id from index ──────────────────────────────────── */
   const activeStepId = STEPS[stepIndex]?.id ?? 'overview';
+
+  const extractFeedbackId = useCallback((currentReport = report) => {
+    return currentReport?.feedbackId || currentReport?.feedback?.feedbackId || currentReport?.feedback?.id || feedbackIdFromState || null;
+  }, [feedbackIdFromState, report]);
 
   /* ── Navigation helpers ─────────────────────────────────────────────────── */
   const canNavigateToStep = (idx) => {
@@ -435,22 +439,56 @@ export const ProviderReportWorkspacePage = () => {
     load();
   }, [providerReportId, activeStepId]);
 
+  const loadExistingResolutions = useCallback(async (feedbackId, options = {}) => {
+    const fallbackResolution = report?.resolution ? [report.resolution] : [];
+    if (!feedbackId && fallbackResolution.length === 0) {
+      setExistingResolutions([]);
+      return [];
+    }
+
+    if (!feedbackId) {
+      if (options?.active !== false) {
+        setExistingResolutions(fallbackResolution);
+      }
+      return fallbackResolution;
+    }
+
+    if (options?.active !== false) {
+      setResolutionsLoading(true);
+      setResolutionsError('');
+    }
+
+    try {
+      const res = await managementFeedbackApi.getResolutions(feedbackId);
+      const list = Array.isArray(res) ? res : [];
+      if (options?.active !== false) {
+        setExistingResolutions(list);
+      }
+      return list;
+    } catch (err) {
+      console.error('Failed to load resolutions', err);
+      if (options?.active !== false) {
+        setResolutionsError(err?.message || 'Không thể tải resolution.');
+        setExistingResolutions(fallbackResolution);
+      }
+      return fallbackResolution;
+    } finally {
+      if (options?.active !== false) {
+        setResolutionsLoading(false);
+      }
+    }
+  }, [report]);
+
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const feedbackId = report?.feedbackId || report?.feedback?.feedbackId || null;
+      const feedbackId = extractFeedbackId(report);
       if (!feedbackId || activeStepId !== 'resolution') return;
-      setResolutionsLoading(true); setResolutionsError('');
-      try {
-        const res = await managementFeedbackApi.getResolutions(feedbackId);
-        const list = Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : Array.isArray(res?.data) ? res.data : [];
-        if (active) { setExistingResolutions(list); }
-      } catch (err) { console.error('Failed to load resolutions', err); if (active) { setResolutionsError(err?.message || 'Không thể tải resolution.'); setExistingResolutions([]); } }
-      finally { if (active) setResolutionsLoading(false); }
+      await loadExistingResolutions(feedbackId, { active });
     };
     load();
     return () => { active = false; };
-  }, [activeStepId, report?.feedbackId, report?.feedback?.feedbackId]);
+  }, [activeStepId, extractFeedbackId, loadExistingResolutions, report]);
 
   /* ════════════════════════════════════════════════════════════════════════
      Derived state (unchanged)
@@ -720,6 +758,18 @@ export const ProviderReportWorkspacePage = () => {
     finally { setLogSaving(false); }
   };
 
+  const handleResolutionFormSubmit = (event) => {
+    event.preventDefault();
+    const summary = String(resolutionForm.resolutionSummary || '').trim();
+    const action  = String(resolutionForm.actionTaken       || '').trim();
+    if (!summary || !action) {
+      setResolutionError('Vui lòng nhập Tóm tắt kết quả và Hành động đã thực hiện.');
+      return;
+    }
+    setResolutionError('');
+    setConfirmingResolutionSubmit(true);
+  };
+
   const handleSubmitResolution = async () => {
     const summary = String(resolutionForm.resolutionSummary || '').trim();
     const action  = String(resolutionForm.actionTaken       || '').trim();
@@ -727,16 +777,25 @@ export const ProviderReportWorkspacePage = () => {
     if (!summary || !action) { setResolutionError('Vui lòng nhập Tóm tắt kết quả và Hành động đã thực hiện.'); return; }
     setSubmittingResolution(true); setResolutionError('');
     try {
-      const feedbackId = report?.feedbackId || report?.feedback?.feedbackId || report?.id || providerReportId;
-      await managementFeedbackApi.submitResolution({
-        feedbackId,
+      const feedbackId = extractFeedbackId(report);
+      if (!feedbackId) {
+        throw new Error('Không xác định được feedbackId của báo cáo để gửi kết quả xử lý.');
+      }
+
+      await managementFeedbackApi.submitResolution(feedbackId, {
         status: 'SubmittedForApproval',
         resolutionSummary: summary,
         actionTaken: action,
         resultNote: result,
         completionImages: resolutionImages.map((img) => ({ fileName: img.fileName, previewUrl: img.previewUrl })),
       });
-      setExistingResolutions([{ resolutionSummary: summary, actionTaken: action, resultNote: result, status: 'SubmittedForApproval', createdByStaffUserName: 'You', resolvedAt: new Date().toISOString() }]);
+
+      const refreshedResolutions = await loadExistingResolutions(feedbackId, { active: true });
+      if (Array.isArray(refreshedResolutions) && refreshedResolutions.length > 0) {
+        setExistingResolutions(refreshedResolutions);
+      } else {
+        setExistingResolutions([{ resolutionSummary: summary, actionTaken: action, resultNote: result, status: 'SubmittedForApproval', createdByStaffUserName: 'You', resolvedAt: new Date().toISOString() }]);
+      }
       openToast('Đã gửi kết quả xử lý', 'Kết quả xử lý đã được gửi chờ quản lý phê duyệt.');
       const submittedIdx = STEPS.findIndex((s) => s.id === 'submitted');
       goTo(submittedIdx);
@@ -1194,7 +1253,7 @@ export const ProviderReportWorkspacePage = () => {
                   </div>
                 ) : (
                   /* Resolution form */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                  <form onSubmit={handleResolutionFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                     {[
                       { key: 'resolutionSummary', label: 'Tóm tắt kết quả',         placeholder: 'Tóm tắt kết quả xử lý...', required: true },
                       { key: 'actionTaken',       label: 'Hành động đã thực hiện', placeholder: 'Các bước công việc đã thực hiện...', required: true },
@@ -1209,6 +1268,7 @@ export const ProviderReportWorkspacePage = () => {
                           placeholder={placeholder}
                           className="textarea textarea-bordered w-full"
                           disabled={!canAccessResolution}
+                          required={required}
                         />
                       </label>
                     ))}
@@ -1242,7 +1302,19 @@ export const ProviderReportWorkspacePage = () => {
                         </div>
                       )}
                     </div>
-                  </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-sm"
+                        disabled={submittingResolution || !canAccessResolution}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                      >
+                        {submittingResolution ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={13} />}
+                        {submittingResolution ? 'Đang gửi...' : 'Gửi kết quả xử lý'}
+                      </button>
+                    </div>
+                  </form>
                 )}
               </div>
 
@@ -1250,11 +1322,7 @@ export const ProviderReportWorkspacePage = () => {
                 currentIndex={visibleStepIndex}
                 totalSteps={totalVisible}
                 onBack={goBack}
-                onNext={() => setConfirmingResolutionSubmit(true)}
-                nextLabel={submittingResolution ? 'Đang gửi...' : 'Gửi kết quả xử lý'}
-                nextDisabled={submittingResolution || !canAccessResolution || existingResolutions.length > 0}
-                nextLoading={submittingResolution}
-                nextVariant="primary"
+                hideNext
               />
             </section>
           )}

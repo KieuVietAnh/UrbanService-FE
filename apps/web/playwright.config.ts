@@ -15,8 +15,8 @@ export default defineConfig({
     ['html', { outputFolder: 'tests/results/html', open: 'never' }],
   ],
   use: {
-    // Default to the deployed frontend; allow override via BASE_URL for local runs
-    baseURL: process.env.BASE_URL || 'https://urbanservice.me',
+    // Use the deployed site by default for smoke runs.
+    baseURL: process.env.BASE_URL || 'https://urbanservice.me/',
     actionTimeout: 10000,
     navigationTimeout: 30000,
     trace: 'retain-on-failure',

@@ -143,18 +143,46 @@ export const AIReviewDetail = () => {
               {/* Content preview */}
               <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-4 h-fit">
                 <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400 border-b border-base-300 pb-2">Chi Tiết Sự Cố</h4>
-                <div className="space-y-1.5 text-xs">
-                  <span className="font-bold text-gray-500">Mã phản ánh:</span>
-                  <span className="font-semibold block">{selectedTicket.feedbackId}</span>
+
+                <div className="space-y-2 text-xs">
+                  <div>
+                    <span className="font-bold text-gray-500">Tiêu đề:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.title || 'Không có tiêu đề'}</div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-500">Mã phản ánh:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.feedbackId}</div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-500">Người báo cáo:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.reporterName || 'Không rõ'}</div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-500">Địa điểm:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.locationText || 'Không có địa điểm'}</div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-500">Khu vực:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.areaName || 'Không có khu vực'}</div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-500">Danh mục:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.categoryName || selectedTicket.detectedCategoryName || 'Không có danh mục'}</div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-500">Mức độ ưu tiên:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.priority || 'Medium'}</div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-500">Thời gian tạo:</span>
+                    <div className="mt-1 font-semibold text-gray-700">{selectedTicket.createdAt ? new Date(selectedTicket.createdAt).toLocaleString('vi-VN') : 'Không rõ'}</div>
+                  </div>
                 </div>
-                <div className="space-y-1.5 text-xs">
-                  <span className="font-bold text-gray-500">Người báo cáo:</span>
-                  <span className="font-semibold block">{selectedTicket.reporterName}</span>
-                </div>
+
                 <div className="space-y-1.5 text-xs">
                   <span className="font-bold text-gray-500">Nội dung phản ánh:</span>
-                  <p className="bg-base-200/50 p-3.5 rounded-xl border border-base-300 font-semibold text-gray-600 leading-relaxed italic">
-                    "{selectedTicket.description}"
+                  <p className="bg-base-200/50 p-3.5 rounded-xl border border-base-300 font-semibold text-gray-600 leading-relaxed">
+                    {selectedTicket.description || selectedTicket.title || 'Không có nội dung phản ánh.'}
                   </p>
                 </div>
                 {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
@@ -173,11 +201,33 @@ export const AIReviewDetail = () => {
                 </div>
 
                 <div className="bg-primary/5 border border-primary/20 p-4 rounded-2xl space-y-3 text-xs">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center gap-2">
                     <span className="font-bold text-gray-500">Tóm tắt sự cố (AI):</span>
-                    <span className="badge badge-primary badge-xs py-1.5 px-2 text-[8px] font-bold uppercase">Confidence: {Math.round((selectedTicket.confidenceScore || 0) * 100)}%</span>
+                    <span className="badge badge-primary badge-xs py-1.5 px-2 text-[8px] font-bold uppercase">Độ tin cậy: {Math.round((selectedTicket.confidenceScore || 0) * 100)}%</span>
                   </div>
-                  <p className="font-medium text-primary italic">"{selectedTicket.summary || selectedTicket.description || 'Không có tóm tắt từ AI.'}"</p>
+                  <p className="font-medium text-primary italic">{selectedTicket.summary || selectedTicket.description || 'Không có tóm tắt từ AI.'}</p>
+                  {(selectedTicket.urgencyLevel || selectedTicket.detectedCategoryName || selectedTicket.keywords?.length) > 0 && (
+                    <div className="space-y-2 rounded-xl border border-primary/10 bg-white/70 p-3 text-[11px] text-gray-600">
+                      {selectedTicket.urgencyLevel && (
+                        <div><span className="font-bold text-gray-500">Mức độ khẩn cấp:</span> {selectedTicket.urgencyLevel}</div>
+                      )}
+                      {selectedTicket.detectedCategoryName && (
+                        <div><span className="font-bold text-gray-500">Danh mục AI đề xuất:</span> {selectedTicket.detectedCategoryName}</div>
+                      )}
+                      {selectedTicket.keywords?.length > 0 && (
+                        <div>
+                          <span className="font-bold text-gray-500">Từ khóa:</span>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {selectedTicket.keywords.map((keyword) => (
+                              <span key={keyword} className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">
+                                {keyword}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3 text-xs">
@@ -216,6 +266,17 @@ export const AIReviewDetail = () => {
                 <div className="bg-base-200 p-3.5 rounded-xl border border-base-300 text-[10px] font-bold text-gray-500 space-y-1">
                   <div>Phân tích cảm xúc: <span className="text-error">{selectedTicket.sentiment || 'Unknown'}</span></div>
                   <div>Danh mục AI đề xuất: <span>{selectedTicket.detectedCategoryName || 'Chưa rõ'}</span></div>
+                  {selectedTicket.urgencyLevel && <div>Mức độ khẩn cấp: <span>{selectedTicket.urgencyLevel}</span></div>}
+                  {selectedTicket.areaName && <div>Khu vực: <span>{selectedTicket.areaName}</span></div>}
+                  {selectedTicket.categoryName && <div>Danh mục hồ sơ: <span>{selectedTicket.categoryName}</span></div>}
+                  {selectedTicket.riskNotes?.length > 0 && (
+                    <div>
+                      <div className="mt-1 font-bold text-gray-500">Rủi ro / lưu ý:</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-4 text-[10px] font-medium text-gray-600">
+                        {selectedTicket.riskNotes.map((note) => <li key={note}>{note}</li>)}
+                      </ul>
+                    </div>
+                  )}
                 </div>
 
                 <button 
