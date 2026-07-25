@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -130,6 +130,113 @@ function AutoFitBounds({ incidents, fitRequestKey }) {
 
   return null;
 }
+
+
+function FocusIncident({ feedbackId, latitude, longitude }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!feedbackId || !isValidLocation(lat, lng)) return;
+
+    const timer = window.setTimeout(() => {
+      map.flyTo([lat, lng], 17, {
+        animate: true,
+        duration: 0.65,
+      });
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [feedbackId, latitude, longitude, map]);
+
+  return null;
+}
+
+const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail }) => {
+  const markerRef = useRef(null);
+  const containsFocusedFeedback = marker.tickets.some((ticket) => (
+    String(ticket.feedbackId) === String(focusFeedbackId)
+  ));
+
+  useEffect(() => {
+    if (!containsFocusedFeedback || !markerRef.current) return undefined;
+
+    const timer = window.setTimeout(() => {
+      markerRef.current?.openPopup();
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [containsFocusedFeedback, focusFeedbackId]);
+
+  return (
+    <Marker
+      ref={markerRef}
+      position={[marker.latitude, marker.longitude]}
+      icon={defaultIcon}
+      eventHandlers={{
+        click: (event) => {
+          event.target.openPopup();
+        },
+      }}
+    >
+      <Tooltip direction="top" offset={[0, -10]} opacity={0.95} sticky interactive={false} className="pointer-events-none">
+        <div className="space-y-1 text-xs">
+          {marker.tickets.length === 1 ? (
+            <>
+              <div className="truncate font-bold text-slate-900">
+                {marker.tickets[0].title}
+              </div>
+              <div>
+                Danh mục: {translateCategory(marker.tickets[0].categoryName)}
+              </div>
+              <div>
+                Trạng thái: {translateStatus(marker.tickets[0].status)}
+              </div>
+              <div>
+                Mức độ ảnh hưởng: {translatePriority(marker.tickets[0].priority)}
+              </div>
+            </>
+          ) : (
+            <div className="truncate font-bold text-slate-900">{marker.tickets.length} phản ánh tại điểm này</div>
+          )}
+        </div>
+      </Tooltip>
+      <Popup>
+        <div className="space-y-3 text-xs">
+          <div className="font-bold text-slate-900">
+            {marker.tickets.length === 1
+              ? 'Thông tin phản ánh'
+              : `${marker.tickets.length} phản ánh tại điểm này`}
+          </div>
+          <div className="grid gap-2">
+            {marker.tickets.map((ticket) => (
+              <button
+                key={ticket.feedbackId}
+                type="button"
+                onClick={() => openFeedbackDetail(ticket)}
+                className={`w-full rounded-2xl border bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:border-primary hover:bg-slate-50 ${
+                  String(ticket.feedbackId) === String(focusFeedbackId)
+                    ? 'border-primary ring-2 ring-primary/15'
+                    : 'border-slate-200'
+                }`}
+              >
+                <div className="truncate font-bold">{ticket.title}</div>
+                <div className="mt-1 text-[10px] font-normal text-slate-500">
+                  {translateCategory(ticket.categoryName)}
+                  {' · '}
+                  {translateStatus(ticket.status)}
+                  {' · '}
+                  {translatePriority(ticket.priority)}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Popup>
+    </Marker>
+  );
+};
 
 const IncidentMapThemeStyles = () => (
   <style>{`
@@ -269,7 +376,7 @@ const IncidentMapThemeStyles = () => (
   `}</style>
 );
 
-export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
+export const IncidentMap = ({ incidents, fitRequestKey = 0, focusFeedbackId = null, focusLatitude = null, focusLongitude = null }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -285,7 +392,16 @@ export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
       isOwnFeedback
         ? `/tickets/${ticket.feedbackId}`
         : `/community/feed/${ticket.feedbackId}`,
-      { state: { from: '/community/map' } }
+      {
+        state: {
+          from: '/community/map',
+          mapState: {
+            focusFeedbackId: ticket.feedbackId,
+            focusLatitude: ticket.latitude,
+            focusLongitude: ticket.longitude,
+          },
+        },
+      }
     );
   };
 
@@ -332,77 +448,21 @@ export const IncidentMap = ({ incidents, fitRequestKey = 0 }) => {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <AutoFitBounds
-            incidents={markers}
+            incidents={focusFeedbackId ? [] : markers}
             fitRequestKey={fitRequestKey}
           />
+          <FocusIncident
+            feedbackId={focusFeedbackId}
+            latitude={focusLatitude}
+            longitude={focusLongitude}
+          />
           {markers.map((marker) => (
-          <Marker
-            key={`${marker.latitude}-${marker.longitude}`}
-            position={[marker.latitude, marker.longitude]}
-            icon={defaultIcon}
-            eventHandlers={{
-              click: (event) => {
-                event.target.openPopup();
-              },
-            }}
-          >
-            <Tooltip direction="top" offset={[0, -10]} opacity={0.95} sticky interactive={false} className="pointer-events-none">
-              <div className="space-y-1 text-xs">
-                {marker.tickets.length === 1 ? (
-                  <>
-                    <div className="truncate font-bold text-slate-900">
-                      {marker.tickets[0].title}
-                    </div>
-                    <div>
-                      Danh mục: {translateCategory(
-                        marker.tickets[0].categoryName
-                      )}
-                    </div>
-                    <div>
-                      Trạng thái: {translateStatus(
-                        marker.tickets[0].status
-                      )}
-                    </div>
-                    <div>
-                      Mức độ ảnh hưởng: {translatePriority(
-                        marker.tickets[0].priority
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="font-bold text-slate-900 truncate">{marker.tickets.length} phản ánh tại điểm này</div>
-                )}
-              </div>
-            </Tooltip>
-            <Popup>
-              <div className="space-y-3 text-xs">
-                <div className="font-bold text-slate-900">
-                  {marker.tickets.length === 1
-                    ? 'Thông tin phản ánh'
-                    : `${marker.tickets.length} phản ánh tại điểm này`}
-                </div>
-                <div className="grid gap-2">
-                  {marker.tickets.map((ticket) => (
-                    <button
-                      key={ticket.feedbackId}
-                      type="button"
-                      onClick={() => openFeedbackDetail(ticket)}
-                      className="w-full text-left rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-primary hover:bg-slate-50"
-                    >
-                      <div className="truncate font-bold">{ticket.title}</div>
-                      <div className="mt-1 text-[10px] font-normal text-slate-500">
-                        {translateCategory(ticket.categoryName)}
-                        {' · '}
-                        {translateStatus(ticket.status)}
-                        {' · '}
-                        {translatePriority(ticket.priority)}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </Popup>
-            </Marker>
+            <IncidentMarker
+              key={`${marker.latitude}-${marker.longitude}`}
+              marker={marker}
+              focusFeedbackId={focusFeedbackId}
+              openFeedbackDetail={openFeedbackDetail}
+            />
           ))}
         </MapContainer>
       </div>

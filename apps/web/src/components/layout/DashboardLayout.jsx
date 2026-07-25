@@ -63,6 +63,10 @@ export const DashboardLayout = ({ children }) => {
     const scrollContainer = mainScrollRef.current;
     if (!scrollContainer || typeof window === 'undefined') return undefined;
 
+    // Trang danh sách sẽ tự khôi phục đúng card khi quay lại từ chi tiết.
+    // Không reset vùng cuộn dùng chung trong trường hợp này để tránh ghi đè vị trí.
+    if (location.state?.restoreFeedbackId || location.state?.restoreTicketId) return undefined;
+
     const rawHash = String(location.hash || '').replace(/^#/, '');
     let targetId = '';
 
@@ -120,7 +124,12 @@ export const DashboardLayout = ({ children }) => {
       window.cancelAnimationFrame(frameId);
       timerIds.forEach((timerId) => window.clearTimeout(timerId));
     };
-  }, [location.key, location.hash]);
+  }, [
+    location.hash,
+    location.key,
+    location.state?.restoreFeedbackId,
+    location.state?.restoreTicketId,
+  ]);
 
   const getAiDockTop = (dock) => {
     const maxTop = Math.max(

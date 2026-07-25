@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import * as Lucide from 'lucide-react';
 import { managementTypes } from '@urbanmind/shared-types';
@@ -233,13 +233,18 @@ export default function CommunityFeed({
   resetScroll = false,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const cacheOwnerKey = (
     user?.userId || user?.id || user?.email || 'service-user'
   );
-  const [restoredContext] = useState(() => (
-    resetScroll ? null : readCommunityReturnContext()
-  ));
+  const [restoredContext] = useState(() => {
+    if (resetScroll) return null;
+    const stored = readCommunityReturnContext();
+    return location.state?.restoreFeedbackId
+      ? { ...stored, feedbackId: location.state.restoreFeedbackId }
+      : stored;
+  });
   const restoreContextRef = useRef(restoredContext);
   const [initialCache] = useState(() => (
     readCommunityFeedCache(cacheOwnerKey)
@@ -279,7 +284,9 @@ export default function CommunityFeed({
     if (resetScroll && initialQuery) return initialQuery;
     return initialCache?.query || initialQuery || '';
   });
-  const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(null);
+  const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(
+    restoredContext?.feedbackId || null
+  );
   const [error, setError] = useState('');
   const [openCommentsFor, setOpenCommentsFor] = useState(null);
   const isFetchingRef = useRef(false);
@@ -780,56 +787,83 @@ export default function CommunityFeed({
 
     let cancelled = false;
     let retryCount = 0;
+    let retryTimer;
+    let clearHighlightTimer;
+
+    const consumeReturnContext = () => {
+      window.sessionStorage.removeItem(COMMUNITY_RETURN_STORAGE_KEY);
+      restoreContextRef.current = null;
+    };
 
     const restorePosition = () => {
       if (cancelled) return;
 
+      const feedbackId = String(savedContext.feedbackId || '');
       const escapedFeedbackId = (
         typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-          ? CSS.escape(String(savedContext.feedbackId || ''))
-          : String(savedContext.feedbackId || '').replace(/["\\]/g, '\\$&')
+          ? CSS.escape(feedbackId)
+          : feedbackId.replace(/["\\]/g, '\\$&')
       );
       const targetRow = escapedFeedbackId
         ? document.querySelector(
           `[data-community-feedback-id="${escapedFeedbackId}"]`
         )
         : null;
+      const scrollContainer = document.querySelector(
+        '[data-dashboard-scroll-container]'
+      );
 
-      if (targetRow) {
-        targetRow.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
+      if (!targetRow || !scrollContainer) {
+        retryCount += 1;
+        if (retryCount < 30) {
+          retryTimer = window.setTimeout(restorePosition, 100);
+          return;
+        }
+
+        scrollContainer?.scrollTo({
+          top: Number(savedContext.scrollY) || 0,
+          left: 0,
+          behavior: 'auto',
         });
-        setHighlightedFeedbackId(String(savedContext.feedbackId));
+        consumeReturnContext();
+        return;
+      }
 
-        window.setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        if (cancelled) return;
+
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const rowRect = targetRow.getBoundingClientRect();
+        const rowTopInContainer = (
+          scrollContainer.scrollTop + rowRect.top - containerRect.top
+        );
+        const centeredTop = Math.max(
+          0,
+          rowTopInContainer - Math.max(
+            24,
+            (scrollContainer.clientHeight - targetRow.offsetHeight) / 2
+          )
+        );
+
+        scrollContainer.scrollTo({
+          top: centeredTop,
+          left: 0,
+          behavior: 'auto',
+        });
+        setHighlightedFeedbackId(feedbackId);
+        clearHighlightTimer = window.setTimeout(() => {
           setHighlightedFeedbackId(null);
-        }, 2200);
-
-        window.sessionStorage.removeItem(COMMUNITY_RETURN_STORAGE_KEY);
-        restoreContextRef.current = null;
-        return;
-      }
-
-      retryCount += 1;
-      if (retryCount < 8) {
-        window.setTimeout(restorePosition, 120);
-        return;
-      }
-
-      window.scrollTo({
-        top: Number(savedContext.scrollY) || 0,
-        behavior: 'smooth',
+        }, 2500);
+        consumeReturnContext();
       });
-      window.sessionStorage.removeItem(COMMUNITY_RETURN_STORAGE_KEY);
-      restoreContextRef.current = null;
     };
 
-    const timer = window.setTimeout(restorePosition, 80);
+    restorePosition();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      if (retryTimer) window.clearTimeout(retryTimer);
+      if (clearHighlightTimer) window.clearTimeout(clearHighlightTimer);
     };
   }, [items, loading]);
 
@@ -956,7 +990,7 @@ export default function CommunityFeed({
           tab,
           query,
           page,
-          scrollY: window.scrollY,
+          scrollY: document.querySelector('[data-dashboard-scroll-container]')?.scrollTop || 0,
           feedbackId,
         })
       );

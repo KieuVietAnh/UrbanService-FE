@@ -249,9 +249,14 @@ export const CommunityFeedDetailPage = () => {
       state: returningToMap
         ? {
           mapState: location.state?.mapState || null,
+          focusFeedbackId: location.state?.focusFeedbackId || feedbackId,
+          focusLatitude: location.state?.focusLatitude,
+          focusLongitude: location.state?.focusLongitude,
+          preserveScrollOnEnter: true,
         }
         : {
           restoreFeedbackId: feedbackId,
+          preserveScrollOnEnter: true,
         },
     });
   };

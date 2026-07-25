@@ -10,6 +10,7 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { patchCommunityFeedCacheItem } from '../../services/cache/communityFeedCache';
 import SupportButton from '../../components/community/SupportButton';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
+import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
 
 const CATEGORY_LABELS = {
   'garbage collection': 'Thu gom rác',
@@ -348,23 +349,17 @@ export const CommunityFeedDetailPage = () => {
       return undefined;
     }
 
-    const rootElement = document.documentElement;
-    const previousScrollBehavior = rootElement.style.scrollBehavior;
+    const scrollContainer = document.querySelector(
+      '[data-dashboard-scroll-container]'
+    );
+    if (!scrollContainer) return undefined;
 
-    rootElement.style.scrollBehavior = 'auto';
-    window.scrollTo(0, 0);
-    rootElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-
+    scrollContainer.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     const frameId = window.requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
-      rootElement.style.scrollBehavior = previousScrollBehavior;
+      scrollContainer.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     });
 
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      rootElement.style.scrollBehavior = previousScrollBehavior;
-    };
+    return () => window.cancelAnimationFrame(frameId);
   }, [feedbackId]);
 
   const attachments = Array.isArray(ticket?.attachments)
@@ -549,7 +544,13 @@ export const CommunityFeedDetailPage = () => {
     : 'Quay lại bảng tin';
 
   const handleBack = () => {
-    navigate(backDestination);
+    navigate(backDestination, {
+      state: backDestination === '/community/feed'
+        ? { restoreFeedbackId: feedbackId }
+        : location.state?.mapState
+          ? { mapState: location.state.mapState }
+          : undefined,
+    });
   };
 
   const detailPath = `${location.pathname}${location.search}`;
@@ -861,6 +862,15 @@ export const CommunityFeedDetailPage = () => {
           </div>
           </div>
         </section>
+
+
+          <FeedbackLocationMapCard
+            feedbackId={feedbackId}
+            latitude={ticket?.latitude}
+            longitude={ticket?.longitude}
+            locationText={ticket?.locationText}
+            areaName={ticket?.areaName || ticket?.wardName || ticket?.districtName}
+          />
 
         <section className="space-y-4">
           <article className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">

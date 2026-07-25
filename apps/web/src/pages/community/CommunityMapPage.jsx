@@ -1,5 +1,6 @@
 // src/pages/community/CommunityMapPage.jsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { IncidentMap } from '../../components/maps/IncidentMap';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
@@ -190,11 +191,15 @@ const CommunityMapThemeStyles = () => (
 );
 
 export const CommunityMapPage = () => {
+  const location = useLocation();
   const { incidents, loading, error } = useIncidentMapData();
   const [activeFilter, setActiveFilter] = useState(
     MAP_FILTERS.ALL
   );
   const [fitRequestKey, setFitRequestKey] = useState(0);
+  const mapSectionRef = useRef(null);
+  const handledFocusRequestRef = useRef('');
+  const focusState = location.state?.mapState || location.state || {};
   const safeIncidents = useMemo(
     () => (Array.isArray(incidents) ? incidents : []),
     [incidents]
@@ -241,6 +246,61 @@ export const CommunityMapPage = () => {
   const validCoordinateCount = validIncidents.length;
   const processingCount = processingIncidents.length;
   const endedCount = endedIncidents.length;
+
+  useEffect(() => {
+    const focusFeedbackId = focusState?.focusFeedbackId;
+    if (!focusFeedbackId || loading || !mapSectionRef.current) return undefined;
+
+    const focusRequestKey = [
+      focusFeedbackId,
+      focusState?.focusLatitude,
+      focusState?.focusLongitude,
+    ].join(':');
+
+    if (handledFocusRequestRef.current === focusRequestKey) return undefined;
+
+    setActiveFilter(MAP_FILTERS.ALL);
+
+    const timer = window.setTimeout(() => {
+      const mapSection = mapSectionRef.current;
+      const scrollContainer = document.querySelector(
+        '[data-dashboard-scroll-container]'
+      );
+
+      if (mapSection && scrollContainer) {
+        const sectionRect = mapSection.getBoundingClientRect();
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const sectionTop = (
+          scrollContainer.scrollTop +
+          sectionRect.top -
+          containerRect.top
+        );
+
+        scrollContainer.scrollTo({
+          top: Math.max(sectionTop - 15, 0),
+          behavior: 'smooth',
+        });
+      } else if (mapSection) {
+        const sectionTop = (
+          window.scrollY + mapSection.getBoundingClientRect().top
+        );
+
+        window.scrollTo({
+          top: Math.max(sectionTop - 15, 0),
+          behavior: 'smooth',
+        });
+      }
+
+      handledFocusRequestRef.current = focusRequestKey;
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    focusState?.focusFeedbackId,
+    focusState?.focusLatitude,
+    focusState?.focusLongitude,
+    loading,
+  ]);
 
   const handleMapFilter = (nextFilter) => {
     setActiveFilter(nextFilter);
@@ -473,9 +533,10 @@ export const CommunityMapPage = () => {
       </section>
 
       <section
+        ref={mapSectionRef}
         data-public-reveal
         id="incident-map"
-        className="community-map-panel relative z-0 overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
+        className="community-map-panel relative z-0 scroll-mt-3 overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
         aria-labelledby="incident-map-panel-title"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--public-border-soft)] px-5 py-4 sm:px-6">
@@ -510,6 +571,9 @@ export const CommunityMapPage = () => {
                 <IncidentMap
                   incidents={visibleIncidents}
                   fitRequestKey={fitRequestKey}
+                  focusFeedbackId={focusState?.focusFeedbackId}
+                  focusLatitude={focusState?.focusLatitude}
+                  focusLongitude={focusState?.focusLongitude}
                 />
               </div>
             ) : (

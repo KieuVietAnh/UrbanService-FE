@@ -172,7 +172,7 @@ export const HeatmapDashboard = () => {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Chỉ số bản đồ nhiệt">
         <ManagerMetricCard label="Điểm nóng đang hiển thị" value={filteredCenters.length} description="Cụm phản ánh sau khi áp dụng bộ lọc." icon={Lucide.Flame} toneClass="bg-rose-50 text-rose-700" />
         <ManagerMetricCard label="Mật độ trung bình" value={`${averageIntensity}%`} description="Mức tập trung tương đối của các cụm sự cố." icon={Lucide.Gauge} toneClass="bg-amber-50 text-amber-700" />
-        <ManagerMetricCard label="Khu vực rủi ro cao" value={highestRisk?.name || '—'} description={highestRisk?.issue || 'Chưa có dữ liệu phù hợp.'} icon={Lucide.MapPinAlert} toneClass="bg-blue-50 text-blue-700" />
+        <ManagerMetricCard label="Khu vực rủi ro cao" value={highestRisk?.name || '—'} description={highestRisk?.issue || 'Chưa có dữ liệu phù hợp.'} icon={Lucide.AlertTriangle} toneClass="bg-blue-50 text-blue-700" />
       </section>
     </article>
   );
