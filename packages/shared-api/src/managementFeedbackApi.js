@@ -59,6 +59,21 @@ export const normalizeAiReviewedPayload = (payload = {}) => {
   });
 };
 
+const normalizeFeedbackStatusValue = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+
+  const rawValue = String(value).trim();
+  if (!rawValue) return '';
+
+  const key = rawValue.replace(/[-_\s]/g, '').toLowerCase();
+
+  if (key === 'aireviewed' || key === 'aireview' || key === 'aiviewed' || key === 'aireview') {
+    return 'AiReviewed';
+  }
+
+  return rawValue;
+};
+
 export const normalizeFeedbackListParams = (params = {}) => {
   const normalized = {};
   const pageNumber = Number(params?.PageNumber ?? params?.pageNumber ?? params?.pageIndex ?? params?.page ?? 1);
@@ -78,7 +93,7 @@ export const normalizeFeedbackListParams = (params = {}) => {
   }
 
   if (status !== undefined && status !== null && status !== '') {
-    normalized.Status = status;
+    normalized.Status = normalizeFeedbackStatusValue(status);
   }
 
   if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
@@ -581,7 +596,7 @@ export const managementFeedbackApi = {
 
   async uploadCompletionDocument(providerReportId, file, metadata = {}) {
     const formData = new FormData();
-    formData.append('Files', file);
+    formData.append('Files', file, file?.name || 'completion-document');
 
     const description = typeof metadata?.description === 'string' ? metadata.description.trim() : '';
     if (description) {
@@ -593,7 +608,7 @@ export const managementFeedbackApi = {
       formData,
       {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': undefined,
         },
       }
     );
