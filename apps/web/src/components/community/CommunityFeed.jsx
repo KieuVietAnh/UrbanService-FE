@@ -227,13 +227,19 @@ const FeedSkeleton = () => (
   </div>
 );
 
-export default function CommunityFeed({ initialTab = 'Latest' }) {
+export default function CommunityFeed({
+  initialTab = 'Latest',
+  initialQuery = '',
+  resetScroll = false,
+}) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const cacheOwnerKey = (
     user?.userId || user?.id || user?.email || 'service-user'
   );
-  const [restoredContext] = useState(readCommunityReturnContext);
+  const [restoredContext] = useState(() => (
+    resetScroll ? null : readCommunityReturnContext()
+  ));
   const restoreContextRef = useRef(restoredContext);
   const [initialCache] = useState(() => (
     readCommunityFeedCache(cacheOwnerKey)
@@ -268,9 +274,11 @@ export default function CommunityFeed({ initialTab = 'Latest' }) {
       initialTab
     )
   ));
-  const [query, setQuery] = useState(() => (
-    restoredContext?.query || initialCache?.query || ''
-  ));
+  const [query, setQuery] = useState(() => {
+    if (restoredContext?.query) return restoredContext.query;
+    if (resetScroll && initialQuery) return initialQuery;
+    return initialCache?.query || initialQuery || '';
+  });
   const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(null);
   const [error, setError] = useState('');
   const [openCommentsFor, setOpenCommentsFor] = useState(null);

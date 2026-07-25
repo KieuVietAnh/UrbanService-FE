@@ -1,5 +1,9 @@
+import { useLayoutEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import CommunityFeed from '../../components/community/CommunityFeed';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
+
+const COMMUNITY_RETURN_STORAGE_KEY = 'urbanmind-community-feed-return';
 
 const CommunityFeedThemeStyles = () => (
   <style>{`
@@ -31,10 +35,51 @@ const CommunityFeedThemeStyles = () => (
 );
 
 export const CommunityFeedPage = () => {
+  const rootRef = useRef(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const resetFeedScroll = Boolean(location.state?.resetFeedScroll);
+  const initialQuery = typeof location.state?.initialQuery === 'string'
+    ? location.state.initialQuery
+    : '';
+
+  useLayoutEffect(() => {
+    if (!resetFeedScroll) return;
+
+    try {
+      window.sessionStorage.removeItem(COMMUNITY_RETURN_STORAGE_KEY);
+    } catch {
+      // Session storage can be unavailable in private mode.
+    }
+
+    const scrollContainer = document.querySelector(
+      '[data-dashboard-scroll-container]'
+    );
+    scrollContainer?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+    const frameId = window.requestAnimationFrame(() => {
+      scrollContainer?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+
+    navigate(
+      `${location.pathname}${location.search}${location.hash}`,
+      { replace: true, state: null }
+    );
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+    resetFeedScroll,
+  ]);
+
   return (
     <PublicPageMotion>
       <CommunityFeedThemeStyles />
       <main
+        ref={rootRef}
         data-public-reveal
         className="community-feed-page relative isolate text-[var(--public-title)]"
       >
@@ -42,7 +87,10 @@ export const CommunityFeedPage = () => {
           className="community-feed-page-shell pointer-events-none absolute -inset-x-3 -inset-y-5 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-6"
           aria-hidden="true"
         />
-        <CommunityFeed />
+        <CommunityFeed
+          resetScroll={resetFeedScroll}
+          initialQuery={initialQuery}
+        />
       </main>
     </PublicPageMotion>
   );

@@ -1,7 +1,6 @@
 // src/pages/community/CommunityMapPage.jsx
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import * as Lucide from 'lucide-react';
-import { useLocation } from 'react-router-dom';
 import { IncidentMap } from '../../components/maps/IncidentMap';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
@@ -191,8 +190,6 @@ const CommunityMapThemeStyles = () => (
 );
 
 export const CommunityMapPage = () => {
-  const location = useLocation();
-  const mapPanelRef = useRef(null);
   const { incidents, loading, error } = useIncidentMapData();
   const [activeFilter, setActiveFilter] = useState(
     MAP_FILTERS.ALL
@@ -257,24 +254,6 @@ export const CommunityMapPage = () => {
     [MAP_FILTERS.COORDINATES]: 'Có tọa độ',
   }[activeFilter];
 
-  useEffect(() => {
-    const shouldFocusMap = (
-      location.hash === '#incident-map' ||
-      location.state?.focusMap === true
-    );
-
-    if (!shouldFocusMap) return undefined;
-
-    const timer = window.setTimeout(() => {
-      mapPanelRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }, 220);
-
-    return () => window.clearTimeout(timer);
-  }, [location.hash, location.key, location.state]);
-
   return (
     <PublicPageMotion>
       <main
@@ -283,7 +262,7 @@ export const CommunityMapPage = () => {
       >
         <CommunityMapThemeStyles />
         <div
-          className="pointer-events-none absolute -inset-x-3 -inset-y-5 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-6"
+          className="pointer-events-none absolute inset-x-0 -top-5 -z-10 h-[520px] bg-[radial-gradient(circle_at_50%_0%,var(--public-surface-soft),transparent_72%)] sm:-top-6"
           aria-hidden="true"
         />
         <section
@@ -496,8 +475,7 @@ export const CommunityMapPage = () => {
       <section
         data-public-reveal
         id="incident-map"
-        ref={mapPanelRef}
-        className="community-map-panel relative z-0 scroll-mt-[96px] overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
+        className="community-map-panel relative z-0 overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
         aria-labelledby="incident-map-panel-title"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--public-border-soft)] px-5 py-4 sm:px-6">

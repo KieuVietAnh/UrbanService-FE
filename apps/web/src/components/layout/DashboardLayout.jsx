@@ -1,11 +1,12 @@
 // src/components/layout/DashboardLayout.jsx
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { Footer } from './Footer';
 import PageTransition from '../motion/PageTransition';
+import { PublicThemeStyles } from '../public/PublicLayout';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
@@ -25,6 +26,7 @@ export const DashboardLayout = ({ children }) => {
   const location = useLocation();
   const isCitizen = normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const mainScrollRef = useRef(null);
 
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([
@@ -56,6 +58,69 @@ export const DashboardLayout = ({ children }) => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useLayoutEffect(() => {
+    const scrollContainer = mainScrollRef.current;
+    if (!scrollContainer || typeof window === 'undefined') return undefined;
+
+    const rawHash = String(location.hash || '').replace(/^#/, '');
+    let targetId = '';
+
+    if (rawHash) {
+      try {
+        targetId = decodeURIComponent(rawHash);
+      } catch {
+        targetId = rawHash;
+      }
+    }
+
+    const scrollToTop = () => {
+      scrollContainer.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    };
+
+    const scrollToTarget = () => {
+      if (!targetId) {
+        scrollToTop();
+        return;
+      }
+
+      const target = document.getElementById(targetId);
+      if (!target) {
+        scrollToTop();
+        return;
+      }
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const targetTop = (
+        scrollContainer.scrollTop +
+        targetRect.top -
+        containerRect.top -
+        12
+      );
+
+      scrollContainer.scrollTo({
+        top: Math.max(0, targetTop),
+        left: 0,
+        behavior: 'auto',
+      });
+    };
+
+    // Reset immediately, then repeat after the page-enter transition settles.
+    // The workspace itself owns scrolling, so handling it here avoids page-level
+    // effects racing with the shared layout and reopening a route at the old offset.
+    scrollToTop();
+
+    const frameId = window.requestAnimationFrame(scrollToTarget);
+    const timerIds = [120, 280, 520].map((delay) => (
+      window.setTimeout(scrollToTarget, delay)
+    ));
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      timerIds.forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, [location.key, location.hash]);
 
   const getAiDockTop = (dock) => {
     const maxTop = Math.max(
@@ -164,23 +229,40 @@ export const DashboardLayout = ({ children }) => {
   const showFooter = isCitizen;
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-slate-100 font-sans text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div
+      className={`flex h-screen w-full flex-col overflow-hidden font-sans ${
+        isCitizen
+          ? 'public-page text-[var(--public-title)]'
+          : 'bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100'
+      }`}
+    >
+      {isCitizen ? <PublicThemeStyles /> : null}
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}
         {!isCitizen && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
         {/* Main container */}
-        <div className="flex min-w-0 w-full flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <div
+          className={`flex min-w-0 w-full flex-1 flex-col overflow-hidden ${
+            isCitizen ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
+          }`}
+        >
           <Header onMenuToggle={toggleSidebar} />
 
           {/* Main scrollable workspace */}
-          <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 dark:bg-slate-950">
+          <main
+            ref={mainScrollRef}
+            data-dashboard-scroll-container
+            className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
+              isCitizen ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
+            }`}
+          >
             <div className="flex min-h-full flex-col">
               <PageTransition
                 key={location.pathname}
                 className={`mx-auto w-full flex-1 ${
                   isCitizen
-                    ? 'citizen-content-shell max-w-[1600px] px-5 py-7 sm:px-6 lg:px-8 lg:py-8'
+                    ? 'citizen-content-shell max-w-[1440px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9'
                     : 'max-w-7xl space-y-6 p-5 sm:p-6'
                 }`}
               >
@@ -237,7 +319,7 @@ export const DashboardLayout = ({ children }) => {
 
       {/* AI COPILOT CHAT PANEL (Slide out Drawer) */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-[min(24rem,calc(100vw-1rem))] bg-base-100 border-l border-base-300 shadow-2xl transform transition-transform duration-300 ${chatOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`fixed inset-y-0 right-0 z-[2200] w-[min(24rem,calc(100vw-1rem))] bg-base-100 border-l border-base-300 shadow-2xl transform transition-transform duration-300 ${chatOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
       >
         <div className="flex flex-col h-full">
