@@ -26,6 +26,18 @@ const menuItems = [
     ]
   },
   {
+    name: 'Quản Lý Cảnh Báo Khu Vực',
+    path: '/staff/area-alerts',
+    icon: 'AlertTriangle',
+    activePatterns: ['/staff/area-alerts', '/staff/alerts', '/staff/area-alerts-management']
+  },
+  {
+    name: 'Phản Ánh Khẩn Cấp',
+    path: '/staff/critical-feedbacks',
+    icon: 'AlertCircle',
+    activePatterns: ['/staff/critical-feedbacks', '/staff/critical-feedbacks-management']
+  },
+  {
     name: 'Danh bạ Điều phối viên',
     path: '/staff/coordinators',
     icon: 'Users',
@@ -54,6 +66,24 @@ const menuItems = [
     path: '/settings',
     icon: 'Settings',
     activePatterns: ['/settings', '/staff/settings']
+  }
+];
+
+export const systemStaffSidebarSections = [
+  {
+    id: 'workspace',
+    title: 'Không Gian Làm Việc',
+    items: menuItems.filter((item) => ['Không Gian Làm Việc', 'Hàng Chờ Kiểm Duyệt AI', 'Quản Lý Phản Ánh'].includes(item.name))
+  },
+  {
+    id: 'coordination',
+    title: 'Điều phối & Kiểm soát',
+    items: menuItems.filter((item) => ['Quản Lý Cảnh Báo Khu Vực', 'Phản Ánh Khẩn Cấp', 'Danh bạ Điều phối viên', 'Kiểm tra ứng viên nhà cung cấp', 'Xử Lý Trùng Lặp'].includes(item.name))
+  },
+  {
+    id: 'system',
+    title: 'Hệ thống',
+    items: menuItems.filter((item) => ['Trang Cá Nhân', 'Cài Đặt'].includes(item.name))
   }
 ];
 
