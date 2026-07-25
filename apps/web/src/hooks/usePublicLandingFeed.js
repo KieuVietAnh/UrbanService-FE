@@ -47,6 +47,20 @@ const hasMedia = (item) => getMediaCandidates(item).some((attachment) => (
   Boolean(getAttachmentUrl(attachment))
 ));
 
+const hasCoordinates = (item) => {
+  const latitude = Number(item?.latitude ?? item?.lat);
+  const longitude = Number(item?.longitude ?? item?.lng);
+
+  return (
+    Number.isFinite(latitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    Number.isFinite(longitude) &&
+    longitude >= -180 &&
+    longitude <= 180
+  );
+};
+
 const isPublicFeedback = (item) => {
   if (!item || item?.isPublic === false) return false;
 
@@ -58,7 +72,7 @@ const isPublicFeedback = (item) => {
 
 const hydrateFeedback = async (item) => {
   const feedbackId = getFeedbackId(item);
-  if (!feedbackId || hasMedia(item)) return item;
+  if (!feedbackId || (hasMedia(item) && hasCoordinates(item))) return item;
 
   try {
     const detail = await getCommunityFeedDetail(feedbackId);

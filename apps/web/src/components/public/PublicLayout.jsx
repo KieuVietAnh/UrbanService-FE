@@ -1,7 +1,7 @@
 import PublicFooter from './PublicFooter';
 import PublicHeader from './PublicHeader';
 
-const PublicThemeStyles = () => (
+export const PublicThemeStyles = () => (
   <style>{`
     .public-page {
       --public-page-bg: #f5f8fc;
