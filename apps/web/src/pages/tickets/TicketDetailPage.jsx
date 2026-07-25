@@ -1,6 +1,6 @@
 // src/pages/tickets/TicketDetailPage.jsx
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toolsApi } from '@urbanmind/shared-api';
@@ -207,17 +207,40 @@ const dedupeComments = (commentItems = []) => {
 const TICKET_DETAIL_SNAPSHOT_PREFIX =
   'urbanmind-service-user-ticket-detail:';
 
-const readTicketDetailSnapshot = (feedbackId) => {
+const getTicketDetailSnapshotKey = (feedbackId, userId) => {
+  if (!feedbackId || !userId) return '';
+
+  return `${TICKET_DETAIL_SNAPSHOT_PREFIX}${encodeURIComponent(String(userId))}:${encodeURIComponent(String(feedbackId))}`;
+};
+
+const removeLegacyTicketDetailSnapshot = (feedbackId) => {
+  if (typeof window === 'undefined' || !feedbackId) return;
+
+  try {
+    window.sessionStorage.removeItem(
+      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+const readTicketDetailSnapshot = (feedbackId, userId) => {
   if (
     typeof window === 'undefined' ||
-    !feedbackId
+    !feedbackId ||
+    !userId
   ) {
     return null;
   }
 
   try {
+    // Snapshots created before user scoping are unsafe to reuse.
+    removeLegacyTicketDetailSnapshot(feedbackId);
+
+    const snapshotKey = getTicketDetailSnapshotKey(feedbackId, userId);
     const rawSnapshot = window.sessionStorage.getItem(
-      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`
+      snapshotKey
     );
     if (!rawSnapshot) return null;
 
@@ -230,20 +253,36 @@ const readTicketDetailSnapshot = (feedbackId) => {
   }
 };
 
-const writeTicketDetailSnapshot = (feedbackId, ticket) => {
+const writeTicketDetailSnapshot = (feedbackId, userId, ticket) => {
   if (
     typeof window === 'undefined' ||
     !feedbackId ||
+    !userId ||
     !ticket
   ) {
     return;
   }
 
   try {
+    removeLegacyTicketDetailSnapshot(feedbackId);
+
     window.sessionStorage.setItem(
-      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`,
+      getTicketDetailSnapshotKey(feedbackId, userId),
       JSON.stringify(ticket)
     );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+const removeTicketDetailSnapshot = (feedbackId, userId) => {
+  if (typeof window === 'undefined' || !feedbackId) return;
+
+  try {
+    removeLegacyTicketDetailSnapshot(feedbackId);
+
+    const snapshotKey = getTicketDetailSnapshotKey(feedbackId, userId);
+    if (snapshotKey) window.sessionStorage.removeItem(snapshotKey);
   } catch {
     // Storage can be unavailable in private mode.
   }
@@ -342,6 +381,8 @@ export const TicketDetailPage = () => {
     setChatInput,
     loading,
     error,
+    errorStatus,
+    errorFeedbackId,
     handleSendChat,
     handleRateSubmit,
     rating,
@@ -354,10 +395,41 @@ export const TicketDetailPage = () => {
     getAttachmentUrl,
   } = useTicketDetail(feedbackId, user);
 
-  const [cachedTicket] = useState(() => (
-    readTicketDetailSnapshot(feedbackId)
-  ));
-  const [ticket, setTicket] = useState(cachedTicket);
+  const snapshotUserId = user?.userId ?? user?.id ?? '';
+  const ticketSnapshotKey = useMemo(
+    () => getTicketDetailSnapshotKey(feedbackId, snapshotUserId),
+    [feedbackId, snapshotUserId]
+  );
+  const [ticketState, setTicketState] = useState(() => ({
+    snapshotKey: getTicketDetailSnapshotKey(feedbackId, snapshotUserId),
+    value: readTicketDetailSnapshot(feedbackId, snapshotUserId),
+  }));
+  const hasBlockingLoadError = (
+    errorFeedbackId &&
+    String(errorFeedbackId) === String(feedbackId) &&
+    [401, 403, 404].includes(errorStatus)
+  );
+  const ticket = (
+    ticketState.snapshotKey === ticketSnapshotKey &&
+    !hasBlockingLoadError
+  )
+    ? ticketState.value
+    : null;
+  const setTicket = useCallback((updater) => {
+    setTicketState((current) => {
+      const currentValue = current.snapshotKey === ticketSnapshotKey
+        ? current.value
+        : null;
+      const nextValue = typeof updater === 'function'
+        ? updater(currentValue)
+        : updater;
+
+      return {
+        snapshotKey: ticketSnapshotKey,
+        value: nextValue,
+      };
+    });
+  }, [ticketSnapshotKey]);
   const [updateNotice, setUpdateNotice] = useState('');
   const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState(null);
   const [previewSource, setPreviewSource] = useState('detail');
@@ -392,6 +464,13 @@ export const TicketDetailPage = () => {
     longitude: null,
     priority: '',
   });
+
+  useEffect(() => {
+    setTicketState({
+      snapshotKey: ticketSnapshotKey,
+      value: readTicketDetailSnapshot(feedbackId, snapshotUserId),
+    });
+  }, [feedbackId, snapshotUserId, ticketSnapshotKey]);
 
   useEffect(() => {
     setVisibleCommentCount(3);
@@ -504,14 +583,54 @@ export const TicketDetailPage = () => {
   };
 
   useEffect(() => {
-    if (!fetchedTicket) return;
+    const fetchedFeedbackId = (
+      fetchedTicket?.feedbackId ??
+      fetchedTicket?.ticketId ??
+      fetchedTicket?.id
+    );
+
+    if (
+      !fetchedTicket ||
+      !fetchedFeedbackId ||
+      String(fetchedFeedbackId) !== String(feedbackId)
+    ) {
+      return;
+    }
 
     setTicket(fetchedTicket);
     writeTicketDetailSnapshot(
       feedbackId,
+      snapshotUserId,
       fetchedTicket
     );
-  }, [feedbackId, fetchedTicket]);
+  }, [feedbackId, fetchedTicket, setTicket, snapshotUserId]);
+
+  useEffect(() => {
+    const requestFailedForCurrentFeedback = (
+      errorFeedbackId &&
+      String(errorFeedbackId) === String(feedbackId)
+    );
+
+    if (
+      !requestFailedForCurrentFeedback ||
+      ![401, 403, 404].includes(errorStatus)
+    ) {
+      return;
+    }
+
+    removeTicketDetailSnapshot(feedbackId, snapshotUserId);
+    setTicket(null);
+    setEditOpen(false);
+    setDeleteOpen(false);
+    setAttachmentDeleteTarget(null);
+    setPreviewAttachmentIndex(null);
+  }, [
+    errorFeedbackId,
+    errorStatus,
+    feedbackId,
+    setTicket,
+    snapshotUserId,
+  ]);
 
   useEffect(() => {
     selectedFilesRef.current = selectedFiles;
@@ -639,6 +758,20 @@ export const TicketDetailPage = () => {
     ].some((extension) => url.includes(extension));
   };
 
+  const isImageFile = (fileUrl = '') => {
+    const url = String(fileUrl).toLowerCase();
+    return [
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.webp',
+      '.bmp',
+      '.svg',
+      '.avif',
+    ].some((extension) => url.includes(extension));
+  };
+
   const statusDescription = (status) => {
     switch (status) {
       case managementTypes.feedbackStatus.SUBMITTED:
@@ -736,9 +869,30 @@ export const TicketDetailPage = () => {
   );
 
   const isVideoAttachment = (file) => {
-    const mimeType = file?.type || file?.file?.type || '';
+    const mimeType = (
+      file?.type ||
+      file?.mimeType ||
+      file?.fileType ||
+      file?.file?.type ||
+      ''
+    );
     return mimeType.startsWith('video/') || isVideoFile(resolvePreviewUrl(file));
   };
+
+  const isImageAttachment = (file) => {
+    const mimeType = (
+      file?.type ||
+      file?.mimeType ||
+      file?.fileType ||
+      file?.file?.type ||
+      ''
+    );
+    return mimeType.startsWith('image/') || isImageFile(resolvePreviewUrl(file));
+  };
+
+  const isMediaAttachment = (file) => (
+    isImageAttachment(file) || isVideoAttachment(file)
+  );
 
   const releaseSelectedFileItems = (items) => {
     items.forEach((item) => {
@@ -926,8 +1080,13 @@ export const TicketDetailPage = () => {
       return;
     }
 
-    if (editAttachments.length + selectedFiles.length === 0) {
-      setActionError('Phản ánh phải có ít nhất một tệp minh chứng.');
+    const mediaAttachmentCount = (
+      editAttachments.filter(isMediaAttachment).length +
+      selectedFiles.filter(isMediaAttachment).length
+    );
+
+    if (mediaAttachmentCount === 0) {
+      setActionError('Phản ánh phải có ít nhất một hình ảnh hoặc video minh chứng.');
       return;
     }
 
@@ -986,6 +1145,7 @@ export const TicketDetailPage = () => {
         setTicket(refreshedTicket);
         writeTicketDetailSnapshot(
           feedbackId,
+          snapshotUserId,
           refreshedTicket
         );
         setEditAttachments(
@@ -994,11 +1154,18 @@ export const TicketDetailPage = () => {
             : []
         );
       } else {
-        setTicket((currentTicket) => (
-          currentTicket
-            ? { ...currentTicket, ...payload }
-            : currentTicket
-        ));
+        const nextTicket = ticket
+          ? { ...ticket, ...payload }
+          : null;
+
+        if (nextTicket) {
+          setTicket(nextTicket);
+          writeTicketDetailSnapshot(
+            feedbackId,
+            snapshotUserId,
+            nextTicket
+          );
+        }
       }
 
       clearSelectedFiles();
@@ -1026,6 +1193,8 @@ export const TicketDetailPage = () => {
 
     try {
       await ticketApi.deleteTicket(feedbackId, { role: 'service-user' });
+      removeTicketDetailSnapshot(feedbackId, snapshotUserId);
+      setTicket(null);
       handleBackToList({ replace: true, highlight: false });
     } catch (deleteError) {
       console.error('Không thể xóa phản ánh', deleteError);
@@ -1043,7 +1212,7 @@ export const TicketDetailPage = () => {
     if (!attachmentDeleteTarget) return;
 
     if (editAttachments.length <= 1) {
-      setActionError('Phản ánh phải giữ lại ít nhất một tệp minh chứng.');
+      setActionError('Phản ánh phải giữ lại ít nhất một hình ảnh hoặc video minh chứng.');
       setAttachmentDeleteTarget(null);
       return;
     }
@@ -1066,6 +1235,19 @@ export const TicketDetailPage = () => {
         (item) => resolveAttachmentId(item) !== attachmentId
       );
       setEditAttachments(nextAttachments);
+
+      if (ticket) {
+        const nextTicket = {
+          ...ticket,
+          attachments: nextAttachments,
+        };
+        setTicket(nextTicket);
+        writeTicketDetailSnapshot(
+          feedbackId,
+          snapshotUserId,
+          nextTicket
+        );
+      }
 
       try {
         const baseline = JSON.parse(editInitialSnapshotRef.current || '{}');
@@ -1217,23 +1399,69 @@ export const TicketDetailPage = () => {
     });
   };
 
-  if (loading && !ticket) {
+  const fetchedFeedbackId = (
+    fetchedTicket?.feedbackId ??
+    fetchedTicket?.ticketId ??
+    fetchedTicket?.id
+  );
+  const hookHasCurrentResult = (
+    (fetchedFeedbackId && String(fetchedFeedbackId) === String(feedbackId)) ||
+    (errorFeedbackId && String(errorFeedbackId) === String(feedbackId))
+  );
+  const detailSyncing = loading || !hookHasCurrentResult;
+  const activeErrorStatus = (
+    errorFeedbackId && String(errorFeedbackId) === String(feedbackId)
+  )
+    ? errorStatus
+    : null;
+  const loadErrorState = (() => {
+    switch (activeErrorStatus) {
+      case 401:
+        return {
+          title: 'Phiên đăng nhập đã hết hạn',
+          description: 'Vui lòng đăng nhập lại để tiếp tục xem phản ánh của bạn.',
+          icon: Lucide.LogIn,
+        };
+      case 403:
+        return {
+          title: 'Bạn không có quyền xem phản ánh này',
+          description: 'Chỉ tài khoản đã tạo phản ánh mới có thể truy cập trang chi tiết này.',
+          icon: Lucide.ShieldAlert,
+        };
+      case 404:
+        return {
+          title: 'Không tìm thấy phản ánh',
+          description: 'Phản ánh có thể đã bị xóa hoặc đường dẫn không còn hợp lệ.',
+          icon: Lucide.FileQuestion,
+        };
+      default:
+        return {
+          title: 'Không thể tải chi tiết phản ánh',
+          description: error || 'Vui lòng thử lại hoặc quay về danh sách phản ánh.',
+          icon: Lucide.FileWarning,
+        };
+    }
+  })();
+
+  if (detailSyncing && !ticket) {
     return <TicketDetailSkeleton />;
   }
 
   if (!ticket) {
+    const LoadErrorIcon = loadErrorState.icon;
+
     return (
       <div className="rounded-[28px] border border-base-300 bg-base-100 px-6 py-16 text-center shadow-sm">
-        <Lucide.FileWarning
+        <LoadErrorIcon
           size={34}
           className="mx-auto text-base-content/35"
           aria-hidden="true"
         />
         <h1 className="mt-4 text-lg font-bold text-base-content">
-          Không thể tải chi tiết phản ánh
+          {loadErrorState.title}
         </h1>
         <p className="mt-2 text-sm text-base-content/55">
-          {error || 'Vui lòng thử lại hoặc quay về danh sách phản ánh.'}
+          {loadErrorState.description}
         </p>
         <button
           type="button"
@@ -1254,7 +1482,7 @@ export const TicketDetailPage = () => {
 
   return (
     <>
-      {loading && ticket ? (
+      {detailSyncing && ticket ? (
         <div
           className="fixed right-5 top-24 z-40 inline-flex items-center gap-2 rounded-full border border-info/20 bg-base-100/95 px-3 py-2 text-xs font-semibold text-info shadow-lg backdrop-blur"
           role="status"
