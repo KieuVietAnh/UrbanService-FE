@@ -1,9 +1,14 @@
 import { Link } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const CREATE_FEEDBACK_URL = '/login?redirect=/tickets/create&intent=create-feedback';
 
-export const PublicFooter = () => (
+export const PublicFooter = () => {
+  const { isAuthenticated } = useAuth();
+  const createFeedbackUrl = isAuthenticated ? '/tickets/create' : CREATE_FEEDBACK_URL;
+
+  return (
   <footer className="public-footer relative isolate w-full overflow-hidden border-t border-slate-800 text-white">
     <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
       <div className="absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(96,165,250,0.13)_1px,transparent_1px),linear-gradient(90deg,rgba(96,165,250,0.13)_1px,transparent_1px)] [background-size:44px_44px]" />
@@ -44,9 +49,18 @@ export const PublicFooter = () => (
         <nav aria-label="Thao tác tài khoản">
           <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Tài khoản</h2>
           <ul className="mt-4 space-y-3 text-sm font-medium text-slate-300">
-            <li><Link to="/login" className="transition hover:text-cyan-300">Đăng nhập</Link></li>
-            <li><Link to="/register" className="transition hover:text-cyan-300">Đăng ký tài khoản</Link></li>
-            <li><Link to={CREATE_FEEDBACK_URL} className="transition hover:text-cyan-300">Gửi phản ánh mới</Link></li>
+            {isAuthenticated ? (
+              <>
+                <li><Link to="/tickets" className="transition hover:text-cyan-300">Phản ánh của tôi</Link></li>
+                <li><Link to="/profile" className="transition hover:text-cyan-300">Trang cá nhân</Link></li>
+              </>
+            ) : (
+              <>
+                <li><Link to="/login" className="transition hover:text-cyan-300">Đăng nhập</Link></li>
+                <li><Link to="/register" className="transition hover:text-cyan-300">Đăng ký tài khoản</Link></li>
+              </>
+            )}
+            <li><Link to={createFeedbackUrl} className="transition hover:text-cyan-300">Gửi phản ánh mới</Link></li>
           </ul>
         </nav>
       </div>
@@ -60,6 +74,7 @@ export const PublicFooter = () => (
       </div>
     </div>
   </footer>
-);
+  );
+};
 
 export default PublicFooter;

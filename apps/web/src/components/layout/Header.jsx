@@ -156,7 +156,7 @@ const CitizenHeader = ({ user, logout, navigate, pathname }) => {
               aria-label="Mở menu tài khoản"
               title="Tài khoản"
             >
-              <span className="h-7 w-7 overflow-hidden rounded-lg">
+              <span className="h-7 w-7 shrink-0 overflow-hidden rounded-lg">
                 <CitizenAvatar user={user} />
               </span>
               <span className="hidden max-w-[132px] truncate text-sm font-semibold text-[var(--public-title)] 2xl:block">
@@ -214,7 +214,7 @@ const CitizenHeader = ({ user, logout, navigate, pathname }) => {
 
             <div className="dropdown-content z-[2100] mt-3 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] p-3 text-[var(--public-title)] shadow-[0_22px_55px_rgba(15,23,42,0.16)]">
               <div className="mb-3 flex items-center gap-3 border-b border-[var(--public-border)] pb-3">
-                <span className="h-10 w-10 overflow-hidden rounded-xl">
+                <span className="h-10 w-10 shrink-0 overflow-hidden rounded-xl">
                   <CitizenAvatar user={user} />
                 </span>
                 <div className="min-w-0">

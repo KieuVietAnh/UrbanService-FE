@@ -180,9 +180,7 @@ export const AppRoutes = () => {
           ) : !user?.isVerified ? (
             <Navigate to="/verify-email" replace />
           ) : isCitizen ? (
-            <DashboardLayout>
-              <Dashboard />
-            </DashboardLayout>
+            <LandingPage />
           ) : (
             <Navigate to={roleEntryPath} replace />
           )
