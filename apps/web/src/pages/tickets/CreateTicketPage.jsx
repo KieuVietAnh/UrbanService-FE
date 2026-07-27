@@ -363,6 +363,8 @@ export const CreateTicketPage = () => {
     [areaId, areas]
   );
 
+  const selectedAreaBoundaryGeoJson = getAreaBoundaryGeoJson(selectedArea);
+
   const selectedCategory = useMemo(
     () => categories.find(
       (category) => String(getCategoryId(category)) === String(categoryId)
@@ -1220,9 +1222,25 @@ export const CreateTicketPage = () => {
                       latitude={latitude}
                       longitude={longitude}
                       onSelectLocation={handleLocationSelect}
-                      boundaryGeoJson={getAreaBoundaryGeoJson(selectedArea)}
+                      boundaryGeoJson={selectedAreaBoundaryGeoJson}
                       boundaryName={selectedArea ? getAreaName(selectedArea) : ''}
                     />
+                    <details className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <summary className="cursor-pointer font-bold">
+                        Debug GeoBoundaryJson
+                      </summary>
+                      <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-white/80 p-3 font-mono text-[11px] leading-5">
+                        {JSON.stringify(
+                          {
+                            areaId,
+                            areaName: selectedArea ? getAreaName(selectedArea) : null,
+                            rawBoundaryGeoJson: selectedAreaBoundaryGeoJson,
+                          },
+                          null,
+                          2
+                        )}
+                      </pre>
+                    </details>
                   </div>
                   {fieldErrors.location ? (
                     <span id="location-error" className="mt-1.5 block text-xs font-medium text-error" role="alert">

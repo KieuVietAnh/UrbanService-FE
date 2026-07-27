@@ -25,23 +25,116 @@ function isValidLocation(lat, lng) {
   return isValidCoordinate(lat, -90, 90) && isValidCoordinate(lng, -180, 180);
 }
 
+function stripWrappingQuotes(value) {
+  const trimmed = value.trim();
+
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
+function parseJsonBoundary(value) {
+  const unwrapped = stripWrappingQuotes(value);
+  const candidates = [
+    value,
+    unwrapped,
+    value.replace(/""/g, '"'),
+    unwrapped.replace(/""/g, '"'),
+    value.replace(/\\"/g, '"'),
+    unwrapped.replace(/\\"/g, '"'),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+
+      if (typeof parsed === 'string' && parsed !== candidate) {
+        const nested = parseJsonBoundary(parsed);
+        if (nested) return nested;
+      }
+
+      if (parsed && ['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(parsed.type)) {
+        return parsed;
+      }
+    } catch {
+      // Try the next possible representation.
+    }
+  }
+
+  return null;
+}
+
+function parseCoordinatePair(pairText) {
+  const values = pairText
+    .trim()
+    .split(/\s+/)
+    .map(Number)
+    .filter(Number.isFinite);
+
+  if (values.length < 2) return null;
+
+  return [values[0], values[1]];
+}
+
+function parseWktPolygonRings(ringsText) {
+  return ringsText
+    .split(/\)\s*,\s*\(/)
+    .map((ringText) => ringText.replace(/[()]/g, '').trim())
+    .filter(Boolean)
+    .map((ringText) => ringText.split(',').map(parseCoordinatePair).filter(Boolean))
+    .filter((ring) => ring.length >= 4);
+}
+
+function parseWktBoundary(value) {
+  const normalized = value.trim();
+
+  const polygonMatch = normalized.match(/^POLYGON\s*\(\((.*)\)\)$/i);
+  if (polygonMatch) {
+    const coordinates = parseWktPolygonRings(polygonMatch[1]);
+    return coordinates.length ? { type: 'Polygon', coordinates } : null;
+  }
+
+  const multiPolygonMatch = normalized.match(/^MULTIPOLYGON\s*\(\(\((.*)\)\)\)$/i);
+  if (multiPolygonMatch) {
+    const polygons = multiPolygonMatch[1]
+      .split(/\)\s*\)\s*,\s*\(\s*\(/)
+      .map(parseWktPolygonRings)
+      .filter((polygon) => polygon.length > 0);
+
+    return polygons.length ? { type: 'MultiPolygon', coordinates: polygons } : null;
+  }
+
+  return null;
+}
+
 function normalizeBoundaryGeoJson(boundaryGeoJson) {
   if (!boundaryGeoJson) return null;
 
-  try {
-    const parsed = typeof boundaryGeoJson === 'string'
-      ? JSON.parse(boundaryGeoJson.replace(/""/g, '"'))
-      : boundaryGeoJson;
-
-    if (!parsed || !['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(parsed.type)) {
-      return null;
-    }
-
-    return parsed;
-  } catch (error) {
-    console.warn('Invalid area BoundaryGeoJson', error);
-    return null;
+  if (typeof boundaryGeoJson === 'object') {
+    return ['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(boundaryGeoJson.type)
+      ? boundaryGeoJson
+      : null;
   }
+
+  if (typeof boundaryGeoJson !== 'string') return null;
+
+  const trimmed = boundaryGeoJson.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
+
+  const jsonBoundary = parseJsonBoundary(trimmed);
+  if (jsonBoundary) return jsonBoundary;
+
+  const wktBoundary = parseWktBoundary(trimmed);
+  if (wktBoundary) return wktBoundary;
+
+  console.warn('Unsupported area boundary format', trimmed.slice(0, 120));
+  return null;
 }
 
 function getPolygonRings(geoJson) {
