@@ -604,6 +604,8 @@ export const Dashboard = () => {
     communityAreaCountLoading,
     setCommunityAreaCountLoading,
   ] = useState(false);
+  const [showStaffFilter, setShowStaffFilter] = useState(false);
+  const [staffFilter, setStaffFilter] = useState('all');
 
   const fetchScopedTickets = useCallback(async () => {
     try {
@@ -964,6 +966,29 @@ export const Dashboard = () => {
     managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
     managementTypes.feedbackStatus.NEED_REWORK,
   ];
+
+  const filteredStaffTickets = [...residentTickets].filter((ticket) => {
+    if (staffFilter === 'needs-attention') {
+      return [
+        managementTypes.feedbackStatus.SUBMITTED,
+        managementTypes.feedbackStatus.AI_REVIEWED,
+        managementTypes.feedbackStatus.ASSIGNED,
+        managementTypes.feedbackStatus.IN_PROGRESS,
+      ].includes(ticket.status);
+    }
+
+    if (staffFilter === 'high-priority') {
+      return ['Critical', 'High'].includes(ticket.priority);
+    }
+
+    return true;
+  }).sort((a, b) => {
+    if (staffFilter === 'latest') {
+      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+    }
+
+    return 0;
+  });
   const residentInProgress = residentTickets.filter((ticket) => (
     residentInProgressStatuses.includes(ticket.status)
   )).length;
@@ -1651,7 +1676,11 @@ export const Dashboard = () => {
           <div className="flex justify-between items-center">
             <h3 className="font-extrabold text-base text-slate-900">Phản ánh cần xử lý</h3>
             <div className="flex gap-2">
-              <button onClick={() => navigate('/staff/queue')} className="btn btn-sm btn-outline border-slate-300 rounded-xl text-xs font-bold text-slate-600 h-9 min-h-0 flex gap-1.5 items-center">
+              <button
+                type="button"
+                onClick={() => setShowStaffFilter((value) => !value)}
+                className="btn btn-sm btn-outline border-slate-300 rounded-xl text-xs font-bold text-slate-600 h-9 min-h-0 flex gap-1.5 items-center"
+              >
                 <Lucide.SlidersHorizontal size={14} />
                 Bộ lọc
               </button>
@@ -1660,6 +1689,44 @@ export const Dashboard = () => {
               </button>
             </div>
           </div>
+
+          {showStaffFilter ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  Tùy chọn lọc
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStaffFilter('latest')}
+                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'latest' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
+                >
+                  Mới nhất
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStaffFilter('needs-attention')}
+                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'needs-attention' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
+                >
+                  Cần xử lý
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStaffFilter('high-priority')}
+                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'high-priority' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
+                >
+                  Ưu tiên cao
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStaffFilter('all')}
+                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'all' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
+                >
+                  Tất cả
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="overflow-x-auto w-full text-xs">
             <table className="table w-full">
@@ -1675,7 +1742,7 @@ export const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(Array.isArray(tickets) ? tickets.slice(0, 4) : []).map(t => (
+                {filteredStaffTickets.slice(0, 4).map((t) => (
                   <tr key={t.feedbackId} className="hover:bg-slate-50/50">
                     <td className="font-bold text-[color:var(--brand-primary)] py-3.5">{formatTicketId(t.feedbackId)}</td>
                     <td className="max-w-[200px] font-semibold py-3.5 text-slate-700">

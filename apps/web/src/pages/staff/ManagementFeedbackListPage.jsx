@@ -23,6 +23,16 @@ export default function ManagementFeedbackListPage() {
   const [status, setStatus] = useState('');
   const [categoryId, setCategoryId] = useState('');
 
+  const normalizeStatusValue = useCallback((value) => {
+    if (!value) return '';
+    const normalized = String(value).trim();
+    if (normalized === managementTypes.feedbackStatus.AI_REVIEWED) return managementTypes.feedbackStatus.AI_REVIEWED;
+    if (normalized.toLowerCase() === 'aireviewed' || normalized.toLowerCase() === 'ai reviewed' || normalized.toLowerCase() === 'ai_reviewed') {
+      return managementTypes.feedbackStatus.AI_REVIEWED;
+    }
+    return normalized;
+  }, []);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -50,13 +60,23 @@ export default function ManagementFeedbackListPage() {
         pageIndex: currentPage - 1,
         pageSize,
         search: search || undefined,
-        status: status || undefined,
+        status: normalizeStatusValue(status) || undefined,
         categoryId: categoryId || undefined,
       };
 
       const response = await managementFeedbackApi.getFeedbacks(params);
-      setFeedbacks(Array.isArray(response?.items) ? response.items : []);
-      setTotalCount(response?.totalCount || 0);
+      const items = Array.isArray(response?.items) ? response.items : [];
+      const filteredItems = items.filter((item) => {
+        const normalizedStatus = normalizeStatusValue(item.status);
+        const normalizedSelectedStatus = normalizeStatusValue(status);
+        const matchesSearch = !search || `${item.title || ''} ${item.description || ''} ${item.feedbackId || ''}`.toLowerCase().includes(search.toLowerCase());
+        const matchesStatus = !normalizedSelectedStatus || normalizedStatus === normalizedSelectedStatus;
+        const matchesCategory = !categoryId || String(item.categoryId ?? item.category?.categoryId ?? '') === String(categoryId);
+        return matchesSearch && matchesStatus && matchesCategory;
+      });
+
+      setFeedbacks(filteredItems);
+      setTotalCount(filteredItems.length || response?.totalCount || 0);
     } catch (err) {
       console.error('Failed to fetch feedbacks', err);
       setError('Không thể tải danh sách phản ánh. Vui lòng thử lại.');
@@ -65,7 +85,7 @@ export default function ManagementFeedbackListPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, search, status, categoryId]);
+  }, [currentPage, pageSize, search, status, categoryId, normalizeStatusValue]);
 
   useEffect(() => {
     fetchFeedbacks();
@@ -78,10 +98,11 @@ export default function ManagementFeedbackListPage() {
 
   const summaryCounts = useMemo(() => {
     return feedbacks.reduce((acc, item) => {
-      acc[item.status] = (acc[item.status] || 0) + 1;
+      const normalizedStatus = normalizeStatusValue(item.status);
+      acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
       return acc;
     }, {});
-  }, [feedbacks]);
+  }, [feedbacks, normalizeStatusValue]);
 
   const workflowStageCards = useMemo(() => [
     {
@@ -120,10 +141,11 @@ export default function ManagementFeedbackListPage() {
   const startIdx = (currentPage - 1) * pageSize + 1;
   const endIdx = Math.min(currentPage * pageSize, totalCount);
 
-  const getStatusBadgeClass = (s) => STATUS_BADGE_CLASSES[s] || 'bg-slate-100 text-slate-700';
+  const getStatusBadgeClass = (s) => STATUS_BADGE_CLASSES[normalizeStatusValue(s)] || 'bg-slate-100 text-slate-700';
   const getPriorityBadgeClass = (p) => PRIORITY_BADGE_CLASSES[p] || 'bg-slate-100 text-slate-700';
 
   const getStatusLabel = (s) => {
+    const normalizedStatus = normalizeStatusValue(s);
     const labels = {
       [managementTypes.feedbackStatus.SUBMITTED]: 'Đã gửi',
       [managementTypes.feedbackStatus.VERIFIED]: 'Đã xác minh',
@@ -137,7 +159,7 @@ export default function ManagementFeedbackListPage() {
       [managementTypes.feedbackStatus.CLOSED]: 'Đã đóng',
       [managementTypes.feedbackStatus.CANCELLED]: 'Đã hủy',
     };
-    return labels[s] || s;
+    return labels[normalizedStatus] || normalizedStatus;
   };
 
   const getPriorityLabel = (p) => {
@@ -157,6 +179,13 @@ export default function ManagementFeedbackListPage() {
       month: '2-digit',
       day: '2-digit',
     });
+  };
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setStatus('');
+    setCategoryId('');
+    setCurrentPage(1);
   };
 
   if (loading && feedbacks.length === 0) {
@@ -219,7 +248,12 @@ export default function ManagementFeedbackListPage() {
           <div className="flex flex-1 flex-col gap-3 sm:flex-row">
             <label className="input input-bordered flex items-center gap-2 rounded-2xl border-slate-200 bg-slate-50">
               <Lucide.Search size={16} className="text-slate-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm phản ánh" className="grow bg-transparent text-sm" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm phản ánh"
+                className="grow bg-transparent text-sm"
+              />
             </label>
             <select value={status} onChange={(event) => setStatus(event.target.value)} className="select select-bordered rounded-2xl border-slate-200 bg-slate-50 text-sm">
               <option value="">Tất cả trạng thái</option>
@@ -234,6 +268,14 @@ export default function ManagementFeedbackListPage() {
               ))}
             </select>
           </div>
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600/90 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700/95"
+          >
+            <Lucide.RefreshCw size={16} />
+            Làm mới bộ lọc
+          </button>
         </div>
 
         <div className="mt-5 space-y-3">

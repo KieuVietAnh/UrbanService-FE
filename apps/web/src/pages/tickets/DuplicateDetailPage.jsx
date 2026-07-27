@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { duplicateManagementApi } from '@urbanmind/shared-api';
 import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
+import { normalizeDuplicateCandidatePayload, getCandidateReasoning } from './duplicateDetailUtils';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -29,18 +30,6 @@ const getImageSources = (feedback = {}) => {
   return candidates.filter(Boolean);
 };
 
-const getReasoning = (candidate) => {
-  const reasoningCandidates = [
-    candidate?.reasoning,
-    candidate?.duplicateReasoning,
-    candidate?.analysis?.reasoning,
-    candidate?.details?.reasoning,
-    candidate?.metadata?.reasoning,
-  ];
-
-  return reasoningCandidates.find((value) => typeof value === 'string' && value.trim()) || '';
-};
-
 export const DuplicateDetailPage = () => {
   const navigate = useNavigate();
   const { duplicateCandidateId } = useParams();
@@ -65,7 +54,8 @@ export const DuplicateDetailPage = () => {
     setError('');
     try {
       const response = await duplicateManagementApi.getDuplicateById(duplicateCandidateId);
-      setCandidate(response || null);
+      const normalizedCandidate = normalizeDuplicateCandidatePayload(response || null);
+      setCandidate(normalizedCandidate);
     } catch (err) {
       console.error(err);
       setError(err?.message || 'Không thể tải chi tiết phản ánh trùng lặp.');
@@ -78,9 +68,9 @@ export const DuplicateDetailPage = () => {
     loadCandidate();
   }, [loadCandidate]);
 
-  const primaryFeedback = useMemo(() => candidate?.primaryFeedback || candidate?.primary || null, [candidate]);
-  const duplicateFeedback = useMemo(() => candidate?.duplicateFeedback || candidate?.duplicate || null, [candidate]);
-  const reasoning = useMemo(() => getReasoning(candidate), [candidate]);
+  const primaryFeedback = useMemo(() => candidate?.primaryFeedback || null, [candidate]);
+  const duplicateFeedback = useMemo(() => candidate?.duplicateFeedback || null, [candidate]);
+  const reasoning = useMemo(() => getCandidateReasoning(candidate), [candidate]);
 
   const handleConfirmDuplicate = async () => {
     if (!duplicateCandidateId) return;

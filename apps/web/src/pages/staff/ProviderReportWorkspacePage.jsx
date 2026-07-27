@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
@@ -194,7 +194,7 @@ const MetaField = ({ label, value, mono }) => (
 );
 
 /** Step navigation footer — Next / Back */
-const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextDisabled, nextLoading, nextVariant = 'primary' }) => {
+const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextDisabled, nextLoading, nextVariant = 'primary', hideNext = false }) => {
   const isFirst = currentIndex === 0;
   const isLast  = currentIndex === totalSteps - 1;
   return (
@@ -222,7 +222,7 @@ const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextD
           Quay lại
         </button>
       )}
-      {!isLast && (
+      {!isLast && !hideNext && (
         <button
           type="button"
           className={`btn btn-sm ${nextVariant === 'primary' ? 'btn-primary' : 'btn-success'}`}
@@ -275,6 +275,7 @@ export const ProviderReportWorkspacePage = () => {
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
   const [uploadError,        setUploadError]        = useState('');
   const [documentDescription, setDocumentDescription] = useState('');
+  const [selectedDocumentFile, setSelectedDocumentFile] = useState(null);
 
   /* ── Resolution ─────────────────────────────────────────────────────────── */
   const [resolutionForm, setResolutionForm] = useState({ resolutionSummary: '', actionTaken: '', resultNote: '' });
@@ -303,33 +304,40 @@ export const ProviderReportWorkspacePage = () => {
   const openToast = (title, sub) => { setToastTitle(title); setToastSubtitle(sub); setToastOpen(true); };
 
   const fileInputRef = useRef(null);
+  const hasUserChosenStepRef = useRef(false);
 
   /* ── Derive active step id from index ──────────────────────────────────── */
   const activeStepId = STEPS[stepIndex]?.id ?? 'overview';
 
-  /* ── Navigation helpers ─────────────────────────────────────────────────── */
-  const canNavigateToStep = (idx) => {
-    const step = STEPS[idx];
-    if (!step) return false;
-    if (step.id === 'completion-documents' && !canAccessCompletionDocuments) return false;
-    if (step.id === 'resolution' && !canAccessResolution) return false;
-    return true;
-  };
+  const extractFeedbackId = useCallback((currentReport = report) => {
+    return currentReport?.feedbackId || currentReport?.feedback?.feedbackId || currentReport?.feedback?.id || feedbackIdFromState || null;
+  }, [feedbackIdFromState, report]);
 
+  /* ── Navigation helpers ─────────────────────────────────────────────────── */
   const goTo = (idx) => {
-    if (!canNavigateToStep(idx)) {
-      if (STEPS[idx]?.id === 'completion-documents') {
-        openToast('Bước bị khóa', 'Bạn cần chấp thuận báo cáo trước khi tải lên tài liệu hoàn thành.');
-      } else if (STEPS[idx]?.id === 'resolution') {
-        openToast('Bước bị khóa', 'Bạn cần đánh dấu báo cáo là Done trước khi gửi kết quả xử lý.');
-      }
-      return;
-    }
+    const step = STEPS[idx];
+    if (!step) return;
+    hasUserChosenStepRef.current = true;
     setStepIndex(idx);
     setMaxReached((prev) => Math.max(prev, idx));
   };
-  const goNext = () => goTo(stepIndex + 1);
-  const goBack = () => setStepIndex((prev) => Math.max(0, prev - 1));
+
+  const goNext = () => {
+    const currentVisibleIndex = visibleSteps.findIndex((step) => step.id === activeStepId);
+    const nextVisibleIndex = Math.min(currentVisibleIndex + 1, visibleSteps.length - 1);
+    const targetStep = visibleSteps[nextVisibleIndex];
+    if (!targetStep) return;
+    const targetGlobalIndex = STEPS.findIndex((step) => step.id === targetStep.id);
+    goTo(targetGlobalIndex);
+  };
+  const goBack = () => {
+    const currentVisibleIndex = visibleSteps.findIndex((step) => step.id === activeStepId);
+    const prevVisibleIndex = Math.max(currentVisibleIndex - 1, 0);
+    const targetStep = visibleSteps[prevVisibleIndex];
+    if (!targetStep) return;
+    const targetGlobalIndex = STEPS.findIndex((step) => step.id === targetStep.id);
+    goTo(targetGlobalIndex);
+  };
 
   /* ════════════════════════════════════════════════════════════════════════
      Data loading (all logic unchanged — only trigger key changes from
@@ -353,6 +361,7 @@ export const ProviderReportWorkspacePage = () => {
 
   useEffect(() => {
     if (!providerReportId) return;
+    hasUserChosenStepRef.current = false;
     try {
       const raw = window.localStorage.getItem(workspaceStorageKey);
       if (!raw) {
@@ -435,22 +444,56 @@ export const ProviderReportWorkspacePage = () => {
     load();
   }, [providerReportId, activeStepId]);
 
+  const loadExistingResolutions = useCallback(async (feedbackId, options = {}) => {
+    const fallbackResolution = report?.resolution ? [report.resolution] : [];
+    if (!feedbackId && fallbackResolution.length === 0) {
+      setExistingResolutions([]);
+      return [];
+    }
+
+    if (!feedbackId) {
+      if (options?.active !== false) {
+        setExistingResolutions(fallbackResolution);
+      }
+      return fallbackResolution;
+    }
+
+    if (options?.active !== false) {
+      setResolutionsLoading(true);
+      setResolutionsError('');
+    }
+
+    try {
+      const res = await managementFeedbackApi.getResolutions(feedbackId);
+      const list = Array.isArray(res) ? res : [];
+      if (options?.active !== false) {
+        setExistingResolutions(list);
+      }
+      return list;
+    } catch (err) {
+      console.error('Failed to load resolutions', err);
+      if (options?.active !== false) {
+        setResolutionsError(err?.message || 'Không thể tải resolution.');
+        setExistingResolutions(fallbackResolution);
+      }
+      return fallbackResolution;
+    } finally {
+      if (options?.active !== false) {
+        setResolutionsLoading(false);
+      }
+    }
+  }, [report]);
+
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const feedbackId = report?.feedbackId || report?.feedback?.feedbackId || null;
+      const feedbackId = extractFeedbackId(report);
       if (!feedbackId || activeStepId !== 'resolution') return;
-      setResolutionsLoading(true); setResolutionsError('');
-      try {
-        const res = await managementFeedbackApi.getResolutions(feedbackId);
-        const list = Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : Array.isArray(res?.data) ? res.data : [];
-        if (active) { setExistingResolutions(list); }
-      } catch (err) { console.error('Failed to load resolutions', err); if (active) { setResolutionsError(err?.message || 'Không thể tải resolution.'); setExistingResolutions([]); } }
-      finally { if (active) setResolutionsLoading(false); }
+      await loadExistingResolutions(feedbackId, { active });
     };
     load();
     return () => { active = false; };
-  }, [activeStepId, report?.feedbackId, report?.feedback?.feedbackId]);
+  }, [activeStepId, extractFeedbackId, loadExistingResolutions, report]);
 
   /* ════════════════════════════════════════════════════════════════════════
      Derived state (unchanged)
@@ -463,11 +506,13 @@ export const ProviderReportWorkspacePage = () => {
   const providerPhone   = report?.phoneNumber || coordinator?.phone || provider?.phoneNumber || '—';
   const providerEmail   = report?.email || coordinator?.email || provider?.email || '—';
   const currentStatus   = normalizeProviderReportStatus(report?.status || report?.reportStatus || '');
-  const canAccessCompletionDocuments = ['Accepted', 'InProgress', 'Done'].includes(currentStatus);
+  const canAccessCompletionDocuments = ['Accepted', 'InProgress'].includes(currentStatus);
   const canAccessResolution   = currentStatus === 'Done';
   const isResolutionSubmitted = existingResolutions.length > 0;
+  const canReviewContactLogs = ['Reported', 'Contacted', 'Accepted', 'InProgress', 'Done'].includes(currentStatus);
+  const canUploadCompletionDocuments = ['Accepted', 'InProgress'].includes(currentStatus);
 
-  const statusHistoryItems = useMemo(() => {
+  const statusHistoryItems = (() => {
     const history = Array.isArray(report?.statusHistory)
       ? report.statusHistory.map((item) => ({
           status: normalizeProviderReportStatus(item?.status || item?.newStatus || item?.value || ''),
@@ -477,22 +522,16 @@ export const ProviderReportWorkspacePage = () => {
       : [];
     if (history.length > 0) return history;
     return [{ status: currentStatus || 'Assigned', updatedAt: report?.updatedAt || report?.createdAt || '', note: 'Trạng thái hiện tại' }];
-  }, [report, currentStatus]);
+  })();
 
-  const sortedContactLogs = useMemo(() =>
-    [...contactLogs].sort((a, b) => new Date(b.contactedAt).getTime() - new Date(a.contactedAt).getTime()),
-    [contactLogs]
-  );
+  const sortedContactLogs = [...contactLogs].sort((a, b) => new Date(b.contactedAt).getTime() - new Date(a.contactedAt).getTime());
 
-  const imageDocuments = useMemo(() =>
-    documents.filter((d) => {
-      const n = String(d?.fileName || d?.name || '').toLowerCase();
-      return n.match(/\.(png|jpe?g|gif|webp|svg)$/) || d?.contentType?.includes('image');
-    }),
-    [documents]
-  );
+  const imageDocuments = documents.filter((d) => {
+    const n = String(d?.fileName || d?.name || '').toLowerCase();
+    return n.match(/\.(png|jpe?g|gif|webp|svg)$/) || d?.contentType?.includes('image');
+  });
 
-  const workflowChecklist = useMemo(() => {
+  const workflowChecklist = (() => {
     const hasLogs = contactLogs.length > 0;
     const hasDocs = documents.length > 0;
     const isContacted = ['Contacted', 'Accepted', 'InProgress', 'Done'].includes(currentStatus);
@@ -508,14 +547,13 @@ export const ProviderReportWorkspacePage = () => {
       { label: 'Đã đánh dấu hoàn tất', completed: isDone },
       { label: 'Sẵn sàng kết quả', completed: isDone || isResolutionSubmitted },
     ];
-  }, [contactLogs.length, currentStatus, documents.length, isResolutionSubmitted, report]);
+  })();
 
-  const workflowProgress = useMemo(() => {
-    const completed = workflowChecklist.filter((item) => item.completed).length;
-    return Math.round((completed / workflowChecklist.length) * 100);
-  }, [workflowChecklist]);
+  const workflowProgress = Math.round((workflowChecklist.filter((item) => item.completed).length / workflowChecklist.length) * 100);
 
-  const workflowAction = useMemo(() => {
+  const visibleSteps = STEPS;
+
+  const workflowAction = (() => {
     if (currentStatus === 'Done') {
       return {
         title: 'Ready for Resolution Submission',
@@ -568,11 +606,30 @@ export const ProviderReportWorkspacePage = () => {
       nextStatus: null,
       disabled: false,
     };
-  }, [currentStatus]);
+  })();
 
-  /* visible steps for the rail (hide terminal until submitted) */
-  const visibleSteps = STEPS.filter((s) => !s.terminal || isResolutionSubmitted);
   const totalVisible = visibleSteps.length;
+
+  useEffect(() => {
+    if (!visibleSteps.length) return;
+    if (hasUserChosenStepRef.current) return;
+
+    let fallbackStepId = 'overview';
+    if (currentStatus === 'Done') {
+      fallbackStepId = 'resolution';
+    } else if (['Accepted', 'Contacted', 'InProgress'].includes(currentStatus)) {
+      fallbackStepId = 'overview';
+    } else if (currentStatus === 'Reported') {
+      fallbackStepId = 'contact-logs';
+    }
+
+    if (activeStepId === fallbackStepId) return;
+
+    const fallbackGlobalIndex = STEPS.findIndex((step) => step.id === fallbackStepId);
+    const fallbackSafeIndex = fallbackGlobalIndex >= 0 ? fallbackGlobalIndex : 0;
+    setStepIndex(fallbackSafeIndex);
+    setMaxReached((prev) => Math.max(prev, fallbackSafeIndex));
+  }, [activeStepId, currentStatus, visibleSteps]);
 
   /* ════════════════════════════════════════════════════════════════════════
      Event handlers (all logic unchanged)
@@ -604,30 +661,55 @@ export const ProviderReportWorkspacePage = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleDocumentUpload = async (event) => {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) return;
-    const supported = files.filter((f) => {
-      const ext = String(f.name || '').split('.').pop()?.toLowerCase();
-      return ['image/jpeg','image/png','application/pdf'].includes(f.type) || ['jpg','jpeg','png','pdf'].includes(ext);
-    });
+  const handleDocumentFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setSelectedDocumentFile(file);
+    setUploadError('');
+  };
+
+  const handleDocumentSubmit = async (event) => {
+    event.preventDefault();
+    const file = selectedDocumentFile;
     const desc = String(documentDescription || '').trim();
-    if (desc.length > 1000) { setUploadError('Mô tả không được vượt quá 1000 ký tự.'); event.target.value = ''; return; }
-    if (supported.length !== files.length) setUploadError('Chỉ hỗ trợ tệp JPG, PNG hoặc PDF.');
-    if (!supported.length) { event.target.value = ''; return; }
+
+    if (!file) {
+      setUploadError('Vui lòng chọn một tệp để tải lên.');
+      return;
+    }
+
+    if (!desc) {
+      setUploadError('Vui lòng nhập mô tả cho tài liệu.');
+      return;
+    }
+
+    const ext = String(file.name || '').split('.').pop()?.toLowerCase();
+    const supported = ['jpg', 'jpeg', 'png', 'pdf'];
+    const supportedMime = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (!supported.includes(ext) && !supportedMime.includes(file.type)) {
+      setUploadError('Chỉ hỗ trợ tệp JPG, PNG hoặc PDF.');
+      return;
+    }
+
     const firstCompletionUpload = currentStatus === 'Accepted' && documents.length === 0;
-    setUploadingDocuments(true); setUploadError('');
+    setUploadingDocuments(true);
+    setUploadError('');
+
     try {
-      for (const f of supported) await managementFeedbackApi.uploadCompletionDocument(providerReportId, f, { fileName: f.name, description: desc });
+      await managementFeedbackApi.uploadCompletionDocument(providerReportId, file, { fileName: file.name, description: desc });
       const res = await managementFeedbackApi.getProviderReportCompletionDocuments(providerReportId);
       setDocuments(Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : Array.isArray(res?.data) ? res.data : []);
       setDocumentDescription('');
-      openToast('Đã tải lên tài liệu', 'Tài liệu hoàn thành đã được tải lên thành công.');
+      setSelectedDocumentFile(null);
+      openToast('Đã gửi tài liệu', 'Tài liệu hoàn thành đã được gửi thành công.');
       if (firstCompletionUpload) {
         await performStatusTransition('InProgress', 'Tự động chuyển trạng thái sau khi tải lên tài liệu hoàn thành đầu tiên.', { auto: true });
       }
-    } catch (err) { console.error('Upload failed', err); setUploadError(err?.message || 'Không thể tải lên tài liệu.'); }
-    finally { setUploadingDocuments(false); event.target.value = ''; }
+    } catch (err) {
+      console.error('Upload failed', err);
+      setUploadError(err?.message || 'Không thể tải lên tài liệu.');
+    } finally {
+      setUploadingDocuments(false);
+    }
   };
 
   const handleResolutionImagesChange = (event) => {
@@ -650,6 +732,7 @@ export const ProviderReportWorkspacePage = () => {
     setStatusUpdateError('');
 
     try {
+      hasUserChosenStepRef.current = false;
       await managementFeedbackApi.updateProviderReportStatus(providerReportId, { status: nextStatus, note: note || null });
       let refreshed = null;
       try {
@@ -696,7 +779,11 @@ export const ProviderReportWorkspacePage = () => {
       openToast('Sẵn sàng gửi kết quả xử lý', 'Điền nội dung kết quả xử lý ở bước tiếp theo.');
     }
 
-    goTo(STEPS.findIndex((step) => step.id === workflowAction.targetStep));
+    const targetIndex = STEPS.findIndex((step) => step.id === workflowAction.targetStep);
+    if (targetIndex >= 0) {
+      hasUserChosenStepRef.current = true;
+      goTo(targetIndex);
+    }
   };
 
   const handleLogInputChange = (key, value) => setLogForm((prev) => ({ ...prev, [key]: value }));
@@ -720,6 +807,18 @@ export const ProviderReportWorkspacePage = () => {
     finally { setLogSaving(false); }
   };
 
+  const handleResolutionFormSubmit = (event) => {
+    event.preventDefault();
+    const summary = String(resolutionForm.resolutionSummary || '').trim();
+    const action  = String(resolutionForm.actionTaken       || '').trim();
+    if (!summary || !action) {
+      setResolutionError('Vui lòng nhập Tóm tắt kết quả và Hành động đã thực hiện.');
+      return;
+    }
+    setResolutionError('');
+    setConfirmingResolutionSubmit(true);
+  };
+
   const handleSubmitResolution = async () => {
     const summary = String(resolutionForm.resolutionSummary || '').trim();
     const action  = String(resolutionForm.actionTaken       || '').trim();
@@ -727,16 +826,25 @@ export const ProviderReportWorkspacePage = () => {
     if (!summary || !action) { setResolutionError('Vui lòng nhập Tóm tắt kết quả và Hành động đã thực hiện.'); return; }
     setSubmittingResolution(true); setResolutionError('');
     try {
-      const feedbackId = report?.feedbackId || report?.feedback?.feedbackId || report?.id || providerReportId;
-      await managementFeedbackApi.submitResolution({
-        feedbackId,
+      const feedbackId = extractFeedbackId(report);
+      if (!feedbackId) {
+        throw new Error('Không xác định được feedbackId của báo cáo để gửi kết quả xử lý.');
+      }
+
+      await managementFeedbackApi.submitResolution(feedbackId, {
         status: 'SubmittedForApproval',
         resolutionSummary: summary,
         actionTaken: action,
         resultNote: result,
         completionImages: resolutionImages.map((img) => ({ fileName: img.fileName, previewUrl: img.previewUrl })),
       });
-      setExistingResolutions([{ resolutionSummary: summary, actionTaken: action, resultNote: result, status: 'SubmittedForApproval', createdByStaffUserName: 'You', resolvedAt: new Date().toISOString() }]);
+
+      const refreshedResolutions = await loadExistingResolutions(feedbackId, { active: true });
+      if (Array.isArray(refreshedResolutions) && refreshedResolutions.length > 0) {
+        setExistingResolutions(refreshedResolutions);
+      } else {
+        setExistingResolutions([{ resolutionSummary: summary, actionTaken: action, resultNote: result, status: 'SubmittedForApproval', createdByStaffUserName: 'You', resolvedAt: new Date().toISOString() }]);
+      }
       openToast('Đã gửi kết quả xử lý', 'Kết quả xử lý đã được gửi chờ quản lý phê duyệt.');
       const submittedIdx = STEPS.findIndex((s) => s.id === 'submitted');
       goTo(submittedIdx);
@@ -840,6 +948,7 @@ export const ProviderReportWorkspacePage = () => {
             canAccessResolution={canAccessResolution}
             onGoTo={(idx) => {
               const globalIdx = STEPS.findIndex((s) => s.id === visibleSteps[idx].id);
+              hasUserChosenStepRef.current = true;
               setStepIndex(globalIdx);
             }}
           />
@@ -980,7 +1089,7 @@ export const ProviderReportWorkspacePage = () => {
               <section aria-labelledby="contact-logs-title" style={{ ...card, overflow: 'hidden' }}>
                 <SectionHeader
                   title="Lịch sử liên hệ"
-                  sub="Lịch sử liên hệ với nhà thầu."
+                  sub="Lịch sử liên hệ với nhà thầu có thể xem lại bất cứ lúc nào."
                   action={
                     sortedContactLogs.length > 0 ? (
                       <span style={{ padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '11px', fontWeight: 700, backgroundColor: 'var(--color-info-bg)', color: 'var(--color-info)', border: '1px solid rgba(37,99,235,0.15)', lineHeight: 1.8 }}>
@@ -1031,35 +1140,41 @@ export const ProviderReportWorkspacePage = () => {
 
               {/* Add log form */}
               <section aria-labelledby="add-log-title" style={{ ...card, overflow: 'hidden' }}>
-                <SectionHeader title="Ghi nhật ký liên hệ" sub="Ghi lại chi tiết cuộc gọi, email hoặc tin nhắn với nhà thầu." />
+                <SectionHeader title="Ghi nhật ký liên hệ" sub={canReviewContactLogs ? 'Bạn có thể xem lại và cập nhật nội dung liên hệ ở bước này.' : 'Ghi lại chi tiết cuộc gọi, email hoặc tin nhắn với nhà thầu.'} />
                 <div style={{ padding: '1rem 1.25rem' }}>
                   {logFormError && <div style={{ marginBottom: '0.75rem' }}><ErrorAlert message={logFormError} onClose={() => setLogFormError('')} /></div>}
-                  <form onSubmit={handleSaveLog} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                    <div style={{ display: 'grid', gap: '0.875rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                  {canReviewContactLogs && !['Reported', 'Contacted'].includes(currentStatus) ? (
+                    <div style={{ borderRadius: '0.875rem', border: '1px solid rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.7)', padding: '1rem 1rem', color: '#475569', lineHeight: 1.6 }}>
+                      Bước này đã được hoàn tất. Nội dung lịch sử liên hệ ở trên có thể xem lại bất cứ lúc nào để đối chiếu hoặc cập nhật thêm nếu cần.
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSaveLog} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                      <div style={{ display: 'grid', gap: '0.875rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                          <span style={fieldLabel}>Phương thức liên hệ <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+                          <input value={logForm.contactMethod} onChange={(e) => handleLogInputChange('contactMethod', e.target.value)} placeholder="Gọi điện / Email / Tin nhắn" className="input input-bordered w-full" required />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                          <span style={fieldLabel}>Kết quả <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+                          <input value={logForm.contactResult} onChange={(e) => handleLogInputChange('contactResult', e.target.value)} placeholder="Đã liên hệ thành công / Không có phản hồi" className="input input-bordered w-full" required />
+                        </label>
+                      </div>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                        <span style={fieldLabel}>Phương thức liên hệ <span style={{ color: 'var(--color-danger)' }}>*</span></span>
-                        <input value={logForm.contactMethod} onChange={(e) => handleLogInputChange('contactMethod', e.target.value)} placeholder="Gọi điện / Email / Tin nhắn" className="input input-bordered w-full" required />
+                        <span style={fieldLabel}>Nội dung liên hệ</span>
+                        <textarea value={logForm.contactNote} onChange={(e) => handleLogInputChange('contactNote', e.target.value)} placeholder="Ghi chú thêm về cuộc gọi hoặc email..." rows={3} className="textarea textarea-bordered w-full" />
                       </label>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                        <span style={fieldLabel}>Kết quả <span style={{ color: 'var(--color-danger)' }}>*</span></span>
-                        <input value={logForm.contactResult} onChange={(e) => handleLogInputChange('contactResult', e.target.value)} placeholder="Đã liên hệ thành công / Không có phản hồi" className="input input-bordered w-full" required />
+                        <span style={fieldLabel}>Thời điểm liên hệ <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+                        <input type="datetime-local" value={logForm.contactedAt} onChange={(e) => handleLogInputChange('contactedAt', e.target.value)} className="input input-bordered w-full" required />
                       </label>
-                    </div>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                      <span style={fieldLabel}>Nội dung liên hệ</span>
-                      <textarea value={logForm.contactNote} onChange={(e) => handleLogInputChange('contactNote', e.target.value)} placeholder="Ghi chú thêm về cuộc gọi hoặc email..." rows={3} className="textarea textarea-bordered w-full" />
-                    </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                      <span style={fieldLabel}>Thời điểm liên hệ <span style={{ color: 'var(--color-danger)' }}>*</span></span>
-                      <input type="datetime-local" value={logForm.contactedAt} onChange={(e) => handleLogInputChange('contactedAt', e.target.value)} className="input input-bordered w-full" required />
-                    </label>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button type="submit" className="btn btn-outline btn-sm" disabled={logSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
-                        {logSaving ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Plus size={13} />}
-                        {logSaving ? 'Đang lưu...' : 'Lưu liên hệ'}
-                      </button>
-                    </div>
-                  </form>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button type="submit" className="btn btn-outline btn-sm" disabled={logSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                          {logSaving ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Plus size={13} />}
+                          {logSaving ? 'Đang lưu...' : 'Lưu liên hệ'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
 
                 <StepFooter
@@ -1080,29 +1195,61 @@ export const ProviderReportWorkspacePage = () => {
             <section aria-labelledby="docs-title" style={{ ...card, overflow: 'hidden' }}>
               <SectionHeader
                 title="Tài liệu hoàn thành"
-                sub="Tải lên bằng chứng hoàn thành từ nhà thầu trước khi tiếp tục."
-                action={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" style={{ display: 'none' }} onChange={handleDocumentUpload} />
-                    <button type="button" className="btn btn-primary btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
-                      {uploadingDocuments ? <span className="loading loading-spinner loading-xs" /> : <Lucide.UploadCloud size={13} />}
-                      {uploadingDocuments ? 'Đang tải...' : 'Tải lên'}
-                    </button>
-                  </div>
-                }
+                sub={canUploadCompletionDocuments ? 'Tải lên bằng chứng hoàn thành từ nhà thầu trước khi tiếp tục.' : 'Bước này có thể xem lại nội dung tài liệu đã tải lên sau khi báo cáo được hoàn tất.'}
+                action={canUploadCompletionDocuments ? null : (
+                  <span style={{ ...statusChip(currentStatus), padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.8 }}>
+                    {currentStatus === 'Done' ? 'Đã hoàn tất' : 'Xem lại'}
+                  </span>
+                )}
               />
 
               <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                  <span style={fieldLabel}>Mô tả <span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0 }}>(tùy chọn)</span></span>
-                  <textarea value={documentDescription} onChange={(e) => setDocumentDescription(e.target.value)} placeholder="Thêm mô tả cho bằng chứng hoàn thành..." rows={2} maxLength={1000} className="textarea textarea-bordered w-full" />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
-                    <span>Hỗ trợ: JPG, PNG, PDF</span>
-                    <span>{documentDescription.trim().length}/1000</span>
-                  </div>
-                </label>
+                {canUploadCompletionDocuments ? (
+                  <form onSubmit={handleDocumentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      <span style={fieldLabel}>Mô tả <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+                      <textarea value={documentDescription} onChange={(e) => setDocumentDescription(e.target.value)} placeholder="Mô tả chi tiết về tài liệu hoàn thành..." rows={3} maxLength={1000} className="textarea textarea-bordered w-full" required />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
+                        <span>Hỗ trợ: JPG, PNG, PDF</span>
+                        <span>{documentDescription.trim().length}/1000</span>
+                      </div>
+                    </label>
 
-                {uploadError && <ErrorAlert message={uploadError} onClose={() => setUploadError('')} />}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" style={{ display: 'none' }} onChange={handleDocumentFileChange} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                          <Lucide.FolderPlus size={14} /> Chọn tệp
+                        </button>
+                        <div style={{ minHeight: '1.1rem', color: selectedDocumentFile ? '#0f172a' : '#6b7280', fontSize: '0.9rem' }}>
+                          {selectedDocumentFile ? selectedDocumentFile.name : 'Chưa chọn tệp nào'}
+                        </div>
+                      </div>
+
+                      <button type="submit" className="btn btn-primary btn-sm" disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', alignSelf: 'flex-start' }}>
+                        {uploadingDocuments ? <span className="loading loading-spinner loading-xs" /> : <Lucide.CheckCircle2 size={14} />}
+                        {uploadingDocuments ? 'Đang gửi...' : 'Gửi tài liệu'}
+                      </button>
+                    </div>
+
+                    {uploadError && <ErrorAlert message={uploadError} onClose={() => setUploadError('')} />}
+                  </form>
+                ) : (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                    <span style={fieldLabel}>Mô tả <span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0 }}>(tùy chọn)</span></span>
+                    <textarea value={documentDescription} onChange={(e) => setDocumentDescription(e.target.value)} placeholder="Thêm mô tả cho bằng chứng hoàn thành..." rows={2} maxLength={1000} className="textarea textarea-bordered w-full" />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
+                      <span>Hỗ trợ: JPG, PNG, PDF</span>
+                      <span>{documentDescription.trim().length}/1000</span>
+                    </div>
+                  </label>
+                )}
+
+                {!canUploadCompletionDocuments && (
+                  <div style={{ borderRadius: '0.875rem', border: '1px solid rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.7)', padding: '1rem 1rem', color: '#475569', lineHeight: 1.6 }}>
+                    Bước này đã được hoàn tất. Bạn có thể xem lại danh sách tài liệu hoàn thành bên dưới để đối chiếu nội dung trước khi tiếp tục.
+                  </div>
+                )}
 
                 {documentsLoading ? (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}><LoadingSpinner /></div>
@@ -1194,7 +1341,7 @@ export const ProviderReportWorkspacePage = () => {
                   </div>
                 ) : (
                   /* Resolution form */
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                  <form onSubmit={handleResolutionFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                     {[
                       { key: 'resolutionSummary', label: 'Tóm tắt kết quả',         placeholder: 'Tóm tắt kết quả xử lý...', required: true },
                       { key: 'actionTaken',       label: 'Hành động đã thực hiện', placeholder: 'Các bước công việc đã thực hiện...', required: true },
@@ -1209,6 +1356,7 @@ export const ProviderReportWorkspacePage = () => {
                           placeholder={placeholder}
                           className="textarea textarea-bordered w-full"
                           disabled={!canAccessResolution}
+                          required={required}
                         />
                       </label>
                     ))}
@@ -1242,7 +1390,19 @@ export const ProviderReportWorkspacePage = () => {
                         </div>
                       )}
                     </div>
-                  </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-sm"
+                        disabled={submittingResolution || !canAccessResolution}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                      >
+                        {submittingResolution ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={13} />}
+                        {submittingResolution ? 'Đang gửi...' : 'Gửi kết quả xử lý'}
+                      </button>
+                    </div>
+                  </form>
                 )}
               </div>
 
@@ -1250,11 +1410,7 @@ export const ProviderReportWorkspacePage = () => {
                 currentIndex={visibleStepIndex}
                 totalSteps={totalVisible}
                 onBack={goBack}
-                onNext={() => setConfirmingResolutionSubmit(true)}
-                nextLabel={submittingResolution ? 'Đang gửi...' : 'Gửi kết quả xử lý'}
-                nextDisabled={submittingResolution || !canAccessResolution || existingResolutions.length > 0}
-                nextLoading={submittingResolution}
-                nextVariant="primary"
+                hideNext
               />
             </section>
           )}
