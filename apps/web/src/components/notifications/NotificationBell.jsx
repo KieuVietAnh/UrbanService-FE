@@ -3,178 +3,116 @@ import { useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useAuth } from '../../contexts/AuthContext';
-
-const notificationTypeConfig = {
-  assignment: { label: 'Phân công', icon: Lucide.UserCheck, tone: 'error' },
-  alert: { label: 'Cảnh báo', icon: Lucide.AlertTriangle, tone: 'warning' },
-  update: { label: 'Cập nhật', icon: Lucide.RefreshCcw, tone: 'info' },
-  reminder: { label: 'Nhắc nhở', icon: Lucide.Clock, tone: 'accent' },
-  default: { label: 'Thông báo', icon: Lucide.Bell, tone: 'secondary' },
-};
-
-const getNotificationType = (type) => {
-  const normalized = (type || '').toLowerCase();
-  if (normalized.includes('assign')) return 'assignment';
-  if (normalized.includes('alert') || normalized.includes('warning')) return 'alert';
-  if (normalized.includes('update') || normalized.includes('status')) return 'update';
-  if (normalized.includes('remind')) return 'reminder';
-  return 'default';
-};
-
-const toneClassMap = {
-  error: 'bg-error/10 text-error',
-  warning: 'bg-warning/10 text-warning',
-  info: 'bg-info/10 text-info',
-  accent: 'bg-accent/10 text-accent',
-  secondary: 'bg-secondary/10 text-secondary',
-};
+import { getServiceUserNotificationRoute } from '../../utils/notificationNavigation';
 
 const formatRelativeTime = (value) => {
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'Vừa xong';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Vừa xong';
+  const diff = Math.max(0, Date.now() - date.getTime());
+  const minutes = Math.floor(diff / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (minutes < 1) return 'Vừa xong';
+  if (minutes < 60) return `${minutes} phút trước`;
+  if (hours < 24) return `${hours} giờ trước`;
+  return `${days} ngày trước`;
+};
 
-    const diff = Date.now() - date.getTime();
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (seconds < 60) return 'Vừa xong';
-    if (minutes < 60) return `${minutes} phút trước`;
-    if (hours < 24) return `${hours} giờ trước`;
-    return `${days} ngày trước`;
-  } catch {
-    return 'Vừa xong';
-  }
+const getIcon = (notification) => {
+  const text = `${notification?.title || ''} ${notification?.type || ''}`.toLowerCase();
+  if (text.includes('hoàn') || text.includes('result') || text.includes('resolved')) return Lucide.CircleCheckBig;
+  if (text.includes('làm lại') || text.includes('rework') || text.includes('bổ sung')) return Lucide.RotateCcw;
+  if (text.includes('comment') || text.includes('bình luận')) return Lucide.MessageCircle;
+  return Lucide.RefreshCcw;
 };
 
 export const NotificationBell = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const {
-    notifications,
-    unreadCount,
-    loading,
-    error: notificationsError,
-    markAsRead,
-    markAllAsRead,
-  } = useNotifications(user?.userId);
+  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead } = useNotifications(user?.userId);
+  const visibleNotifications = useMemo(() => notifications.slice(0, 5), [notifications]);
 
-  const visibleNotifications = useMemo(
-    () => (Array.isArray(notifications) ? notifications.slice(0, 5) : []),
-    [notifications]
-  );
-
-  const handleNotificationClick = async (notification) => {
-    if (!notification) return;
-    try {
-      await markAsRead(notification.notificationId);
-    } catch (err) {
-      console.warn('NotificationBell markAsRead failed', err);
-    }
-
-    if (notification?.targetUrl) {
-      navigate(notification.targetUrl);
-    }
+  const openNotification = async (notification) => {
+    await markAsRead(notification?.notificationId);
+    navigate(getServiceUserNotificationRoute(notification));
   };
 
   return (
     <div className="dropdown dropdown-end">
-      <button aria-label="Thông báo" title="Thông báo" tabIndex={0} className="btn btn-ghost btn-circle relative transition duration-200 ease-out hover:bg-base-200">
-        <div className="indicator">
-          <Lucide.Bell size={20} aria-hidden="true" />
-          {unreadCount > 0 && (
-            <span className="badge badge-xs badge-error indicator-item font-extrabold text-[8px] p-1" aria-hidden>
-              {unreadCount}
-            </span>
-          )}
-        </div>
+      <button
+        aria-label={`Thông báo${unreadCount > 0 ? `, ${unreadCount} chưa đọc` : ''}`}
+        title="Thông báo"
+        tabIndex={0}
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+      >
+        <Lucide.Bell size={19} aria-hidden="true" />
+        {unreadCount > 0 && (
+          <span className="absolute -right-1.5 -top-1.5 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[10px] font-bold leading-none text-white dark:border-slate-950">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
       </button>
 
-      <div tabIndex={0} className="dropdown-content card card-compact w-96 shadow bg-base-100 border border-base-300 mt-2 z-50 transition-opacity duration-200 ease-out opacity-100">
-        <div className="card-body p-0">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-base-300">
-            <div>
-              <h3 className="font-bold text-sm">Thông Báo</h3>
-              <p className="text-[10px] text-gray-500">{unreadCount} chưa đọc · {Array.isArray(notifications) ? notifications.length : 0} tổng</p>
+      <div tabIndex={0} className="dropdown-content z-[80] mt-3 w-[min(410px,calc(100vw-24px))] overflow-hidden rounded-[22px] border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.2)] dark:border-white/10 dark:bg-slate-950">
+        <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-white/10">
+          <div>
+            <h3 className="text-base font-semibold text-slate-950 dark:text-white">Thông báo</h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{unreadCount} chưa đọc · {notifications.length} thông báo</p>
+          </div>
+          <button
+            type="button"
+            onClick={markAllAsRead}
+            disabled={loading || unreadCount === 0}
+            className="text-xs font-semibold text-blue-700 transition hover:text-blue-800 disabled:cursor-not-allowed disabled:text-slate-300 dark:text-blue-300"
+          >
+            Đánh dấu tất cả đã đọc
+          </button>
+        </header>
+
+        <div className="max-h-[390px] overflow-y-auto p-2">
+          {loading && notifications.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-500">Đang tải thông báo...</div>
+          ) : error && notifications.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-rose-600">{error}</div>
+          ) : visibleNotifications.length === 0 ? (
+            <div className="px-4 py-10 text-center">
+              <Lucide.BellOff size={24} className="mx-auto text-slate-300" />
+              <p className="mt-2 text-sm font-medium text-slate-600">Chưa có thông báo</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={markAllAsRead}
-                disabled={loading || unreadCount === 0}
-                className="text-xs text-primary font-semibold hover:underline disabled:text-gray-400"
-              >
-                Đánh dấu tất cả
-              </button>
+          ) : visibleNotifications.map((notification) => {
+            const Icon = getIcon(notification);
+            const unread = notification?.isRead === false;
+            return (
               <button
                 type="button"
-                onClick={() => navigate('/notifications')}
-                className="btn btn-xs btn-outline rounded-full"
+                key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`}
+                onClick={() => openNotification(notification)}
+                className={`group flex w-full gap-3 rounded-2xl px-3 py-3 text-left transition ${unread ? 'bg-blue-50/80 hover:bg-blue-50 dark:bg-blue-500/10' : 'hover:bg-slate-50 dark:hover:bg-white/5'}`}
               >
-                Xem tất cả
+                <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${unread ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>
+                  <Icon size={16} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-start justify-between gap-3">
+                    <strong className={`line-clamp-1 text-sm ${unread ? 'font-semibold text-slate-950 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-200'}`}>
+                      {notification?.title || 'Thông báo mới'}
+                    </strong>
+                    <span className="shrink-0 text-[10px] text-slate-400">{formatRelativeTime(notification?.createdAt)}</span>
+                  </span>
+                  <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{notification?.message || 'Không có nội dung thông báo.'}</span>
+                </span>
+                {unread && <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-blue-600" aria-label="Chưa đọc" />}
               </button>
-            </div>
-          </div>
-
-          <div className="max-h-72 overflow-y-auto divide-y divide-base-300">
-            {loading ? (
-              <div className="px-4 py-6 text-center text-gray-500 text-xs">Đang tải thông báo...</div>
-            ) : notificationsError ? (
-              <div className="px-4 py-6 text-center text-error text-xs">{notificationsError}</div>
-            ) : visibleNotifications.length === 0 ? (
-              <div className="px-4 py-6 text-center text-gray-500 text-xs">Không có thông báo mới</div>
-            ) : (
-              visibleNotifications.map((notification) => {
-                const typeKey = getNotificationType(notification?.type);
-                const typeData = notificationTypeConfig[typeKey] || notificationTypeConfig.default;
-                const toneClasses = toneClassMap[typeData.tone] || toneClassMap.secondary;
-
-                return (
-                  <button
-                    type="button"
-                    key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`}
-                    onClick={() => handleNotificationClick(notification)}
-                    className={`w-full text-left p-3 flex gap-3 items-start rounded-3xl transition duration-200 ease-out ${
-                      notification?.isRead === false ? 'bg-primary/5 shadow-sm' : 'hover:bg-base-200'
-                    }`}
-                  >
-                    <div className={`p-2 rounded-xl shrink-0 ${toneClasses}`}>
-                      <typeData.icon size={16} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <h4 className={`text-xs truncate ${notification?.isRead === false ? 'font-bold' : 'text-slate-700'}`}>
-                          {notification?.title || 'Thông báo mới'}
-                        </h4>
-                        <span className="text-[9px] text-gray-400">{formatRelativeTime(notification?.createdAt)}</span>
-                      </div>
-                      <div className="mt-1 flex items-center flex-wrap gap-2 text-[11px] text-slate-500">
-                        <span className="rounded-full bg-slate-100 px-2 py-1">{typeData.label}</span>
-                        {notification?.isRead === false && (
-                          <span className="rounded-full bg-primary px-2 py-1 text-primary-content">Mới</span>
-                        )}
-                      </div>
-                      <p className="mt-2 text-[11px] text-gray-500 line-clamp-2">
-                        {notification?.message || 'Không có nội dung thông báo'}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {Array.isArray(notifications) && notifications.length > visibleNotifications.length && (
-            <button
-              type="button"
-              onClick={() => navigate('/notifications')}
-              className="w-full py-3 text-xs font-semibold text-primary hover:bg-base-200"
-            >
-              Xem tất cả thông báo
-            </button>
-          )}
+            );
+          })}
         </div>
+
+        <footer className="border-t border-slate-100 p-3 dark:border-white/10">
+          <button type="button" onClick={() => navigate('/notifications')} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-blue-700 transition hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10">
+            Xem tất cả thông báo
+            <Lucide.ArrowRight size={15} />
+          </button>
+        </footer>
       </div>
     </div>
   );

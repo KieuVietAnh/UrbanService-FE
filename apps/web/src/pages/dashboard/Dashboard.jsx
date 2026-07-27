@@ -4,17 +4,21 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
-import { toolsApi, managementFeedbackApi } from '@urbanmind/shared-api';
+import { axiosClient, toolsApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 import { normalizeRole } from '../../utils/roleMap';
-import { APP_ROLES, managementTypes } from '@urbanmind/shared-types';
+import { APP_ROLES, getStatusLabel, managementTypes, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { ManagerMetricCard, ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import { getCommunityFeed } from '../../services/api/feedApi';
+import usePublicLandingFeed from '../../hooks/usePublicLandingFeed';
+import PublicPageMotion from '../../components/public/PublicPageMotion';
+import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
 
 const DASHBOARD_AREA_STORAGE_KEY =
-  'urbanmind-dashboard-tracked-area-id';
+  'urbanmind-dashboard-area-filter-v2';
 const DASHBOARD_SNAPSHOT_STORAGE_KEY =
   'urbanmind-service-user-dashboard-snapshot';
 
@@ -55,6 +59,30 @@ const normalizeTicketCollection = (response) => {
   if (Array.isArray(response?.data?.items)) return response.data.items;
   if (Array.isArray(response?.data)) return response.data;
   return [];
+};
+
+const normalizeTicketPage = (response) => {
+  const payload = (
+    response?.data &&
+    !Array.isArray(response.data) &&
+    typeof response.data === 'object'
+  )
+    ? response.data
+    : response;
+  const items = normalizeTicketCollection(payload);
+  const totalItems = Number(
+    payload?.totalItems ??
+    payload?.totalCount ??
+    payload?.count ??
+    items.length
+  );
+
+  return {
+    items,
+    totalItems: Number.isFinite(totalItems)
+      ? totalItems
+      : items.length,
+  };
 };
 
 const getAreaId = (area) => area?.areaId ?? area?.id ?? '';
@@ -137,6 +165,7 @@ const TrackedAreaSelector = ({
   const selectedArea = areas.find(
     (area) => String(getAreaId(area)) === String(value)
   );
+  const showingAllAreas = !value;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -192,7 +221,7 @@ const TrackedAreaSelector = ({
           <strong className="mt-0.5 block truncate text-sm font-bold">
             {selectedArea
               ? getAreaName(selectedArea)
-              : 'Chưa chọn khu vực'}
+              : 'Tất cả khu vực'}
           </strong>
         </span>
 
@@ -210,9 +239,34 @@ const TrackedAreaSelector = ({
           role="listbox"
           aria-label="Chọn khu vực theo dõi"
         >
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setOpen(false);
+              }}
+              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${showingAllAreas
+                  ? 'bg-secondary/10 font-semibold text-secondary'
+                  : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
+                }`}
+              role="option"
+              aria-selected={showingAllAreas}
+            >
+              <span className="truncate">Tất cả khu vực</span>
+              {showingAllAreas ? (
+                <Lucide.Check
+                  size={15}
+                  className="shrink-0"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </button>
+          </li>
+
           {areas.length === 0 ? (
             <li className="px-3 py-3 text-sm text-base-content/45">
-              Chưa có khu vực
+              Chưa có khu vực cụ thể
             </li>
           ) : (
             areas.map((area) => {
@@ -255,6 +309,260 @@ const TrackedAreaSelector = ({
   );
 };
 
+
+const CitizenDashboardThemeStyles = () => (
+  <style>{`
+    html:not([data-theme="dark"]) .citizen-dashboard-page {
+      --public-surface: rgba(248, 251, 255, 0.97);
+      --public-surface-soft: rgba(232, 239, 248, 0.95);
+      --public-surface-strong: #f7faff;
+      --public-border: rgba(148, 163, 184, 0.52);
+      --public-border-soft: rgba(186, 205, 229, 0.86);
+      --public-copy: #4f6077;
+      --public-muted: #718198;
+      --public-shadow: 0 22px 60px rgba(15, 23, 42, 0.12);
+    }
+
+    html:not([data-theme="dark"]) .citizen-dashboard-page-shell {
+      border-color: rgba(148, 163, 184, 0.38);
+      background:
+        linear-gradient(
+          180deg,
+          rgba(226, 235, 247, 0.84) 0%,
+          rgba(242, 247, 252, 0.58) 52%,
+          rgba(235, 242, 250, 0.72) 100%
+        );
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.78),
+        0 24px 70px rgba(15, 23, 42, 0.06);
+    }
+
+    html[data-theme="dark"] .citizen-dashboard-page-shell {
+      border-color: rgba(96, 165, 250, 0.15);
+      background:
+        linear-gradient(
+          180deg,
+          rgba(10, 28, 53, 0.62) 0%,
+          rgba(7, 20, 39, 0.28) 58%,
+          rgba(5, 13, 27, 0.12) 100%
+        );
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.025),
+        0 28px 78px rgba(0, 0, 0, 0.2);
+    }
+
+    html[data-theme="dark"] .citizen-dashboard-page .citizen-dashboard-hero {
+      background:
+        radial-gradient(circle at 10% 12%, rgba(37, 99, 235, 0.2), transparent 31%),
+        radial-gradient(circle at 91% 16%, rgba(8, 145, 178, 0.12), transparent 29%),
+        linear-gradient(145deg, #0d1d36 0%, #081426 100%) !important;
+      border-color: rgba(96, 165, 250, 0.18) !important;
+    }
+
+    .citizen-dashboard-page .citizen-dashboard-hero-backdrop {
+      background:
+        radial-gradient(circle at 9% 12%, rgba(37, 99, 235, 0.14), transparent 31%),
+        radial-gradient(circle at 91% 16%, rgba(8, 145, 178, 0.12), transparent 29%),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(219, 234, 254, 0.24));
+    }
+
+    html[data-theme="dark"] .citizen-dashboard-page .citizen-dashboard-hero-backdrop {
+      background:
+        radial-gradient(circle at 9% 12%, rgba(37, 99, 235, 0.18), transparent 32%),
+        radial-gradient(circle at 91% 16%, rgba(8, 145, 178, 0.1), transparent 29%),
+        linear-gradient(145deg, rgba(13, 29, 54, 0.18), rgba(8, 20, 38, 0.08)) !important;
+    }
+
+    .citizen-dashboard-page .citizen-dashboard-hero-map {
+      color: #2563eb;
+      opacity: 0.18;
+    }
+
+    html[data-theme="dark"] .citizen-dashboard-page .citizen-dashboard-hero-map {
+      color: #67e8f9;
+      opacity: 0.1;
+    }
+
+    html[data-theme="dark"] .citizen-dashboard-page .citizen-dashboard-panel {
+      background: linear-gradient(155deg, #0d1d36, #081426) !important;
+      border-color: rgba(96, 165, 250, 0.18) !important;
+      box-shadow: 0 22px 58px rgba(0, 0, 0, 0.24) !important;
+    }
+
+    html[data-theme="dark"] .citizen-dashboard-page .citizen-dashboard-map-panel {
+      background:
+        radial-gradient(circle at 82% 12%, rgba(34, 211, 238, 0.08), transparent 28%),
+        linear-gradient(145deg, rgba(12, 32, 58, 0.98), rgba(8, 22, 42, 0.98)) !important;
+      border-color: rgba(96, 165, 250, 0.18) !important;
+    }
+  `}</style>
+);
+
+const getCommunityFeedbackId = (item) => (
+  item?.feedbackId || item?.id || item?.ticketId || ''
+);
+
+const getCommunityAreaName = (item) => (
+  item?.areaName ||
+  item?.wardName ||
+  item?.districtName ||
+  item?.locationText ||
+  'Chưa xác định khu vực'
+);
+
+const formatCommunityDate = (value) => {
+  if (!value) return 'Vừa cập nhật';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Vừa cập nhật';
+
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+  });
+};
+
+const CitizenCommunityPreview = () => {
+  const {
+    items,
+    loading,
+    error,
+    reload,
+  } = usePublicLandingFeed();
+  const previewItems = items.slice(0, 3);
+
+  return (
+    <section
+      data-public-reveal
+      className="citizen-dashboard-panel overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_16px_42px_rgba(15,23,42,0.07)]"
+      aria-labelledby="citizen-community-title"
+    >
+      <header className="flex flex-col gap-4 border-b border-[var(--public-border)] px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-7">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+            Cộng đồng quanh bạn
+          </p>
+          <h2
+            id="citizen-community-title"
+            className="mt-2 text-2xl font-semibold tracking-[-0.025em] text-[var(--public-title)] sm:text-3xl"
+          >
+            Cập nhật đô thị mới nhất
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
+            Những phản ánh công khai mới nhất và vị trí đang được cộng đồng quan tâm.
+          </p>
+        </div>
+
+        <Link
+          to="/community/feed"
+          state={{ resetFeedScroll: true }}
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 text-sm font-semibold text-[var(--public-title)] transition hover:-translate-y-0.5 hover:border-blue-300 hover:text-primary"
+        >
+          Xem bảng tin
+          <Lucide.ArrowRight size={15} aria-hidden="true" />
+        </Link>
+      </header>
+
+      <div className="grid xl:grid-cols-[minmax(0,1.12fr)_minmax(360px,0.88fr)]">
+        <div className="border-b border-[var(--public-border)] p-5 sm:p-6 xl:border-b-0 xl:border-r">
+          {loading ? (
+            <div className="space-y-3" aria-label="Đang tải cập nhật cộng đồng">
+              {[0, 1, 2].map((item) => (
+                <div
+                  key={item}
+                  className="flex animate-pulse items-center gap-3 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] p-4"
+                  aria-hidden="true"
+                >
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-base-300/45" />
+                  <div className="min-w-0 flex-1">
+                    <div className="h-4 w-3/4 rounded-full bg-base-300/45" />
+                    <div className="mt-2 h-3 w-1/2 rounded-full bg-base-300/30" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div className="flex min-h-[250px] flex-col items-center justify-center rounded-[22px] border border-dashed border-rose-300/60 bg-rose-500/[0.05] px-6 text-center">
+              <Lucide.CloudOff size={23} className="text-rose-500" aria-hidden="true" />
+              <h3 className="mt-3 text-base font-semibold text-[var(--public-title)]">
+                Chưa tải được cập nhật cộng đồng
+              </h3>
+              <p className="mt-2 max-w-md text-sm leading-6 text-[var(--public-copy)]">
+                Dữ liệu công khai đang tạm thời chưa phản hồi. Các chức năng cá nhân vẫn hoạt động bình thường.
+              </p>
+              <button
+                type="button"
+                onClick={reload}
+                className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 text-sm font-semibold text-[var(--public-title)] transition hover:border-blue-300 hover:text-primary"
+              >
+                <Lucide.RefreshCw size={14} aria-hidden="true" />
+                Tải lại
+              </button>
+            </div>
+          ) : previewItems.length === 0 ? (
+            <div className="flex min-h-[250px] flex-col items-center justify-center rounded-[22px] border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] px-6 text-center">
+              <Lucide.Inbox size={24} className="text-[var(--public-muted)]" aria-hidden="true" />
+              <h3 className="mt-3 text-base font-semibold text-[var(--public-title)]">
+                Chưa có cập nhật công khai mới
+              </h3>
+              <p className="mt-2 text-sm text-[var(--public-copy)]">
+                Các phản ánh đủ điều kiện công khai sẽ xuất hiện tại đây.
+              </p>
+            </div>
+          ) : (
+            <ol className="space-y-3">
+              {previewItems.map((item) => {
+                const feedbackId = getCommunityFeedbackId(item);
+                const badgeClass = STATUS_BADGE_CLASSES[item?.status] || STATUS_BADGE_CLASSES.default;
+
+                return (
+                  <li key={feedbackId}>
+                    <Link
+                      to={feedbackId ? `/community/feed/${feedbackId}` : '/community/feed'}
+                      className="group grid gap-3 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] p-4 transition hover:border-blue-300 hover:bg-[var(--public-surface-strong)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200/70 bg-blue-500/[0.07] text-primary" aria-hidden="true">
+                        <Lucide.MapPin size={17} />
+                      </span>
+
+                      <span className="min-w-0">
+                        <strong className="block truncate text-sm font-semibold text-[var(--public-title)] transition group-hover:text-primary ">
+                          {item?.title || 'Phản ánh đô thị'}
+                        </strong>
+                        <span className="mt-1.5 flex items-center gap-2 text-xs text-[var(--public-muted)]">
+                          <span className="truncate">{getCommunityAreaName(item)}</span>
+                          <span aria-hidden="true">•</span>
+                          <time className="shrink-0" dateTime={item?.updatedAt || item?.createdAt || undefined}>
+                            {formatCommunityDate(item?.updatedAt || item?.createdAt)}
+                          </time>
+                        </span>
+                      </span>
+
+                      <span className="flex items-center justify-between gap-3 pl-[52px] sm:justify-end sm:pl-0">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${badgeClass}`}>
+                          {getStatusLabel(item?.status, 'Đang cập nhật')}
+                        </span>
+                        <Lucide.ChevronRight size={15} className="text-[var(--public-muted)] transition group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+
+        <aside className="p-5 sm:p-6" aria-label="Bản đồ sự cố công khai">
+          <CompactPublicIncidentMap
+            items={previewItems}
+            loading={loading}
+            error={error}
+          />
+        </aside>
+      </div>
+    </section>
+  );
+};
+
 export const Dashboard = () => {
   const { user } = useAuth();
   const currentRole = normalizeRole(user?.role);
@@ -269,6 +577,13 @@ export const Dashboard = () => {
       ? cachedDashboard.tickets
       : []
   );
+  const [ticketTotal, setTicketTotal] = useState(() => {
+    const cachedTotal = Number(cachedDashboard?.ticketTotal);
+    if (Number.isFinite(cachedTotal)) return cachedTotal;
+    return Array.isArray(cachedDashboard?.tickets)
+      ? cachedDashboard.tickets.length
+      : 0;
+  });
   const [categories, setCategories] = useState(
     () => Array.isArray(cachedDashboard?.categories)
       ? cachedDashboard.categories
@@ -284,40 +599,55 @@ export const Dashboard = () => {
   );
   const [loading, setLoading] = useState(!cachedDashboard);
   const [refreshing, setRefreshing] = useState(false);
+  const [communityAreaCount, setCommunityAreaCount] = useState(0);
+  const [
+    communityAreaCountLoading,
+    setCommunityAreaCountLoading,
+  ] = useState(false);
   const [showStaffFilter, setShowStaffFilter] = useState(false);
   const [staffFilter, setStaffFilter] = useState('all');
 
   const fetchScopedTickets = useCallback(async () => {
     try {
-      if (!user) return [];
+      if (!user) return { items: [], totalItems: 0 };
 
       if (currentRole === APP_ROLES.SERVICE_USER) {
-        return await ticketApi.getTickets(
-          {
-            userId: user.userId,
-            pageNumber: 1,
-            pageSize: 100,
+        const response = await axiosClient.get('/api/user/feedbacks', {
+          params: {
+            PageNumber: 1,
+            PageSize: 1000,
           },
-          { role: currentRole }
-        );
+        });
+        return normalizeTicketPage(response);
       }
 
       if (currentRole === APP_ROLES.SERVICE_PROVIDER) {
-        return await ticketApi.getTickets({ operatorId: user.operatorId }, { role: currentRole });
+        const response = await ticketApi.getTickets(
+          { operatorId: user.operatorId },
+          { role: currentRole }
+        );
+        return normalizeTicketPage(response);
       }
 
       if (currentRole === APP_ROLES.SYSTEM_STAFF) {
-        const response = await managementFeedbackApi.getFeedbacks({ pageIndex: 0, pageSize: 10 });
-        if (response && Array.isArray(response.items)) {
-          return response.items;
-        }
-        return Array.isArray(response) ? response : [];
+        const response = await managementFeedbackApi.getFeedbacks({
+          pageIndex: 0,
+          pageSize: 10,
+        });
+        return normalizeTicketPage(response);
       }
 
-      return await ticketApi.getTickets({}, { role: currentRole });
+      const response = await ticketApi.getTickets(
+        {},
+        { role: currentRole }
+      );
+      return normalizeTicketPage(response);
     } catch (err) {
-      console.warn('Dashboard ticket loading failed, using empty list', err);
-      return [];
+      console.warn(
+        'Dashboard ticket loading failed, using empty list',
+        err
+      );
+      return { items: [], totalItems: 0 };
     }
   }, [currentRole, user]);
 
@@ -338,12 +668,16 @@ export const Dashboard = () => {
           resStats,
           fetchedCategories,
           fetchedAreas,
+          ticketPage,
         ] = await Promise.all([
-          analyticsApi.getSystemDashboardStats(currentRole),
+          currentRole === APP_ROLES.SERVICE_USER
+            ? Promise.resolve(SAFE_DASHBOARD_STATS)
+            : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
           currentRole === APP_ROLES.SERVICE_USER
             ? toolsApi.getAreas().catch(() => [])
             : Promise.resolve([]),
+          fetchScopedTickets(),
         ]);
         const nextStats = normalizeDashboardStats(resStats);
         const nextCategories = Array.isArray(fetchedCategories)
@@ -352,13 +686,20 @@ export const Dashboard = () => {
         const nextAreas = Array.isArray(fetchedAreas)
           ? fetchedAreas
           : [];
-        const resTickets = await fetchScopedTickets();
-        const nextTickets = normalizeTicketCollection(resTickets);
+        const nextTickets = Array.isArray(ticketPage?.items)
+          ? ticketPage.items
+          : [];
+        const nextTicketTotal = Number.isFinite(
+          Number(ticketPage?.totalItems)
+        )
+          ? Number(ticketPage.totalItems)
+          : nextTickets.length;
 
         setStats(nextStats);
         setCategories(nextCategories);
         setAreas(nextAreas);
         setTickets(nextTickets);
+        setTicketTotal(nextTicketTotal);
 
         if (currentRole === APP_ROLES.SERVICE_USER) {
           writeDashboardSnapshot({
@@ -366,6 +707,7 @@ export const Dashboard = () => {
             categories: nextCategories,
             areas: nextAreas,
             tickets: nextTickets,
+            ticketTotal: nextTicketTotal,
           });
         }
       } catch (err) {
@@ -376,6 +718,7 @@ export const Dashboard = () => {
           setCategories([]);
           setAreas([]);
           setTickets([]);
+          setTicketTotal(0);
         }
       } finally {
         setLoading(false);
@@ -391,30 +734,61 @@ export const Dashboard = () => {
     cachedDashboard,
   ]);
 
-  // realtime updates: refresh dashboard when tickets change
+  // Realtime updates: refresh dashboard when tickets change.
   useEffect(() => {
     if (!user) return;
     signalrService.start();
+
     const reload = async () => {
       try {
-        const [resStats, fetchedCategories] = await Promise.all([
-          analyticsApi.getSystemDashboardStats(currentRole),
+        const [resStats, fetchedCategories, ticketPage] = await Promise.all([
+          currentRole === APP_ROLES.SERVICE_USER
+            ? Promise.resolve(SAFE_DASHBOARD_STATS)
+            : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
+          fetchScopedTickets(),
         ]);
+        const nextTickets = Array.isArray(ticketPage?.items)
+          ? ticketPage.items
+          : [];
+        const nextTicketTotal = Number.isFinite(
+          Number(ticketPage?.totalItems)
+        )
+          ? Number(ticketPage.totalItems)
+          : nextTickets.length;
+
         setStats(normalizeDashboardStats(resStats));
-        setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
-        const resTickets = await fetchScopedTickets();
-        setTickets(normalizeTicketCollection(resTickets));
+        setCategories(
+          Array.isArray(fetchedCategories)
+            ? fetchedCategories
+            : []
+        );
+        setTickets(nextTickets);
+        setTicketTotal(nextTicketTotal);
       } catch (e) {
         console.warn('Dashboard realtime reload failed', e);
       }
     };
 
-    const relevantEvents = ['FeedbackStatusChanged', 'CommentAdded', 'SupportAdded', 'AssignmentCreated', 'AssignmentUpdated', 'ResolutionApproved', 'ResolutionSubmitted', 'ResolutionRejected', 'NotificationReceived'];
-    relevantEvents.forEach((ev) => signalrService.on(ev, reload));
+    const relevantEvents = [
+      'FeedbackStatusChanged',
+      'CommentAdded',
+      'SupportAdded',
+      'AssignmentCreated',
+      'AssignmentUpdated',
+      'ResolutionApproved',
+      'ResolutionSubmitted',
+      'ResolutionRejected',
+      'NotificationReceived',
+    ];
+    relevantEvents.forEach((eventName) => (
+      signalrService.on(eventName, reload)
+    ));
 
     return () => {
-      relevantEvents.forEach((ev) => signalrService.off(ev, reload));
+      relevantEvents.forEach((eventName) => (
+        signalrService.off(eventName, reload)
+      ));
     };
   }, [user, currentRole, fetchScopedTickets]);
 
@@ -426,54 +800,18 @@ export const Dashboard = () => {
       return;
     }
 
+    if (!selectedAreaId) return;
+
     const currentAreaExists = areas.some(
       (area) => (
         String(getAreaId(area)) === String(selectedAreaId)
       )
     );
 
-    if (currentAreaExists) return;
-
-    const latestTicketWithArea = [...tickets]
-      .sort((firstTicket, secondTicket) => (
-        new Date(
-          secondTicket?.updatedAt ||
-          secondTicket?.createdAt ||
-          0
-        ) -
-        new Date(
-          firstTicket?.updatedAt ||
-          firstTicket?.createdAt ||
-          0
-        )
-      ))
-      .find((ticket) => (
-        getTicketAreaId(ticket) ||
-        ticket?.areaName
-      ));
-
-    const ticketAreaId = getTicketAreaId(latestTicketWithArea);
-    const matchedArea = ticketAreaId
-      ? areas.find(
-        (area) => (
-          String(getAreaId(area)) === String(ticketAreaId)
-        )
-      )
-      : areas.find(
-        (area) => (
-          getAreaName(area) === latestTicketWithArea?.areaName
-        )
-      );
-    const fallbackArea = matchedArea || areas[0];
-    const fallbackAreaId = getAreaId(fallbackArea);
-
-    setSelectedAreaId(
-      fallbackAreaId === undefined ||
-        fallbackAreaId === null
-        ? ''
-        : String(fallbackAreaId)
-    );
-  }, [areas, currentRole, selectedAreaId, tickets]);
+    if (!currentAreaExists) {
+      setSelectedAreaId('');
+    }
+  }, [areas, currentRole, selectedAreaId]);
 
   useEffect(() => {
     if (
@@ -498,6 +836,58 @@ export const Dashboard = () => {
       // Không chặn dashboard nếu trình duyệt không cho dùng storage.
     }
   }, [currentRole, selectedAreaId]);
+
+  useEffect(() => {
+    if (currentRole !== APP_ROLES.SERVICE_USER) return undefined;
+
+    let cancelled = false;
+
+    const loadCommunityAreaCount = async () => {
+      setCommunityAreaCountLoading(true);
+
+      try {
+        const selectedArea = areas.find(
+          (area) => String(getAreaId(area)) === String(selectedAreaId)
+        );
+        const selectedAreaName = selectedArea
+          ? getAreaName(selectedArea)
+          : '';
+        const response = await getCommunityFeed({
+          PageNumber: 1,
+          PageSize: 1,
+          ...(selectedAreaName ? { Search: selectedAreaName } : {}),
+        });
+        const nextCount = Number(
+          response?.totalItems ?? response?.items?.length ?? 0
+        );
+
+        if (!cancelled) {
+          setCommunityAreaCount(
+            Number.isFinite(nextCount) ? nextCount : 0
+          );
+        }
+      } catch (error) {
+        console.warn(
+          'Không thể tải số phản ánh công khai theo khu vực',
+          error
+        );
+
+        if (!cancelled) {
+          setCommunityAreaCount(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setCommunityAreaCountLoading(false);
+        }
+      }
+    };
+
+    loadCommunityAreaCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [areas, currentRole, selectedAreaId]);
 
   if (!stats) {
     return (
@@ -568,6 +958,7 @@ export const Dashboard = () => {
   };
 
   const residentTickets = Array.isArray(tickets) ? tickets : [];
+  const residentTotal = Math.max(ticketTotal, residentTickets.length);
   const residentInProgressStatuses = [
     managementTypes.feedbackStatus.VERIFIED,
     managementTypes.feedbackStatus.ASSIGNED,
@@ -604,30 +995,30 @@ export const Dashboard = () => {
   const residentEnded = residentTickets.filter((ticket) => (
     ticket.status === managementTypes.feedbackStatus.CLOSED
   )).length;
-  const residentNeedsAttention = residentTickets.filter((ticket) => (
-    [
-      managementTypes.feedbackStatus.NEED_REWORK,
-      managementTypes.feedbackStatus.APPROVED,
-    ].includes(ticket.status)
-  )).length;
+  const needsReworkTickets = residentTickets.filter((ticket) => (
+    ticket.status === managementTypes.feedbackStatus.NEED_REWORK
+  ));
+  const awaitingReviewTickets = residentTickets.filter((ticket) => (
+    ticket.status === managementTypes.feedbackStatus.APPROVED
+  ));
+  const residentNeedsAttention = (
+    needsReworkTickets.length + awaitingReviewTickets.length
+  );
   const recentResidentTickets = [...residentTickets]
     .sort((a, b) => (
       new Date(b.updatedAt || b.createdAt || 0) -
       new Date(a.updatedAt || a.createdAt || 0)
     ))
     .slice(0, 5);
-  const attentionTickets = [...residentTickets]
-    .filter((ticket) => (
-      [
-        managementTypes.feedbackStatus.NEED_REWORK,
-        managementTypes.feedbackStatus.APPROVED,
-      ].includes(ticket.status)
-    ))
+  const attentionTickets = [
+    ...needsReworkTickets,
+    ...awaitingReviewTickets,
+  ]
     .sort((a, b) => (
       new Date(b.updatedAt || b.createdAt || 0) -
       new Date(a.updatedAt || a.createdAt || 0)
     ))
-    .slice(0, 2);
+    .slice(0, 3);
 
   const selectedArea = areas.find(
     (area) => (
@@ -649,21 +1040,10 @@ export const Dashboard = () => {
 
       return ticket?.areaName === selectedAreaName;
     })
-    : [];
-  const selectedAreaClosed = selectedAreaTickets.filter(
-    (ticket) => (
-      ticket.status === managementTypes.feedbackStatus.CLOSED
-    )
-  ).length;
+    : residentTickets;
   const selectedAreaTicketUrl = selectedArea
     ? buildTicketListUrl({ search: selectedAreaName })
     : '/tickets';
-  const selectedAreaEndedUrl = selectedArea
-    ? buildTicketListUrl({
-      status: 'ended',
-      search: selectedAreaName,
-    })
-    : buildTicketListUrl({ status: 'ended' });
 
   const getResidentStatusMeta = (status) => {
     const statusMap = {
@@ -741,7 +1121,7 @@ export const Dashboard = () => {
     if (loading) {
       return (
         <main
-          className="space-y-5 text-base-content"
+          className="space-y-6 text-[var(--public-title)]"
           aria-busy="true"
           aria-label="Đang tải trang chủ"
         >
@@ -749,82 +1129,57 @@ export const Dashboard = () => {
             Đang tải dữ liệu trang chủ
           </span>
 
-          <section className="relative overflow-hidden rounded-[30px] border border-primary/15 bg-base-100 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.09)] sm:p-6">
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+          <section className="overflow-hidden rounded-[32px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[var(--public-shadow)] sm:p-7">
+            <div className="grid gap-7 xl:grid-cols-[minmax(0,1fr)_minmax(430px,0.72fr)] xl:items-end">
               <div className="animate-pulse">
-                <div className="h-4 w-28 rounded-full bg-base-300/60" />
-                <div className="mt-4 h-9 w-56 rounded-xl bg-base-300/75" />
-                <div className="mt-3 h-4 w-full max-w-xl rounded-lg bg-base-300/50" />
-                <div className="mt-2 h-4 w-4/5 max-w-lg rounded-lg bg-base-300/40" />
-                <div className="mt-5 h-9 w-44 rounded-full bg-base-300/50" />
+                <div className="h-7 w-36 rounded-full bg-slate-200/80 dark:bg-white/10" />
+                <div className="mt-5 h-11 w-64 max-w-full rounded-xl bg-slate-200/80 dark:bg-white/10" />
+                <div className="mt-4 h-4 w-full max-w-xl rounded-full bg-slate-100 dark:bg-white/[0.07]" />
+                <div className="mt-2 h-4 w-4/5 max-w-lg rounded-full bg-slate-100 dark:bg-white/[0.07]" />
+                <div className="mt-6 flex gap-3">
+                  <div className="h-11 w-36 rounded-xl bg-slate-200/80 dark:bg-white/10" />
+                  <div className="h-11 w-40 rounded-xl bg-slate-100 dark:bg-white/[0.07]" />
+                </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 sm:gap-3" aria-hidden="true">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-hidden="true">
                 {[0, 1, 2].map((item) => (
                   <div
                     key={item}
-                    className="min-w-[118px] animate-pulse rounded-2xl border border-base-300 bg-base-200/55 px-4 py-4"
-                  >
-                    <div className="h-3 w-16 rounded bg-base-300/60" />
-                    <div className="mt-3 h-8 w-12 rounded-lg bg-base-300/75" />
-                    <div className="mt-2 h-3 w-20 rounded bg-base-300/40" />
-                  </div>
+                    className={`h-28 animate-pulse rounded-[22px] border border-[var(--public-border)] bg-[var(--public-surface-soft)] ${item === 2 ? 'col-span-2 sm:col-span-1' : ''}`}
+                  />
                 ))}
               </div>
             </div>
           </section>
 
-          <section className="grid gap-3 rounded-[26px] border border-base-300 bg-base-100 p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-4">
-            {[0, 1, 2, 3].map((item) => (
-              <div
-                key={item}
-                className="h-20 animate-pulse rounded-2xl border border-base-300 bg-base-200/45"
-                aria-hidden="true"
-              />
-            ))}
+          <section className="h-36 animate-pulse rounded-[28px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" aria-hidden="true" />
+
+          <section className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(350px,0.65fr)]">
+            <div className="h-[430px] animate-pulse rounded-[28px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" aria-hidden="true" />
+            <div className="h-[430px] animate-pulse rounded-[28px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" aria-hidden="true" />
           </section>
 
-          <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.5fr)]">
-            <article className="overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-sm">
-              <header className="border-b border-base-300 px-5 py-4 sm:px-6">
-                <div className="h-6 w-40 animate-pulse rounded-lg bg-base-300/70" />
-                <div className="mt-2 h-3 w-52 animate-pulse rounded bg-base-300/45" />
-              </header>
-
-              <div className="divide-y divide-base-300" aria-hidden="true">
-                {[0, 1, 2, 3, 4].map((item) => (
-                  <div
-                    key={item}
-                    className="flex animate-pulse items-center gap-3 px-5 py-4 sm:px-6"
-                  >
-                    <div className="h-10 w-10 shrink-0 rounded-2xl bg-base-300/55" />
-                    <div className="min-w-0 flex-1">
-                      <div className="h-4 w-48 max-w-[70%] rounded bg-base-300/70" />
-                      <div className="mt-2 h-3 w-32 rounded bg-base-300/45" />
-                    </div>
-                    <div className="h-3 w-20 rounded bg-base-300/45" />
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <aside className="space-y-5" aria-hidden="true">
-              <section className="h-44 animate-pulse rounded-[26px] border border-base-300 bg-base-100 shadow-sm" />
-              <section className="h-72 animate-pulse rounded-[26px] border border-base-300 bg-base-100 shadow-sm" />
-            </aside>
-          </section>
+          <section className="h-[430px] animate-pulse rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" aria-hidden="true" />
         </main>
       );
     }
 
     return (
-      <main
-        className="space-y-5 text-base-content"
-        aria-busy={refreshing}
-      >
-        {refreshing ? (
+      <PublicPageMotion>
+        <CitizenDashboardThemeStyles />
+        <main
+          data-public-reveal
+          className="citizen-dashboard-page relative isolate space-y-5 text-[var(--public-title)]"
+          aria-busy={refreshing}
+        >
           <div
-            className="fixed right-5 top-24 z-40 inline-flex items-center gap-2 rounded-full border border-info/20 bg-base-100/95 px-3 py-2 text-xs font-semibold text-info shadow-lg backdrop-blur"
+            className="citizen-dashboard-page-shell pointer-events-none absolute -inset-x-3 -inset-y-5 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-6"
+            aria-hidden="true"
+          />
+          {refreshing ? (
+          <div
+            className="fixed right-5 top-24 z-40 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-[var(--public-surface-strong)] px-3 py-2 text-xs font-semibold text-blue-700 shadow-lg backdrop-blur "
             role="status"
             aria-live="polite"
           >
@@ -832,255 +1187,232 @@ export const Dashboard = () => {
             Đang đồng bộ trang chủ
           </div>
         ) : null}
-        <section
-          className="relative overflow-hidden rounded-[30px] border border-secondary/16 bg-gradient-to-br from-base-100 via-secondary/[0.035] to-primary/[0.08] shadow-[0_20px_54px_rgba(15,23,42,0.09)]"
+
+          <section
+            data-public-reveal
+            className="citizen-dashboard-hero relative isolate overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]"
           aria-labelledby="citizen-dashboard-title"
         >
-          <div
-            className="pointer-events-none absolute inset-0 overflow-hidden"
-            aria-hidden="true"
-          >
+          <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+            <div className="citizen-dashboard-hero-backdrop absolute inset-0" />
             <svg
-              viewBox="0 0 1280 360"
+              viewBox="0 0 1280 410"
               preserveAspectRatio="none"
-              className="absolute inset-0 h-full w-full text-secondary opacity-[0.18]"
+              className="citizen-dashboard-hero-map absolute inset-0 h-full w-full"
               fill="none"
             >
-              <path
-                d="M-40 250C120 215 178 118 322 116C450 114 488 198 623 197C762 195 814 104 955 101C1097 98 1168 181 1328 151"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-              />
-              <path
-                d="M-15 304C168 278 244 197 377 204C518 211 597 286 733 274C863 264 919 196 1037 195C1161 194 1216 242 1310 258"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeDasharray="10 12"
-                opacity="0.8"
-              />
-              <path
-                d="M911 -16C890 58 916 118 977 150C1031 178 1124 175 1174 131C1223 88 1220 22 1278 -14"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                opacity="0.75"
-              />
-              <circle cx="322" cy="116" r="7" fill="currentColor" opacity="0.8" />
-              <circle cx="623" cy="197" r="9" fill="currentColor" opacity="0.65" />
-              <circle cx="955" cy="101" r="8" fill="currentColor" opacity="0.8" />
-              <circle cx="1037" cy="195" r="10" fill="currentColor" opacity="0.55" />
-              <circle cx="1174" cy="131" r="28" stroke="currentColor" strokeWidth="1.25" opacity="0.4" />
+              <path d="M-40 282C120 238 178 128 322 126C450 124 488 220 623 217C762 214 814 112 955 109C1097 106 1168 199 1328 166" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M-15 343C168 310 244 220 377 228C518 236 597 319 733 305C863 292 919 218 1037 216C1161 214 1216 269 1310 287" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeDasharray="10 12" opacity="0.78" />
+              <circle cx="322" cy="126" r="7" fill="currentColor" opacity="0.8" />
+              <circle cx="623" cy="217" r="9" fill="currentColor" opacity="0.65" />
+              <circle cx="955" cy="109" r="8" fill="currentColor" opacity="0.8" />
+              <circle cx="1037" cy="216" r="10" fill="currentColor" opacity="0.55" />
             </svg>
-
-            <div className="absolute -left-16 top-10 h-56 w-56 rounded-full bg-secondary/[0.07] blur-3xl" />
-            <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-primary/[0.08] blur-3xl" />
-
-            <span className="absolute left-[43%] top-[24%] flex h-8 w-8 items-center justify-center rounded-full border border-secondary/10 bg-base-100/60 text-secondary/40 shadow-sm backdrop-blur">
-              <Lucide.MapPin size={14} />
-            </span>
-            <span className="absolute right-[28%] top-[38%] flex h-8 w-8 items-center justify-center rounded-full border border-primary/10 bg-base-100/60 text-primary/40 shadow-sm backdrop-blur">
-              <Lucide.Radio size={14} />
-            </span>
-            <span className="absolute right-[15%] top-[18%] flex h-8 w-8 items-center justify-center rounded-full border border-success/10 bg-base-100/60 text-success/40 shadow-sm backdrop-blur">
-              <Lucide.CircleCheck size={14} />
-            </span>
+            <div className="absolute -left-20 bottom-0 h-72 w-72 rounded-full bg-blue-500/[0.08] blur-3xl" />
+            <div className="absolute -right-16 top-4 h-72 w-72 rounded-full bg-cyan-500/[0.08] blur-3xl" />
           </div>
 
-          <div className="relative grid gap-6 px-5 py-6 sm:px-7 sm:py-7 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+          <div className="relative grid gap-8 px-5 py-7 sm:px-8 sm:py-9 xl:grid-cols-[minmax(0,1fr)_minmax(430px,0.72fr)] xl:items-end">
             <header className="max-w-2xl">
               <h1
                 id="citizen-dashboard-title"
-                className="mt-4 text-3xl font-bold tracking-tight text-base-content sm:text-4xl"
+                className="text-3xl font-semibold tracking-[-0.035em] text-[var(--public-title)] sm:text-4xl lg:text-[44px]"
               >
-                Chào, {user?.fullName || 'Bạn'}!
+                Chào, {user?.fullName || 'Bạn'}
               </h1>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-base-content/60">
-                Theo dõi tiến độ, xem các cập nhật mới và kết nối nhanh với những thông tin đô thị liên quan đến bạn.
+              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--public-copy)] sm:text-base sm:leading-7">
+                Theo dõi phản ánh, cập nhật tiến độ và những thông tin đô thị liên quan đến bạn trong cùng một nơi.
               </p>
 
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <Link
+                  to="/tickets/create"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)] transition hover:-translate-y-0.5 hover:bg-blue-700"
+                >
+                  <Lucide.Plus size={17} aria-hidden="true" />
+                  Gửi phản ánh
+                </Link>
+                <Link
+                  to="/tickets"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-5 text-sm font-semibold text-[var(--public-title)] transition hover:-translate-y-0.5 hover:border-primary/35 hover:text-primary"
+                >
+                  <Lucide.Files size={17} aria-hidden="true" />
+                  Phản ánh của tôi
+                </Link>
+              </div>
+
+              <div className="mt-5">
                 {residentNeedsAttention > 0 ? (
-                  <Link
-                    to="/tickets"
+                  <a
+                    href="#citizen-attention"
                     className="inline-flex items-center gap-2 rounded-full border border-warning/25 bg-warning/10 px-3 py-1.5 text-xs font-semibold text-warning transition hover:bg-warning/15"
                   >
                     <Lucide.BellRing size={14} aria-hidden="true" />
-                    {residentNeedsAttention} việc cần bạn kiểm tra
-                    <Lucide.ArrowRight size={13} aria-hidden="true" />
-                  </Link>
+                    {residentNeedsAttention} việc đang chờ bạn kiểm tra
+                    <Lucide.ArrowDown size={13} aria-hidden="true" />
+                  </a>
                 ) : (
                   <span className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success">
                     <Lucide.CircleCheck size={14} aria-hidden="true" />
-                    Không có việc đang chờ
+                    Hiện không có việc cần bạn bổ sung
                   </span>
                 )}
               </div>
             </header>
 
-            <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-              <Link
-                to="/tickets"
-                className="group min-w-[118px] rounded-2xl border border-base-300 bg-base-100/85 px-4 py-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
-              >
-                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
-                  Tổng phản ánh
-                  <Lucide.Files size={14} className="text-primary" aria-hidden="true" />
-                </dt>
-                <dd className="mt-1 text-2xl font-bold tracking-tight text-base-content">
-                  {residentTickets.length}
-                </dd>
-                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-primary">
-                  Xem toàn bộ
-                </span>
-              </Link>
+            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <li>
+                <Link
+                  to="/tickets"
+                  className="group block h-full rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)]/90 p-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md"
+                >
+                  <span className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                    Tổng phản ánh
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">
+                    <Lucide.Files size={15} />
+                  </span>
+                  </span>
+                  <strong className="mt-2 block text-3xl font-bold tracking-[-0.035em] text-base-content">
+                    {residentTotal}
+                  </strong>
+                  <span className="mt-1 block text-[11px] text-base-content/40 transition group-hover:text-primary">
+                    Xem toàn bộ hồ sơ
+                  </span>
+                </Link>
+              </li>
 
-              <Link
+              <li>
+                <Link
                 to={buildTicketListUrl({ status: 'processing' })}
-                className="group min-w-[118px] rounded-2xl border border-warning/20 bg-warning/5 px-4 py-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-warning/35 hover:shadow-md"
-              >
-                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
-                  Đang xử lý
-                  <Lucide.LoaderCircle size={14} className="text-warning" aria-hidden="true" />
-                </dt>
-                <dd className="mt-1 text-2xl font-bold tracking-tight text-warning">
-                  {residentInProgress}
-                </dd>
-                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-warning">
-                  Theo dõi tiến độ
-                </span>
-              </Link>
+                  className="group block h-full rounded-2xl border border-warning/25 bg-[var(--public-surface-strong)]/90 p-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-warning/40 hover:shadow-md"
+                >
+                  <span className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                    Đang xử lý
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-warning/10 text-warning" aria-hidden="true">
+                    <Lucide.LoaderCircle size={15} />
+                  </span>
+                  </span>
+                  <strong className="mt-2 block text-3xl font-bold tracking-[-0.035em] text-warning">
+                    {residentInProgress}
+                  </strong>
+                  <span className="mt-1 block text-[11px] text-base-content/40 transition group-hover:text-warning">
+                    Theo dõi tiến độ
+                  </span>
+                </Link>
+              </li>
 
-              <Link
+              <li className="col-span-2 sm:col-span-1">
+                <Link
                 to={buildTicketListUrl({ status: 'ended' })}
-                className="group min-w-[118px] rounded-2xl border border-success/20 bg-success/5 px-4 py-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-success/35 hover:shadow-md"
-              >
-                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
-                  Đã kết thúc
-                  <Lucide.CircleCheckBig
-                    size={14}
-                    className="text-success"
-                    aria-hidden="true"
-                  />
-                </dt>
-                <dd className="mt-1 text-2xl font-bold tracking-tight text-success">
-                  {residentEnded}
-                </dd>
-                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-success">
-                  Xem hồ sơ đã kết thúc
-                </span>
-              </Link>
-            </dl>
+                  className="group block h-full rounded-2xl border border-success/25 bg-[var(--public-surface-strong)]/90 p-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-success/40 hover:shadow-md"
+                >
+                  <span className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
+                    Đã kết thúc
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-success/10 text-success" aria-hidden="true">
+                    <Lucide.CircleCheckBig size={15} />
+                  </span>
+                  </span>
+                  <strong className="mt-2 block text-3xl font-bold tracking-[-0.035em] text-success">
+                    {residentEnded}
+                  </strong>
+                  <span className="mt-1 block text-[11px] text-base-content/40 transition group-hover:text-success">
+                    Xem kết quả đã xử lý
+                  </span>
+                </Link>
+              </li>
+            </ul>
           </div>
         </section>
 
         <section
-          className="relative grid gap-3 overflow-hidden rounded-[26px] border border-base-300 bg-base-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:grid-cols-2 xl:grid-cols-[1.15fr_repeat(3,minmax(0,1fr))]"
-          aria-labelledby="urban-pulse-title"
+          data-public-reveal
+          id="citizen-attention"
+          className={`citizen-dashboard-panel overflow-hidden rounded-[24px] border bg-[var(--public-surface)] shadow-[0_12px_30px_rgba(15,23,42,0.055)] ${residentNeedsAttention > 0
+              ? 'border-warning/30'
+              : 'border-success/30'
+            }`}
+          aria-labelledby="citizen-attention-title"
         >
-          <div
-            className="pointer-events-none absolute inset-0"
-            aria-hidden="true"
-          >
-            <div className="absolute -left-12 top-0 h-32 w-32 rounded-full bg-secondary/[0.045] blur-2xl" />
-            <svg
-              viewBox="0 0 1200 180"
-              preserveAspectRatio="none"
-              className="absolute inset-0 h-full w-full text-primary opacity-[0.08]"
-              fill="none"
-            >
-              <path
-                d="M0 122C138 96 174 38 302 46C441 55 512 141 646 142C784 144 843 74 980 68C1063 64 1124 82 1200 108"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeDasharray="8 12"
-              />
-            </svg>
-          </div>
-          <header className="relative flex items-center gap-3 rounded-2xl bg-gradient-to-br from-secondary/10 to-primary/8 px-4 py-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-content shadow-sm">
-              <Lucide.Activity size={18} aria-hidden="true" />
-            </span>
-            <div>
-              <h2 id="urban-pulse-title" className="text-sm font-bold">
-                Nhịp đô thị của bạn
-              </h2>
-              <p className="mt-0.5 text-xs text-base-content/48">
-                Tổng quan nhanh từ các phản ánh gần đây.
-              </p>
+          <header className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+            <div className="flex items-start gap-3">
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${residentNeedsAttention > 0
+                  ? 'bg-warning/10 text-warning'
+                  : 'bg-success/10 text-success'
+                }`} aria-hidden="true">
+                {residentNeedsAttention > 0 ? <Lucide.BellRing size={20} /> : <Lucide.ShieldCheck size={20} />}
+              </span>
+              <div>
+                <h2 id="citizen-attention-title" className="text-lg font-semibold text-[var(--public-title)]">
+                  {residentNeedsAttention > 0 ? 'Việc cần bạn chú ý' : 'Mọi việc đang được theo dõi'}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-[var(--public-copy)]">
+                  {residentNeedsAttention > 0
+                    ? `${needsReworkTickets.length} phản ánh cần bổ sung và ${awaitingReviewTickets.length} phản ánh chờ đánh giá.`
+                    : 'Hiện không có phản ánh nào cần bạn bổ sung hoặc đánh giá kết quả.'}
+                </p>
+              </div>
             </div>
+
+            <Link
+              to="/notifications"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 text-sm font-semibold text-[var(--public-title)] transition hover:border-primary/35 hover:text-primary"
+            >
+              <Lucide.Bell size={15} aria-hidden="true" />
+              Xem thông báo
+            </Link>
           </header>
 
-          <Link
-            to={selectedAreaTicketUrl}
-            className="group flex items-center gap-3 rounded-2xl border border-base-300 px-4 py-3 transition hover:border-primary/25 hover:bg-primary/5"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info">
-              <Lucide.Files size={16} aria-hidden="true" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] text-base-content/45">
-                Phản ánh tại khu vực
-              </span>
-              <strong className="mt-0.5 block text-lg font-bold">
-                {selectedAreaTickets.length}
-              </strong>
-            </span>
-            <Lucide.ChevronRight
-              size={15}
-              className="text-base-content/25 group-hover:text-primary"
-              aria-hidden="true"
-            />
-          </Link>
+          {attentionTickets.length > 0 ? (
+            <ol className="grid gap-3 border-t border-warning/20 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-3">
+              {attentionTickets.map((ticket) => {
+                const feedbackId = ticket.feedbackId || ticket.id;
+                const needsRework = ticket.status === managementTypes.feedbackStatus.NEED_REWORK;
+                const targetPath = needsRework
+                  ? `/tickets/${feedbackId}/rework`
+                  : `/tickets/${feedbackId}/result`;
 
-          <Link
-            to={selectedAreaEndedUrl}
-            className="group flex items-center gap-3 rounded-2xl border border-base-300 px-4 py-3 transition hover:border-success/25 hover:bg-success/5"
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
-              <Lucide.CircleCheckBig size={16} aria-hidden="true" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] text-base-content/45">
-                Đã kết thúc
-              </span>
-              <strong className="mt-0.5 block text-lg font-bold">
-                {selectedAreaClosed}
-              </strong>
-            </span>
-            <Lucide.ChevronRight
-              size={15}
-              className="text-base-content/25 group-hover:text-success"
-              aria-hidden="true"
-            />
-          </Link>
-
-          <TrackedAreaSelector
-            areas={areas}
-            value={selectedAreaId}
-            onChange={setSelectedAreaId}
-          />
+                return (
+                  <li key={feedbackId}>
+                    <Link
+                      to={targetPath}
+                      className="group flex h-full items-start gap-3 rounded-2xl border border-warning/25 bg-[var(--public-surface-soft)] p-4 transition hover:-translate-y-0.5 hover:border-warning/40 hover:bg-[var(--public-surface-strong)] hover:shadow-md"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warning/10 text-warning" aria-hidden="true">
+                        {needsRework ? <Lucide.FileWarning size={17} /> : <Lucide.Star size={17} />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-warning">
+                          {needsRework ? 'Cần bổ sung' : 'Chờ đánh giá'}
+                        </span>
+                        <strong className="mt-1 block line-clamp-2 text-sm font-semibold leading-5 text-[var(--public-title)] transition group-hover:text-warning">
+                          {ticket.title || 'Phản ánh chưa có tiêu đề'}
+                        </strong>
+                      </span>
+                      <Lucide.ArrowUpRight size={15} className="mt-1 shrink-0 text-warning/45 transition group-hover:text-warning" aria-hidden="true" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
         </section>
 
-        <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.5fr)]">
+        <section data-public-reveal className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(350px,0.65fr)]">
           <article
-            className="overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
+            className="citizen-dashboard-panel flex h-full min-h-[440px] flex-col overflow-hidden rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_12px_32px_rgba(15,23,42,0.06)]"
             aria-labelledby="recent-feedback-title"
           >
-            <header className="flex flex-col gap-3 border-b border-base-300 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
-                  <Lucide.History size={18} />
-                </span>
-                <div>
-                  <h2 id="recent-feedback-title" className="text-lg font-semibold text-base-content">
-                    Phản ánh gần đây
-                  </h2>
-                  <p className="mt-1 text-xs text-base-content/50">
-                    Năm hồ sơ có cập nhật mới nhất.
-                  </p>
-                </div>
+            <header className="flex min-h-[126px] flex-col gap-4 border-b border-[var(--public-border)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                  Hoạt động của bạn
+                </p>
+                <h2 id="recent-feedback-title" className="mt-2 text-2xl font-semibold tracking-[-0.025em] text-[var(--public-title)]">
+                  Phản ánh gần đây
+                </h2>
+                <p className="mt-2 text-sm text-[var(--public-copy)]">
+                  Năm hồ sơ có cập nhật mới nhất.
+                </p>
               </div>
 
               <Link
@@ -1093,23 +1425,26 @@ export const Dashboard = () => {
             </header>
 
             {recentResidentTickets.length === 0 ? (
-              <section className="flex min-h-72 flex-col items-center justify-center px-6 py-10 text-center">
-                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/8 text-primary" aria-hidden="true">
-                  <Lucide.FilePlus2 size={24} />
+              <section className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+                <span className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-primary/20 bg-primary/10 text-primary" aria-hidden="true">
+                  <Lucide.FilePlus2 size={27} />
                 </span>
-                <h3 className="mt-4 text-base font-semibold text-base-content">
+                <h3 className="mt-5 text-lg font-semibold text-[var(--public-title)]">
                   Bạn chưa gửi phản ánh nào
                 </h3>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-base-content/55">
-                  Khi gặp vấn đề đô thị, hãy gửi thông tin và hình ảnh để đơn vị phụ trách tiếp nhận.
+                <p className="mt-2 max-w-md text-sm leading-6 text-[var(--public-copy)]">
+                  Khi phát hiện vấn đề đô thị, hãy gửi thông tin và hình ảnh để hệ thống tiếp nhận và theo dõi tiến độ.
                 </p>
-                <Link to="/tickets/create" className="btn admin-primary-action mt-5 rounded-2xl">
+                <Link
+                  to="/tickets/create"
+                  className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700"
+                >
                   <Lucide.Plus size={16} aria-hidden="true" />
                   Gửi phản ánh đầu tiên
                 </Link>
               </section>
             ) : (
-              <ol className="divide-y divide-base-300">
+              <ol className="flex-1 divide-y divide-[var(--public-border)]">
                 {recentResidentTickets.map((ticket) => {
                   const feedbackId = ticket.feedbackId || ticket.id;
                   const statusMeta = getResidentStatusMeta(ticket.status);
@@ -1119,16 +1454,16 @@ export const Dashboard = () => {
                     <li key={feedbackId}>
                       <Link
                         to={`/tickets/${feedbackId}`}
-                        className="group grid gap-3 px-5 py-4 transition-colors hover:bg-primary/[0.035] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"
+                        className="group grid gap-3 px-5 py-4 transition-colors hover:bg-[var(--public-surface-soft)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-7"
                       >
                         <article className="flex min-w-0 items-start gap-3">
-                          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/12 bg-primary/6 text-primary" aria-hidden="true">
-                            <Lucide.MapPin size={16} />
+                          <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary" aria-hidden="true">
+                            <Lucide.MapPin size={17} />
                           </span>
 
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="truncate text-sm font-semibold text-base-content transition-colors group-hover:text-primary">
+                              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--public-title)] transition-colors group-hover:text-primary">
                                 {ticket.title || 'Phản ánh chưa có tiêu đề'}
                               </h3>
                               <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusMeta.className}`}>
@@ -1136,8 +1471,8 @@ export const Dashboard = () => {
                               </span>
                             </div>
 
-                            <p className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-base-content/50">
-                              <Lucide.MapPin size={13} className="shrink-0" aria-hidden="true" />
+                            <p className="mt-1.5 inline-flex max-w-full items-center gap-1.5 truncate text-xs text-[var(--public-muted)]">
+                              <Lucide.MapPin size={13} className="shrink-0 text-primary" aria-hidden="true" />
                               <span className="truncate">
                                 {ticket.areaName || 'Chưa xác định khu vực'}
                               </span>
@@ -1145,11 +1480,11 @@ export const Dashboard = () => {
                           </div>
                         </article>
 
-                        <div className="flex items-center justify-between gap-3 pl-[52px] sm:justify-end sm:pl-0">
-                          <time className="whitespace-nowrap text-xs text-base-content/40" dateTime={updatedAt || undefined}>
+                        <div className="flex items-center justify-between gap-3 pl-[56px] sm:justify-end sm:pl-0">
+                          <time className="whitespace-nowrap text-xs text-[var(--public-muted)]" dateTime={updatedAt || undefined}>
                             {formatResidentDate(updatedAt)}
                           </time>
-                          <Lucide.ChevronRight size={16} className="text-base-content/25 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                          <Lucide.ChevronRight size={16} className="text-[var(--public-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
                         </div>
                       </Link>
                     </li>
@@ -1159,143 +1494,94 @@ export const Dashboard = () => {
             )}
           </article>
 
-          <aside className="space-y-5">
-            {attentionTickets.length > 0 ? (
-              <section className="overflow-hidden rounded-[26px] border border-warning/25 bg-gradient-to-br from-warning/8 via-base-100 to-warning/5 shadow-[0_14px_32px_rgba(15,23,42,0.07)]" aria-labelledby="attention-title">
-                <header className="flex items-start gap-3 px-5 py-4">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-warning/12 text-warning" aria-hidden="true">
-                    <Lucide.BellRing size={18} />
-                  </span>
-                  <div>
-                    <h2 id="attention-title" className="text-base font-semibold text-base-content">
-                      Cần bạn xử lý
-                    </h2>
-                    <p className="mt-1 text-xs leading-5 text-base-content/50">
-                      {attentionTickets.length === 1
-                        ? '1 hồ sơ đang chờ bạn kiểm tra.'
-                        : `${attentionTickets.length} hồ sơ đang chờ bạn kiểm tra.`}
-                    </p>
-                  </div>
-                </header>
-
-                <ul className="divide-y divide-warning/15 border-t border-warning/15">
-                  {attentionTickets.map((ticket) => {
-                    const feedbackId = ticket.feedbackId || ticket.id;
-                    const needsRework = ticket.status === managementTypes.feedbackStatus.NEED_REWORK;
-
-                    return (
-                      <li key={feedbackId}>
-                        <Link to={`/tickets/${feedbackId}`} className="group flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-warning/8">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-base-100 text-warning shadow-sm" aria-hidden="true">
-                            {needsRework ? <Lucide.FileWarning size={16} /> : <Lucide.Star size={16} />}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[11px] font-semibold text-warning">
-                              {needsRework ? 'Cần bổ sung thông tin' : 'Chờ bạn đánh giá'}
-                            </span>
-                            <strong className="mt-0.5 block truncate text-sm font-semibold text-base-content">
-                              {ticket.title || 'Phản ánh chưa có tiêu đề'}
-                            </strong>
-                          </span>
-                          <Lucide.ArrowUpRight size={15} className="shrink-0 text-base-content/30 group-hover:text-warning" aria-hidden="true" />
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ) : (
-              <section className="overflow-hidden rounded-[26px] border border-secondary/18 bg-gradient-to-br from-secondary/8 via-base-100 to-primary/5 p-5 shadow-[0_14px_32px_rgba(15,23,42,0.07)]" aria-labelledby="area-summary-title">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-secondary/10 text-secondary" aria-hidden="true">
-                    <Lucide.MapPinHouse size={18} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h2 id="area-summary-title" className="text-base font-semibold text-base-content">
-                      Khu vực đang theo dõi
-                    </h2>
-                    <p className="mt-1 truncate text-sm font-bold text-secondary">
-                      {selectedAreaName}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <div className="rounded-2xl border border-base-300/80 bg-base-100/80 px-3 py-3">
-                    <p className="text-[11px] text-base-content/45">Phản ánh</p>
-                    <p className="mt-1 text-xl font-bold">{selectedAreaTickets.length}</p>
-                  </div>
-                  <div className="rounded-2xl border border-base-300/80 bg-base-100/80 px-3 py-3">
-                    <p className="text-[11px] text-base-content/45">Đã kết thúc</p>
-                    <p className="mt-1 text-xl font-bold text-success">{selectedAreaClosed}</p>
-                  </div>
-                </div>
-
-                <Link to="/community/map" className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-secondary hover:underline">
-                  Xem khu vực trên bản đồ
-                  <Lucide.ArrowRight size={13} aria-hidden="true" />
-                </Link>
-              </section>
-            )}
-
-            <section className="rounded-[26px] border border-base-300 bg-base-100 p-5 shadow-[0_14px_32px_rgba(15,23,42,0.07)]" aria-labelledby="quick-access-title">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
-                  <Lucide.LayoutGrid size={18} />
+          <aside
+            className="citizen-dashboard-panel flex h-full min-h-[440px] flex-col overflow-hidden rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_12px_32px_rgba(15,23,42,0.06)]"
+            aria-labelledby="tracked-area-title"
+          >
+            <div className="flex min-h-[126px] items-center border-b border-[var(--public-border)] p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-info/10 text-info" aria-hidden="true">
+                  <Lucide.MapPinHouse size={19} />
                 </span>
                 <div>
-                  <h2 id="quick-access-title" className="text-base font-semibold text-base-content">
-                    Truy cập nhanh
-                  </h2>
-                  <p className="mt-1 text-xs text-base-content/50">
-                    Các khu vực thường dùng.
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-info">
+                    Khu vực của bạn
                   </p>
+                  <h2 id="tracked-area-title" className="mt-1 text-xl font-semibold tracking-[-0.02em] text-[var(--public-title)]">
+                    Khu vực đang theo dõi
+                  </h2>
                 </div>
               </div>
+            </div>
 
-              <nav className="mt-4 grid gap-2" aria-label="Liên kết nhanh dành cho người dân">
-                {[
-                  {
-                    to: '/community/feed',
-                    title: 'Bảng tin cộng đồng',
-                    description: 'Theo dõi thông tin đô thị mới.',
-                    icon: Lucide.Newspaper,
-                    className: 'bg-secondary/10 text-secondary',
-                  },
-                  {
-                    to: '/community/map',
-                    title: 'Bản đồ sự cố',
-                    description: 'Xem vấn đề đang được phản ánh.',
-                    icon: Lucide.Map,
-                    className: 'bg-info/10 text-info',
-                  },
-                  {
-                    to: '/notifications',
-                    title: 'Trung tâm thông báo',
-                    description: 'Xem các cập nhật mới nhất.',
-                    icon: Lucide.Bell,
-                    className: 'bg-warning/10 text-warning',
-                  },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <Link key={item.to} to={item.to} className="group flex items-center gap-3 rounded-2xl border border-base-300 px-4 py-3 transition hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-sm">
-                      <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${item.className}`} aria-hidden="true">
-                        <Icon size={17} />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <strong className="block text-sm font-semibold text-base-content">{item.title}</strong>
-                        <span className="mt-0.5 block text-xs text-base-content/45">{item.description}</span>
-                      </span>
-                      <Lucide.ChevronRight size={15} className="text-base-content/25 group-hover:text-primary" aria-hidden="true" />
-                    </Link>
-                  );
-                })}
-              </nav>
-            </section>
+            <div className="flex flex-1 flex-col p-5 sm:p-6">
+              <TrackedAreaSelector
+                areas={areas}
+                value={selectedAreaId}
+                onChange={setSelectedAreaId}
+              />
+
+              <p className="mt-4 text-xs leading-5 text-[var(--public-muted)]">
+                {selectedArea
+                  ? `Số liệu phản ánh của bạn và cộng đồng tại ${selectedAreaName}.`
+                  : 'Số liệu tổng hợp phản ánh của bạn và cộng đồng trên toàn hệ thống.'}
+              </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <Link
+                  to={selectedAreaTicketUrl}
+                  className="group rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] p-4 transition hover:border-primary/35 hover:bg-[var(--public-surface-strong)]"
+                >
+                  <span className="text-[11px] font-medium text-[var(--public-muted)]">
+                    Phản ánh của bạn
+                  </span>
+                  <strong className="mt-1 block text-2xl font-bold text-[var(--public-title)]">
+                    {selectedAreaTickets.length}
+                  </strong>
+                  <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+                    Xem phản ánh của tôi
+                    <Lucide.ChevronRight size={12} aria-hidden="true" />
+                  </span>
+                </Link>
+
+                <Link
+                  to="/community/feed"
+                  state={{
+                    resetFeedScroll: true,
+                    initialQuery: selectedArea ? selectedAreaName : '',
+                  }}
+                  className="group rounded-2xl border border-info/25 bg-[var(--public-surface-soft)] p-4 transition hover:border-info/40 hover:bg-[var(--public-surface-strong)]"
+                  aria-label={selectedArea
+                    ? `Xem phản ánh công khai tại ${selectedAreaName}`
+                    : 'Xem phản ánh công khai trên bảng tin'}
+                >
+                  <span className="text-[11px] font-medium text-[var(--public-muted)]">
+                    Phản ánh trong khu vực
+                  </span>
+                  <strong className="mt-1 block text-2xl font-bold text-info">
+                    {communityAreaCountLoading ? (
+                      <span
+                        className="inline-block h-7 w-8 animate-pulse rounded-lg bg-info/15"
+                        aria-label="Đang tải số liệu"
+                      />
+                    ) : (
+                      communityAreaCount
+                    )}
+                  </strong>
+                  <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-info">
+                    Xem bảng tin
+                    <Lucide.ChevronRight size={12} aria-hidden="true" />
+                  </span>
+                </Link>
+              </div>
+
+            </div>
           </aside>
         </section>
-      </main>
+
+          <CitizenCommunityPreview />
+        </main>
+      </PublicPageMotion>
     );
   }
 

@@ -8,17 +8,15 @@ import { ticketApi } from '../../services/api/ticketApi';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 
 const STEPS = [
-  { id: 1, label: 'Mô tả', icon: Lucide.FileText },
-  { id: 2, label: 'Phân loại', icon: Lucide.Tags },
-  { id: 3, label: 'Vị trí', icon: Lucide.MapPin },
-  { id: 4, label: 'Minh chứng', icon: Lucide.Images },
+  { id: 1, label: 'Mô tả', description: 'Nêu rõ vấn đề', icon: Lucide.FileText },
+  { id: 2, label: 'Vị trí', description: 'Đánh dấu trên bản đồ', icon: Lucide.MapPin },
+  { id: 3, label: 'Minh chứng', description: 'Thêm ảnh hoặc video', icon: Lucide.Images },
 ];
 
 const STEP_FIELDS = {
   1: ['title', 'description'],
-  2: ['categoryId', 'priority'],
-  3: ['areaId', 'location'],
-  4: ['attachments'],
+  2: ['areaId', 'location'],
+  3: ['attachments'],
 };
 
 const CATEGORY_LABELS = {
@@ -34,6 +32,7 @@ const MAX_ATTACHMENT_COUNT = 5;
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
+const DRAFT_STORAGE_PREFIX = 'urbanmind:create-ticket-draft';
 
 const formatFileSize = (bytes = 0) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -106,6 +105,7 @@ const isVideo = (attachment) => (
 export const CreateTicketPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const draftStorageKey = `${DRAFT_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
 
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
@@ -121,9 +121,7 @@ export const CreateTicketPage = () => {
   const [areas, setAreas] = useState([]);
   const [categories, setCategories] = useState([]);
   const [areasLoading, setAreasLoading] = useState(true);
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [classificationLoading, setClassificationLoading] = useState(false);
-  const [aiSuggestionAvailable, setAiSuggestionAvailable] = useState(false);
   const [duplicates, setDuplicates] = useState([]);
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -132,22 +130,115 @@ export const CreateTicketPage = () => {
   const [previewAttachmentId, setPreviewAttachmentId] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [pendingFocusField, setPendingFocusField] = useState(null);
+  const [draftNotice, setDraftNotice] = useState('');
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const [pendingExit, setPendingExit] = useState(null);
+  const draftHydratedRef = useRef(false);
+  const draftSaveTimerRef = useRef(null);
 
   const formStageRef = useRef(null);
   const titleFieldRef = useRef(null);
   const descriptionFieldRef = useRef(null);
-  const categoryFieldRef = useRef(null);
-  const priorityFieldRef = useRef(null);
   const areaFieldRef = useRef(null);
   const locationFieldRef = useRef(null);
   const attachmentFieldRef = useRef(null);
+
+
+  useEffect(() => {
+    try {
+      const rawDraft = window.localStorage.getItem(draftStorageKey);
+
+      if (!rawDraft) {
+        draftHydratedRef.current = true;
+        return;
+      }
+
+      const draft = JSON.parse(rawDraft);
+      const restoredStep = Math.min(3, Math.max(1, Number(draft.step) || 1));
+
+      setStep(restoredStep);
+      setTitle(typeof draft.title === 'string' ? draft.title : '');
+      setDescription(typeof draft.description === 'string' ? draft.description : '');
+      setAreaId(draft.areaId ? String(draft.areaId) : '');
+      setCategoryId(draft.categoryId ? String(draft.categoryId) : '');
+      setPriority(normalizePriority(draft.priority));
+      setLocationText(typeof draft.locationText === 'string' ? draft.locationText : '');
+      setLatitude(Number.isFinite(draft.latitude) ? draft.latitude : null);
+      setLongitude(Number.isFinite(draft.longitude) ? draft.longitude : null);
+      setDraftNotice(
+        draft.hadAttachments
+          ? 'Đã khôi phục phản ánh đang làm dở. Hình ảnh hoặc video cần được chọn lại.'
+          : 'Đã khôi phục phản ánh đang làm dở.'
+      );
+    } catch (error) {
+      console.warn('Unable to restore create-ticket draft', error);
+      window.localStorage.removeItem(draftStorageKey);
+    } finally {
+      draftHydratedRef.current = true;
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftHydratedRef.current || submitted) return undefined;
+
+    window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      const hasDraftContent = Boolean(
+        title.trim() ||
+        description.trim() ||
+        areaId ||
+        locationText ||
+        latitude != null ||
+        longitude != null ||
+        attachments.length > 0 ||
+        step > 1
+      );
+
+      if (!hasDraftContent) {
+        window.localStorage.removeItem(draftStorageKey);
+        return;
+      }
+
+      window.localStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({
+          step,
+          title,
+          description,
+          areaId,
+          categoryId,
+          priority,
+          locationText,
+          latitude,
+          longitude,
+          hadAttachments: attachments.length > 0,
+          attachmentNames: attachments.map((item) => item.name),
+          savedAt: new Date().toISOString(),
+        })
+      );
+    }, 350);
+
+    return () => window.clearTimeout(draftSaveTimerRef.current);
+  }, [
+    areaId,
+    attachments,
+    categoryId,
+    description,
+    draftStorageKey,
+    latitude,
+    locationText,
+    longitude,
+    priority,
+    step,
+    submitted,
+    title,
+  ]);
 
   useEffect(() => {
     let active = true;
 
     const loadOptions = async () => {
       setAreasLoading(true);
-      setCategoriesLoading(true);
 
       const [areasResult, categoriesResult] = await Promise.allSettled([
         toolsApi.getAreas(),
@@ -167,7 +258,6 @@ export const CreateTicketPage = () => {
           : []
       );
       setAreasLoading(false);
-      setCategoriesLoading(false);
     };
 
     loadOptions();
@@ -235,8 +325,6 @@ export const CreateTicketPage = () => {
       const fieldTargets = {
         title: titleFieldRef.current,
         description: descriptionFieldRef.current,
-        categoryId: categoryFieldRef.current,
-        priority: priorityFieldRef.current,
         areaId: areaFieldRef.current,
         location: locationFieldRef.current,
         attachments: attachmentFieldRef.current,
@@ -318,10 +406,9 @@ export const CreateTicketPage = () => {
   };
 
   const stepCompletion = useMemo(() => ({
-    1: Boolean(title.trim() && description.trim()),
-    2: Boolean(categoryId && priority),
-    3: Boolean(areaId && latitude != null && longitude != null),
-    4: Boolean(
+    1: Boolean(title.trim() && description.trim() && categoryId && priority),
+    2: Boolean(areaId && latitude != null && longitude != null),
+    3: Boolean(
       attachments.length > 0 &&
       attachments.length <= MAX_ATTACHMENT_COUNT &&
       totalAttachmentSize <= MAX_TOTAL_ATTACHMENT_SIZE_BYTES
@@ -351,15 +438,6 @@ export const CreateTicketPage = () => {
     }
 
     if (stepId === 2) {
-      if (!categoryId) {
-        errors.categoryId = 'Vui lòng chọn danh mục phù hợp.';
-      }
-      if (!priority) {
-        errors.priority = 'Vui lòng chọn mức độ ảnh hưởng.';
-      }
-    }
-
-    if (stepId === 3) {
       if (!areaId) {
         errors.areaId = 'Vui lòng chọn khu vực xảy ra vấn đề.';
       }
@@ -368,7 +446,7 @@ export const CreateTicketPage = () => {
       }
     }
 
-    if (stepId === 4) {
+    if (stepId === 3) {
       if (attachments.length === 0) {
         errors.attachments = 'Vui lòng thêm ít nhất một hình ảnh hoặc video minh chứng.';
       } else if (
@@ -422,6 +500,95 @@ export const CreateTicketPage = () => {
   const goToStep = (nextStep) => {
     setSubmitError('');
     setStep(nextStep);
+  };
+
+  const hasUnsavedDraft = useMemo(() => Boolean(
+    !submitted && (
+      title.trim() ||
+      description.trim() ||
+      areaId ||
+      locationText ||
+      latitude != null ||
+      longitude != null ||
+      attachments.length > 0 ||
+      step > 1
+    )
+  ), [
+    areaId,
+    attachments.length,
+    description,
+    latitude,
+    locationText,
+    longitude,
+    step,
+    submitted,
+    title,
+  ]);
+
+  useEffect(() => {
+    if (!hasUnsavedDraft) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    const handleDocumentClick = (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+      const anchor = event.target.closest?.('a[href]');
+      if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download')) return;
+
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.origin !== window.location.origin) return;
+      if (`${destination.pathname}${destination.search}${destination.hash}` === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingExit({ type: 'path', value: `${destination.pathname}${destination.search}${destination.hash}` });
+      setShowLeaveDialog(true);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('click', handleDocumentClick, true);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('click', handleDocumentClick, true);
+    };
+  }, [hasUnsavedDraft]);
+
+  const stayOnPage = () => {
+    setShowLeaveDialog(false);
+    setPendingExit(null);
+  };
+
+  const leavePage = () => {
+    const destination = pendingExit;
+    setShowLeaveDialog(false);
+    setPendingExit(null);
+
+    if (destination?.type === 'history') {
+      navigate(-1);
+      return;
+    }
+
+    navigate(destination?.value || '/');
+  };
+
+  const handleReturnToSource = () => {
+    if (hasUnsavedDraft) {
+      setPendingExit({ type: window.history.length > 1 ? 'history' : 'path', value: '/' });
+      setShowLeaveDialog(true);
+      return;
+    }
+
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/');
   };
 
   const handleFileUpload = async (event) => {
@@ -555,21 +722,35 @@ export const CreateTicketPage = () => {
 
     setSubmitError('');
     setClassificationLoading(true);
-    setAiSuggestionAvailable(false);
+
+    let resolvedCategoryId = categoryId;
+    let resolvedPriority = priority;
 
     try {
       const analysis = await toolsApi.aiClassify(title.trim(), description.trim());
-      if (analysis?.categoryId) setCategoryId(String(analysis.categoryId));
+      if (analysis?.categoryId) resolvedCategoryId = String(analysis.categoryId);
       if (analysis?.urgencyLevel) {
-        setPriority(normalizePriority(analysis.urgencyLevel));
+        resolvedPriority = normalizePriority(analysis.urgencyLevel);
       }
-      setAiSuggestionAvailable(Boolean(analysis));
     } catch (error) {
       console.warn('Automatic classification unavailable', error);
-    } finally {
-      setClassificationLoading(false);
-      goToStep(2);
     }
+
+    if (!resolvedCategoryId) {
+      const fallbackCategoryId = getCategoryId(categories[0]);
+      if (fallbackCategoryId) resolvedCategoryId = String(fallbackCategoryId);
+    }
+
+    setClassificationLoading(false);
+
+    if (!resolvedCategoryId) {
+      setSubmitError('Hệ thống chưa thể tự phân loại phản ánh. Vui lòng thử lại sau ít phút.');
+      return;
+    }
+
+    setCategoryId(resolvedCategoryId);
+    setPriority(resolvedPriority || 'Medium');
+    goToStep(2);
   };
 
   const handleLocationSelect = async (lat, lng, address) => {
@@ -595,14 +776,14 @@ export const CreateTicketPage = () => {
     setSubmitError('');
 
     const allErrors = {};
-    [1, 2, 3, 4].forEach((stepId) => {
+    [1, 2, 3].forEach((stepId) => {
       Object.assign(allErrors, validateStep(stepId));
     });
 
     if (Object.keys(allErrors).length > 0) {
       setFieldErrors(allErrors);
 
-      const firstInvalidStep = [1, 2, 3, 4].find((stepId) => (
+      const firstInvalidStep = [1, 2, 3].find((stepId) => (
         STEP_FIELDS[stepId].some((fieldName) => allErrors[fieldName])
       ));
       const firstInvalidField = STEP_FIELDS[firstInvalidStep].find(
@@ -634,6 +815,8 @@ export const CreateTicketPage = () => {
         },
         { role: user?.role || 'service-user' }
       );
+      window.localStorage.removeItem(draftStorageKey);
+      setDraftNotice('');
       setSubmitted(true);
     } catch (error) {
       console.error('createTicket error', error);
@@ -649,7 +832,9 @@ export const CreateTicketPage = () => {
     }
   };
 
-  const resetForm = () => {
+  const clearDraft = () => {
+    window.localStorage.removeItem(draftStorageKey);
+    setDraftNotice('');
     setStep(1);
     setTitle('');
     setDescription('');
@@ -664,7 +849,27 @@ export const CreateTicketPage = () => {
     setDuplicates([]);
     setShowDuplicateWarning(false);
     setSubmitError('');
-    setAiSuggestionAvailable(false);
+    setFieldErrors({});
+    setPendingFocusField(null);
+  };
+
+  const resetForm = () => {
+    window.localStorage.removeItem(draftStorageKey);
+    setDraftNotice('');
+    setStep(1);
+    setTitle('');
+    setDescription('');
+    setAreaId('');
+    setCategoryId('');
+    setPriority('Medium');
+    setLocationText('');
+    setLatitude(null);
+    setLongitude(null);
+    setAttachments([]);
+    setAttachmentError('');
+    setDuplicates([]);
+    setShowDuplicateWarning(false);
+    setSubmitError('');
     setSubmitted(false);
     setPreviewAttachmentId(null);
     setFieldErrors({});
@@ -689,7 +894,7 @@ export const CreateTicketPage = () => {
             <button
               type="button"
               onClick={() => navigate('/tickets')}
-              className="btn admin-primary-action rounded-2xl"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700 disabled:opacity-50"
             >
               <Lucide.ListChecks size={16} aria-hidden="true" />
               Xem phản ánh của tôi
@@ -697,7 +902,7 @@ export const CreateTicketPage = () => {
             <button
               type="button"
               onClick={resetForm}
-              className="btn admin-secondary-action rounded-2xl"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-base-300 bg-base-100 px-4 text-sm font-semibold transition hover:border-blue-200 hover:text-blue-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700"
             >
               <Lucide.Plus size={16} aria-hidden="true" />
               Gửi phản ánh khác
@@ -709,83 +914,123 @@ export const CreateTicketPage = () => {
   }
 
   return (
-    <main className="space-y-4 text-base-content">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            Gửi phản ánh
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-base-content/60">
-            Cung cấp thông tin rõ ràng để phản ánh được chuyển đúng đơn vị và xử lý nhanh hơn.
-          </p>
-        </div>
+    <main className="create-ticket-page text-base-content">
+      <div className="mx-auto w-full max-w-[1240px]">
+        <div className="create-ticket-shell relative isolate rounded-[34px] border p-4 sm:p-5 lg:p-6">
 
-        <Link to="/tickets" className="btn admin-secondary-action rounded-2xl">
-          <Lucide.ArrowLeft size={16} aria-hidden="true" />
-          Phản ánh của tôi
-        </Link>
-      </header>
+        <header className="create-ticket-hero mb-5 overflow-hidden rounded-[26px] border p-5 sm:p-7">
+          <nav aria-label="Điều hướng" className="mb-6">
+            <button
+              type="button"
+              onClick={handleReturnToSource}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700"
+            >
+              <Lucide.ArrowLeft size={14} aria-hidden="true" />
+              Quay lại
+            </button>
+          </nav>
 
-      <nav
-        className="sticky top-0 z-30 rounded-[22px] border border-base-300 bg-base-100/95 p-2.5 shadow-sm backdrop-blur sm:p-3"
-        aria-label="Tiến trình gửi phản ánh"
-      >
-        <ol className="grid gap-2 sm:grid-cols-4">
-          {STEPS.map(({ id, label, icon: Icon }) => {
-            const isCurrent = step === id;
-            const isComplete = stepCompletion[id];
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_12px_28px_rgba(37,99,235,0.28)] sm:flex" aria-hidden="true"><Lucide.MessageSquarePlus size={22} /></span>
+              <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600 dark:text-blue-300">Phản ánh đô thị</p>
+              <h1 className="text-[32px] font-bold tracking-[-0.04em] text-slate-950 sm:text-[38px] dark:text-white">Gửi phản ánh</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-base-content/55 sm:text-[15px]">
+                Mô tả vấn đề, đánh dấu vị trí và thêm minh chứng để hệ thống tiếp nhận chính xác hơn.
+              </p>
+              </div>
+            </div>
 
-            return (
-              <li key={id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const previousStepsComplete = STEPS
-                      .filter((item) => item.id < id)
-                      .every((item) => stepCompletion[item.id]);
+            <Link
+              to="/tickets"
+              className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700 sm:self-end"
+            >
+              <Lucide.ListChecks size={16} aria-hidden="true" />
+              Phản ánh của tôi
+            </Link>
+          </div>
+        </header>
 
-                    if (id <= step || previousStepsComplete) {
-                      goToStep(id);
-                    }
-                  }}
-                  disabled={
-                    id > step &&
-                    !STEPS
-                      .filter((item) => item.id < id)
-                      .every((item) => stepCompletion[item.id])
-                  }
-                  aria-current={isCurrent ? 'step' : undefined}
-                  className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
-                    isCurrent
-                      ? 'border-primary/45 bg-primary/8 text-primary'
-                      : isComplete
-                        ? 'border-success/25 bg-success/5 text-base-content'
-                        : 'border-transparent bg-base-200/45 text-base-content/40'
-                  } disabled:cursor-not-allowed`}
-                >
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
-                    isCurrent
-                      ? 'bg-primary text-primary-content'
-                      : isComplete
-                        ? 'bg-success/12 text-success'
-                        : 'bg-base-300 text-base-content/35'
-                  }`} aria-hidden="true">
-                    {isComplete && !isCurrent ? <Lucide.Check size={15} /> : <Icon size={15} />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] opacity-60">
-                      Bước {id}
+        <section className="create-ticket-stepper mb-5 rounded-[22px] border px-5 py-4 sm:px-6" aria-label="Tiến trình gửi phản ánh">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.13em] text-blue-600 dark:text-blue-300">
+                Bước {step} trên {STEPS.length}
+              </p>
+              <p className="mt-1 text-sm font-semibold">{STEPS[step - 1]?.label}</p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"><Lucide.Clock3 size={12} aria-hidden="true" /> Khoảng 2–3 phút</span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2" aria-hidden="true">
+            {STEPS.map(({ id }) => (
+              <span
+                key={id}
+                className={`h-1 rounded-full transition-colors ${
+                  id <= step ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
+                }`}
+              />
+            ))}
+          </div>
+
+          <ol className="mt-4 grid grid-cols-3 gap-2 sm:gap-4">
+            {STEPS.map(({ id, label, icon: Icon }) => {
+              const isCurrent = step === id;
+              const isComplete = stepCompletion[id];
+              const previousStepsComplete = STEPS
+                .filter((item) => item.id < id)
+                .every((item) => stepCompletion[item.id]);
+              const isEnabled = id <= step || previousStepsComplete;
+
+              return (
+                <li key={id}>
+                  <button
+                    type="button"
+                    onClick={() => isEnabled && goToStep(id)}
+                    disabled={!isEnabled}
+                    aria-current={isCurrent ? 'step' : undefined}
+                    className={`flex w-full items-center gap-2 rounded-lg py-1.5 text-left text-xs transition sm:text-sm ${
+                      isCurrent
+                        ? 'font-semibold text-blue-700 dark:text-blue-300'
+                        : isComplete
+                          ? 'font-medium text-emerald-700 dark:text-emerald-300'
+                          : 'text-base-content/40'
+                    } disabled:cursor-not-allowed`}
+                  >
+                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                      isCurrent
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : isComplete
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          : 'border-slate-200 bg-slate-50 text-base-content/35 dark:border-slate-700 dark:bg-slate-800'
+                    }`} aria-hidden="true">
+                      {isComplete && !isCurrent ? <Lucide.Check size={13} /> : <Icon size={13} />}
                     </span>
-                    <strong className="mt-0.5 block truncate text-sm font-semibold">
-                      {label}
-                    </strong>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
+                    <span className="truncate">{label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+      {draftNotice ? (
+        <aside className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-200/80 bg-blue-50/80 px-4 py-3 text-sm text-blue-900 sm:flex-row sm:items-center dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-100" role="status">
+          <span className="flex min-w-0 flex-1 items-start gap-3">
+            <Lucide.History size={18} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-300" aria-hidden="true" />
+            <span className="leading-5">{draftNotice}</span>
+          </span>
+          <button
+            type="button"
+            onClick={clearDraft}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
+          >
+            <Lucide.Trash2 size={14} aria-hidden="true" />
+            Xóa bản nháp
+          </button>
+        </aside>
+      ) : null}
 
       {submitError ? (
         <aside className="flex items-start gap-3 rounded-2xl border border-error/25 bg-error/8 px-4 py-3 text-sm text-error" role="alert">
@@ -802,12 +1047,12 @@ export const CreateTicketPage = () => {
         </aside>
       ) : null}
 
-      <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <article ref={formStageRef} className="scroll-mt-28 overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-sm">
+      <section>
+        <article ref={formStageRef} className="create-ticket-form scroll-mt-24 overflow-hidden rounded-[24px] border">
           {step === 1 ? (
             <section aria-labelledby="description-step-title">
-              <header className="border-b border-base-300 px-5 py-3.5 sm:px-6">
-                <h2 id="description-step-title" className="text-lg font-semibold">
+              <header className="create-ticket-form-header border-b px-5 py-4 sm:px-7">
+                <h2 id="description-step-title" className="text-lg font-semibold dark:text-slate-100">
                   Bạn đang gặp vấn đề gì?
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-base-content/50">
@@ -815,9 +1060,10 @@ export const CreateTicketPage = () => {
                 </p>
               </header>
 
-              <div className="space-y-4 p-5 sm:p-6">
+              <div className="grid gap-7 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_280px] lg:p-8">
+                <div className="space-y-6">
                 <label className="block">
-                  <span className="text-sm font-semibold">Tiêu đề phản ánh</span>
+                  <span className="text-sm font-semibold dark:text-slate-100">Tiêu đề phản ánh</span>
                   <span className="ml-1 text-error">*</span>
                   <input
                     ref={titleFieldRef}
@@ -831,7 +1077,7 @@ export const CreateTicketPage = () => {
                     placeholder="Ví dụ: Đèn đường trước số 123 không hoạt động"
                     aria-invalid={Boolean(fieldErrors.title)}
                     aria-describedby={fieldErrors.title ? 'title-error' : undefined}
-                    className={`mt-2 h-11 w-full rounded-xl border bg-base-100 px-3.5 text-sm outline-none transition placeholder:text-base-content/35 focus:ring-2 ${
+                    className={`mt-2.5 h-[52px] w-full rounded-xl border bg-base-100 px-4 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 text-[15px] outline-none transition placeholder:text-base-content/35 focus:ring-2 ${
                       fieldErrors.title
                         ? 'border-error focus:border-error focus:ring-error/15'
                         : 'border-base-300 focus:border-primary focus:ring-primary/15'
@@ -850,7 +1096,7 @@ export const CreateTicketPage = () => {
                 </label>
 
                 <label className="block">
-                  <span className="text-sm font-semibold">Mô tả chi tiết</span>
+                  <span className="text-sm font-semibold dark:text-slate-100">Mô tả chi tiết</span>
                   <span className="ml-1 text-error">*</span>
                   <textarea
                     ref={descriptionFieldRef}
@@ -863,7 +1109,7 @@ export const CreateTicketPage = () => {
                     placeholder="Vấn đề bắt đầu từ khi nào? Ảnh hưởng đến người dân hoặc giao thông ra sao?"
                     aria-invalid={Boolean(fieldErrors.description)}
                     aria-describedby={fieldErrors.description ? 'description-error' : undefined}
-                    className={`mt-2 min-h-[150px] w-full resize-y rounded-xl border bg-base-100 px-3.5 py-3 text-sm leading-6 outline-none transition placeholder:text-base-content/35 focus:ring-2 ${
+                    className={`mt-2.5 min-h-[150px] w-full resize-y rounded-xl border bg-base-100 px-4 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 py-3.5 text-[15px] leading-6 outline-none transition placeholder:text-base-content/35 focus:ring-2 ${
                       fieldErrors.description
                         ? 'border-error focus:border-error focus:ring-error/15'
                         : 'border-base-300 focus:border-primary focus:ring-primary/15'
@@ -876,149 +1122,28 @@ export const CreateTicketPage = () => {
                   ) : null}
                 </label>
 
-                <aside className="rounded-2xl border border-info/20 bg-info/5 px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info" aria-hidden="true">
-                      <Lucide.Lightbulb size={16} />
-                    </span>
-                    <p className="pt-1 text-xs leading-5 text-base-content/60">
-                      <strong className="font-semibold text-base-content">Gợi ý:</strong>{' '}
-                      Nêu dấu hiệu cụ thể, thời điểm phát hiện và mức độ ảnh hưởng đến người dân.
-                    </p>
+                </div>
+
+                <aside className="h-fit rounded-[20px] border border-blue-100 bg-[linear-gradient(160deg,#eff6ff_0%,#f8fbff_100%)] p-5 lg:sticky lg:top-24 dark:border-slate-700 dark:bg-[linear-gradient(160deg,#101d33_0%,#0d1728_100%)]" aria-label="Gợi ý mô tả">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-200">
+                    <Lucide.Lightbulb size={16} aria-hidden="true" />
+                    Mô tả tốt nên có
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Thông tin được tự động lưu trên thiết bị này để bạn có thể quay lại tiếp tục.</p>
+                  <ul className="mt-4 grid gap-3 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                    <li className="flex gap-2"><Lucide.Check size={14} className="mt-0.5 shrink-0 text-blue-600" aria-hidden="true" /> Dấu hiệu hoặc tình trạng cụ thể</li>
+                    <li className="flex gap-2"><Lucide.Check size={14} className="mt-0.5 shrink-0 text-blue-600" aria-hidden="true" /> Thời điểm bạn phát hiện</li>
+                    <li className="flex gap-2"><Lucide.Check size={14} className="mt-0.5 shrink-0 text-blue-600" aria-hidden="true" /> Mức độ ảnh hưởng thực tế</li>
+                  </ul>
                 </aside>
               </div>
             </section>
           ) : null}
 
           {step === 2 ? (
-            <section aria-labelledby="classification-step-title">
-              <header className="border-b border-base-300 px-5 py-3.5 sm:px-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 id="classification-step-title" className="text-lg font-semibold">
-                      Phân loại phản ánh
-                    </h2>
-                    <p className="mt-1 text-xs leading-5 text-base-content/50">
-                      Chọn nhóm dịch vụ và mức độ ảnh hưởng phù hợp.
-                    </p>
-                  </div>
-                  {aiSuggestionAvailable ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/8 px-3 py-1.5 text-xs font-semibold text-primary">
-                      <Lucide.Sparkles size={13} aria-hidden="true" />
-                      Đã có gợi ý tự động
-                    </span>
-                  ) : null}
-                </div>
-              </header>
-
-              <div className="space-y-6 p-5 sm:p-6">
-                <label className="block">
-                  <span className="text-sm font-semibold">Danh mục</span>
-                  <span className="ml-1 text-error">*</span>
-                  <select
-                    ref={categoryFieldRef}
-                    value={categoryId}
-                    onChange={(event) => {
-                      setCategoryId(event.target.value);
-                      clearFieldError('categoryId');
-                    }}
-                    disabled={categoriesLoading}
-                    aria-invalid={Boolean(fieldErrors.categoryId)}
-                    aria-describedby={fieldErrors.categoryId ? 'category-error' : undefined}
-                    className={`mt-2 h-11 w-full rounded-xl border bg-base-100 px-3.5 text-sm font-medium outline-none transition focus:ring-2 ${
-                      fieldErrors.categoryId
-                        ? 'border-error focus:border-error focus:ring-error/15'
-                        : 'border-base-300 focus:border-primary focus:ring-primary/15'
-                    }`}
-                  >
-                    <option value="">
-                      {categoriesLoading ? 'Đang tải danh mục...' : 'Chọn danh mục phản ánh'}
-                    </option>
-                    {categories.map((category) => (
-                      <option key={getCategoryId(category)} value={getCategoryId(category)}>
-                        {getCategoryLabel(category)}
-                      </option>
-                    ))}
-                  </select>
-                  {fieldErrors.categoryId ? (
-                    <span id="category-error" className="mt-1.5 block text-xs font-medium text-error" role="alert">
-                      {fieldErrors.categoryId}
-                    </span>
-                  ) : null}
-                  {!categoriesLoading && categories.length === 0 ? (
-                    <span className="mt-2 block text-xs text-error">
-                      Chưa tải được danh sách danh mục. Vui lòng thử lại sau.
-                    </span>
-                  ) : null}
-                </label>
-
-                <fieldset
-                  ref={priorityFieldRef}
-                  tabIndex={-1}
-                  aria-invalid={Boolean(fieldErrors.priority)}
-                  aria-describedby={fieldErrors.priority ? 'priority-error' : undefined}
-                  className={`rounded-2xl outline-none ${fieldErrors.priority ? 'ring-2 ring-error/15' : ''}`}
-                >
-                  <legend className="text-sm font-semibold">
-                    Mức độ ảnh hưởng <span className="text-error">*</span>
-                  </legend>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    {PRIORITY_OPTIONS.map((option) => {
-                      const PriorityIcon = option.icon;
-                      const selected = priority === option.value;
-
-                      return (
-                        <label
-                          key={option.value}
-                          className={`cursor-pointer rounded-2xl border p-4 transition ${
-                            selected
-                              ? 'border-primary/45 bg-primary/8 ring-2 ring-primary/10'
-                              : 'border-base-300 hover:border-primary/30 hover:bg-base-200/40'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="priority"
-                            value={option.value}
-                            checked={selected}
-                            onChange={(event) => {
-                              setPriority(event.target.value);
-                              clearFieldError('priority');
-                            }}
-                            className="sr-only"
-                          />
-                          <span className="flex items-start gap-3">
-                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                              selected ? 'bg-primary text-primary-content' : 'bg-base-200 text-base-content/55'
-                            }`} aria-hidden="true">
-                              <PriorityIcon size={16} />
-                            </span>
-                            <span>
-                              <strong className="block text-sm font-semibold">{option.label}</strong>
-                              <span className="mt-1 block text-xs leading-5 text-base-content/50">
-                                {option.description}
-                              </span>
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {fieldErrors.priority ? (
-                    <span id="priority-error" className="mt-2 block text-xs font-medium text-error" role="alert">
-                      {fieldErrors.priority}
-                    </span>
-                  ) : null}
-                </fieldset>
-              </div>
-            </section>
-          ) : null}
-
-          {step === 3 ? (
             <section aria-labelledby="location-step-title">
-              <header className="border-b border-base-300 px-5 py-3.5 sm:px-6">
-                <h2 id="location-step-title" className="text-lg font-semibold">
+              <header className="create-ticket-form-header border-b px-5 py-4 sm:px-7">
+                <h2 id="location-step-title" className="text-lg font-semibold dark:text-slate-100">
                   Khu vực và vị trí sự cố
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-base-content/50">
@@ -1026,9 +1151,9 @@ export const CreateTicketPage = () => {
                 </p>
               </header>
 
-              <div className="space-y-5 p-5 sm:p-6">
+              <div className="space-y-5 p-5 sm:p-7 lg:p-8">
                 <label className="block">
-                  <span className="text-sm font-semibold">Khu vực</span>
+                  <span className="text-sm font-semibold dark:text-slate-100">Khu vực</span>
                   <span className="ml-1 text-error">*</span>
                   <select
                     ref={areaFieldRef}
@@ -1040,7 +1165,7 @@ export const CreateTicketPage = () => {
                     disabled={areasLoading}
                     aria-invalid={Boolean(fieldErrors.areaId)}
                     aria-describedby={fieldErrors.areaId ? 'area-error' : undefined}
-                    className={`mt-2 h-11 w-full rounded-xl border bg-base-100 px-3.5 text-sm font-medium outline-none transition focus:ring-2 ${
+                    className={`mt-2.5 h-[52px] w-full rounded-xl border bg-base-100 px-4 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 text-[15px] font-medium outline-none transition focus:ring-2 ${
                       fieldErrors.areaId
                         ? 'border-error focus:border-error focus:ring-error/15'
                         : 'border-base-300 focus:border-primary focus:ring-primary/15'
@@ -1071,7 +1196,7 @@ export const CreateTicketPage = () => {
                     tabIndex={-1}
                     aria-invalid={Boolean(fieldErrors.location)}
                     aria-describedby={fieldErrors.location ? 'location-error' : undefined}
-                    className={`rounded-[24px] border bg-base-100 p-2 outline-none transition ${
+                    className={`rounded-[24px] border bg-base-100 p-2 dark:border-slate-700 dark:bg-slate-950 outline-none transition ${
                       fieldErrors.location
                         ? 'border-error ring-2 ring-error/15'
                         : 'border-base-300'
@@ -1097,7 +1222,7 @@ export const CreateTicketPage = () => {
                         <Lucide.TriangleAlert size={17} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-semibold">Có phản ánh tương tự gần vị trí này</h3>
+                        <h3 className="text-sm font-semibold dark:text-slate-100">Có phản ánh tương tự gần vị trí này</h3>
                         <p className="mt-1 text-xs leading-5 text-base-content/55">
                           Hệ thống tìm thấy {duplicates.length} phản ánh có thể liên quan. Bạn có thể xem trước khi quyết định gửi mới.
                         </p>
@@ -1132,10 +1257,10 @@ export const CreateTicketPage = () => {
             </section>
           ) : null}
 
-          {step === 4 ? (
+          {step === 3 ? (
             <section aria-labelledby="evidence-step-title">
-              <header className="border-b border-base-300 px-5 py-3.5 sm:px-6">
-                <h2 id="evidence-step-title" className="text-lg font-semibold">
+              <header className="create-ticket-form-header border-b px-5 py-4 sm:px-7">
+                <h2 id="evidence-step-title" className="text-lg font-semibold dark:text-slate-100">
                   Thêm minh chứng
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-base-content/50">
@@ -1143,12 +1268,12 @@ export const CreateTicketPage = () => {
                 </p>
               </header>
 
-              <div className="space-y-5 p-5 sm:p-6">
+              <div className="space-y-5 p-5 sm:p-7 lg:p-8">
                 <label
                   ref={attachmentFieldRef}
                   tabIndex={-1}
                   aria-invalid={Boolean(fieldErrors.attachments)}
-                  className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed bg-base-200/30 p-5 text-center outline-none transition hover:bg-primary/5 ${
+                  className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed bg-base-200/30 dark:border-slate-700 dark:bg-slate-950/70 p-5 text-center outline-none transition hover:bg-primary/5 ${
                     fieldErrors.attachments
                       ? 'border-error ring-2 ring-error/15'
                       : 'border-base-300 hover:border-primary/40'
@@ -1198,7 +1323,7 @@ export const CreateTicketPage = () => {
                 {attachments.length > 0 ? (
                   <section aria-labelledby="selected-evidence-title">
                     <div className="flex items-center justify-between gap-3">
-                      <h3 id="selected-evidence-title" className="text-sm font-semibold">
+                      <h3 id="selected-evidence-title" className="text-sm font-semibold dark:text-slate-100">
                         Minh chứng đã chọn
                       </h3>
                       <span className="text-xs text-base-content/45">
@@ -1208,7 +1333,7 @@ export const CreateTicketPage = () => {
 
                     <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {attachments.map((attachment) => (
-                        <li key={attachment.id} className="overflow-hidden rounded-2xl border border-base-300 bg-base-100">
+                        <li key={attachment.id} className="overflow-hidden rounded-2xl border border-base-300 bg-base-100 dark:border-slate-700 dark:bg-slate-900">
                           <button
                             type="button"
                             onClick={() => openAttachmentPreview(attachment.id)}
@@ -1261,18 +1386,20 @@ export const CreateTicketPage = () => {
             </section>
           ) : null}
 
-          <footer className="sticky bottom-0 z-20 flex flex-col-reverse gap-3 border-t border-base-300 bg-base-100/95 px-5 py-3.5 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <button
-              type="button"
-              onClick={() => goToStep(Math.max(1, step - 1))}
-              disabled={step === 1 || submitting}
-              className="btn admin-secondary-action rounded-2xl"
-            >
-              <Lucide.ArrowLeft size={16} aria-hidden="true" />
-              Quay lại
-            </button>
+          <footer className={`flex flex-col-reverse gap-3 border-t border-slate-200/80 bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-7 dark:border-slate-700 dark:bg-[#0d1728] ${step === 1 ? 'sm:justify-end' : 'sm:justify-between'}`}>
+            {step > 1 ? (
+              <button
+                type="button"
+                onClick={() => goToStep(step - 1)}
+                disabled={submitting}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-base-300 bg-base-100 px-4 text-sm font-semibold transition hover:border-blue-200 hover:text-blue-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700"
+              >
+                <Lucide.ArrowLeft size={16} aria-hidden="true" />
+                Quay lại
+              </button>
+            ) : null}
 
-            {step < 4 ? (
+            {step < 3 ? (
               <button
                 type="button"
                 onClick={() => {
@@ -1282,11 +1409,11 @@ export const CreateTicketPage = () => {
                   }
 
                   if (validateStepAndFocus(step)) {
-                    goToStep(Math.min(4, step + 1));
+                    goToStep(Math.min(3, step + 1));
                   }
                 }}
                 disabled={classificationLoading}
-                className="btn admin-primary-action rounded-2xl"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700 disabled:opacity-50"
               >
                 {classificationLoading ? (
                   <span className="loading loading-spinner loading-sm" aria-hidden="true" />
@@ -1299,7 +1426,7 @@ export const CreateTicketPage = () => {
                 type="button"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="btn admin-primary-action rounded-2xl"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting ? (
                   <span className="loading loading-spinner loading-sm" aria-hidden="true" />
@@ -1312,8 +1439,8 @@ export const CreateTicketPage = () => {
           </footer>
         </article>
 
-        <aside className="sticky top-24 space-y-4">
-          <section className="rounded-[24px] border border-base-300 bg-base-100 p-5 shadow-sm" aria-labelledby="submission-summary-title">
+        <aside className="hidden">
+          <section className="rounded-[24px] border border-blue-100/80 bg-base-100 p-5 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:border-blue-500/15" aria-labelledby="submission-summary-title">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
                 <Lucide.ClipboardList size={18} />
@@ -1338,13 +1465,13 @@ export const CreateTicketPage = () => {
               <div className="py-3">
                 <dt className="text-xs text-base-content/45">Danh mục</dt>
                 <dd className="mt-1 font-medium">
-                  {selectedCategory ? getCategoryLabel(selectedCategory) : 'Chưa chọn'}
+                  {selectedCategory ? getCategoryLabel(selectedCategory) : 'Hệ thống đang xác định'}
                 </dd>
               </div>
               <div className="py-3">
                 <dt className="text-xs text-base-content/45">Mức độ ảnh hưởng</dt>
                 <dd className="mt-1 font-medium">
-                  {selectedPriority?.label || 'Chưa chọn'}
+                  {selectedPriority?.label || 'Hệ thống đang xác định'}
                 </dd>
               </div>
               <div className="py-3">
@@ -1374,6 +1501,38 @@ export const CreateTicketPage = () => {
           </aside>
         </aside>
       </section>
+        </div>
+
+      {showLeaveDialog && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[99998] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm" role="presentation">
+              <section className="w-full max-w-md rounded-[24px] border border-white/60 bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)] dark:border-base-300 dark:bg-base-100" role="dialog" aria-modal="true" aria-labelledby="leave-draft-title">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300" aria-hidden="true">
+                  <Lucide.FileClock size={22} />
+                </span>
+                <h2 id="leave-draft-title" className="mt-4 text-xl font-semibold tracking-tight">Rời khỏi phản ánh đang làm?</h2>
+                <p className="mt-2 text-sm leading-6 text-base-content/60">
+                  Nội dung mô tả và vị trí đã được lưu tự động. Bạn có thể quay lại trang Gửi phản ánh để tiếp tục từ bước hiện tại.
+                </p>
+                {attachments.length > 0 ? (
+                  <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/8 dark:text-amber-200">
+                    Ảnh hoặc video không được lưu trong bản nháp và cần chọn lại khi quay lại.
+                  </p>
+                ) : null}
+                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button type="button" onClick={stayOnPage} className="inline-flex h-11 items-center justify-center rounded-xl border border-base-300 bg-base-100 px-4 text-sm font-semibold transition hover:border-blue-200 hover:text-blue-700">
+                    Tiếp tục chỉnh sửa
+                  </button>
+                  <button type="button" onClick={leavePage} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:bg-blue-700">
+                    Rời trang
+                    <Lucide.ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
 
       {previewAttachment && typeof document !== 'undefined'
         ? createPortal(
@@ -1479,6 +1638,7 @@ export const CreateTicketPage = () => {
             document.body
           )
         : null}
+      </div>
     </main>
   );
 };

@@ -1,6 +1,6 @@
 // src/pages/tickets/TicketDetailPage.jsx
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toolsApi } from '@urbanmind/shared-api';
@@ -8,8 +8,11 @@ import { managementTypes } from '@urbanmind/shared-types';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
+import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import useTicketDetail from '../../hooks/useTicketDetail';
 import { LocationPicker } from '../../components/maps/LocationPicker';
+import PublicPageMotion from '../../components/public/PublicPageMotion';
+import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
 
 const CATEGORY_LABELS = {
   Drainage: 'Thoát nước',
@@ -57,7 +60,7 @@ const getCitizenStatusLabel = (status) => {
     case managementTypes.feedbackStatus.SUBMITTED:
       return 'Đã gửi';
     case managementTypes.feedbackStatus.AI_REVIEWED:
-      return 'Đã tiếp nhận';
+      return 'Đang phân loại';
     case managementTypes.feedbackStatus.VERIFIED:
       return 'Đã xác minh';
     case managementTypes.feedbackStatus.ASSIGNED:
@@ -113,6 +116,36 @@ const getStatusTone = (status) => {
   }
 
   return 'border-info/25 bg-info/10 text-info';
+};
+
+const renderCitizenStatusIcon = (status) => {
+  switch (status) {
+    case managementTypes.feedbackStatus.SUBMITTED:
+      return <Lucide.Send size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.AI_REVIEWED:
+      return <Lucide.ScanSearch size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.VERIFIED:
+      return <Lucide.BadgeCheck size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.ASSIGNED:
+      return <Lucide.SendToBack size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.IN_PROGRESS:
+      return <Lucide.LoaderCircle size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.RESOLVED:
+    case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL:
+      return <Lucide.ClipboardCheck size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.NEED_REWORK:
+      return <Lucide.RotateCcw size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.APPROVED:
+      return <Lucide.CircleCheck size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.CLOSED:
+      return <Lucide.Archive size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.REJECTED:
+      return <Lucide.ShieldAlert size={18} aria-hidden="true" />;
+    case managementTypes.feedbackStatus.CANCELLED:
+      return <Lucide.CircleX size={18} aria-hidden="true" />;
+    default:
+      return <Lucide.Activity size={18} aria-hidden="true" />;
+  }
 };
 
 const getPriorityTone = (priority) => {
@@ -207,17 +240,40 @@ const dedupeComments = (commentItems = []) => {
 const TICKET_DETAIL_SNAPSHOT_PREFIX =
   'urbanmind-service-user-ticket-detail:';
 
-const readTicketDetailSnapshot = (feedbackId) => {
+const getTicketDetailSnapshotKey = (feedbackId, userId) => {
+  if (!feedbackId || !userId) return '';
+
+  return `${TICKET_DETAIL_SNAPSHOT_PREFIX}${encodeURIComponent(String(userId))}:${encodeURIComponent(String(feedbackId))}`;
+};
+
+const removeLegacyTicketDetailSnapshot = (feedbackId) => {
+  if (typeof window === 'undefined' || !feedbackId) return;
+
+  try {
+    window.sessionStorage.removeItem(
+      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+const readTicketDetailSnapshot = (feedbackId, userId) => {
   if (
     typeof window === 'undefined' ||
-    !feedbackId
+    !feedbackId ||
+    !userId
   ) {
     return null;
   }
 
   try {
+    // Snapshots created before user scoping are unsafe to reuse.
+    removeLegacyTicketDetailSnapshot(feedbackId);
+
+    const snapshotKey = getTicketDetailSnapshotKey(feedbackId, userId);
     const rawSnapshot = window.sessionStorage.getItem(
-      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`
+      snapshotKey
     );
     if (!rawSnapshot) return null;
 
@@ -230,18 +286,21 @@ const readTicketDetailSnapshot = (feedbackId) => {
   }
 };
 
-const writeTicketDetailSnapshot = (feedbackId, ticket) => {
+const writeTicketDetailSnapshot = (feedbackId, userId, ticket) => {
   if (
     typeof window === 'undefined' ||
     !feedbackId ||
+    !userId ||
     !ticket
   ) {
     return;
   }
 
   try {
+    removeLegacyTicketDetailSnapshot(feedbackId);
+
     window.sessionStorage.setItem(
-      `${TICKET_DETAIL_SNAPSHOT_PREFIX}${feedbackId}`,
+      getTicketDetailSnapshotKey(feedbackId, userId),
       JSON.stringify(ticket)
     );
   } catch {
@@ -249,56 +308,117 @@ const writeTicketDetailSnapshot = (feedbackId, ticket) => {
   }
 };
 
-const TicketDetailSkeleton = () => (
-  <main
-    className="space-y-5 text-base-content"
-    aria-busy="true"
-    aria-label="Đang tải chi tiết phản ánh"
+const removeTicketDetailSnapshot = (feedbackId, userId) => {
+  if (typeof window === 'undefined' || !feedbackId) return;
+
+  try {
+    removeLegacyTicketDetailSnapshot(feedbackId);
+
+    const snapshotKey = getTicketDetailSnapshotKey(feedbackId, userId);
+    if (snapshotKey) window.sessionStorage.removeItem(snapshotKey);
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+const DetailSmartCityBackdrop = () => (
+  <div
+    className="pointer-events-none absolute inset-0 overflow-hidden"
+    aria-hidden="true"
   >
-    <span className="sr-only" role="status">
-      Đang tải chi tiết phản ánh
+    <svg
+      viewBox="0 0 1400 320"
+      preserveAspectRatio="none"
+      className="absolute inset-0 h-full w-full text-primary"
+      fill="none"
+    >
+      <path
+        d="M-40 250C135 210 185 72 365 96C515 116 515 260 690 243C836 229 856 81 1018 90C1165 98 1192 214 1445 142"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeOpacity="0.075"
+      />
+      <path
+        d="M-15 278C180 238 222 129 397 145C564 160 614 294 786 262C934 234 964 126 1131 124C1250 122 1320 171 1435 188"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="9 12"
+        strokeOpacity="0.06"
+      />
+      <path
+        d="M722 -25C761 70 742 145 802 207C872 278 1014 280 1075 194C1129 118 1091 38 1173 -28"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeOpacity="0.055"
+      />
+      <circle cx="365" cy="96" r="7" fill="currentColor" fillOpacity="0.075" />
+      <circle cx="690" cy="243" r="9" fill="currentColor" fillOpacity="0.06" />
+      <circle cx="1018" cy="90" r="6" fill="currentColor" fillOpacity="0.09" />
+      <circle cx="1131" cy="124" r="18" stroke="currentColor" strokeOpacity="0.06" />
+    </svg>
+
+    <div className="absolute -left-20 -top-24 h-72 w-72 rounded-full bg-secondary/[0.045] blur-3xl" />
+    <div className="absolute -bottom-28 right-[10%] h-72 w-72 rounded-full bg-info/[0.065] blur-3xl" />
+
+    <span className="absolute left-[56%] top-[18%] hidden h-8 w-8 items-center justify-center rounded-full border border-primary/10 bg-base-100/55 text-primary/35 shadow-sm backdrop-blur lg:flex">
+      <Lucide.MapPin size={14} />
     </span>
+    <span className="absolute bottom-[16%] left-[66%] hidden h-7 w-7 items-center justify-center rounded-full border border-success/10 bg-base-100/55 text-success/35 shadow-sm backdrop-blur lg:flex">
+      <Lucide.Check size={13} />
+    </span>
+    <span className="absolute right-[22%] top-[16%] hidden h-7 w-7 items-center justify-center rounded-full border border-secondary/10 bg-base-100/55 text-secondary/35 shadow-sm backdrop-blur lg:flex">
+      <Lucide.Radio size={13} />
+    </span>
+  </div>
+);
 
-    <section className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-sm">
-      <div className="grid animate-pulse gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div>
-          <div className="flex gap-2">
-            <div className="h-7 w-28 rounded-full bg-base-300/40" />
-            <div className="h-7 w-36 rounded-full bg-base-300/35" />
+const TicketDetailShell = ({ children }) => (
+  <PublicPageMotion>
+    <div data-public-reveal className="text-[var(--public-title)]">
+      {children}
+    </div>
+  </PublicPageMotion>
+);
+
+const DetailBackButton = ({ label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-copy)] shadow-sm transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+  >
+    <Lucide.ArrowLeft size={15} aria-hidden="true" />
+    {label}
+  </button>
+);
+
+const TicketDetailSkeleton = () => (
+  <TicketDetailShell>
+    <main
+      className="space-y-4"
+      aria-busy="true"
+      aria-label="Đang tải chi tiết phản ánh"
+    >
+      <section className="relative h-[224px] overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]">
+        <DetailSmartCityBackdrop />
+        <div className="relative grid h-full gap-6 px-6 py-7 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-center">
+          <div className="space-y-4">
+            <div className="h-7 w-32 animate-pulse rounded-full bg-base-content/8" />
+            <div className="h-9 w-[min(520px,78%)] animate-pulse rounded-xl bg-base-content/10" />
+            <div className="flex flex-wrap gap-3">
+              <div className="h-8 w-32 animate-pulse rounded-xl bg-base-content/8" />
+              <div className="h-8 w-44 animate-pulse rounded-xl bg-base-content/8" />
+              <div className="h-8 w-36 animate-pulse rounded-xl bg-base-content/8" />
+            </div>
           </div>
-          <div className="mt-5 h-8 w-72 max-w-[70%] rounded-lg bg-base-300/55" />
-          <div className="mt-4 flex gap-4">
-            <div className="h-3 w-36 rounded bg-base-300/30" />
-            <div className="h-3 w-32 rounded bg-base-300/30" />
-            <div className="h-3 w-36 rounded bg-base-300/30" />
-          </div>
+          <div className="hidden h-36 animate-pulse rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] xl:block" />
         </div>
-        <div className="h-36 rounded-[24px] border border-base-300 bg-base-200/45" />
-      </div>
+      </section>
 
-      <div className="grid grid-cols-3 divide-x divide-base-300 border-t border-base-300">
-        {[0, 1, 2].map((item) => (
-          <div key={item} className="animate-pulse px-5 py-4">
-            <div className="h-3 w-24 rounded bg-base-300/35" />
-            <div className="mt-2 h-5 w-32 rounded bg-base-300/50" />
-          </div>
-        ))}
-      </div>
-    </section>
+      <section className="h-44 animate-pulse rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" />
 
-    <section className="rounded-[28px] border border-base-300 bg-base-100 p-6 shadow-sm">
-      <div className="animate-pulse">
-        <div className="h-6 w-40 rounded bg-base-300/55" />
-        <div className="mt-2 h-3 w-72 rounded bg-base-300/30" />
-        <div className="mt-7 h-20 rounded-2xl bg-base-200/55" />
-      </div>
-    </section>
-
-    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="h-72 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
-      <div className="h-72 animate-pulse rounded-[28px] border border-base-300 bg-base-100 shadow-sm" />
-    </section>
-  </main>
+      <section className="h-[420px] animate-pulse rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-sm" />
+    </main>
+  </TicketDetailShell>
 );
 
 const translateHistoryText = (value) => {
@@ -309,6 +429,8 @@ const translateHistoryText = (value) => {
   const translations = [
     ['feedback created', 'Phản ánh đã được tạo.'],
     ['feedback submitted', 'Phản ánh đã được gửi.'],
+    ['reviewed by ai', 'Hệ thống đã phân tích và phân loại phản ánh.'],
+    ['ai reviewed', 'Hệ thống đã phân tích và phân loại phản ánh.'],
     ['feedback verified', 'Phản ánh đã được xác minh.'],
     ['verified by staff', 'Thông tin phản ánh đã được nhân viên xác minh.'],
     ['verified', 'Thông tin phản ánh đã được xác minh.'],
@@ -342,6 +464,8 @@ export const TicketDetailPage = () => {
     setChatInput,
     loading,
     error,
+    errorStatus,
+    errorFeedbackId,
     handleSendChat,
     handleRateSubmit,
     rating,
@@ -354,10 +478,41 @@ export const TicketDetailPage = () => {
     getAttachmentUrl,
   } = useTicketDetail(feedbackId, user);
 
-  const [cachedTicket] = useState(() => (
-    readTicketDetailSnapshot(feedbackId)
-  ));
-  const [ticket, setTicket] = useState(cachedTicket);
+  const snapshotUserId = user?.userId ?? user?.id ?? '';
+  const ticketSnapshotKey = useMemo(
+    () => getTicketDetailSnapshotKey(feedbackId, snapshotUserId),
+    [feedbackId, snapshotUserId]
+  );
+  const [ticketState, setTicketState] = useState(() => ({
+    snapshotKey: getTicketDetailSnapshotKey(feedbackId, snapshotUserId),
+    value: readTicketDetailSnapshot(feedbackId, snapshotUserId),
+  }));
+  const hasBlockingLoadError = (
+    errorFeedbackId &&
+    String(errorFeedbackId) === String(feedbackId) &&
+    [401, 403, 404].includes(errorStatus)
+  );
+  const ticket = (
+    ticketState.snapshotKey === ticketSnapshotKey &&
+    !hasBlockingLoadError
+  )
+    ? ticketState.value
+    : null;
+  const setTicket = useCallback((updater) => {
+    setTicketState((current) => {
+      const currentValue = current.snapshotKey === ticketSnapshotKey
+        ? current.value
+        : null;
+      const nextValue = typeof updater === 'function'
+        ? updater(currentValue)
+        : updater;
+
+      return {
+        snapshotKey: ticketSnapshotKey,
+        value: nextValue,
+      };
+    });
+  }, [ticketSnapshotKey]);
   const [updateNotice, setUpdateNotice] = useState('');
   const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState(null);
   const [previewSource, setPreviewSource] = useState('detail');
@@ -373,6 +528,11 @@ export const TicketDetailPage = () => {
   const [attachmentDeleteTarget, setAttachmentDeleteTarget] = useState(null);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [visibleCommentCount, setVisibleCommentCount] = useState(3);
+  const [relatedFeedbacks, setRelatedFeedbacks] = useState([]);
+  const [relatedFeedbacksLoading, setRelatedFeedbacksLoading] = useState(false);
+  const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
+  const commentsSectionRef = useRef(null);
+  const commentInputRef = useRef(null);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [locationPickerError, setLocationPickerError] = useState('');
   const [locationDraft, setLocationDraft] = useState({
@@ -394,7 +554,68 @@ export const TicketDetailPage = () => {
   });
 
   useEffect(() => {
+    setTicketState({
+      snapshotKey: ticketSnapshotKey,
+      value: readTicketDetailSnapshot(feedbackId, snapshotUserId),
+    });
+  }, [feedbackId, snapshotUserId, ticketSnapshotKey]);
+
+  useEffect(() => {
     setVisibleCommentCount(3);
+  }, [feedbackId]);
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const scrollContainer = document.querySelector(
+      '[data-dashboard-scroll-container]'
+    );
+    if (!scrollContainer) return undefined;
+
+    scrollContainer.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    const frameId = window.requestAnimationFrame(() => {
+      scrollContainer.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [feedbackId]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadRelatedFeedbacks = async () => {
+      if (!feedbackId) return;
+
+      setRelatedFeedbacksLoading(true);
+      setRelatedFeedbacksError('');
+
+      try {
+        const response = await managementFeedbackApi.getRelatedFeedbacks(feedbackId);
+        if (active) {
+          setRelatedFeedbacks(Array.isArray(response) ? response : []);
+        }
+      } catch (relatedError) {
+        console.error('Không thể tải phản ánh liên quan', relatedError);
+        if (active) {
+          setRelatedFeedbacks([]);
+          setRelatedFeedbacksError(
+            relatedError?.message || 'Không thể tải danh sách phản ánh liên quan.'
+          );
+        }
+      } finally {
+        if (active) setRelatedFeedbacksLoading(false);
+      }
+    };
+
+    loadRelatedFeedbacks();
+
+    return () => {
+      active = false;
+    };
   }, [feedbackId]);
 
   const attachments = Array.isArray(ticket?.attachments)
@@ -430,12 +651,14 @@ export const TicketDetailPage = () => {
       ? storedContext
       : null;
 
+    const from = location.state?.from || matchingStoredContext?.from || '/tickets';
+
     return {
-      from: location.state?.from || matchingStoredContext?.from || '/tickets',
+      from,
       returnLabel:
         location.state?.returnLabel ||
         (
-          location.state?.from === '/community/map'
+          from === '/community/map'
             ? 'Quay lại bản đồ sự cố'
             : 'Quay lại phản ánh của tôi'
         ),
@@ -453,6 +676,27 @@ export const TicketDetailPage = () => {
   const handleBackToList = ({ replace = false, highlight = true } = {}) => {
     const returningToMap = returnContext.from === '/community/map';
 
+    if (!highlight && typeof window !== 'undefined') {
+      try {
+        const rawContext = window.sessionStorage.getItem(
+          'urbanmind-ticket-list-return'
+        );
+        const storedContext = rawContext ? JSON.parse(rawContext) : null;
+
+        if (storedContext) {
+          window.sessionStorage.setItem(
+            'urbanmind-ticket-list-return',
+            JSON.stringify({
+              ...storedContext,
+              pendingRestore: false,
+            })
+          );
+        }
+      } catch {
+        // Storage can be unavailable in private mode.
+      }
+    }
+
     navigate(returnContext.from, {
       replace,
       state: returningToMap
@@ -464,6 +708,22 @@ export const TicketDetailPage = () => {
           restoreTicketId: highlight ? returnContext.ticketId : null,
         },
     });
+  };
+
+
+  const handleJumpToComments = () => {
+    const prefersReducedMotion = window.matchMedia?.(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
+
+    commentsSectionRef.current?.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+
+    window.setTimeout(() => {
+      commentInputRef.current?.focus({ preventScroll: true });
+    }, prefersReducedMotion ? 0 : 420);
   };
 
   const serializeEditState = (form = editForm, files = selectedFiles) => JSON.stringify({
@@ -504,14 +764,54 @@ export const TicketDetailPage = () => {
   };
 
   useEffect(() => {
-    if (!fetchedTicket) return;
+    const fetchedFeedbackId = (
+      fetchedTicket?.feedbackId ??
+      fetchedTicket?.ticketId ??
+      fetchedTicket?.id
+    );
+
+    if (
+      !fetchedTicket ||
+      !fetchedFeedbackId ||
+      String(fetchedFeedbackId) !== String(feedbackId)
+    ) {
+      return;
+    }
 
     setTicket(fetchedTicket);
     writeTicketDetailSnapshot(
       feedbackId,
+      snapshotUserId,
       fetchedTicket
     );
-  }, [feedbackId, fetchedTicket]);
+  }, [feedbackId, fetchedTicket, setTicket, snapshotUserId]);
+
+  useEffect(() => {
+    const requestFailedForCurrentFeedback = (
+      errorFeedbackId &&
+      String(errorFeedbackId) === String(feedbackId)
+    );
+
+    if (
+      !requestFailedForCurrentFeedback ||
+      ![401, 403, 404].includes(errorStatus)
+    ) {
+      return;
+    }
+
+    removeTicketDetailSnapshot(feedbackId, snapshotUserId);
+    setTicket(null);
+    setEditOpen(false);
+    setDeleteOpen(false);
+    setAttachmentDeleteTarget(null);
+    setPreviewAttachmentIndex(null);
+  }, [
+    errorFeedbackId,
+    errorStatus,
+    feedbackId,
+    setTicket,
+    snapshotUserId,
+  ]);
 
   useEffect(() => {
     selectedFilesRef.current = selectedFiles;
@@ -639,6 +939,20 @@ export const TicketDetailPage = () => {
     ].some((extension) => url.includes(extension));
   };
 
+  const isImageFile = (fileUrl = '') => {
+    const url = String(fileUrl).toLowerCase();
+    return [
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.webp',
+      '.bmp',
+      '.svg',
+      '.avif',
+    ].some((extension) => url.includes(extension));
+  };
+
   const statusDescription = (status) => {
     switch (status) {
       case managementTypes.feedbackStatus.SUBMITTED:
@@ -704,9 +1018,16 @@ export const TicketDetailPage = () => {
   const canDeleteTicket = isServiceUser &&
     ticket?.status === managementTypes.feedbackStatus.SUBMITTED;
 
-  const canReviewResolution = [
-    managementTypes.feedbackStatus.APPROVED,
+  const canReviewResolution = (
+    ticket?.status === managementTypes.feedbackStatus.APPROVED
+  );
+
+
+  const canViewResolution = [
     managementTypes.feedbackStatus.RESOLVED,
+    managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+    managementTypes.feedbackStatus.APPROVED,
+    managementTypes.feedbackStatus.CLOSED,
   ].includes(ticket?.status);
 
   const resolveAttachmentId = (file) => {
@@ -736,9 +1057,30 @@ export const TicketDetailPage = () => {
   );
 
   const isVideoAttachment = (file) => {
-    const mimeType = file?.type || file?.file?.type || '';
+    const mimeType = (
+      file?.type ||
+      file?.mimeType ||
+      file?.fileType ||
+      file?.file?.type ||
+      ''
+    );
     return mimeType.startsWith('video/') || isVideoFile(resolvePreviewUrl(file));
   };
+
+  const isImageAttachment = (file) => {
+    const mimeType = (
+      file?.type ||
+      file?.mimeType ||
+      file?.fileType ||
+      file?.file?.type ||
+      ''
+    );
+    return mimeType.startsWith('image/') || isImageFile(resolvePreviewUrl(file));
+  };
+
+  const isMediaAttachment = (file) => (
+    isImageAttachment(file) || isVideoAttachment(file)
+  );
 
   const releaseSelectedFileItems = (items) => {
     items.forEach((item) => {
@@ -926,8 +1268,13 @@ export const TicketDetailPage = () => {
       return;
     }
 
-    if (editAttachments.length + selectedFiles.length === 0) {
-      setActionError('Phản ánh phải có ít nhất một tệp minh chứng.');
+    const mediaAttachmentCount = (
+      editAttachments.filter(isMediaAttachment).length +
+      selectedFiles.filter(isMediaAttachment).length
+    );
+
+    if (mediaAttachmentCount === 0) {
+      setActionError('Phản ánh phải có ít nhất một hình ảnh hoặc video minh chứng.');
       return;
     }
 
@@ -955,12 +1302,22 @@ export const TicketDetailPage = () => {
 
       await ticketApi.updateTicket(feedbackId, payload, { role: 'service-user' });
 
+      let attachmentUploadError = null;
+
       if (addedFileCount > 0) {
-        await ticketApi.addAttachments(
-          feedbackId,
-          selectedFiles.map((item) => item.file),
-          { role: 'service-user' }
-        );
+        try {
+          await ticketApi.addAttachments(
+            feedbackId,
+            selectedFiles.map((item) => item.file),
+            { role: 'service-user' }
+          );
+        } catch (uploadError) {
+          console.error(
+            'Thông tin đã cập nhật nhưng không thể tải thêm tệp minh chứng',
+            uploadError
+          );
+          attachmentUploadError = uploadError;
+        }
       }
 
       let refreshedTicket = null;
@@ -986,6 +1343,7 @@ export const TicketDetailPage = () => {
         setTicket(refreshedTicket);
         writeTicketDetailSnapshot(
           feedbackId,
+          snapshotUserId,
           refreshedTicket
         );
         setEditAttachments(
@@ -994,19 +1352,28 @@ export const TicketDetailPage = () => {
             : []
         );
       } else {
-        setTicket((currentTicket) => (
-          currentTicket
-            ? { ...currentTicket, ...payload }
-            : currentTicket
-        ));
+        const nextTicket = ticket
+          ? { ...ticket, ...payload }
+          : null;
+
+        if (nextTicket) {
+          setTicket(nextTicket);
+          writeTicketDetailSnapshot(
+            feedbackId,
+            snapshotUserId,
+            nextTicket
+          );
+        }
       }
 
       clearSelectedFiles();
       setEditOpen(false);
       setUpdateNotice(
-        addedFileCount > 0
-          ? `Đã cập nhật phản ánh và thêm ${addedFileCount} tệp minh chứng.`
-          : 'Đã cập nhật phản ánh.'
+        attachmentUploadError
+          ? 'Thông tin đã được cập nhật, nhưng chưa thể tải thêm tệp minh chứng. Vui lòng mở Chỉnh sửa và thử lại.'
+          : addedFileCount > 0
+            ? `Đã cập nhật phản ánh và thêm ${addedFileCount} tệp minh chứng.`
+            : 'Đã cập nhật phản ánh.'
       );
     } catch (updateError) {
       console.error('Không thể cập nhật phản ánh', updateError);
@@ -1026,6 +1393,8 @@ export const TicketDetailPage = () => {
 
     try {
       await ticketApi.deleteTicket(feedbackId, { role: 'service-user' });
+      removeTicketDetailSnapshot(feedbackId, snapshotUserId);
+      setTicket(null);
       handleBackToList({ replace: true, highlight: false });
     } catch (deleteError) {
       console.error('Không thể xóa phản ánh', deleteError);
@@ -1042,15 +1411,23 @@ export const TicketDetailPage = () => {
   const handleDeleteAttachment = async () => {
     if (!attachmentDeleteTarget) return;
 
-    if (editAttachments.length <= 1) {
-      setActionError('Phản ánh phải giữ lại ít nhất một tệp minh chứng.');
+    const attachmentId = resolveAttachmentId(attachmentDeleteTarget);
+    if (!attachmentId) {
+      setActionError('Không xác định được tệp đính kèm cần xóa.');
       setAttachmentDeleteTarget(null);
       return;
     }
 
-    const attachmentId = resolveAttachmentId(attachmentDeleteTarget);
-    if (!attachmentId) {
-      setActionError('Không xác định được tệp đính kèm cần xóa.');
+    const remainingAttachments = editAttachments.filter(
+      (item) => resolveAttachmentId(item) !== attachmentId
+    );
+    const remainingMediaCount = (
+      remainingAttachments.filter(isMediaAttachment).length +
+      selectedFiles.filter(isMediaAttachment).length
+    );
+
+    if (remainingMediaCount === 0) {
+      setActionError('Phản ánh phải giữ lại ít nhất một hình ảnh hoặc video minh chứng.');
       setAttachmentDeleteTarget(null);
       return;
     }
@@ -1062,10 +1439,21 @@ export const TicketDetailPage = () => {
       await ticketApi.deleteAttachment(feedbackId, attachmentId, {
         role: 'service-user',
       });
-      const nextAttachments = editAttachments.filter(
-        (item) => resolveAttachmentId(item) !== attachmentId
-      );
+      const nextAttachments = remainingAttachments;
       setEditAttachments(nextAttachments);
+
+      if (ticket) {
+        const nextTicket = {
+          ...ticket,
+          attachments: nextAttachments,
+        };
+        setTicket(nextTicket);
+        writeTicketDetailSnapshot(
+          feedbackId,
+          snapshotUserId,
+          nextTicket
+        );
+      }
 
       try {
         const baseline = JSON.parse(editInitialSnapshotRef.current || '{}');
@@ -1093,7 +1481,10 @@ export const TicketDetailPage = () => {
   const sortedHistory = useMemo(
     () => (Array.isArray(history)
       ? [...history].sort(
-        (first, second) => new Date(first.changedAt) - new Date(second.changedAt)
+        (first, second) => (
+          new Date(first.changedAt).getTime() -
+          new Date(second.changedAt).getTime()
+        )
       )
       : []),
     [history]
@@ -1126,36 +1517,6 @@ export const TicketDetailPage = () => {
     ticket?.updatedAt ||
     ticket?.createdAt
   );
-
-  const approvalStatusText = (() => {
-    if (
-      [
-        managementTypes.feedbackStatus.APPROVED,
-        managementTypes.feedbackStatus.CLOSED,
-      ].includes(ticket?.status)
-    ) {
-      return 'Đã phê duyệt';
-    }
-
-    if (
-      [
-        managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-        managementTypes.feedbackStatus.RESOLVED,
-      ].includes(ticket?.status)
-    ) {
-      return 'Đang chờ phê duyệt';
-    }
-
-    if (ticket?.status === managementTypes.feedbackStatus.NEED_REWORK) {
-      return 'Cần xử lý bổ sung';
-    }
-
-    if (ticket?.status === managementTypes.feedbackStatus.REJECTED) {
-      return 'Không được phê duyệt';
-    }
-
-    return 'Chưa có kết quả';
-  })();
 
   const citizenJourneySteps = [
     {
@@ -1217,44 +1578,106 @@ export const TicketDetailPage = () => {
     });
   };
 
-  if (loading && !ticket) {
+  const fetchedFeedbackId = (
+    fetchedTicket?.feedbackId ??
+    fetchedTicket?.ticketId ??
+    fetchedTicket?.id
+  );
+  const hookHasCurrentResult = (
+    (fetchedFeedbackId && String(fetchedFeedbackId) === String(feedbackId)) ||
+    (errorFeedbackId && String(errorFeedbackId) === String(feedbackId))
+  );
+  const detailSyncing = loading || !hookHasCurrentResult;
+  const activeErrorStatus = (
+    errorFeedbackId && String(errorFeedbackId) === String(feedbackId)
+  )
+    ? errorStatus
+    : null;
+  const loadErrorState = (() => {
+    switch (activeErrorStatus) {
+      case 401:
+        return {
+          title: 'Phiên đăng nhập đã hết hạn',
+          description: 'Vui lòng đăng nhập lại để tiếp tục xem phản ánh của bạn.',
+          icon: Lucide.LogIn,
+        };
+      case 403:
+        return {
+          title: 'Bạn không có quyền xem phản ánh này',
+          description: 'Chỉ tài khoản đã tạo phản ánh mới có thể truy cập trang chi tiết này.',
+          icon: Lucide.ShieldAlert,
+        };
+      case 404:
+        return {
+          title: 'Không tìm thấy phản ánh',
+          description: 'Phản ánh có thể đã bị xóa hoặc đường dẫn không còn hợp lệ.',
+          icon: Lucide.FileQuestion,
+        };
+      default:
+        return {
+          title: 'Không thể tải chi tiết phản ánh',
+          description: error || 'Vui lòng thử lại hoặc quay về danh sách phản ánh.',
+          icon: Lucide.FileWarning,
+        };
+    }
+  })();
+
+  if (detailSyncing && !ticket) {
     return <TicketDetailSkeleton />;
   }
 
   if (!ticket) {
+    const LoadErrorIcon = loadErrorState.icon;
+
     return (
-      <div className="rounded-[28px] border border-base-300 bg-base-100 px-6 py-16 text-center shadow-sm">
-        <Lucide.FileWarning
-          size={34}
-          className="mx-auto text-base-content/35"
-          aria-hidden="true"
-        />
-        <h1 className="mt-4 text-lg font-bold text-base-content">
-          Không thể tải chi tiết phản ánh
-        </h1>
-        <p className="mt-2 text-sm text-base-content/55">
-          {error || 'Vui lòng thử lại hoặc quay về danh sách phản ánh.'}
-        </p>
-        <button
-          type="button"
-          onClick={() => handleBackToList()}
-          className="btn admin-primary-action mt-5 rounded-2xl"
-        >
-          {returnContext.returnLabel}
-        </button>
-      </div>
+      <TicketDetailShell>
+        <main className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] px-6 py-16 text-center shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+          <LoadErrorIcon
+            size={34}
+            className="mx-auto text-base-content/35"
+            aria-hidden="true"
+          />
+          <h1 className="mt-4 text-lg font-bold text-base-content">
+            {loadErrorState.title}
+          </h1>
+          <p className="mt-2 text-sm text-base-content/55">
+            {loadErrorState.description}
+          </p>
+          <button
+            type="button"
+            onClick={() => handleBackToList()}
+            className="btn admin-primary-action mt-5 rounded-2xl"
+          >
+            {returnContext.returnLabel}
+          </button>
+        </main>
+      </TicketDetailShell>
     );
   }
 
   const createdAt = ticket.createdAt || ticket.submittedAt;
   const updatedAt = ticket.updatedAt || ticket.lastUpdatedAt || createdAt;
-  const operatorName = ticket.assignment?.operatorName ||
-    ticket.assignment?.staffName ||
-    'Chưa phân công';
+  const authorName = (
+    ticket?.userName ||
+    ticket?.reporterName ||
+    ticket?.createdByName ||
+    user?.fullName ||
+    user?.name ||
+    'Bạn'
+  );
+  const supportCount = Number(ticket?.supportCount || ticket?.supports || 0);
+  const commentCount = orderedComments.length > 0
+    ? orderedComments.length
+    : Number(ticket?.commentCount || 0);
+  const parentTicketId = ticket?.parentTicketId || ticket?.parentFeedbackId || null;
+  const isConfirmedDuplicate = Boolean(parentTicketId);
+  const isPotentialDuplicate = Boolean(
+    ticket?.duplicateWarning && !isConfirmedDuplicate
+  );
 
   return (
     <>
-      {loading && ticket ? (
+      {detailSyncing && ticket ? (
         <div
           className="fixed right-5 top-24 z-40 inline-flex items-center gap-2 rounded-full border border-info/20 bg-base-100/95 px-3 py-2 text-xs font-semibold text-info shadow-lg backdrop-blur"
           role="status"
@@ -1297,206 +1720,277 @@ export const TicketDetailPage = () => {
           )
         : null}
 
-      <main className="page-container space-y-4 pb-2 text-base-content">
-          <nav
-            className="flex items-center text-sm font-medium text-base-content/55 sm:mb-1"
-            aria-label="Điều hướng chi tiết phản ánh"
-          >
-            <button
-              type="button"
-              onClick={() => handleBackToList()}
-              className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-base-200 hover:text-primary"
-            >
-              <Lucide.ArrowLeft size={15} aria-hidden="true" />
-              {returnContext.returnLabel}
-            </button>
-          </nav>
+      <TicketDetailShell>
+        <main className="relative isolate space-y-4 text-[var(--public-title)]">
+          <div
+            className="pointer-events-none absolute -inset-x-3 -inset-y-4 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-5"
+            aria-hidden="true"
+          />
 
-          <section className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_16px_40px_rgba(15,23,42,0.10)]">
-            <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/8 px-3 py-1.5 text-xs font-semibold text-primary">
+          <article className="relative isolate overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]">
+            <DetailSmartCityBackdrop />
+
+            <div className="relative grid gap-6 px-5 py-5 sm:px-7 sm:py-6 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-center">
+              <header className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <DetailBackButton
+                    label={returnContext.returnLabel}
+                    onClick={() => handleBackToList()}
+                  />
+                  <span
+                    className="hidden h-5 w-px bg-[var(--public-border)] sm:block"
+                    aria-hidden="true"
+                  />
+                  <span className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-secondary/15 bg-secondary/8 px-3 text-xs font-semibold text-secondary">
                     <Lucide.Tag size={13} aria-hidden="true" />
                     {getCategoryLabel(ticket.categoryName)}
                   </span>
-                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${getPriorityTone(ticket.priority)}`}>
+                  <span className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold ${getPriorityTone(ticket.priority)}`}>
                     <Lucide.Gauge size={13} aria-hidden="true" />
                     Mức độ {PRIORITY_LABELS[ticket.priority] || 'Trung bình'}
                   </span>
                 </div>
 
-                <h1 className="mt-3 break-words text-2xl font-bold tracking-tight sm:text-[30px]">
-                  {ticket.title}
+                <h1 className="mt-5 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
+                  {ticket.title || 'Phản ánh đô thị'}
                 </h1>
 
-                <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-base-content/55">
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-base-content/55">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-content">
+                      {authorName.charAt(0).toUpperCase()}
+                    </span>
+                    <strong className="font-semibold text-base-content">
+                      {authorName}
+                    </strong>
+                  </span>
                   <span className="inline-flex items-center gap-1.5">
                     <Lucide.MapPin size={15} aria-hidden="true" />
                     {ticket.areaName || 'Chưa xác định khu vực'}
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
+                  <time
+                    dateTime={createdAt || undefined}
+                    className="inline-flex items-center gap-1.5"
+                  >
                     <Lucide.CalendarDays size={15} aria-hidden="true" />
                     Gửi {formatDate(createdAt)}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Lucide.Clock3 size={15} aria-hidden="true" />
-                    Cập nhật {formatDate(updatedAt)}
-                  </span>
+                  </time>
+                  {updatedAt && updatedAt !== createdAt ? (
+                    <time
+                      dateTime={updatedAt}
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <Lucide.Clock3 size={15} aria-hidden="true" />
+                      Cập nhật {formatDate(updatedAt)}
+                    </time>
+                  ) : null}
                 </div>
-              </div>
+              </header>
 
-              <div className="rounded-[22px] border border-info/20 bg-base-100 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.07)] ring-1 ring-info/5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${getStatusTone(ticket.status)}`}>
-                    <Lucide.Activity size={13} aria-hidden="true" />
-                    {getCitizenStatusLabel(ticket.status)}
-                  </span>
-                  <span className="text-xs font-medium text-base-content/55">
-                    Trạng thái hiện tại
+              <aside className="rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)]/90 px-4 py-4 shadow-sm backdrop-blur">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-[var(--public-muted)]">
+                      Trạng thái xử lý
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-[var(--public-title)]">
+                      {getCitizenStatusLabel(ticket.status)}
+                    </p>
+                  </div>
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${getStatusTone(ticket.status)}`}>
+                    {renderCitizenStatusIcon(ticket.status)}
                   </span>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-base-content/65">
+
+                <p className="mt-2 text-xs leading-5 text-[var(--public-muted)]">
                   {statusDescription(ticket.status)}
                 </p>
 
-                {(canEditTicket || canDeleteTicket || canReviewResolution ||
-                  ticket.status === managementTypes.feedbackStatus.NEED_REWORK ||
-                  ticket.status === managementTypes.feedbackStatus.REJECTED) ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {canEditTicket ? (
-                      <button
-                        type="button"
-                        onClick={openEditDialog}
-                        className="btn admin-secondary-action btn-sm rounded-xl"
-                      >
-                        <Lucide.Pencil size={14} aria-hidden="true" />
-                        Chỉnh sửa
-                      </button>
-                    ) : null}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleJumpToComments}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 text-sm font-semibold text-[var(--public-copy)] transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    aria-label={`Đi tới phần ${commentCount} bình luận`}
+                  >
+                    <Lucide.MessageCircle size={16} aria-hidden="true" />
+                    {commentCount} bình luận
+                  </button>
 
-                    {canDeleteTicket ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActionError('');
-                          setDeleteOpen(true);
-                        }}
-                        className="btn btn-sm rounded-xl border-error/25 bg-error/8 text-error hover:border-error/40 hover:bg-error/12"
-                      >
-                        <Lucide.Trash2 size={14} aria-hidden="true" />
-                        Xóa phản ánh
-                      </button>
-                    ) : null}
+                  {canEditTicket ? (
+                    <button
+                      type="button"
+                      onClick={openEditDialog}
+                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 text-sm font-semibold text-[var(--public-copy)] transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    >
+                      <Lucide.Pencil size={15} aria-hidden="true" />
+                      Chỉnh sửa
+                    </button>
+                  ) : null}
 
-                    {canReviewResolution && isServiceUser ? (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/tickets/${feedbackId}/result`)}
-                        className="btn admin-primary-action btn-sm rounded-xl"
-                      >
-                        <Lucide.ClipboardCheck size={14} aria-hidden="true" />
-                        Xem kết quả
-                      </button>
-                    ) : null}
+                  {canDeleteTicket ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionError('');
+                        setDeleteOpen(true);
+                      }}
+                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-error/20 bg-error/8 px-3 text-sm font-semibold text-error transition hover:border-error/35 hover:bg-error/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/25"
+                    >
+                      <Lucide.Trash2 size={15} aria-hidden="true" />
+                      Xóa
+                    </button>
+                  ) : null}
 
-                    {isServiceUser && [
-                      managementTypes.feedbackStatus.NEED_REWORK,
-                      managementTypes.feedbackStatus.REJECTED,
-                    ].includes(ticket.status) ? (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/tickets/${feedbackId}/rework`)}
-                        className="btn btn-warning btn-sm rounded-xl"
-                      >
-                        <Lucide.RefreshCw size={14} aria-hidden="true" />
-                        Bổ sung thông tin
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                  {canViewResolution && isServiceUser ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/tickets/${feedbackId}/result`)}
+                      className="inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-3 text-sm font-semibold text-primary-content shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    >
+                      <Lucide.ClipboardCheck size={15} aria-hidden="true" />
+                      Xem kết quả
+                    </button>
+                  ) : null}
+
+                  {isServiceUser && [
+                    managementTypes.feedbackStatus.NEED_REWORK,
+                    managementTypes.feedbackStatus.REJECTED,
+                  ].includes(ticket.status) ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/tickets/${feedbackId}/rework`)}
+                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-warning/25 bg-warning/10 px-3 text-sm font-semibold text-warning transition hover:border-warning/40 hover:bg-warning/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/25"
+                    >
+                      <Lucide.RefreshCw size={15} aria-hidden="true" />
+                      Bổ sung
+                    </button>
+                  ) : null}
+                </div>
+              </aside>
             </div>
+          </article>
 
-            <dl className="grid border-t border-base-300 bg-base-200/55 sm:grid-cols-3">
-              <div className="flex items-center gap-3 px-5 py-3 sm:border-r sm:border-base-300">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">
-                  <Lucide.Building2 size={17} />
+          {isConfirmedDuplicate ? (
+            <section
+              className="rounded-[24px] border border-violet-300/70 bg-violet-50/90 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.06)] dark:border-violet-400/25 dark:bg-violet-400/10 sm:p-5"
+              aria-labelledby="duplicate-feedback-title"
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-sm dark:bg-violet-500">
+                    <Lucide.GitMerge size={20} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 id="duplicate-feedback-title" className="text-base font-bold text-violet-950 dark:text-violet-100">
+                      Phản ánh này đã được gộp
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-violet-800/80 dark:text-violet-200/75">
+                      Sự cố đã được ghi nhận trước đó và đang được xử lý chung theo phản ánh chính.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/community/feed/${parentTicketId}`, {
+                    state: {
+                      from: location.pathname,
+                      returnLabel: 'Quay lại phản ánh của tôi',
+                    },
+                  })}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 dark:bg-violet-500 dark:hover:bg-violet-400"
+                >
+                  <Lucide.ExternalLink size={15} aria-hidden="true" />
+                  Xem phản ánh chính
+                </button>
+              </div>
+            </section>
+          ) : isPotentialDuplicate ? (
+            <section
+              className="rounded-[24px] border border-amber-300/70 bg-amber-50/90 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.06)] dark:border-amber-400/25 dark:bg-amber-400/10 sm:p-5"
+              aria-labelledby="potential-duplicate-title"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm">
+                  <Lucide.ScanSearch size={20} aria-hidden="true" />
                 </span>
-                <div className="min-w-0">
-                  <dt className="text-xs text-base-content/55">Đơn vị phụ trách</dt>
-                  <dd className="mt-0.5 truncate text-sm font-semibold">{operatorName}</dd>
+                <div>
+                  <h2 id="potential-duplicate-title" className="text-base font-bold text-amber-950 dark:text-amber-100">
+                    Đang kiểm tra phản ánh trùng
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-amber-800/80 dark:text-amber-200/75">
+                    Hệ thống phát hiện phản ánh này có thể trùng với một phản ánh khác. Nhân viên đang xác minh trước khi gộp.
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 border-t border-base-300 px-5 py-3 sm:border-r sm:border-t-0">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning" aria-hidden="true">
-                  <Lucide.CalendarClock size={17} />
-                </span>
-                <div className="min-w-0">
-                  <dt className="text-xs text-base-content/55">Hạn xử lý dự kiến</dt>
-                  <dd className="mt-0.5 truncate text-sm font-semibold">{formatDate(ticket.dueDate)}</dd>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 border-t border-primary/10 px-5 py-3 sm:border-t-0">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success" aria-hidden="true">
-                  <Lucide.BadgeCheck size={17} />
-                </span>
-                <div className="min-w-0">
-                  <dt className="text-xs text-base-content/55">Kết quả phê duyệt</dt>
-                  <dd className="mt-0.5 truncate text-sm font-semibold">{approvalStatusText}</dd>
-                </div>
-              </div>
-            </dl>
-          </section>
+            </section>
+          ) : null}
 
-          <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:p-5" aria-labelledby="journey-title">
-            <header className="flex flex-wrap items-start justify-between gap-3">
+          <section
+            className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"
+            aria-labelledby="ticket-progress-title"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 id="journey-title" className="text-lg font-bold">Tiến độ xử lý</h2>
+                <h2 id="ticket-progress-title" className="text-lg font-bold">
+                  Tiến độ xử lý
+                </h2>
                 <p className="mt-1 text-sm text-base-content/60">
-                  Các mốc chính được rút gọn để bạn dễ theo dõi.
+                  Các mốc chính giúp bạn theo dõi quá trình xử lý.
                 </p>
               </div>
-              <span className="rounded-full border border-primary/15 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
+              <span className="rounded-full border border-primary/15 bg-primary/8 px-3 py-1.5 text-xs font-semibold text-primary">
                 Bước {citizenJourneyIndex + 1}/{citizenJourneySteps.length}
               </span>
-            </header>
+            </div>
 
             <div className="mt-4 overflow-x-auto pb-1">
               <ol className="grid min-w-[680px] grid-cols-4">
                 {citizenJourneySteps.map((step, index) => {
                   const StepIcon = step.icon;
-                  const isComplete = index < citizenJourneyIndex;
-                  const isActive = index === citizenJourneyIndex;
+                  const completed = index < citizenJourneyIndex;
+                  const active = index === citizenJourneyIndex;
 
                   return (
-                    <li key={step.title} className="relative px-3 text-center">
+                    <li key={step.title} className="relative px-2 text-center">
                       {index < citizenJourneySteps.length - 1 ? (
                         <span
-                          className={`absolute left-[calc(50%+20px)] right-[calc(-50%+20px)] top-[18px] h-0.5 ${index < citizenJourneyIndex ? 'bg-primary' : 'bg-base-300'}`}
+                          className={`absolute left-[calc(50%+20px)] right-[calc(-50%+20px)] top-[18px] h-0.5 ${
+                            index < citizenJourneyIndex
+                              ? 'bg-primary/75'
+                              : 'bg-base-content/15'
+                          }`}
                           aria-hidden="true"
                         />
                       ) : null}
 
                       <span
-                        className={`relative z-10 mx-auto flex h-9 w-9 items-center justify-center rounded-full border transition ${
-                          isComplete
-                            ? 'border-primary bg-primary text-primary-content'
-                            : isActive
-                              ? 'border-primary bg-primary/10 text-primary ring-4 ring-primary/10'
-                              : 'border-base-300 bg-base-100 text-base-content/30'
+                        className={`relative z-10 mx-auto flex h-9 w-9 items-center justify-center rounded-full border ${
+                          completed
+                            ? 'border-primary bg-primary text-primary-content shadow-sm'
+                            : active
+                              ? 'border-primary bg-primary/12 text-primary ring-4 ring-primary/12 shadow-[0_0_0_1px_rgba(59,130,246,0.12)]'
+                              : 'border-base-content/20 bg-base-100 text-base-content/45 shadow-sm'
                         }`}
                       >
-                        {isComplete ? (
-                          <Lucide.Check size={17} aria-hidden="true" />
+                        {completed ? (
+                          <Lucide.Check size={16} aria-hidden="true" />
                         ) : (
-                          <StepIcon size={17} aria-hidden="true" />
+                          <StepIcon size={16} aria-hidden="true" />
                         )}
                       </span>
-                      <p className={`mt-2 text-sm font-semibold ${isActive || isComplete ? 'text-base-content' : 'text-base-content/48'}`}>
+                      <p className={`mt-2 text-sm font-semibold ${
+                        active || completed
+                          ? 'text-base-content'
+                          : 'text-base-content/60'
+                      }`}>
                         {step.title}
                       </p>
-                      <p className="mt-0.5 text-xs text-base-content/52">
+                      <p className={`mt-0.5 text-xs ${
+                        active || completed
+                          ? 'text-base-content/55'
+                          : 'text-base-content/48'
+                      }`}>
                         {step.description}
                       </p>
                     </li>
@@ -1506,97 +2000,220 @@ export const TicketDetailPage = () => {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] sm:p-5" aria-labelledby="ticket-content-title">
-            <header className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 id="ticket-content-title" className="text-lg font-bold">Nội dung phản ánh</h2>
-                <p className="mt-1 text-sm text-base-content/60">
-                  Mô tả và minh chứng đã gửi cùng phản ánh.
-                </p>
-              </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/45 px-3 py-1.5 text-xs font-semibold text-base-content/55">
-                <Lucide.Paperclip size={13} aria-hidden="true" />
-                {attachments.length} tệp
-              </span>
-            </header>
 
-            <div className="mt-4 rounded-2xl border border-base-300 bg-base-200/50 px-4 py-4 sm:px-5">
-              <p className="whitespace-pre-wrap break-words text-sm leading-7 text-base-content/72">
-                {ticket.description || 'Không có nội dung mô tả.'}
-              </p>
-            </div>
+          <FeedbackLocationMapCard
+            feedbackId={feedbackId}
+            latitude={ticket?.latitude}
+            longitude={ticket?.longitude}
+            locationText={ticket?.locationText}
+            areaName={ticket?.areaName || ticket?.wardName || ticket?.districtName}
+          />
 
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold">Hình ảnh và video</h3>
+          <section className="space-y-4">
+            <article className="relative overflow-hidden rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
+              <div
+                className="pointer-events-none absolute -right-20 -top-24 h-52 w-52 rounded-full bg-info/[0.055] blur-3xl"
+                aria-hidden="true"
+              />
+              <div className="relative">
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold">Nội dung phản ánh</h2>
+                    <p className="mt-1 text-sm text-base-content/55">
+                      Thông tin và minh chứng bạn đã gửi.
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/45 px-3 py-1.5 text-xs font-semibold text-base-content/55">
+                    <Lucide.Paperclip size={13} aria-hidden="true" />
+                    {attachments.length} tệp
+                  </span>
+                </header>
 
-              {attachments.length > 0 ? (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {attachments.map((file, index) => {
-                    const fileUrl = getAttachmentUrl(file);
-                    const isVideo = isVideoFile(fileUrl);
+                <div className="mt-4 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 py-4 sm:px-5">
+                  <p className="whitespace-pre-wrap break-words text-sm leading-7 text-base-content/75">
+                    {ticket.description || 'Không có mô tả chi tiết.'}
+                  </p>
+                </div>
 
-                    return (
-                      <button
-                        key={resolveAttachmentId(file) || fileUrl || index}
-                        type="button"
-                        onClick={() => openPreview('detail', index)}
-                        className="group overflow-hidden rounded-2xl border border-base-300 bg-base-200/45 text-left transition hover:border-primary/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                        aria-label={`Xem ${resolveAttachmentName(file, index)}`}
-                      >
-                        <span className="relative flex h-36 items-center justify-center overflow-hidden bg-base-200/65 sm:h-40">
-                          {isVideo ? (
-                            <video
-                              src={fileUrl}
-                              muted
-                              playsInline
-                              preload="metadata"
-                              className="h-full w-full object-contain"
-                            />
-                          ) : (
-                            <img
-                              src={fileUrl}
-                              alt=""
-                              className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.02]"
-                            />
-                          )}
+                <section
+                  className="relative mt-4 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] p-3 sm:p-4"
+                  aria-labelledby="ticket-evidence-title"
+                >
+                  <div
+                    className="pointer-events-none absolute right-4 top-3 text-primary/[0.05]"
+                    aria-hidden="true"
+                  >
+                    <Lucide.Images size={64} strokeWidth={1.25} />
+                  </div>
+                  <h3 id="ticket-evidence-title" className="relative text-sm font-semibold">
+                    Hình ảnh và video
+                  </h3>
 
-                          <span className="absolute inset-0 flex items-center justify-center bg-black/0 text-white transition group-hover:bg-black/25 group-focus-visible:bg-black/25">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-visible:opacity-100">
-                              {isVideo ? (
-                                <Lucide.Play size={17} fill="currentColor" aria-hidden="true" />
+                  {attachments.length > 0 ? (
+                    <div className="relative mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {attachments.map((attachment, index) => {
+                        const attachmentUrl = getAttachmentUrl(attachment);
+                        const video = isVideoAttachment(attachment);
+
+                        return (
+                          <button
+                            key={resolveAttachmentId(attachment) || attachmentUrl || index}
+                            type="button"
+                            onClick={() => openPreview('detail', index)}
+                            className="group overflow-hidden rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] text-left transition hover:border-primary/25 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          >
+                            <span className="relative flex h-44 items-center justify-center overflow-hidden sm:h-48">
+                              {attachmentUrl ? (
+                                video ? (
+                                  <>
+                                    <video
+                                      src={attachmentUrl}
+                                      className="h-full w-full object-cover"
+                                      muted
+                                      playsInline
+                                      preload="metadata"
+                                    />
+                                    <span className="absolute inset-0 flex items-center justify-center bg-black/15 text-white transition group-hover:bg-black/30">
+                                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/60 backdrop-blur">
+                                        <Lucide.Play size={18} fill="currentColor" aria-hidden="true" />
+                                      </span>
+                                    </span>
+                                  </>
+                                ) : (
+                                  <img
+                                    src={attachmentUrl}
+                                    alt={`Minh chứng ${index + 1}`}
+                                    className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.02]"
+                                    loading="lazy"
+                                  />
+                                )
                               ) : (
-                                <Lucide.Expand size={17} aria-hidden="true" />
+                                <Lucide.ImageOff
+                                  size={24}
+                                  className="text-base-content/30"
+                                  aria-hidden="true"
+                                />
                               )}
                             </span>
-                          </span>
-                        </span>
-                        <span className="flex items-center justify-between gap-2 px-3 py-2.5">
-                          <span className="truncate text-xs font-medium text-base-content/68">
-                            {resolveAttachmentName(file, index)}
-                          </span>
-                          <Lucide.Maximize2 size={13} className="shrink-0 text-base-content/35" aria-hidden="true" />
-                        </span>
-                      </button>
+                            <span className="flex items-center justify-between gap-2 border-t border-[var(--public-border-soft)] bg-[var(--public-surface-soft)] px-3 py-2.5">
+                              <span className="truncate text-xs font-semibold">
+                                {resolveAttachmentName(attachment, index)}
+                              </span>
+                              <Lucide.Expand size={14} className="text-base-content/35" aria-hidden="true" />
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex items-center gap-3 rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] px-4 py-5 text-sm text-base-content/45">
+                      <Lucide.ImageOff size={19} aria-hidden="true" />
+                      Phản ánh chưa có hình ảnh hoặc video minh chứng.
+                    </div>
+                  )}
+                </section>
+              </div>
+            </article>
+
+            <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold">Phản ánh liên quan</h2>
+                  <p className="mt-1 text-sm text-base-content/55">
+                    Các phản ánh có thể thuộc cùng một vấn đề hoặc khu vực.
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/45 px-3 py-1.5 text-xs font-semibold text-base-content/55">
+                  {relatedFeedbacks.length} mục
+                </span>
+              </div>
+
+              {relatedFeedbacksLoading ? (
+                <div className="mt-4 flex items-center justify-center rounded-2xl border border-dashed border-base-300 bg-base-200/35 px-4 py-6 text-sm text-base-content/55">
+                  <Lucide.LoaderCircle size={16} className="mr-2 animate-spin" aria-hidden="true" />
+                  Đang tải phản ánh liên quan...
+                </div>
+              ) : relatedFeedbacksError ? (
+                <div className="mt-4 rounded-2xl border border-error/20 bg-error/8 px-4 py-4 text-sm text-error">
+                  {relatedFeedbacksError}
+                </div>
+              ) : relatedFeedbacks.length === 0 ? (
+                <div className="mt-4 rounded-2xl border border-dashed border-base-300 bg-base-200/35 px-4 py-6 text-center text-sm text-base-content/50">
+                  Chưa có phản ánh liên quan nào.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {relatedFeedbacks.map((item, index) => {
+                    const relatedId = item?.feedbackId || item?.id;
+
+                    return (
+                      <div
+                        key={relatedId || index}
+                        className="rounded-2xl border border-base-300 bg-base-200/35 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                              Mã phản ánh
+                            </div>
+                            <div className="mt-1 break-all text-sm font-semibold text-base-content">
+                              {relatedId || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                              Trạng thái
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-base-content">
+                              {getCitizenStatusLabel(item?.status)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                              Danh mục
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-base-content">
+                              {getCategoryLabel(item?.categoryName || item?.category?.name)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+                              Ngày tạo
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-base-content">
+                              {formatDate(item?.createdAt || item?.createdDate)}
+                            </div>
+                          </div>
+                        </div>
+                        {relatedId ? (
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/community/feed/${relatedId}`)}
+                              className="btn btn-outline btn-sm rounded-xl"
+                            >
+                              <Lucide.ExternalLink size={14} aria-hidden="true" />
+                              Xem chi tiết
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     );
                   })}
                 </div>
-              ) : (
-                <div className="mt-3 rounded-2xl border border-dashed border-base-300 bg-base-200/25 px-5 py-8 text-center">
-                  <Lucide.ImageOff size={24} className="mx-auto text-base-content/25" aria-hidden="true" />
-                  <p className="mt-2 text-sm text-base-content/55">Phản ánh này chưa có tệp minh chứng.</p>
-                </div>
               )}
-            </div>
-          </section>
+            </section>
 
-          <div className={`grid gap-4 ${
-            canReviewResolution && isServiceUser
-              ? 'xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)] xl:items-start'
-              : ''
-          }`}>
-            <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)] sm:p-5" aria-labelledby="history-title">
+            <section
+              className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"
+              aria-labelledby="history-title"
+            >
               <header>
-                <h2 id="history-title" className="text-lg font-bold">Lịch sử cập nhật</h2>
+                <h2 id="history-title" className="text-lg font-bold">
+                  Lịch sử cập nhật
+                </h2>
                 <p className="mt-1 text-sm text-base-content/60">
                   Các thay đổi được ghi nhận theo thứ tự thời gian.
                 </p>
@@ -1611,7 +2228,10 @@ export const TicketDetailPage = () => {
                         className="relative grid grid-cols-[32px_minmax(0,1fr)] gap-3 pb-4 last:pb-0"
                       >
                         {index !== visibleHistory.length - 1 ? (
-                          <span className="absolute bottom-0 left-[15px] top-8 w-px bg-base-300" aria-hidden="true" />
+                          <span
+                            className="absolute bottom-0 left-[15px] top-8 w-px bg-base-300"
+                            aria-hidden="true"
+                          />
                         ) : null}
 
                         <span className="relative z-10 mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary">
@@ -1623,7 +2243,10 @@ export const TicketDetailPage = () => {
                             <p className="text-sm font-semibold">
                               {getCitizenStatusLabel(historyItem?.newStatus || historyItem?.status)}
                             </p>
-                            <time className="text-xs text-base-content/52">
+                            <time
+                              dateTime={historyItem?.changedAt || undefined}
+                              className="text-xs text-base-content/52"
+                            >
                               {formatDate(historyItem?.changedAt)}
                             </time>
                           </div>
@@ -1662,25 +2285,33 @@ export const TicketDetailPage = () => {
               )}
             </section>
 
-            <aside className="space-y-4">
-              {canReviewResolution && isServiceUser ? (
-                <section className="rounded-[28px] border border-success/25 bg-base-100 p-5 shadow-sm" aria-labelledby="rating-title">
-                  <header className="flex items-start gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success" aria-hidden="true">
-                      <Lucide.Star size={18} />
-                    </span>
-                    <div>
-                      <h2 id="rating-title" className="text-base font-bold">Đánh giá kết quả</h2>
-                      <p className="mt-1 text-sm leading-6 text-base-content/60">
-                        Ý kiến của bạn giúp cải thiện chất lượng phục vụ.
-                      </p>
-                    </div>
-                  </header>
+            {canReviewResolution && isServiceUser ? (
+              <section
+                className="rounded-[24px] border border-success/25 bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"
+                aria-labelledby="rating-title"
+              >
+                <header className="flex items-start gap-3">
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success"
+                    aria-hidden="true"
+                  >
+                    <Lucide.Star size={18} />
+                  </span>
+                  <div>
+                    <h2 id="rating-title" className="text-base font-bold">
+                      Đánh giá kết quả
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-base-content/60">
+                      Ý kiến của bạn giúp cải thiện chất lượng phục vụ.
+                    </p>
+                  </div>
+                </header>
 
-                  <form onSubmit={handleRateSubmit} className="mt-4 space-y-4">
+                <form onSubmit={handleRateSubmit} className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.45fr)] lg:items-start">
+                  <div className="space-y-4">
                     <fieldset>
                       <legend className="text-sm font-semibold">Mức độ hài lòng</legend>
-                      <div className="mt-2 flex justify-center gap-1.5">
+                      <div className="mt-2 flex gap-1.5">
                         {[1, 2, 3, 4, 5].map((value) => (
                           <label key={value} className="cursor-pointer">
                             <input
@@ -1693,14 +2324,18 @@ export const TicketDetailPage = () => {
                             />
                             <Lucide.Star
                               size={28}
-                              className={`transition ${rating >= value ? 'fill-warning text-warning' : 'text-base-content/20 peer-focus-visible:ring-2 peer-focus-visible:ring-primary/35'}`}
+                              className={`transition ${
+                                rating >= value
+                                  ? 'fill-warning text-warning'
+                                  : 'text-base-content/20 peer-focus-visible:ring-2 peer-focus-visible:ring-primary/35'
+                              }`}
                               aria-hidden="true"
                             />
                             <span className="sr-only">{value} sao</span>
                           </label>
                         ))}
                       </div>
-                      <p className="mt-2 text-center text-xs font-semibold text-warning">
+                      <p className="mt-2 text-xs font-semibold text-warning">
                         {getRatingText(rating)}
                       </p>
                     </fieldset>
@@ -1714,7 +2349,9 @@ export const TicketDetailPage = () => {
                         className="checkbox checkbox-primary checkbox-sm"
                       />
                     </label>
+                  </div>
 
+                  <div>
                     <label className="block">
                       <span className="text-sm font-semibold">Ý kiến thêm</span>
                       <textarea
@@ -1729,7 +2366,7 @@ export const TicketDetailPage = () => {
                     <button
                       type="submit"
                       disabled={ratingLoading}
-                      className="btn admin-primary-action w-full rounded-2xl"
+                      className="btn admin-primary-action mt-3 w-full rounded-2xl"
                     >
                       {ratingLoading ? (
                         <span className="loading loading-spinner loading-sm" />
@@ -1738,260 +2375,244 @@ export const TicketDetailPage = () => {
                       )}
                       Gửi đánh giá
                     </button>
-                  </form>
-                </section>
-              ) : null}
-            </aside>
-          </div>
-
-          <section
-            className="overflow-hidden rounded-[28px] border border-base-300 bg-base-100 shadow-[0_14px_32px_rgba(15,23,42,0.08)]"
-            aria-labelledby="comments-title"
-          >
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-base-300 px-5 py-5 sm:px-6">
-              <div>
-                <h2 id="comments-title" className="text-lg font-bold">
-                  Trao đổi cộng đồng
-                </h2>
-                <p className="mt-1 text-sm text-base-content/55">
-                  Chia sẻ thông tin hữu ích và trao đổi văn minh về phản ánh.
-                </p>
-              </div>
-              <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/15 bg-primary/8 px-3 text-xs font-semibold text-primary">
-                <Lucide.MessageCircle size={14} aria-hidden="true" />
-                {orderedComments.length} bình luận
-              </span>
-            </header>
-
-            <div className="grid gap-5 bg-base-200/18 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
-              <div className="min-w-0 space-y-4">
-                <form
-                  onSubmit={handleSendChat}
-                  className="rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm sm:p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-content shadow-sm">
-                      {(user?.fullName || user?.name || 'Bạn')
-                        .charAt(0)
-                        .toUpperCase()}
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <label htmlFor="public-comment" className="sr-only">
-                        Viết bình luận công khai
-                      </label>
-                      <textarea
-                        id="public-comment"
-                        rows="2"
-                        value={chatInput}
-                        onChange={(event) => setChatInput(event.target.value)}
-                        placeholder="Bạn nghĩ gì về phản ánh này?"
-                        className="textarea textarea-bordered min-h-[72px] max-h-40 w-full resize-y rounded-xl border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 focus:border-primary/40 focus:outline-none"
-                      />
-
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                        <p className="inline-flex items-center gap-1.5 text-xs text-base-content/42">
-                          <Lucide.Globe2 size={13} aria-hidden="true" />
-                          Nội dung được hiển thị công khai.
-                        </p>
-                        <button
-                          type="submit"
-                          disabled={!chatInput?.trim()}
-                          className="btn admin-primary-action h-10 min-h-10 rounded-xl px-4"
-                        >
-                          <Lucide.Send size={14} aria-hidden="true" />
-                          Gửi bình luận
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </form>
+              </section>
+            ) : null}
 
-                <div className="space-y-3">
-                  {visibleComments.length > 0 ? (
-                    visibleComments.map((comment, index) => {
-                      const author = getCommentAuthor(comment);
-                      const content = getCommentContent(comment);
+            <section
+              id="ticket-comments"
+              ref={commentsSectionRef}
+              className="scroll-mt-24 rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"
+              aria-labelledby="ticket-comments-title"
+            >
+              <header className="relative flex flex-wrap items-start justify-between gap-3">
+                <div
+                  className="pointer-events-none absolute -right-10 -top-16 h-36 w-36 rounded-full bg-secondary/[0.07] blur-3xl"
+                  aria-hidden="true"
+                />
+                <div className="relative">
+                  <h2 id="ticket-comments-title" className="text-lg font-bold">
+                    Trao đổi cộng đồng
+                  </h2>
+                  <p className="mt-1 text-sm text-base-content/55">
+                    Chia sẻ thông tin hữu ích và trao đổi văn minh về phản ánh.
+                  </p>
+                </div>
+                <span className="relative inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/15 bg-primary/8 px-3 text-xs font-semibold text-primary">
+                  <Lucide.MessageCircle size={14} aria-hidden="true" />
+                  {commentCount} bình luận
+                </span>
+              </header>
 
-                      return (
-                        <article
-                          key={
-                            comment.__ticketCommentRenderKey ||
-                            comment.commentId ||
-                            comment.id ||
-                            index
-                          }
-                          className="grid grid-cols-[40px_minmax(0,1fr)] gap-3"
-                        >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10 text-xs font-bold text-secondary">
-                            {author.charAt(0).toUpperCase()}
-                          </span>
-
-                          <div className="min-w-0 rounded-2xl rounded-tl-md border border-base-300 bg-base-100 px-4 py-3 shadow-sm transition hover:border-primary/15">
-                            <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                              <p className="truncate text-sm font-semibold">
-                                {author}
-                              </p>
-                              <time
-                                dateTime={comment?.createdAt || undefined}
-                                className="shrink-0 text-xs text-base-content/42"
-                              >
-                                {formatDate(comment?.createdAt)}
-                              </time>
-                            </header>
-                            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-base-content/68">
-                              {content || 'Bình luận không có nội dung.'}
-                            </p>
-                          </div>
-                        </article>
-                      );
-                    })
-                  ) : (
-                    <div className="flex min-h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-base-300 bg-base-100 px-4 py-6 text-center">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/8 text-primary">
-                        <Lucide.MessageCircle size={20} aria-hidden="true" />
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-stretch">
+                <div className="flex min-h-full min-w-0 flex-col gap-4">
+                  <form
+                    onSubmit={handleSendChat}
+                    className="rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] p-3 shadow-sm sm:p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-content shadow-sm">
+                        {(user?.fullName || user?.name || 'Bạn').charAt(0).toUpperCase()}
                       </span>
-                      <p className="mt-3 text-sm font-semibold text-base-content/65">
-                        Chưa có bình luận nào
-                      </p>
-                      <p className="mt-1 text-xs text-base-content/42">
-                        Hãy là người đầu tiên chia sẻ thông tin hữu ích.
-                      </p>
+
+                      <div className="min-w-0 flex-1">
+                        <label htmlFor="ticket-detail-comment" className="sr-only">
+                          Viết bình luận công khai
+                        </label>
+                        <textarea
+                          ref={commentInputRef}
+                          id="ticket-detail-comment"
+                          rows="2"
+                          value={chatInput}
+                          onChange={(event) => setChatInput(event.target.value)}
+                          placeholder="Bạn nghĩ gì về phản ánh này?"
+                          className="textarea textarea-bordered min-h-[72px] max-h-40 w-full resize-y rounded-xl border-[var(--public-border)] bg-[var(--public-surface)] px-4 py-3 text-sm leading-6 focus:border-primary/40 focus:outline-none"
+                        />
+
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <p className="inline-flex items-center gap-1.5 text-xs text-base-content/42">
+                            <Lucide.Globe2 size={13} aria-hidden="true" />
+                            Nội dung được hiển thị công khai.
+                          </p>
+                          <button
+                            type="submit"
+                            disabled={!chatInput?.trim()}
+                            className="btn admin-primary-action h-10 min-h-10 rounded-xl px-4"
+                          >
+                            <Lucide.Send size={14} aria-hidden="true" />
+                            Gửi bình luận
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  )}
+                  </form>
+
+                  <div className={visibleComments.length > 0 ? 'space-y-3' : 'flex flex-1'}>
+                    {visibleComments.length > 0 ? (
+                      visibleComments.map((comment, index) => {
+                        const commentAuthor = getCommentAuthor(comment);
+                        const commentContent = getCommentContent(comment);
+
+                        return (
+                          <article
+                            key={comment.__ticketCommentRenderKey || comment?.commentId || comment?.id || index}
+                            className="grid grid-cols-[40px_minmax(0,1fr)] gap-3"
+                          >
+                            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/10 text-xs font-bold text-secondary">
+                              {commentAuthor.charAt(0).toUpperCase()}
+                            </span>
+
+                            <div className="min-w-0 rounded-2xl rounded-tl-md border border-base-300 bg-base-100 px-4 py-3 shadow-sm transition hover:border-primary/15">
+                              <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                                <p className="truncate text-sm font-semibold text-base-content">
+                                  {commentAuthor}
+                                </p>
+                                <time
+                                  dateTime={comment?.createdAt || undefined}
+                                  className="shrink-0 text-xs text-base-content/42"
+                                >
+                                  {formatDate(comment?.createdAt)}
+                                </time>
+                              </header>
+                              <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-base-content/68">
+                                {commentContent || 'Bình luận không có nội dung.'}
+                              </p>
+                            </div>
+                          </article>
+                        );
+                      })
+                    ) : (
+                      <div className="relative flex min-h-[270px] flex-1 flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 py-7 text-center">
+                        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+                          <svg
+                            viewBox="0 0 760 180"
+                            preserveAspectRatio="none"
+                            className="h-full w-full text-primary"
+                            fill="none"
+                          >
+                            <path
+                              d="M-20 132C104 116 145 46 263 58C368 68 404 142 520 127C620 114 651 63 790 72"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeDasharray="8 11"
+                              strokeOpacity="0.08"
+                            />
+                            <circle cx="263" cy="58" r="6" fill="currentColor" fillOpacity="0.08" />
+                            <circle cx="520" cy="127" r="7" fill="currentColor" fillOpacity="0.065" />
+                          </svg>
+                        </div>
+                        <span className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/12 bg-[var(--public-surface)] text-primary shadow-sm backdrop-blur">
+                          <Lucide.MessagesSquare size={21} aria-hidden="true" />
+                        </span>
+                        <p className="relative mt-3 text-sm font-semibold text-base-content/70">
+                          Chưa có bình luận nào
+                        </p>
+                        <p className="relative mt-1 max-w-sm text-xs leading-5 text-base-content/45">
+                          Hãy là người đầu tiên bổ sung thông tin hữu ích để cộng đồng cùng theo dõi phản ánh này.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {hiddenCommentCount > 0 || (
+                    visibleCommentCount > 3 &&
+                    orderedComments.length > 3
+                  ) ? (
+                    <div className="flex flex-wrap justify-center gap-2 pt-1">
+                      {hiddenCommentCount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleCommentCount((currentCount) => currentCount + 5)}
+                          className="btn btn-outline btn-sm rounded-xl px-4"
+                        >
+                          <Lucide.MessageSquareMore size={15} aria-hidden="true" />
+                          Xem thêm {Math.min(5, hiddenCommentCount)} bình luận
+                        </button>
+                      ) : null}
+
+                      {visibleCommentCount > 3 && orderedComments.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleCommentCount(3)}
+                          className="btn btn-ghost btn-sm rounded-xl px-4 text-base-content/55"
+                        >
+                          <Lucide.ChevronUp size={15} aria-hidden="true" />
+                          Thu gọn
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
-                {hiddenCommentCount > 0 || (
-                  visibleCommentCount > 3 &&
-                  orderedComments.length > 3
-                ) ? (
-                  <div className="flex flex-wrap justify-center gap-2 pt-1">
-                    {hiddenCommentCount > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => setVisibleCommentCount(
-                          (currentCount) => currentCount + 5
-                        )}
-                        className="btn btn-outline btn-sm rounded-xl px-4"
-                      >
-                        <Lucide.MessageSquareMore
-                          size={15}
-                          aria-hidden="true"
-                        />
-                        Xem thêm {Math.min(5, hiddenCommentCount)} bình luận
-                      </button>
-                    ) : null}
+                <aside className="grid h-full grid-rows-2 gap-4">
+                  <section className="overflow-hidden rounded-2xl border border-primary/15 bg-[var(--public-surface-strong)] p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <Lucide.ChartNoAxesColumnIncreasing size={19} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-bold">Tổng quan thảo luận</h3>
+                        <p className="mt-0.5 text-xs text-base-content/45">
+                          Mức độ tương tác của cộng đồng.
+                        </p>
+                      </div>
+                    </div>
 
-                    {visibleCommentCount > 3 &&
-                    orderedComments.length > 3 ? (
-                      <button
-                        type="button"
-                        onClick={() => setVisibleCommentCount(3)}
-                        className="btn btn-ghost btn-sm rounded-xl px-4 text-base-content/55"
-                      >
-                        <Lucide.ChevronUp size={15} aria-hidden="true" />
-                        Thu gọn
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+                    <dl className="mt-4 grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-3">
+                        <dt className="text-[11px] text-base-content/45">Bình luận</dt>
+                        <dd className="mt-1 text-xl font-bold">{commentCount}</dd>
+                      </div>
+                      <div className="rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-3">
+                        <dt className="text-[11px] text-base-content/45">Lượt đồng tình</dt>
+                        <dd className="mt-1 text-xl font-bold text-error">{supportCount}</dd>
+                      </div>
+                    </dl>
+
+                    <div className="mt-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-3">
+                      <p className="text-[11px] text-base-content/45">Hoạt động gần nhất</p>
+                      <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-base-content/68">
+                        <Lucide.Clock3 size={13} aria-hidden="true" />
+                        {formatDate(latestCommentAt)}
+                      </p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10 text-success">
+                        <Lucide.ShieldCheck size={19} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-bold">Trao đổi văn minh</h3>
+                        <p className="mt-0.5 text-xs text-base-content/45">
+                          Giữ cuộc thảo luận hữu ích.
+                        </p>
+                      </div>
+                    </div>
+
+                    <ul className="mt-4 space-y-3 text-xs leading-5 text-base-content/58">
+                      <li className="flex gap-2">
+                        <Lucide.Check size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+                        Chia sẻ thông tin đúng với sự việc.
+                      </li>
+                      <li className="flex gap-2">
+                        <Lucide.Check size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+                        Tôn trọng người tham gia trao đổi.
+                      </li>
+                      <li className="flex gap-2">
+                        <Lucide.Check size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+                        Không đăng nội dung spam hoặc không liên quan.
+                      </li>
+                    </ul>
+                  </section>
+                </aside>
               </div>
-
-              <aside className="space-y-4 xl:sticky xl:top-24">
-                <section className="overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/8 via-base-100 to-secondary/8 p-4 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <Lucide.ChartNoAxesColumnIncreasing
-                        size={19}
-                        aria-hidden="true"
-                      />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold">
-                        Tổng quan trao đổi
-                      </h3>
-                      <p className="mt-0.5 text-xs text-base-content/45">
-                        Thông tin của cuộc thảo luận.
-                      </p>
-                    </div>
-                  </div>
-
-                  <dl className="mt-4 grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
-                      <dt className="text-[11px] text-base-content/45">
-                        Bình luận
-                      </dt>
-                      <dd className="mt-1 text-xl font-bold">
-                        {orderedComments.length}
-                      </dd>
-                    </div>
-                    <div className="rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
-                      <dt className="text-[11px] text-base-content/45">
-                        Trạng thái
-                      </dt>
-                      <dd className="mt-1 truncate text-sm font-bold text-primary">
-                        {getCitizenStatusLabel(ticket?.status)}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <div className="mt-2 rounded-xl border border-base-300/80 bg-base-100/85 px-3 py-3">
-                    <p className="text-[11px] text-base-content/45">
-                      Hoạt động gần nhất
-                    </p>
-                    <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-base-content/68">
-                      <Lucide.Clock3 size={13} aria-hidden="true" />
-                      {formatDate(latestCommentAt)}
-                    </p>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10 text-success">
-                      <Lucide.ShieldCheck size={19} aria-hidden="true" />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold">
-                        Trao đổi văn minh
-                      </h3>
-                      <p className="mt-0.5 text-xs text-base-content/45">
-                        Giữ cuộc thảo luận hữu ích.
-                      </p>
-                    </div>
-                  </div>
-
-                  <ul className="mt-4 space-y-3 text-xs leading-5 text-base-content/58">
-                    <li className="flex gap-2">
-                      <Lucide.Check
-                        size={14}
-                        className="mt-0.5 shrink-0 text-success"
-                        aria-hidden="true"
-                      />
-                      Chia sẻ thông tin đúng với sự việc.
-                    </li>
-                    <li className="flex gap-2">
-                      <Lucide.Check
-                        size={14}
-                        className="mt-0.5 shrink-0 text-success"
-                        aria-hidden="true"
-                      />
-                      Tôn trọng người tham gia trao đổi.
-                    </li>
-                    <li className="flex gap-2">
-                      <Lucide.Check
-                        size={14}
-                        className="mt-0.5 shrink-0 text-success"
-                        aria-hidden="true"
-                      />
-                      Không đăng nội dung spam hoặc không liên quan.
-                    </li>
-                  </ul>
-                </section>
-              </aside>
-            </div>
+            </section>
           </section>
-      </main>
+        </main>
+      </TicketDetailShell>
 
       {editOpen && typeof document !== 'undefined'
         ? createPortal(

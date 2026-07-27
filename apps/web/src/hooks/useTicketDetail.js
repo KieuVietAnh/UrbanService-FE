@@ -2,6 +2,29 @@ import { useState, useEffect, useRef } from 'react';
 import { ticketApi } from '../services/api/ticketApi';
 import { signalrService } from '../services/socket/signalrService';
 
+const getRequestStatus = (error) => {
+  const rawStatus = error?.status ?? error?.response?.status;
+  const status = Number(rawStatus);
+  const message = String(error?.message || '').toLowerCase();
+  const notFoundMessage = (
+    message.includes('not found') ||
+    message.includes('does not exist') ||
+    message.includes('không tìm thấy')
+  );
+
+  if (status === 400 && notFoundMessage) return 404;
+  if (Number.isFinite(status) && status > 0) return status;
+
+  if (notFoundMessage) return 404;
+
+  if (
+    error?.code === 'REFRESH_TOKEN_MISSING' ||
+    error?.code === 'INVALID_REFRESH_RESPONSE'
+  ) return 401;
+
+  return null;
+};
+
 export function useTicketDetail(feedbackId, user, detailFetcher) {
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
@@ -9,6 +32,8 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
   const [chatInput, setChatInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [errorStatus, setErrorStatus] = useState(null);
+  const [errorFeedbackId, setErrorFeedbackId] = useState(null);
 
   const [rating, setRating] = useState(5);
   const [satisfied, setSatisfied] = useState(true);
@@ -18,8 +43,14 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
   const chatEndRef = useRef(null);
 
   useEffect(() => {
+    let active = true;
+
     const fetchDetails = async () => {
+      if (!active) return;
+
       setError('');
+      setErrorStatus(null);
+      setErrorFeedbackId(null);
       setLoading(true);
       try {
         const resolveRole = (r) => {
@@ -39,17 +70,23 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
           : await ticketApi.getTicketById(feedbackId, { role });
         const ticketData = resTicket;
         if (!ticketData) throw new Error('Empty ticket data received');
+        if (!active) return;
+
         setTicket(ticketData);
         setComments(Array.isArray(ticketData.comments) ? ticketData.comments.filter(Boolean) : []);
         setHistory(Array.isArray(ticketData.statusHistories) ? ticketData.statusHistories.filter(Boolean) : []);
       } catch (err) {
+        if (!active) return;
+
         console.error('Failed to load ticket details', err);
+        setErrorStatus(getRequestStatus(err));
+        setErrorFeedbackId(feedbackId);
         setError('Unable to load feedback details.');
         setTicket(null);
         setComments([]);
         setHistory([]);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
@@ -97,6 +134,7 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
     signalrService.on('ResolutionRejected', handleResolutionEvents);
 
     return () => {
+      active = false;
       signalrService.off('ReceiveChatMessage', handleReceiveMessage);
       signalrService.off('CommentAdded', handleReceiveMessage);
       signalrService.off('FeedbackStatusChanged', handleStatusChange);
@@ -109,7 +147,7 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
       signalrService.off('ResolutionRejected', handleResolutionEvents);
       signalrService.stop();
     };
-  }, [detailFetcher, feedbackId, user?.role]);
+  }, [detailFetcher, feedbackId, user?.id, user?.role, user?.userId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -134,6 +172,8 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
       await ticketApi.submitReview(feedbackId, user.userId, rating, satisfied, reviewComment, { role });
       const refresh = async () => {
         setError('');
+        setErrorStatus(null);
+        setErrorFeedbackId(null);
         setLoading(true);
         try {
           const resolveRole = (r) => {
@@ -158,6 +198,8 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
           setHistory(Array.isArray(ticketData.statusHistories) ? ticketData.statusHistories.filter(Boolean) : []);
         } catch (err) {
           console.error('Failed to load ticket details', err);
+          setErrorStatus(getRequestStatus(err));
+          setErrorFeedbackId(feedbackId);
           setError('Unable to load feedback details.');
           setTicket(null);
           setComments([]);
@@ -204,6 +246,8 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
     setChatInput,
     loading,
     error,
+    errorStatus,
+    errorFeedbackId,
     chatEndRef,
     handleSendChat,
     handleRateSubmit,

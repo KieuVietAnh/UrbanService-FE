@@ -284,7 +284,7 @@ const PublicMapPreviewStyles = () => (
   `}</style>
 );
 
-export const PublicMapPreview = () => {
+export const PublicMapPreview = ({ compact = false }) => {
   const { theme } = useTheme();
   const { incidents, loading, error, reloadIncidents } = useIncidentMapData();
   const [activeFilter, setActiveFilter] = useState(FILTERS.ALL);
@@ -314,7 +314,7 @@ export const PublicMapPreview = () => {
   }, [activeFilter, endedIncidents, processingIncidents, validIncidents]);
 
   const groups = useMemo(() => groupIncidents(visibleIncidents), [visibleIncidents]);
-  const recentItems = visibleIncidents.slice(0, 3);
+  const recentItems = visibleIncidents.slice(0, compact ? 2 : 3);
 
   const handleFilter = (nextFilter) => {
     setActiveFilter(nextFilter);
@@ -331,12 +331,171 @@ export const PublicMapPreview = () => {
         attribution: '&copy; OpenStreetMap contributors',
       };
 
+  if (compact) {
+    return (
+      <>
+        <PublicMapPreviewStyles />
+        <aside className="public-map-preview public-overview-panel relative overflow-hidden rounded-[28px] border p-4 shadow-[0_18px_48px_rgba(15,23,42,0.10)] backdrop-blur sm:p-5" aria-label="Tổng quan dữ liệu phản ánh công khai">
+          <div className="public-overview-divider flex items-center justify-between gap-4 border-b border-slate-100 pb-4 dark:border-white/10">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
+                Dữ liệu cộng đồng
+              </p>
+              <h2 className="public-heading mt-1 text-base font-semibold">
+                Tổng quan đô thị gần đây
+              </h2>
+            </div>
+            <span className="public-live-badge inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+              Dữ liệu trực tiếp
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(190px,0.92fr)]">
+            <div className="relative min-h-[285px] overflow-hidden rounded-[22px] border border-slate-200/80 bg-slate-100 dark:border-white/10 dark:bg-slate-900">
+              <MapContainer
+                center={DEFAULT_CENTER}
+                zoom={DEFAULT_ZOOM}
+                scrollWheelZoom={false}
+                zoomControl
+                className="h-full min-h-[285px] w-full"
+              >
+                <TileLayer
+                  key={theme}
+                  attribution={tileLayer.attribution}
+                  url={tileLayer.url}
+                />
+                <FitPreviewBounds groups={groups} requestKey={fitRequestKey} />
+                {groups.map((group) => {
+                  const primaryIncident = group.items[0];
+                  return (
+                    <Marker
+                      key={`${group.latitude}:${group.longitude}`}
+                      position={[group.latitude, group.longitude]}
+                      icon={createMarkerIcon(primaryIncident.status, group.items.length)}
+                    >
+                      <Popup minWidth={220} maxWidth={270}>
+                        <div className="space-y-2 font-sans">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-blue-600">
+                            {group.items.length > 1 ? `${group.items.length} phản ánh tại điểm này` : getStatusLabel(primaryIncident.status)}
+                          </p>
+                          <h3 className="text-sm font-semibold leading-5 text-slate-950">
+                            {primaryIncident.title}
+                          </h3>
+                          <Link
+                            to={`/community/feed/${primaryIncident.feedbackId}`}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700"
+                          >
+                            Xem chi tiết
+                            <Lucide.ArrowUpRight size={13} aria-hidden="true" />
+                          </Link>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </MapContainer>
+
+              <div className="pointer-events-none absolute left-4 top-4 z-[500] rounded-full border border-white/80 bg-white/90 px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-md backdrop-blur dark:border-white/10 dark:bg-slate-950/85 dark:text-slate-200">
+                {loading ? 'Đang tải dữ liệu' : `${visibleIncidents.length} điểm đang hiển thị`}
+              </div>
+
+              <Link
+                to="/community/map#incident-map"
+                state={{ focusMap: true }}
+                className="absolute right-4 top-4 z-[500] inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/80 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-md backdrop-blur transition hover:text-blue-700 dark:border-white/10 dark:bg-slate-950/85 dark:text-slate-200"
+              >
+                Mở bản đồ
+                <Lucide.ArrowUpRight size={13} aria-hidden="true" />
+              </Link>
+
+              <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-[500] grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-white/70 bg-white/88 px-3 py-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
+                  <span className="block text-[10px] text-slate-500 dark:text-slate-400">Công khai</span>
+                  <strong className="mt-0.5 block text-base font-semibold text-slate-900 dark:text-white">{loading ? '—' : validIncidents.length}</strong>
+                </div>
+                <div className="rounded-xl border border-white/70 bg-white/88 px-3 py-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
+                  <span className="block text-[10px] text-slate-500 dark:text-slate-400">Đang xử lý</span>
+                  <strong className="mt-0.5 block text-base font-semibold text-amber-600 dark:text-amber-300">{loading ? '—' : processingIncidents.length}</strong>
+                </div>
+                <div className="rounded-xl border border-white/70 bg-white/88 px-3 py-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
+                  <span className="block text-[10px] text-slate-500 dark:text-slate-400">Đã kết thúc</span>
+                  <strong className="mt-0.5 block text-base font-semibold text-emerald-600 dark:text-emerald-300">{loading ? '—' : endedIncidents.length}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="public-overview-list flex min-h-[285px] flex-col rounded-[22px] border border-slate-100 bg-slate-50/80 p-3 dark:border-white/10 dark:bg-white/[0.035]">
+              <div className="flex items-center justify-between px-1 pb-2">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Mới cập nhật</span>
+                <Lucide.Radio size={14} className="text-blue-600 dark:text-blue-300" aria-hidden="true" />
+              </div>
+
+              <div className="space-y-2.5">
+                {loading ? (
+                  [0, 1].map((item) => (
+                    <div key={item} className="rounded-2xl border border-slate-100 bg-white p-3 dark:border-white/10 dark:bg-white/[0.045]">
+                      <div className="h-3 w-20 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
+                      <div className="mt-3 h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-white/10" />
+                      <div className="mt-2 h-3 w-2/3 animate-pulse rounded bg-slate-100 dark:bg-white/[0.07]" />
+                    </div>
+                  ))
+                ) : error ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200">
+                    <p>Chưa tải được dữ liệu bản đồ.</p>
+                    <button type="button" onClick={reloadIncidents} className="mt-2 font-semibold">Tải lại</button>
+                  </div>
+                ) : recentItems.length > 0 ? (
+                  recentItems.map((incident) => (
+                    <Link
+                      key={incident.feedbackId}
+                      to={`/community/feed/${incident.feedbackId}`}
+                      className="public-overview-item block rounded-2xl border border-slate-100 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.045]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-blue-700 dark:text-blue-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />
+                          {getStatusLabel(incident.status)}
+                        </span>
+                        <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
+                      </div>
+                      <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-slate-900 dark:text-white">
+                        {incident.title || 'Phản ánh đô thị'}
+                      </h3>
+                      <p className="mt-2 flex items-center gap-1.5 truncate text-[11px] text-slate-400">
+                        <Lucide.Layers3 size={12} aria-hidden="true" />
+                        {incident.categoryName || 'Phản ánh đô thị'}
+                      </p>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center dark:border-white/10 dark:bg-white/[0.035]">
+                    <Lucide.Inbox size={18} className="mx-auto text-slate-400" aria-hidden="true" />
+                    <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Chưa có dữ liệu gần đây.</p>
+                  </div>
+                )}
+              </div>
+
+              <Link
+                to="/community/feed"
+                className="mt-auto inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-blue-700 dark:text-slate-300 dark:hover:bg-white/[0.05] dark:hover:text-blue-300"
+              >
+                Xem toàn bộ bảng tin
+                <Lucide.ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+        </aside>
+      </>
+    );
+  }
+
   return (
     <>
       <PublicMapPreviewStyles />
-      <div className="public-map-preview overflow-hidden rounded-[30px] border shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur">
+      <div className={`public-map-preview overflow-hidden border backdrop-blur ${compact ? 'rounded-[28px] shadow-[0_20px_55px_rgba(15,23,42,0.11)]' : 'rounded-[30px] shadow-[0_24px_70px_rgba(15,23,42,0.12)]'}`}>
       <header
-        className="public-map-preview__header flex flex-col gap-5 border-b px-5 py-5 sm:px-7 lg:flex-row lg:items-center lg:justify-between"
+        className={`public-map-preview__header flex flex-col border-b ${compact ? 'gap-3 px-5 py-4' : 'gap-5 px-5 py-5 sm:px-7 lg:flex-row lg:items-center lg:justify-between'}`}
         style={{
           borderColor: theme === 'dark'
             ? 'rgba(96, 165, 250, 0.16)'
@@ -355,21 +514,21 @@ export const PublicMapPreview = () => {
             Bản đồ phản ánh công khai
           </span>
           <h2
-            id="public-tools-title"
-            className="mt-2 text-2xl font-semibold tracking-[-0.025em] sm:text-3xl"
+            id={compact ? undefined : 'public-tools-title'}
+            className={`${compact ? 'mt-1 text-lg sm:text-xl' : 'mt-2 text-2xl sm:text-3xl'} font-semibold tracking-[-0.025em]`}
             style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}
           >
-            Khám phá vấn đề đô thị theo từng khu vực
+            {compact ? 'Bản đồ phản ánh gần đây' : 'Khám phá vấn đề đô thị theo từng khu vực'}
           </h2>
           <p
-            className="mt-2 max-w-2xl text-sm leading-6"
+            className={`${compact ? 'mt-1 text-xs leading-5' : 'mt-2 max-w-2xl text-sm leading-6'}`}
             style={{ color: theme === 'dark' ? '#a8b7cc' : '#475569' }}
           >
-            Chọn marker để xem phản ánh, theo dõi trạng thái và mở chi tiết ngay trên bảng tin cộng đồng.
+            {compact ? 'Chọn marker để xem phản ánh và mở chi tiết.' : 'Chọn marker để xem phản ánh, theo dõi trạng thái và mở chi tiết ngay trên bảng tin cộng đồng.'}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2" aria-label="Lọc nhanh phản ánh trên bản đồ">
+        <div className={`${compact ? 'hidden' : 'flex'} flex-wrap items-center gap-2`} aria-label="Lọc nhanh phản ánh trên bản đồ">
           {[
             [FILTERS.ALL, 'Tất cả', validIncidents.length],
             [FILTERS.PROCESSING, 'Đang xử lý', processingIncidents.length],
@@ -395,14 +554,14 @@ export const PublicMapPreview = () => {
         </div>
       </header>
 
-      <div className="grid lg:grid-cols-[minmax(0,1.38fr)_minmax(330px,0.62fr)]">
-        <div className="relative min-h-[440px] overflow-hidden border-b border-slate-200/80 lg:min-h-[520px] lg:border-b-0 lg:border-r dark:border-white/10">
+      <div className={`grid ${compact ? 'lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)]' : 'lg:grid-cols-[minmax(0,1.38fr)_minmax(330px,0.62fr)]'}`}>
+        <div className={`relative overflow-hidden border-b border-slate-200/80 lg:border-b-0 lg:border-r dark:border-white/10 ${compact ? 'min-h-[360px] lg:min-h-[420px]' : 'min-h-[440px] lg:min-h-[520px]'}`}>
           <MapContainer
             center={DEFAULT_CENTER}
             zoom={DEFAULT_ZOOM}
             scrollWheelZoom={false}
             zoomControl
-            className="h-full min-h-[440px] w-full lg:min-h-[520px]"
+            className={`h-full w-full ${compact ? 'min-h-[360px] lg:min-h-[420px]' : 'min-h-[440px] lg:min-h-[520px]'}`}
           >
             <TileLayer
               key={theme}
@@ -460,14 +619,14 @@ export const PublicMapPreview = () => {
           </Link>
         </div>
 
-        <aside className="public-map-preview__aside flex min-h-[440px] flex-col p-5 sm:p-6 lg:min-h-[520px]" aria-label="Phản ánh gần đây trên bản đồ">
-          <div className="grid grid-cols-3 gap-2.5">
+        <aside className={`public-map-preview__aside flex flex-col ${compact ? 'min-h-[360px] p-4 sm:min-h-[420px]' : 'min-h-[440px] p-5 sm:p-6 lg:min-h-[520px]'}`} aria-label="Phản ánh gần đây trên bản đồ">
+          <div className={`grid grid-cols-3 ${compact ? 'gap-2' : 'gap-2.5'}`}>
             <Metric label="Có tọa độ" value={loading ? '—' : validIncidents.length} />
             <Metric label="Đang xử lý" value={loading ? '—' : processingIncidents.length} tone="amber" />
             <Metric label="Kết thúc" value={loading ? '—' : endedIncidents.length} tone="emerald" />
           </div>
 
-          <div className="mt-6 flex items-center justify-between gap-3">
+          <div className={`${compact ? 'mt-4' : 'mt-6'} flex items-center justify-between gap-3`}>
             <div>
               <h3 className="text-base font-semibold text-slate-950 dark:text-white">Gần đây trên bản đồ</h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Chọn một phản ánh để xem đầy đủ nội dung.</p>
@@ -477,7 +636,7 @@ export const PublicMapPreview = () => {
 
           <div className="mt-4 space-y-3">
             {loading ? (
-              [0, 1, 2].map((item) => (
+              Array.from({ length: compact ? 2 : 3 }, (_, item) => item).map((item) => (
                 <div key={item} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.045]">
                   <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
                   <div className="mt-3 h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-white/10" />

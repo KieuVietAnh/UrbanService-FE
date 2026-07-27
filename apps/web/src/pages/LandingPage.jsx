@@ -5,50 +5,23 @@ import PublicRecentFeedbacks from '../components/public/PublicRecentFeedbacks';
 import usePublicLandingFeed from '../hooks/usePublicLandingFeed';
 import PublicMapPreview from '../components/public/PublicMapPreview';
 import PublicPageMotion from '../components/public/PublicPageMotion';
+import { useAuth } from '../contexts/AuthContext';
 
-const CREATE_FEEDBACK_URL = '/login?redirect=/tickets/create&intent=create-feedback';
-const MY_FEEDBACKS_URL = '/login?redirect=/tickets&intent=my-feedbacks';
+const PUBLIC_CREATE_FEEDBACK_URL = '/login?redirect=/tickets/create&intent=create-feedback';
+const PUBLIC_MY_FEEDBACKS_URL = '/login?redirect=/tickets&intent=my-feedbacks';
 
-const formatMetric = (value) => {
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) return '—';
-  return new Intl.NumberFormat('vi-VN').format(numericValue);
-};
-
-const getAreaName = (item) => (
-  item?.areaName ||
-  item?.wardName ||
-  item?.districtName ||
-  item?.locationText ||
-  'Chưa xác định khu vực'
-);
-
-const getStatusLabel = (status) => {
-  const labels = {
-    Verified: 'Đã xác minh',
-    Assigned: 'Đã chuyển xử lý',
-    InProgress: 'Đang xử lý',
-    Resolved: 'Đã có kết quả',
-    SubmittedForApproval: 'Đang kiểm tra',
-    Approved: 'Đã duyệt',
-    Closed: 'Đã kết thúc',
-  };
-
-  return labels[status] || 'Đang cập nhật';
-};
-
-const quickAccessItems = [
+const getQuickAccessItems = ({ createFeedbackUrl, myFeedbacksUrl }) => [
   {
     title: 'Gửi phản ánh mới',
     description: 'Ghi nhận vấn đề bằng hình ảnh, vị trí và mô tả rõ ràng.',
-    to: CREATE_FEEDBACK_URL,
+    to: createFeedbackUrl,
     icon: Lucide.MessageSquarePlus,
     iconClassName: 'bg-blue-600 text-white',
   },
   {
     title: 'Theo dõi phản ánh của tôi',
     description: 'Xem trạng thái tiếp nhận, xử lý và kết quả mới nhất.',
-    to: MY_FEEDBACKS_URL,
+    to: myFeedbacksUrl,
     icon: Lucide.ListChecks,
     iconClassName: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300',
   },
@@ -82,146 +55,14 @@ const processSteps = [
   },
 ];
 
-const CityOverviewPanel = ({ items, summary, loading }) => {
-  const visibleItems = items.slice(0, 2);
-
-  return (
-    <aside className="public-overview-panel relative overflow-hidden rounded-[28px] border p-4 sm:p-5" aria-label="Tổng quan dữ liệu phản ánh công khai">
-      <div className="public-overview-divider flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
-            Dữ liệu cộng đồng
-          </p>
-          <h2 className="public-heading mt-1 text-base font-semibold">
-            Tổng quan đô thị gần đây
-          </h2>
-        </div>
-        <span className="public-live-badge inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-          Dữ liệu trực tiếp
-        </span>
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(190px,0.92fr)]">
-        <div className="relative min-h-[285px] overflow-hidden rounded-[22px] bg-[#0d2342] p-4 text-white">
-          <svg viewBox="0 0 560 360" className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden="true">
-            <defs>
-              <pattern id="landing-city-grid" width="38" height="38" patternUnits="userSpaceOnUse">
-                <path d="M38 0H0V38" fill="none" stroke="#ffffff" strokeOpacity="0.055" strokeWidth="1" />
-              </pattern>
-              <linearGradient id="landing-road-primary" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#60a5fa" stopOpacity="0.78" />
-                <stop offset="1" stopColor="#2dd4bf" stopOpacity="0.24" />
-              </linearGradient>
-            </defs>
-            <rect width="560" height="360" fill="url(#landing-city-grid)" />
-            <path d="M-35 282C58 238 96 117 190 127C283 138 298 271 395 235C470 207 486 112 595 124" fill="none" stroke="url(#landing-road-primary)" strokeWidth="14" strokeLinecap="round" />
-            <path d="M-10 86C73 110 123 181 214 163C321 142 345 48 457 68C505 77 542 98 590 134" fill="none" stroke="#38bdf8" strokeOpacity="0.24" strokeWidth="8" strokeLinecap="round" />
-            <path d="M144 -18C165 61 213 91 292 104C381 119 434 94 491 23" fill="none" stroke="#2dd4bf" strokeOpacity="0.18" strokeWidth="7" strokeLinecap="round" />
-            <circle cx="190" cy="127" r="18" fill="#60a5fa" fillOpacity="0.17" />
-            <circle cx="190" cy="127" r="6" fill="#93c5fd" />
-            <circle cx="395" cy="235" r="20" fill="#2dd4bf" fillOpacity="0.18" />
-            <circle cx="395" cy="235" r="7" fill="#5eead4" />
-            <circle cx="457" cy="68" r="16" fill="#fbbf24" fillOpacity="0.17" />
-            <circle cx="457" cy="68" r="6" fill="#fde68a" />
-          </svg>
-
-          <div className="relative flex items-center justify-between">
-            <span className="inline-flex items-center gap-2 text-xs font-medium text-white/68">
-              <Lucide.Navigation size={14} aria-hidden="true" />
-              Bản đồ phản ánh công khai
-            </span>
-            <Link
-              to="/community/map"
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/12 bg-white/10 px-3 text-xs font-semibold text-white transition hover:bg-white/15"
-            >
-              Mở bản đồ
-              <Lucide.ArrowUpRight size={13} aria-hidden="true" />
-            </Link>
-          </div>
-
-          <div className="absolute bottom-4 left-4 right-4 grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-white/10 bg-slate-950/38 px-3 py-2.5 backdrop-blur">
-              <span className="block text-[10px] text-white/48">Công khai</span>
-              <strong className="mt-0.5 block text-base font-semibold">{loading ? '—' : formatMetric(summary.totalItems)}</strong>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-slate-950/38 px-3 py-2.5 backdrop-blur">
-              <span className="block text-[10px] text-white/48">Đang xử lý mới</span>
-              <strong className="mt-0.5 block text-base font-semibold">{loading ? '—' : formatMetric(summary.activeCount)}</strong>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-slate-950/38 px-3 py-2.5 backdrop-blur">
-              <span className="block text-[10px] text-white/48">Tương tác mới</span>
-              <strong className="mt-0.5 block text-base font-semibold">{loading ? '—' : formatMetric(summary.interactionCount)}</strong>
-            </div>
-          </div>
-        </div>
-
-        <div className="public-overview-list flex min-h-[285px] flex-col rounded-[22px] border border-slate-100 bg-slate-50/80 p-3">
-          <div className="flex items-center justify-between px-1 pb-2">
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Mới cập nhật</span>
-            <Lucide.Radio size={14} className="text-blue-600" aria-hidden="true" />
-          </div>
-
-          <div className="space-y-2.5">
-            {loading ? (
-              [0, 1].map((item) => (
-                <div key={item} className="public-loading-surface rounded-2xl border border-slate-100 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                  <div className="h-3 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-                  <div className="mt-3 h-4 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-                  <div className="mt-2 h-3 w-2/3 animate-pulse rounded bg-slate-100 dark:bg-slate-800/70" />
-                </div>
-              ))
-            ) : visibleItems.length > 0 ? (
-              visibleItems.map((item) => {
-                const feedbackId = item?.feedbackId || item?.id || item?.ticketId;
-                return (
-                  <Link
-                    key={feedbackId}
-                    to={feedbackId ? `/community/feed/${feedbackId}` : '/community/feed'}
-                    className="public-overview-item block rounded-2xl border border-slate-100 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-blue-700 dark:text-blue-300">
-                        <span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />
-                        {getStatusLabel(item?.status)}
-                      </span>
-                      <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
-                    </div>
-                    <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-slate-900 dark:text-white">
-                      {item?.title || 'Phản ánh đô thị'}
-                    </h3>
-                    <p className="mt-2 flex items-center gap-1.5 truncate text-[11px] text-slate-400">
-                      <Lucide.MapPin size={12} aria-hidden="true" />
-                      {getAreaName(item)}
-                    </p>
-                  </Link>
-                );
-              })
-            ) : (
-              <div className="public-overview-empty rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center">
-                <Lucide.Inbox size={18} className="mx-auto text-slate-400" aria-hidden="true" />
-                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Chưa có dữ liệu gần đây.</p>
-              </div>
-            )}
-          </div>
-
-          <Link
-            to="/community/feed"
-            className="mt-auto inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-white hover:text-blue-700 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-blue-300"
-          >
-            Xem toàn bộ bảng tin
-            <Lucide.ArrowRight size={14} aria-hidden="true" />
-          </Link>
-        </div>
-      </div>
-    </aside>
-  );
-};
-
 export const LandingPage = () => {
+  const { isAuthenticated } = useAuth();
+  const createFeedbackUrl = isAuthenticated ? '/tickets/create' : PUBLIC_CREATE_FEEDBACK_URL;
+  const myFeedbacksUrl = isAuthenticated ? '/tickets' : PUBLIC_MY_FEEDBACKS_URL;
+  const quickAccessItems = getQuickAccessItems({ createFeedbackUrl, myFeedbacksUrl });
+
   const {
     items,
-    summary,
     loading,
     error,
     reload,
@@ -254,14 +95,13 @@ export const LandingPage = () => {
             <div className="absolute right-[10%] bottom-[20%] hidden h-2 w-2 rounded-full bg-indigo-400/70 shadow-[0_0_0_10px_rgba(99,102,241,0.07)] xl:block" />
           </div>
 
-          <div className="mx-auto grid w-full max-w-[1680px] gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,0.82fr)_minmax(620px,1.18fr)] 2xl:grid-cols-[minmax(560px,0.86fr)_minmax(760px,1.14fr)] lg:items-center lg:px-8 2xl:px-12 lg:py-16 2xl:min-h-[650px] 2xl:py-18">
+          <div className="mx-auto grid w-full max-w-[1680px] gap-10 px-4 pb-14 pt-10 sm:px-6 sm:pb-16 sm:pt-12 lg:grid-cols-[minmax(0,0.9fr)_minmax(600px,1.1fr)] lg:items-center lg:px-8 lg:pb-14 lg:pt-12 2xl:grid-cols-[minmax(560px,0.92fr)_minmax(720px,1.08fr)] 2xl:px-12 2xl:pb-16 2xl:pt-12">
             <header className="max-w-[650px]">
               <span className="public-badge inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700">
                 <Lucide.RadioTower size={14} aria-hidden="true" />
                 Cổng thông tin phản ánh đô thị
               </span>
-
-              <h1 id="landing-hero-title" className="public-heading mt-5 text-[40px] font-semibold leading-[1.1] tracking-[-0.045em] sm:text-[52px] lg:text-[60px]">
+              <h1 id="landing-hero-title" className={`public-heading ${isAuthenticated ? 'mt-4' : 'mt-5'} text-[40px] font-semibold leading-[1.1] tracking-[-0.045em] sm:text-[52px] lg:text-[60px]`}>
                 Biết điều gì đang diễn ra.
                 <span className="mt-1 block text-[#0b56d9] dark:text-blue-400">
                   Gửi đúng nơi, theo dõi đến cùng.
@@ -274,7 +114,7 @@ export const LandingPage = () => {
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link
-                  to={CREATE_FEEDBACK_URL}
+                  to={createFeedbackUrl}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0b56d9] px-5 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(11,86,217,0.23)] transition hover:-translate-y-0.5 hover:bg-[#0849bd]"
                 >
                   <Lucide.MessageSquarePlus size={17} aria-hidden="true" />
@@ -300,16 +140,12 @@ export const LandingPage = () => {
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                     <Lucide.ShieldCheck size={14} aria-hidden="true" />
                   </span>
-                  Đăng nhập để gửi và theo dõi
+                  {isAuthenticated ? 'Sẵn sàng gửi và theo dõi' : 'Đăng nhập để gửi và theo dõi'}
                 </li>
               </ul>
             </header>
 
-            <CityOverviewPanel
-              items={items}
-              summary={summary}
-              loading={loading}
-            />
+            <PublicMapPreview compact />
           </div>
         </section>
 
@@ -403,23 +239,6 @@ export const LandingPage = () => {
           </div>
         </section>
 
-        <section data-public-reveal className="public-tools-section relative isolate overflow-hidden border-y border-slate-200/80 bg-[linear-gradient(180deg,#eef5ff_0%,#f8fbff_100%)] py-12 sm:py-14" aria-labelledby="public-tools-title">
-          <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-            <div className="absolute left-[-8rem] top-[-5rem] h-80 w-80 rounded-full bg-blue-300/20 blur-3xl dark:bg-blue-500/10" />
-            <div className="absolute right-[-6rem] bottom-[-7rem] h-80 w-80 rounded-full bg-cyan-300/20 blur-3xl dark:bg-cyan-500/10" />
-            <svg viewBox="0 0 1440 620" preserveAspectRatio="none" className="absolute inset-0 h-full w-full text-blue-500/10" fill="none">
-              <path d="M-80 410C120 330 244 170 432 220C602 266 665 442 844 398C1025 353 1100 196 1294 225C1392 240 1455 286 1510 320" stroke="currentColor" strokeWidth="2" />
-              <path d="M-70 486C130 432 280 304 472 342C650 377 731 492 910 455C1081 420 1170 315 1337 344C1415 357 1474 384 1510 407" stroke="currentColor" strokeWidth="1.4" strokeDasharray="8 12" />
-              <circle cx="432" cy="220" r="7" fill="currentColor" />
-              <circle cx="844" cy="398" r="8" fill="currentColor" />
-              <circle cx="1294" cy="225" r="7" fill="currentColor" />
-            </svg>
-          </div>
-          <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-6 lg:px-8 2xl:px-12">
-            <PublicMapPreview />
-          </div>
-        </section>
-
         <section id="how-it-works" data-public-reveal className="public-process-section relative isolate overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#eef5ff_100%)] py-12 sm:py-14" aria-labelledby="how-it-works-title">
           <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
             <div className="absolute left-1/2 top-10 h-80 w-[760px] -translate-x-1/2 rounded-[50%] bg-blue-100/50 blur-3xl dark:bg-blue-500/5" />
@@ -479,7 +298,7 @@ export const LandingPage = () => {
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Gửi thông tin, theo dõi tiến độ và cùng cải thiện khu vực sống.</h2>
             </div>
             <Link
-              to={CREATE_FEEDBACK_URL}
+              to={createFeedbackUrl}
               className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-semibold text-blue-700 transition hover:-translate-y-0.5"
             >
               Gửi phản ánh mới

@@ -1,7 +1,7 @@
 // src/pages/community/CommunityMapPage.jsx
 import { useEffect, useMemo, useRef, useState } from 'react';
-import * as Lucide from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import * as Lucide from 'lucide-react';
 import { IncidentMap } from '../../components/maps/IncidentMap';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
@@ -192,12 +192,14 @@ const CommunityMapThemeStyles = () => (
 
 export const CommunityMapPage = () => {
   const location = useLocation();
-  const mapPanelRef = useRef(null);
   const { incidents, loading, error } = useIncidentMapData();
   const [activeFilter, setActiveFilter] = useState(
     MAP_FILTERS.ALL
   );
   const [fitRequestKey, setFitRequestKey] = useState(0);
+  const mapSectionRef = useRef(null);
+  const handledFocusRequestRef = useRef('');
+  const focusState = location.state?.mapState || location.state || {};
   const safeIncidents = useMemo(
     () => (Array.isArray(incidents) ? incidents : []),
     [incidents]
@@ -245,6 +247,61 @@ export const CommunityMapPage = () => {
   const processingCount = processingIncidents.length;
   const endedCount = endedIncidents.length;
 
+  useEffect(() => {
+    const focusFeedbackId = focusState?.focusFeedbackId;
+    if (!focusFeedbackId || loading || !mapSectionRef.current) return undefined;
+
+    const focusRequestKey = [
+      focusFeedbackId,
+      focusState?.focusLatitude,
+      focusState?.focusLongitude,
+    ].join(':');
+
+    if (handledFocusRequestRef.current === focusRequestKey) return undefined;
+
+    setActiveFilter(MAP_FILTERS.ALL);
+
+    const timer = window.setTimeout(() => {
+      const mapSection = mapSectionRef.current;
+      const scrollContainer = document.querySelector(
+        '[data-dashboard-scroll-container]'
+      );
+
+      if (mapSection && scrollContainer) {
+        const sectionRect = mapSection.getBoundingClientRect();
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const sectionTop = (
+          scrollContainer.scrollTop +
+          sectionRect.top -
+          containerRect.top
+        );
+
+        scrollContainer.scrollTo({
+          top: Math.max(sectionTop - 15, 0),
+          behavior: 'smooth',
+        });
+      } else if (mapSection) {
+        const sectionTop = (
+          window.scrollY + mapSection.getBoundingClientRect().top
+        );
+
+        window.scrollTo({
+          top: Math.max(sectionTop - 15, 0),
+          behavior: 'smooth',
+        });
+      }
+
+      handledFocusRequestRef.current = focusRequestKey;
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    focusState?.focusFeedbackId,
+    focusState?.focusLatitude,
+    focusState?.focusLongitude,
+    loading,
+  ]);
+
   const handleMapFilter = (nextFilter) => {
     setActiveFilter(nextFilter);
     setFitRequestKey((currentKey) => currentKey + 1);
@@ -257,24 +314,6 @@ export const CommunityMapPage = () => {
     [MAP_FILTERS.COORDINATES]: 'Có tọa độ',
   }[activeFilter];
 
-  useEffect(() => {
-    const shouldFocusMap = (
-      location.hash === '#incident-map' ||
-      location.state?.focusMap === true
-    );
-
-    if (!shouldFocusMap) return undefined;
-
-    const timer = window.setTimeout(() => {
-      mapPanelRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }, 220);
-
-    return () => window.clearTimeout(timer);
-  }, [location.hash, location.key, location.state]);
-
   return (
     <PublicPageMotion>
       <main
@@ -283,7 +322,7 @@ export const CommunityMapPage = () => {
       >
         <CommunityMapThemeStyles />
         <div
-          className="pointer-events-none absolute -inset-x-3 -inset-y-5 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-6"
+          className="pointer-events-none absolute inset-x-0 -top-5 -z-10 h-[520px] bg-[radial-gradient(circle_at_50%_0%,var(--public-surface-soft),transparent_72%)] sm:-top-6"
           aria-hidden="true"
         />
         <section
@@ -494,10 +533,10 @@ export const CommunityMapPage = () => {
       </section>
 
       <section
+        ref={mapSectionRef}
         data-public-reveal
         id="incident-map"
-        ref={mapPanelRef}
-        className="community-map-panel relative z-0 scroll-mt-[96px] overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
+        className="community-map-panel relative z-0 scroll-mt-3 overflow-hidden rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]"
         aria-labelledby="incident-map-panel-title"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--public-border-soft)] px-5 py-4 sm:px-6">
@@ -532,6 +571,9 @@ export const CommunityMapPage = () => {
                 <IncidentMap
                   incidents={visibleIncidents}
                   fitRequestKey={fitRequestKey}
+                  focusFeedbackId={focusState?.focusFeedbackId}
+                  focusLatitude={focusState?.focusLatitude}
+                  focusLongitude={focusState?.focusLongitude}
                 />
               </div>
             ) : (
