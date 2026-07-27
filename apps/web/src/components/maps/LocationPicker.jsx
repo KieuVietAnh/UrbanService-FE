@@ -25,94 +25,6 @@ function isValidLocation(lat, lng) {
   return isValidCoordinate(lat, -90, 90) && isValidCoordinate(lng, -180, 180);
 }
 
-function stripWrappingQuotes(value) {
-  const trimmed = value.trim();
-
-  if (
-    trimmed.length >= 2 &&
-    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'")))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-
-  return trimmed;
-}
-
-function parseJsonBoundary(value) {
-  const unwrapped = stripWrappingQuotes(value);
-  const candidates = [
-    value,
-    unwrapped,
-    value.replace(/""/g, '"'),
-    unwrapped.replace(/""/g, '"'),
-    value.replace(/\\"/g, '"'),
-    unwrapped.replace(/\\"/g, '"'),
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate);
-
-      if (typeof parsed === 'string' && parsed !== candidate) {
-        const nested = parseJsonBoundary(parsed);
-        if (nested) return nested;
-      }
-
-      if (parsed && ['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(parsed.type)) {
-        return parsed;
-      }
-    } catch {
-      // Try the next possible representation.
-    }
-  }
-
-  return null;
-}
-
-function parseCoordinatePair(pairText) {
-  const values = pairText
-    .trim()
-    .split(/\s+/)
-    .map(Number)
-    .filter(Number.isFinite);
-
-  if (values.length < 2) return null;
-
-  return [values[0], values[1]];
-}
-
-function parseWktPolygonRings(ringsText) {
-  return ringsText
-    .split(/\)\s*,\s*\(/)
-    .map((ringText) => ringText.replace(/[()]/g, '').trim())
-    .filter(Boolean)
-    .map((ringText) => ringText.split(',').map(parseCoordinatePair).filter(Boolean))
-    .filter((ring) => ring.length >= 4);
-}
-
-function parseWktBoundary(value) {
-  const normalized = value.trim();
-
-  const polygonMatch = normalized.match(/^POLYGON\s*\(\((.*)\)\)$/i);
-  if (polygonMatch) {
-    const coordinates = parseWktPolygonRings(polygonMatch[1]);
-    return coordinates.length ? { type: 'Polygon', coordinates } : null;
-  }
-
-  const multiPolygonMatch = normalized.match(/^MULTIPOLYGON\s*\(\(\((.*)\)\)\)$/i);
-  if (multiPolygonMatch) {
-    const polygons = multiPolygonMatch[1]
-      .split(/\)\s*\)\s*,\s*\(\s*\(/)
-      .map(parseWktPolygonRings)
-      .filter((polygon) => polygon.length > 0);
-
-    return polygons.length ? { type: 'MultiPolygon', coordinates: polygons } : null;
-  }
-
-  return null;
-}
-
 function normalizeBoundaryGeoJson(boundaryGeoJson) {
   if (!boundaryGeoJson) return null;
 
@@ -127,85 +39,51 @@ function normalizeBoundaryGeoJson(boundaryGeoJson) {
   const trimmed = boundaryGeoJson.trim();
   if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
 
-  const jsonBoundary = parseJsonBoundary(trimmed);
-  if (jsonBoundary) return jsonBoundary;
+  const withoutWrappingQuotes = (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  )
+    ? trimmed.slice(1, -1)
+    : trimmed;
 
-  const wktBoundary = parseWktBoundary(trimmed);
-  if (wktBoundary) return wktBoundary;
+  const candidates = [
+    trimmed,
+    withoutWrappingQuotes,
+    trimmed.replace(/""/g, '"'),
+    withoutWrappingQuotes.replace(/""/g, '"'),
+    trimmed.replace(/\\"/g, '"'),
+    withoutWrappingQuotes.replace(/\\"/g, '"'),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed === 'string' && parsed !== candidate) return normalizeBoundaryGeoJson(parsed);
+      return parsed && ['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(parsed.type)
+        ? parsed
+        : null;
+    } catch {
+      // Try next serialized boundary representation.
+    }
+  }
 
   console.warn('Unsupported area boundary format', trimmed.slice(0, 120));
   return null;
 }
 
-function getPolygonRings(geoJson) {
-  if (!geoJson) return [];
+function getBoundaryLayerKey(boundaryGeoJson) {
+  if (!boundaryGeoJson) return 'no-boundary';
 
-  if (geoJson.type === 'Polygon') {
-    return [geoJson.coordinates];
+  if (boundaryGeoJson.type === 'FeatureCollection') {
+    return `feature-collection-${boundaryGeoJson.features?.length || 0}`;
   }
 
-  if (geoJson.type === 'MultiPolygon') {
-    return geoJson.coordinates;
+  if (boundaryGeoJson.type === 'Feature') {
+    return `feature-${boundaryGeoJson.geometry?.type || 'unknown'}`;
   }
 
-  if (geoJson.type === 'Feature') {
-    return getPolygonRings(geoJson.geometry);
-  }
-
-  if (geoJson.type === 'FeatureCollection') {
-    return geoJson.features.flatMap((feature) => getPolygonRings(feature));
-  }
-
-  return [];
-}
-
-function isPointInRing(lng, lat, ring) {
-  let inside = false;
-
-  for (let index = 0, previousIndex = ring.length - 1; index < ring.length; previousIndex = index) {
-    const [currentLng, currentLat] = ring[index];
-    const [previousLng, previousLat] = ring[previousIndex];
-
-    const intersects = ((currentLat > lat) !== (previousLat > lat)) &&
-      (lng < ((previousLng - currentLng) * (lat - currentLat)) / (previousLat - currentLat || Number.EPSILON) + currentLng);
-
-    if (intersects) inside = !inside;
-  }
-
-  return inside;
-}
-
-function isPointInsideBoundary(lat, lng, boundaryGeoJson) {
-  const polygons = getPolygonRings(boundaryGeoJson);
-
-  if (polygons.length === 0) return true;
-
-  return polygons.some((rings) => {
-    const [outerRing, ...holes] = rings;
-    if (!outerRing || !isPointInRing(lng, lat, outerRing)) return false;
-    return !holes.some((hole) => isPointInRing(lng, lat, hole));
-  });
-}
-
-function MapBoundaryFit({ boundaryGeoJson }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!boundaryGeoJson) return;
-
-    const layer = L.geoJSON(boundaryGeoJson);
-    const bounds = layer.getBounds();
-
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, {
-        animate: true,
-        maxZoom: 16,
-        padding: [28, 28]
-      });
-    }
-  }, [boundaryGeoJson, map]);
-
-  return null;
+  return boundaryGeoJson.type || 'boundary';
 }
 
 function MapAutoCenter({ center }) {
@@ -215,6 +93,28 @@ function MapAutoCenter({ center }) {
     if (!center) return;
     map.setView(center, map.getZoom(), { animate: true });
   }, [center, map]);
+
+  return null;
+}
+
+function MapBoundaryAutoFit({ boundaryGeoJson }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!boundaryGeoJson) return;
+
+    const boundaryLayer = L.geoJSON(boundaryGeoJson);
+    const bounds = boundaryLayer.getBounds();
+
+    if (!bounds.isValid()) return;
+
+    map.fitBounds(bounds, {
+      animate: true,
+      duration: 0.8,
+      padding: [36, 36],
+      maxZoom: DEFAULT_ZOOM
+    });
+  }, [boundaryGeoJson, map]);
 
   return null;
 }
@@ -246,10 +146,32 @@ export const LocationPicker = ({
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [areaBoundary, setAreaBoundary] = useState(null);
 
-  const areaBoundary = useMemo(
-    () => normalizeBoundaryGeoJson(boundaryGeoJson),
-    [boundaryGeoJson]
+  useEffect(() => {
+    let cancelled = false;
+
+    setAreaBoundary(null);
+
+    if (!boundaryGeoJson) return undefined;
+
+    const timer = window.setTimeout(() => {
+      const normalizedBoundary = normalizeBoundaryGeoJson(boundaryGeoJson);
+
+      if (!cancelled) {
+        setAreaBoundary(normalizedBoundary);
+      }
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [boundaryGeoJson]);
+
+  const boundaryLayerKey = useMemo(
+    () => getBoundaryLayerKey(areaBoundary),
+    [areaBoundary]
   );
 
   const selectedPosition = useMemo(() => {
@@ -269,13 +191,6 @@ export const LocationPicker = ({
   const updateSelection = (lat, lng, message = null) => {
     if (!isValidLocation(lat, lng)) {
       setError('Tọa độ không hợp lệ. Vui lòng chọn lại.');
-      return;
-    }
-
-    if (areaBoundary && !isPointInsideBoundary(lat, lng, areaBoundary)) {
-      setError(boundaryName
-        ? `Vị trí đã chọn nằm ngoài khu vực ${boundaryName}. Vui lòng chọn điểm bên trong khu vực này.`
-        : 'Vị trí đã chọn nằm ngoài khu vực đã chọn. Vui lòng chọn lại.');
       return;
     }
 
@@ -335,25 +250,31 @@ export const LocationPicker = ({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <MapAutoCenter center={center} />
+          <MapBoundaryAutoFit boundaryGeoJson={areaBoundary} />
           {areaBoundary ? (
-            <>
-              <MapBoundaryFit boundaryGeoJson={areaBoundary} />
-              <GeoJSON
-                key={JSON.stringify(areaBoundary)}
-                data={areaBoundary}
-                style={{
-                  color: '#2563eb',
-                  fillColor: '#3b82f6',
-                  fillOpacity: 0.16,
-                  opacity: 0.95,
-                  weight: 3
-                }}
-              />
-            </>
-          ) : (
-            <MapAutoCenter center={center} />
-          )}
-          <LocationSelector readonly={readonly} onSelect={({ lat, lng }) => updateSelection(lat, lng)} />
+            <GeoJSON
+              key={boundaryLayerKey}
+              data={areaBoundary}
+              style={{
+                color: '#2563eb',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.14,
+                opacity: 0.9,
+                weight: 3
+              }}
+              eventHandlers={{
+                click: (event) => {
+                  if (readonly) return;
+                  const { lat, lng } = event.latlng;
+                  updateSelection(lat, lng);
+                }
+              }}
+            />
+          ) : null}
+          {!areaBoundary ? (
+            <LocationSelector readonly={readonly} onSelect={({ lat, lng }) => updateSelection(lat, lng)} />
+          ) : null}
           {markers.map((marker, index) => {
             if (!isValidLocation(marker.latitude, marker.longitude)) return null;
             return (
@@ -391,7 +312,7 @@ export const LocationPicker = ({
               {readonly
                 ? 'Chế độ xem chỉ'
                 : areaBoundary
-                  ? 'Chọn vị trí bằng cách nhấp vào vùng khu vực được tô sáng'
+                  ? `Chọn vị trí bằng cách nhấp vào bản đồ${boundaryName ? ` trong khu vực ${boundaryName}` : ''}`
                   : 'Chọn vị trí bằng cách nhấp vào bản đồ'}
             </span>
           </div>
@@ -404,7 +325,7 @@ export const LocationPicker = ({
               {readonly
                 ? 'Vị trí chưa có trên vé.'
                 : areaBoundary
-                  ? 'Nhấp vào vùng được tô sáng để đặt vị trí.'
+                  ? 'Khu vực đã chọn được tô sáng. Nhấp vào bản đồ để đặt vị trí.'
                   : 'Nhấp vào bản đồ để đặt vị trí.'}
             </div>
           )}

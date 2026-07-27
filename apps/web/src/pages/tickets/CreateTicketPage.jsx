@@ -101,6 +101,32 @@ const getAreaBoundaryGeoJson = (area) => (
   null
 );
 
+const getBoundaryDebugPreview = (boundaryGeoJson) => {
+  if (boundaryGeoJson == null) return null;
+
+  if (typeof boundaryGeoJson === 'string') {
+    return {
+      type: 'string',
+      length: boundaryGeoJson.length,
+      preview: boundaryGeoJson.slice(0, 2000),
+      truncated: boundaryGeoJson.length > 2000,
+    };
+  }
+
+  if (typeof boundaryGeoJson === 'object') {
+    return {
+      type: boundaryGeoJson.type || 'object',
+      keys: Object.keys(boundaryGeoJson),
+      preview: boundaryGeoJson,
+    };
+  }
+
+  return {
+    type: typeof boundaryGeoJson,
+    value: boundaryGeoJson,
+  };
+};
+
 const normalizePriority = (value) => {
   if (value === 'Critical') return 'Urgent';
   return PRIORITY_OPTIONS.some((option) => option.value === value)
@@ -1234,7 +1260,7 @@ export const CreateTicketPage = () => {
                           {
                             areaId,
                             areaName: selectedArea ? getAreaName(selectedArea) : null,
-                            rawBoundaryGeoJson: selectedAreaBoundaryGeoJson,
+                            boundaryDebug: getBoundaryDebugPreview(selectedAreaBoundaryGeoJson),
                           },
                           null,
                           2

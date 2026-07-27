@@ -22,5 +22,10 @@
   },
   "devDependencies": {
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.7"
   }
 }
