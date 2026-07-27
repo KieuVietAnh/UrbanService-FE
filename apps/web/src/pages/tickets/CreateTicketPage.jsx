@@ -91,6 +91,16 @@ const getAreaName = (area) => (
   area?.areaName ?? area?.name ?? area?.displayName ?? 'Chưa xác định khu vực'
 );
 
+const getAreaBoundaryGeoJson = (area) => (
+  area?.BoundaryGeoJson ??
+  area?.boundaryGeoJson ??
+  area?.boundaryGeoJSON ??
+  area?.boundary ??
+  area?.geoJson ??
+  area?.geoJSON ??
+  null
+);
+
 const normalizePriority = (value) => {
   if (value === 'Critical') return 'Urgent';
   return PRIORITY_OPTIONS.some((option) => option.value === value)
@@ -1160,7 +1170,11 @@ export const CreateTicketPage = () => {
                     value={areaId}
                     onChange={(event) => {
                       setAreaId(event.target.value);
+                      setLatitude(null);
+                      setLongitude(null);
+                      setLocationText('');
                       clearFieldError('areaId');
+                      clearFieldError('location');
                     }}
                     disabled={areasLoading}
                     aria-invalid={Boolean(fieldErrors.areaId)}
@@ -1206,6 +1220,8 @@ export const CreateTicketPage = () => {
                       latitude={latitude}
                       longitude={longitude}
                       onSelectLocation={handleLocationSelect}
+                      boundaryGeoJson={getAreaBoundaryGeoJson(selectedArea)}
+                      boundaryName={selectedArea ? getAreaName(selectedArea) : ''}
                     />
                   </div>
                   {fieldErrors.location ? (

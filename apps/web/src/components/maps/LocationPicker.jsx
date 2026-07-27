@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { GeoJSON, MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as Lucide from 'lucide-react';
@@ -23,6 +23,96 @@ function isValidCoordinate(value, min, max) {
 
 function isValidLocation(lat, lng) {
   return isValidCoordinate(lat, -90, 90) && isValidCoordinate(lng, -180, 180);
+}
+
+function normalizeBoundaryGeoJson(boundaryGeoJson) {
+  if (!boundaryGeoJson) return null;
+
+  try {
+    const parsed = typeof boundaryGeoJson === 'string'
+      ? JSON.parse(boundaryGeoJson.replace(/""/g, '"'))
+      : boundaryGeoJson;
+
+    if (!parsed || !['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(parsed.type)) {
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.warn('Invalid area BoundaryGeoJson', error);
+    return null;
+  }
+}
+
+function getPolygonRings(geoJson) {
+  if (!geoJson) return [];
+
+  if (geoJson.type === 'Polygon') {
+    return [geoJson.coordinates];
+  }
+
+  if (geoJson.type === 'MultiPolygon') {
+    return geoJson.coordinates;
+  }
+
+  if (geoJson.type === 'Feature') {
+    return getPolygonRings(geoJson.geometry);
+  }
+
+  if (geoJson.type === 'FeatureCollection') {
+    return geoJson.features.flatMap((feature) => getPolygonRings(feature));
+  }
+
+  return [];
+}
+
+function isPointInRing(lng, lat, ring) {
+  let inside = false;
+
+  for (let index = 0, previousIndex = ring.length - 1; index < ring.length; previousIndex = index) {
+    const [currentLng, currentLat] = ring[index];
+    const [previousLng, previousLat] = ring[previousIndex];
+
+    const intersects = ((currentLat > lat) !== (previousLat > lat)) &&
+      (lng < ((previousLng - currentLng) * (lat - currentLat)) / (previousLat - currentLat || Number.EPSILON) + currentLng);
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function isPointInsideBoundary(lat, lng, boundaryGeoJson) {
+  const polygons = getPolygonRings(boundaryGeoJson);
+
+  if (polygons.length === 0) return true;
+
+  return polygons.some((rings) => {
+    const [outerRing, ...holes] = rings;
+    if (!outerRing || !isPointInRing(lng, lat, outerRing)) return false;
+    return !holes.some((hole) => isPointInRing(lng, lat, hole));
+  });
+}
+
+function MapBoundaryFit({ boundaryGeoJson }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!boundaryGeoJson) return;
+
+    const layer = L.geoJSON(boundaryGeoJson);
+    const bounds = layer.getBounds();
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, {
+        animate: true,
+        maxZoom: 16,
+        padding: [28, 28]
+      });
+    }
+  }, [boundaryGeoJson, map]);
+
+  return null;
 }
 
 function MapAutoCenter({ center }) {
@@ -56,11 +146,18 @@ export const LocationPicker = ({
   onSelectLocation,
   readonly = false,
   markers = [],
+  boundaryGeoJson = null,
+  boundaryName = '',
   className = ''
 }) => {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const areaBoundary = useMemo(
+    () => normalizeBoundaryGeoJson(boundaryGeoJson),
+    [boundaryGeoJson]
+  );
 
   const selectedPosition = useMemo(() => {
     if (isValidLocation(latitude, longitude)) {
@@ -81,6 +178,14 @@ export const LocationPicker = ({
       setError('Tọa độ không hợp lệ. Vui lòng chọn lại.');
       return;
     }
+
+    if (areaBoundary && !isPointInsideBoundary(lat, lng, areaBoundary)) {
+      setError(boundaryName
+        ? `Vị trí đã chọn nằm ngoài khu vực ${boundaryName}. Vui lòng chọn điểm bên trong khu vực này.`
+        : 'Vị trí đã chọn nằm ngoài khu vực đã chọn. Vui lòng chọn lại.');
+      return;
+    }
+
     setError('');
     if (typeof onSelectLocation === 'function') {
       onSelectLocation(lat, lng, message || `Vị trí đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
@@ -137,7 +242,24 @@ export const LocationPicker = ({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <MapAutoCenter center={center} />
+          {areaBoundary ? (
+            <>
+              <MapBoundaryFit boundaryGeoJson={areaBoundary} />
+              <GeoJSON
+                key={JSON.stringify(areaBoundary)}
+                data={areaBoundary}
+                style={{
+                  color: '#2563eb',
+                  fillColor: '#3b82f6',
+                  fillOpacity: 0.16,
+                  opacity: 0.95,
+                  weight: 3
+                }}
+              />
+            </>
+          ) : (
+            <MapAutoCenter center={center} />
+          )}
           <LocationSelector readonly={readonly} onSelect={({ lat, lng }) => updateSelection(lat, lng)} />
           {markers.map((marker, index) => {
             if (!isValidLocation(marker.latitude, marker.longitude)) return null;
@@ -172,7 +294,13 @@ export const LocationPicker = ({
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
-            <span>{readonly ? 'Chế độ xem chỉ' : 'Chọn vị trí bằng cách nhấp vào bản đồ'}</span>
+            <span>
+              {readonly
+                ? 'Chế độ xem chỉ'
+                : areaBoundary
+                  ? 'Chọn vị trí bằng cách nhấp vào vùng khu vực được tô sáng'
+                  : 'Chọn vị trí bằng cách nhấp vào bản đồ'}
+            </span>
           </div>
           {selectedPosition ? (
             <div className="text-[11px] font-bold text-slate-700">
@@ -180,7 +308,11 @@ export const LocationPicker = ({
             </div>
           ) : (
             <div className="text-[11px] text-slate-500 font-semibold">
-              {readonly ? 'Vị trí chưa có trên vé.' : 'Nhấp vào bản đồ để đặt vị trí.'}
+              {readonly
+                ? 'Vị trí chưa có trên vé.'
+                : areaBoundary
+                  ? 'Nhấp vào vùng được tô sáng để đặt vị trí.'
+                  : 'Nhấp vào bản đồ để đặt vị trí.'}
             </div>
           )}
         </div>
