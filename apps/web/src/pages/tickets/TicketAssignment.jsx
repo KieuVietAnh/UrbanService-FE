@@ -53,7 +53,10 @@ export const TicketAssignment = () => {
               coordinatorId: candidate.coordinatorId ?? candidate.operatorId ?? candidate.id,
               operatorId: candidate.coordinatorId ?? candidate.operatorId ?? candidate.id,
               operatorName: candidate.providerName || candidate.coordinatorName || candidate.name || 'Unnamed provider',
-              contactPhone: candidate.contactPhone || candidate.phone || candidate.contactNumber || '',
+              contactPhone: candidate.phoneNumber || candidate.contactPhone || candidate.phone || candidate.contactNumber || '',
+              email: candidate.email || candidate.contactEmail || '',
+              coverage: candidate.address || candidate.coverage || candidate.contractName || '',
+              sla: candidate.sla || `${slaHours} giờ`,
               ...candidate,
             }))
           : [];
@@ -127,7 +130,7 @@ export const TicketAssignment = () => {
       await managementFeedbackApi.assignToOperator(assignmentPayload);
       signalrService.notifyAssignmentUpdated(feedbackId, coordinatorId, selectedOperator?.operatorName || selectedOperator?.fullName || '', user);
       setMessage({ type: 'success', text: 'Phân công thành công. Trạng thái đã được cập nhật cho người xử lý.' });
-      navigate(`/tickets/${feedbackId}`);
+      navigate(`/staff/feedbacks/${feedbackId}`);
     } catch (err) {
       console.error(err);
       setError(err.message || 'Không thể phân công phản ánh. Vui lòng thử lại.');
@@ -149,9 +152,11 @@ export const TicketAssignment = () => {
   const slaHours = slaConfig[ticket.priority]?.hours || 24;
   const projectedDeadline = new Date();
   projectedDeadline.setHours(projectedDeadline.getHours() + slaHours);
+  const selectedOperator = operators.find((op) => String(op.coordinatorId ?? op.operatorId) === String(selectedOperatorId)) || null;
+  const categoryName = categories.find((c) => Number(c.categoryId) === Number(ticket.categoryId))?.categoryName || 'Không rõ';
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="space-y-6">
       {message.type === 'success' && (
         <SuccessAlert
           message={message.text}
@@ -164,143 +169,242 @@ export const TicketAssignment = () => {
           onClose={() => setMessage({ type: '', text: '' })}
         />
       )}
-      {/* Title */}
-      <div>
-        <h2 className="text-2xl font-black">Điều Phối & Phân Công Xử Lý</h2>
-        <p className="text-xs text-gray-500 font-semibold">Lựa chọn đơn vị thi công phù hợp và thiết lập thời hạn xử lý sự cố dựa trên chuẩn SLA.</p>
+
+      <div className="space-y-3">
+        <h2 className="text-3xl font-black">Điều Phối & Phân Công Xử Lý</h2>
+        <p className="max-w-3xl text-sm text-gray-500 font-semibold">Lựa chọn đơn vị xử lý phù hợp và xác nhận thời hạn xử lý.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Ticket Summary Card */}
-        <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-4 h-fit">
-          <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400 border-b border-base-300 pb-2">Tóm tắt sự cố</h4>
-          <div className="space-y-1 text-xs">
-            <span className="font-bold text-gray-500 block">Tiêu đề:</span>
-            <span className="font-bold text-base-content block">{ticket.title}</span>
-          </div>
-          <div className="space-y-1 text-xs">
-            <span className="font-bold text-gray-500 block">Nội dung chi tiết:</span>
-            <p className="text-gray-600 bg-base-200/50 p-3 rounded-xl border border-base-300 italic">
-              "{ticket.description}"
-            </p>
-          </div>
-          <div className="space-y-1 text-xs">
-            <span className="font-bold text-gray-500 block">Vị trí:</span>
-            <span className="font-semibold block">{ticket.locationText}</span>
-          </div>
-          <div className="flex gap-2 text-xs font-bold pt-2">
-            <span className="badge badge-sm badge-info uppercase py-2 px-2.5">Priority: {ticket.priority}</span>
-              <span className="badge badge-sm badge-outline uppercase py-2 px-2.5">
-              Category: {categories.find((c) => Number(c.categoryId) === Number(ticket.categoryId))?.categoryName || 'Không rõ'}
-            </span>
-          </div>
-        </div>
-
-        {/* Assignment Action Form Card */}
-        <div className="card bg-base-100 border border-base-300 p-6 rounded-3xl shadow-sm space-y-5 h-fit">
-          <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400 border-b border-base-300 pb-2">Thông tin phân công</h4>
-          
-          {error && (
-            <div className="alert alert-error text-xs font-semibold rounded-xl">
-              {error}
+      <div className="grid gap-6 xl:grid-cols-[minmax(280px,320px)_1fr]">
+        <aside className="space-y-6">
+          <div className="card bg-base-100 border border-base-200 p-6 rounded-[28px] shadow-sm h-full">
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Tóm tắt sự cố</p>
+                <h3 className="mt-3 text-xl font-black text-gray-900">{ticket.title || 'Không có tiêu đề'}</h3>
+              </div>
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-3xl bg-primary/10 text-primary">
+                <Lucide.FileText size={20} />
+              </span>
             </div>
-          )}
 
-          {providerCandidatesLoaded && operators.length === 0 && (
-            <div className="alert alert-warning text-xs rounded-xl space-y-2">
-              <div className="flex gap-2">
-                <Lucide.AlertTriangle size={16} className="flex-shrink-0" />
-                <div>
-                  <p className="font-bold">Không thể tải danh sách đơn vị xử lý</p>
-                  <p className="text-[11px] mt-1">Hiện tại chưa có đơn vị xử lý phù hợp được trả về cho phản ánh này.</p>
-                 
+            <div className="space-y-4 text-sm text-gray-700">
+              <div className="rounded-3xl border border-base-200 bg-base-200/70 p-4">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Vị trí</p>
+                <p className="mt-2 font-semibold text-gray-900">{ticket.locationText || 'Chưa có vị trí'}</p>
+              </div>
+
+              <div className="grid gap-3">
+                <div className="rounded-3xl border border-base-200 bg-white p-4">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Danh mục</p>
+                  <p className="mt-2 font-semibold text-gray-900">{categoryName}</p>
+                </div>
+                <div className="rounded-3xl border border-base-200 bg-white p-4">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Mức độ ưu tiên</p>
+                  <p className="mt-2 font-semibold text-gray-900">{ticket.priority || 'Medium'}</p>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        </aside>
 
-          <form onSubmit={handleAssign} className="space-y-4 text-xs">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-bold text-xs">Chọn đơn vị thi công xử lý *</span>
-              </label>
-              {operators.length > 0 ? (
-                <select 
-                  value={selectedOperatorId} 
-                  onChange={(e) => {
-                    setSelectedOperatorId(e.target.value);
-                    if (e.target.value) setManualOperatorId('');
-                  }}
-                  className="select select-bordered select-sm rounded-xl font-bold"
-                >
-                  <option value="">-- Chọn từ danh sách đơn vị xử lý --</option>
-                  {operators.map((op) => (
-                    <option key={op.operatorId} value={op.operatorId}>
-                      {op.operatorName}{op.contactPhone ? ` (${op.contactPhone})` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="text-[11px] text-gray-500">Không thể tải danh sách từ hệ thống. Bạn có thể nhập trực tiếp mã đơn vị xử lý bên dưới.</div>
+        <main className="space-y-6">
+          <div className="card bg-base-100 border border-base-200 p-8 rounded-[32px] shadow-sm flex flex-col">
+            <form onSubmit={handleAssign} className="flex flex-col">
+              {error && (
+                <div className="mb-4 rounded-3xl border border-error/20 bg-error/10 p-4 text-sm text-error">
+                  {error}
+                </div>
               )}
-            </div>
-
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-bold text-xs">Hoặc nhập mã đơn vị xử lý</span>
-              </label>
-              <input
-                type="text"
-                value={manualOperatorId}
-                onChange={(e) => {
-                  setManualOperatorId(e.target.value);
-                  if (e.target.value) setSelectedOperatorId('');
-                }}
-                placeholder="VD: 123"
-                className="input input-bordered input-sm rounded-xl font-semibold"
-              />
-            </div>
-
-            <div className="bg-warning/10 border border-warning/20 p-4 rounded-2xl space-y-1 text-[11px] text-gray-600">
-              <div className="flex items-center gap-1.5 text-warning font-extrabold">
-                <Lucide.Clock size={14} />
-                <span>Quy chuẩn SLA dịch vụ</span>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-3">
+                  <div className="inline-flex items-center gap-3 rounded-full border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary">
+                    <Lucide.UserCheck size={18} />
+                    THÔNG TIN PHÂN CÔNG
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-3xl font-black text-gray-900">Decision Workspace</h3>
+                    <p className="max-w-3xl text-sm text-gray-500">Lựa chọn đơn vị xử lý phù hợp và xác nhận thời hạn xử lý.</p>
+                  </div>
+                </div>
               </div>
-              <p className="font-medium">Ưu tiên <span className="font-bold text-primary">{ticket.priority}</span>: Yêu cầu khắc phục trong vòng <span className="font-bold text-primary">{slaHours} giờ</span>.</p>
-              <p className="font-medium">Thời hạn hoàn tất dự kiến: <span className="font-bold text-base-content">{projectedDeadline.toLocaleString()}</span></p>
-            </div>
 
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text font-bold text-xs">Ghi chú giao việc</span>
-              </label>
-              <textarea 
-                rows="3"
-                placeholder="Nhập hướng dẫn xử lý cụ thể, lưu ý về vị trí, các yêu cầu kỹ thuật..."
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="textarea textarea-bordered text-xs font-semibold p-2.5 rounded-xl"
-              ></textarea>
-            </div>
+              <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">SLA</p>
+                  <p className="mt-3 text-2xl font-black text-gray-900">{slaHours} giờ</p>
+                </div>
+                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Priority</p>
+                  <p className="mt-3 text-2xl font-black text-gray-900">{ticket.priority || 'Medium'}</p>
+                </div>
+                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Category</p>
+                  <p className="mt-3 text-2xl font-black text-gray-900">{categoryName}</p>
+                </div>
+                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">ETA</p>
+                  <p className="mt-3 text-2xl font-black text-gray-900">{projectedDeadline.toLocaleDateString('vi-VN')}</p>
+                </div>
+              </div>
 
-            <div className="flex gap-2">
-              <button 
-                type="button" 
-                onClick={() => navigate(-1)}
-                className="btn btn-sm btn-ghost flex-1 rounded-xl"
-              >
-                Hủy bỏ
-              </button>
-              <button 
-                type="submit" 
-                className="btn btn-sm btn-primary flex-1 rounded-xl font-bold disabled:opacity-50"
-                disabled={assignLoading || (!selectedOperatorId && !manualOperatorId)}
-              >
-                {assignLoading ? <span className="loading loading-spinner"></span> : 'Xác Nhận Phân Công'}
-              </button>
+              <div className="mt-8 grid gap-6 lg:grid-cols-[1fr]">
+                <div className={`rounded-[28px] border p-6 ${selectedOperator ? 'border-base-200 bg-white shadow-sm' : 'border-dashed border-base-300 bg-base-200/60'}`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Đơn vị xử lý đã chọn</p>
+                      <p className="mt-3 text-lg font-semibold text-gray-900">{selectedOperator ? selectedOperator.operatorName : 'Chưa chọn đơn vị xử lý'}</p>
+                    </div>
+                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${selectedOperator ? 'bg-emerald-100 text-emerald-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                      {selectedOperator ? 'Đã chọn' : 'Chưa chọn'}
+                    </span>
+                  </div>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Phone</p>
+                      <p className="font-semibold text-gray-900">{selectedOperator?.contactPhone || '-'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Email</p>
+                      <p className="font-semibold text-gray-900">{selectedOperator?.email || '-'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Coverage</p>
+                      <p className="font-semibold text-gray-900">{selectedOperator?.coverage || '-'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">SLA</p>
+                      <p className="font-semibold text-gray-900">{selectedOperator?.sla || `${slaHours} giờ`}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <label className="label">
+                      <span className="label-text text-xs font-bold">Chọn đơn vị xử lý</span>
+                    </label>
+                    {providerCandidatesLoaded ? (
+                      operators.length > 0 ? (
+                        <select
+                          value={selectedOperatorId}
+                          onChange={(e) => {
+                            setSelectedOperatorId(e.target.value);
+                            if (e.target.value) setManualOperatorId('');
+                          }}
+                          className="select select-bordered select-sm rounded-2xl w-full font-semibold"
+                        >
+                          <option value="">-- Chọn đơn vị xử lý --</option>
+                          {operators.map((op) => (
+                            <option key={op.operatorId} value={op.operatorId}>
+                              {op.operatorName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-sm text-gray-500">Không có đơn vị xử lý khả dụng. Hãy nhập mã thủ công bên dưới.</p>
+                      )
+                    ) : (
+                      <p className="text-sm text-gray-500">Đang tải danh sách đơn vị xử lý...</p>
+                    )}
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="label">
+                      <span className="label-text text-xs font-bold">Hoặc nhập mã đơn vị xử lý</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={manualOperatorId}
+                      onChange={(e) => {
+                        setManualOperatorId(e.target.value);
+                        if (e.target.value) setSelectedOperatorId('');
+                      }}
+                      placeholder="VD: 123"
+                      className="input input-bordered input-sm rounded-2xl w-full font-semibold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-base-200 bg-base-200/50 p-6">
+                <label className="label">
+                  <span className="label-text text-xs font-bold">Ghi chú giao việc</span>
+                </label>
+                <textarea
+                  rows="5"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Mô tả yêu cầu xử lý, lưu ý kỹ thuật, thông tin hiện trường..."
+                  className="textarea textarea-bordered textarea-lg w-full rounded-3xl font-semibold text-sm"
+                />
+              </div>
+
+              <div className="mt-4 border-t border-base-200 pt-4 sticky top-[calc(100vh-96px)] bg-base-100">
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end sm:items-center">
+                  <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    className="btn btn-ghost rounded-2xl px-6"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary rounded-2xl px-6 font-bold"
+                    disabled={assignLoading || (!selectedOperatorId && !manualOperatorId)}
+                  >
+                    {assignLoading ? <span className="loading loading-spinner"></span> : 'Xác nhận phân công'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <div className="card bg-base-100 border border-base-200 p-6 rounded-[32px] shadow-sm">
+            <div className="border-b border-base-200 pb-4 mb-6">
+              <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400">Chi tiết sự cố</h4>
             </div>
-          </form>
-        </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="space-y-4 text-sm text-gray-700">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Tiêu đề</p>
+                  <p className="mt-2 font-semibold text-gray-900">{ticket.title || 'Không có tiêu đề'}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Mã phản ánh</p>
+                  <p className="mt-2 font-semibold text-gray-900">{ticket.feedbackId || ticket.id || 'Không rõ'}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Người báo cáo</p>
+                  <p className="mt-2 font-semibold text-gray-900">{ticket.reporterName || 'Không rõ'}</p>
+                </div>
+              </div>
+              <div className="space-y-4 text-sm text-gray-700">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Khu vực</p>
+                  <p className="mt-2 font-semibold text-gray-900">{ticket.areaName || 'Không có khu vực'}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Danh mục</p>
+                  <p className="mt-2 font-semibold text-gray-900">{categoryName}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Mức độ ưu tiên</p>
+                  <p className="mt-2 font-semibold text-gray-900">{ticket.priority || 'Medium'}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Thời gian tạo</p>
+                  <p className="mt-2 font-semibold text-gray-900">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('vi-VN') : 'Không rõ'}</p>
+                </div>
+              </div>
+              <div className="space-y-4 text-sm text-gray-700">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Nội dung phản ánh</p>
+                  <p className="mt-2 rounded-3xl border border-base-200 bg-base-200/70 p-5 text-sm leading-7 text-gray-700">{ticket.description || 'Không có nội dung phản ánh.'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     </div>
   );

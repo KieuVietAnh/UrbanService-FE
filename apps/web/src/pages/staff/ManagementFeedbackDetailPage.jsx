@@ -933,146 +933,6 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           )}
 
-          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Phản ánh liên kết</h3>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                {linkedFeedbacks.length} mục
-              </span>
-            </div>
-
-            {linkedFeedbacksLoading ? (
-              <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                <span className="loading loading-spinner loading-sm mr-2" />
-                Đang tải phản ánh liên kết...
-              </div>
-            ) : linkedFeedbacksError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                {linkedFeedbacksError}
-              </div>
-            ) : linkedFeedbacks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 text-center">
-                Không có phản ánh liên kết nào.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {linkedFeedbacks.map((item, index) => {
-                  const childFeedbackId = item?.feedbackId || item?.id;
-                  return (
-                    <div key={childFeedbackId || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
-                          <div className="font-semibold text-slate-900">{childFeedbackId || '—'}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
-                          <div className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</div>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Người báo cáo</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {item?.reporterName || item?.reporter?.name || item?.userName || '—'}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ngày tạo</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {formatDate(item?.createdAt || item?.createdDate)}
-                          </div>
-                        </div>
-                      </div>
-                      {childFeedbackId && (
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/staff/feedbacks/${childFeedbackId}`)}
-                            className="btn btn-xs btn-outline rounded-lg"
-                          >
-                            <Lucide.ExternalLink size={12} />
-                            Xem phản ánh con
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Phản ánh liên quan</h3>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                {relatedFeedbacks.length} mục
-              </span>
-            </div>
-
-            {relatedFeedbacksLoading ? (
-              <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                <span className="loading loading-spinner loading-sm mr-2" />
-                Đang tải phản ánh liên quan...
-              </div>
-            ) : relatedFeedbacksError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                {relatedFeedbacksError}
-              </div>
-            ) : relatedFeedbacks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 text-center">
-                Không có phản ánh liên quan nào.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {relatedFeedbacks.map((item, index) => {
-                  const relatedId = item?.feedbackId || item?.id;
-                  return (
-                    <div key={relatedId || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
-                          <div className="font-semibold text-slate-900">{relatedId || '—'}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
-                          <div className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</div>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Danh mục</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {getCategoryLabel(item?.categoryName || item?.category?.name || item?.categoryType || item?.type)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ngày tạo</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {formatDate(item?.createdAt || item?.createdDate)}
-                          </div>
-                        </div>
-                      </div>
-                      {relatedId && (
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/staff/feedbacks/${relatedId}`)}
-                            className="btn btn-xs btn-outline rounded-lg"
-                          >
-                            <Lucide.ExternalLink size={12} />
-                            Xem chi tiết
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
           {/* Details Grid */}
           <div className="grid grid-cols-2 gap-4">
             <div className="card bg-white border border-slate-200 p-4 rounded-xl col-span-2">
@@ -1299,6 +1159,147 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
             </div>
           )}
+
+          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-bold text-slate-900">Phản ánh liên kết</h3>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                {linkedFeedbacks.length} mục
+              </span>
+            </div>
+
+            {linkedFeedbacksLoading ? (
+              <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                <span className="loading loading-spinner loading-sm mr-2" />
+                Đang tải phản ánh liên kết...
+              </div>
+            ) : linkedFeedbacksError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                {linkedFeedbacksError}
+              </div>
+            ) : linkedFeedbacks.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 text-center">
+                Không có phản ánh liên kết nào.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {linkedFeedbacks.map((item, index) => {
+                  const childFeedbackId = item?.feedbackId || item?.id;
+                  return (
+                    <div key={childFeedbackId || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
+                          <div className="font-semibold text-slate-900">{childFeedbackId || '—'}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
+                          <div className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Người báo cáo</div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {item?.reporterName || item?.reporter?.name || item?.userName || '—'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ngày tạo</div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {formatDate(item?.createdAt || item?.createdDate)}
+                          </div>
+                        </div>
+                      </div>
+                      {childFeedbackId && (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/staff/feedbacks/${childFeedbackId}`)}
+                            className="btn btn-xs btn-outline rounded-lg"
+                          >
+                            <Lucide.ExternalLink size={12} />
+                            Xem phản ánh con
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-bold text-slate-900">Phản ánh liên quan</h3>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                {relatedFeedbacks.length} mục
+              </span>
+            </div>
+
+            {relatedFeedbacksLoading ? (
+              <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                <span className="loading loading-spinner loading-sm mr-2" />
+                Đang tải phản ánh liên quan...
+              </div>
+            ) : relatedFeedbacksError ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                {relatedFeedbacksError}
+              </div>
+            ) : relatedFeedbacks.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 text-center">
+                Không có phản ánh liên quan nào.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {relatedFeedbacks.map((item, index) => {
+                  const relatedId = item?.feedbackId || item?.id;
+                  return (
+                    <div key={relatedId || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
+                          <div className="font-semibold text-slate-900">{relatedId || '—'}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
+                          <div className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Danh mục</div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {getCategoryLabel(item?.categoryName || item?.category?.name || item?.categoryType || item?.type)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ngày tạo</div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {formatDate(item?.createdAt || item?.createdDate)}
+                          </div>
+                        </div>
+                      </div>
+                      {relatedId && (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/staff/feedbacks/${relatedId}`)}
+                            className="btn btn-xs btn-outline rounded-lg"
+                          >
+                            <Lucide.ExternalLink size={12} />
+                            Xem chi tiết
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* Sidebar */}
