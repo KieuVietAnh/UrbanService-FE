@@ -1,5 +1,6 @@
 import PublicFooter from './PublicFooter';
 import PublicHeader from './PublicHeader';
+import CitizenAiCopilot from './CitizenAiCopilot';
 
 export const PublicThemeStyles = () => (
   <style>{`
@@ -363,6 +364,7 @@ export const PublicLayout = ({ children }) => (
     <PublicHeader />
     <div className="relative z-0">{children}</div>
     <PublicFooter />
+    <CitizenAiCopilot />
   </div>
 );
 
