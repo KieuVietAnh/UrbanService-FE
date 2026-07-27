@@ -2397,3 +2397,202 @@ html[data-theme="dark"] .manager-category-track {
     flex-basis: auto;
   }
 }
+
+
+/* Create ticket follows the same citizen-page shell in both themes. */
+.create-ticket-page {
+  width: 100%;
+}
+
+.create-ticket-shell {
+  border-color: rgba(191, 219, 254, 0.72);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.34), rgba(239, 246, 255, 0.2));
+  box-shadow: 0 24px 64px rgba(37, 99, 235, 0.08);
+}
+
+.create-ticket-hero,
+.create-ticket-stepper,
+.create-ticket-form {
+  border-color: rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.06);
+}
+
+.create-ticket-hero {
+  background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(239,246,255,.95));
+}
+
+.create-ticket-form-header {
+  border-color: rgba(226, 232, 240, 0.9);
+  background: rgba(248, 250, 252, 0.8);
+}
+
+html[data-theme="dark"] .create-ticket-shell {
+  border-color: rgba(100, 116, 139, 0.78);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.28), rgba(8, 22, 38, 0.18));
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+}
+
+html[data-theme="dark"] .create-ticket-hero,
+html[data-theme="dark"] .create-ticket-stepper,
+html[data-theme="dark"] .create-ticket-form {
+  border-color: rgba(71, 85, 105, 0.82);
+  background: #0f1a2e;
+  color: #e6eef8;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
+}
+
+html[data-theme="dark"] .create-ticket-hero {
+  background: linear-gradient(135deg, #111d31, #0c1728);
+}
+
+html[data-theme="dark"] .create-ticket-form-header {
+  border-color: rgba(71, 85, 105, 0.82);
+  background: #111c30;
+}
+
+html[data-theme="dark"] .create-ticket-page h1,
+html[data-theme="dark"] .create-ticket-page h2,
+html[data-theme="dark"] .create-ticket-page label,
+html[data-theme="dark"] .create-ticket-page .text-slate-950,
+html[data-theme="dark"] .create-ticket-page .text-slate-900,
+html[data-theme="dark"] .create-ticket-page .text-slate-800,
+html[data-theme="dark"] .create-ticket-page .text-slate-700 {
+  color: #e6eef8;
+}
+
+html[data-theme="dark"] .create-ticket-page input,
+html[data-theme="dark"] .create-ticket-page textarea,
+html[data-theme="dark"] .create-ticket-page select {
+  border-color: #334155;
+  background: #0b1526;
+  color: #e6eef8;
+}
+
+html[data-theme="dark"] .create-ticket-page input::placeholder,
+html[data-theme="dark"] .create-ticket-page textarea::placeholder {
+  color: #64748b;
+}
+
+html[data-theme="dark"] .create-ticket-page aside[aria-label="Gợi ý mô tả"] {
+  border-color: #334155;
+  background: linear-gradient(160deg, #101d33, #0d1728);
+}
+
+/* Notification center follows the same citizen-page shell as Create Ticket. */
+.notification-center-page {
+  width: 100%;
+  background: transparent !important;
+  background-image: none !important;
+}
+
+.notification-center-shell {
+  border-color: rgba(191, 219, 254, 0.72);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.34), rgba(239, 246, 255, 0.2));
+  box-shadow: 0 24px 64px rgba(37, 99, 235, 0.08);
+}
+
+.notification-center-hero,
+.notification-center-panel {
+  border-color: rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.06);
+}
+
+.notification-center-hero {
+  background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(239,246,255,.95));
+}
+
+html[data-theme="dark"] .notification-center-shell {
+  border-color: rgba(100, 116, 139, 0.78);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.28), rgba(8, 22, 38, 0.18));
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+}
+
+html[data-theme="dark"] .notification-center-hero,
+html[data-theme="dark"] .notification-center-panel {
+  border-color: rgba(71, 85, 105, 0.82);
+  background: #0f1a2e;
+  color: #e6eef8;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.2);
+}
+
+html[data-theme="dark"] .notification-center-hero {
+  background: linear-gradient(135deg, #111d31, #0c1728);
+}
+
+html[data-theme="dark"] .notification-center-page h1,
+html[data-theme="dark"] .notification-center-page h2,
+html[data-theme="dark"] .notification-center-page h3,
+html[data-theme="dark"] .notification-center-page h4,
+html[data-theme="dark"] .notification-center-page label,
+html[data-theme="dark"] .notification-center-page .text-slate-950,
+html[data-theme="dark"] .notification-center-page .text-slate-900,
+html[data-theme="dark"] .notification-center-page .text-slate-800,
+html[data-theme="dark"] .notification-center-page .text-slate-700 {
+  color: #e6eef8;
+}
+
+
+/* Notification center: explicit theme surfaces because the app uses data-theme, not Tailwind's .dark selector. */
+.notification-center-title {
+  font-family: inherit;
+}
+
+.notification-stat-card {
+  border-color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.notification-stat-card-active {
+  border-color: #bfdbfe;
+}
+
+.notification-group-header {
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.notification-row:hover {
+  background: rgba(248, 250, 252, 0.86);
+}
+
+.notification-row-unread {
+  background: rgba(239, 246, 255, 0.72);
+}
+
+html[data-theme="dark"] .notification-stat-card {
+  border-color: rgba(71, 85, 105, 0.82);
+  background: #132038;
+}
+
+html[data-theme="dark"] .notification-stat-card-active {
+  border-color: rgba(96, 165, 250, 0.55);
+  background: linear-gradient(145deg, rgba(30, 64, 175, 0.24), #132038 62%);
+}
+
+html[data-theme="dark"] .notification-group-header {
+  background: #17243a;
+  border-color: rgba(71, 85, 105, 0.82);
+}
+
+html[data-theme="dark"] .notification-row {
+  background: #0f1a2e;
+}
+
+html[data-theme="dark"] .notification-row:hover {
+  background: #15233a;
+}
+
+html[data-theme="dark"] .notification-row-unread {
+  background: rgba(30, 64, 175, 0.16);
+}
+
+html[data-theme="dark"] .notification-center-page input {
+  border-color: #334155;
+  background: #101d33;
+  color: #e6eef8;
+}
+
+html[data-theme="dark"] .notification-center-page input::placeholder {
+  color: #64748b;
+}
