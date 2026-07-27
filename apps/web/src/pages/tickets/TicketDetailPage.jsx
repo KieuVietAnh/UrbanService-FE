@@ -1669,6 +1669,11 @@ export const TicketDetailPage = () => {
   const commentCount = orderedComments.length > 0
     ? orderedComments.length
     : Number(ticket?.commentCount || 0);
+  const parentTicketId = ticket?.parentTicketId || ticket?.parentFeedbackId || null;
+  const isConfirmedDuplicate = Boolean(parentTicketId);
+  const isPotentialDuplicate = Boolean(
+    ticket?.duplicateWarning && !isConfirmedDuplicate
+  );
 
   return (
     <>
@@ -1865,6 +1870,61 @@ export const TicketDetailPage = () => {
               </aside>
             </div>
           </article>
+
+          {isConfirmedDuplicate ? (
+            <section
+              className="rounded-[24px] border border-violet-300/70 bg-violet-50/90 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.06)] dark:border-violet-400/25 dark:bg-violet-400/10 sm:p-5"
+              aria-labelledby="duplicate-feedback-title"
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-sm dark:bg-violet-500">
+                    <Lucide.GitMerge size={20} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 id="duplicate-feedback-title" className="text-base font-bold text-violet-950 dark:text-violet-100">
+                      Phản ánh này đã được gộp
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-violet-800/80 dark:text-violet-200/75">
+                      Sự cố đã được ghi nhận trước đó và đang được xử lý chung theo phản ánh chính.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/community/feed/${parentTicketId}`, {
+                    state: {
+                      from: location.pathname,
+                      returnLabel: 'Quay lại phản ánh của tôi',
+                    },
+                  })}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 dark:bg-violet-500 dark:hover:bg-violet-400"
+                >
+                  <Lucide.ExternalLink size={15} aria-hidden="true" />
+                  Xem phản ánh chính
+                </button>
+              </div>
+            </section>
+          ) : isPotentialDuplicate ? (
+            <section
+              className="rounded-[24px] border border-amber-300/70 bg-amber-50/90 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.06)] dark:border-amber-400/25 dark:bg-amber-400/10 sm:p-5"
+              aria-labelledby="potential-duplicate-title"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm">
+                  <Lucide.ScanSearch size={20} aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 id="potential-duplicate-title" className="text-base font-bold text-amber-950 dark:text-amber-100">
+                    Đang kiểm tra phản ánh trùng
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-amber-800/80 dark:text-amber-200/75">
+                    Hệ thống phát hiện phản ánh này có thể trùng với một phản ánh khác. Nhân viên đang xác minh trước khi gộp.
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           <section
             className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"

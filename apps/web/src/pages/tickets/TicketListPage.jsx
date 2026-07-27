@@ -1543,6 +1543,11 @@ export const TicketListPage = () => {
                 const statusMeta = getCitizenStatusMeta(ticket.status);
                 const StatusIcon = statusMeta.icon;
                 const updatedAt = ticket.updatedAt || ticket.createdAt;
+                const parentTicketId = ticket.parentTicketId || ticket.parentFeedbackId || null;
+                const isConfirmedDuplicate = Boolean(parentTicketId);
+                const isPotentialDuplicate = Boolean(
+                  ticket.duplicateWarning && !isConfirmedDuplicate
+                );
 
                 return (
                   <li key={feedbackId}>
@@ -1578,6 +1583,23 @@ export const TicketListPage = () => {
                             <span className="rounded-full border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--public-copy)]">
                               {getCategoryLabel(ticket.categoryName)}
                             </span>
+                            {isConfirmedDuplicate ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full border border-violet-300/70 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300"
+                                title="Phản ánh này đã được gộp vào một phản ánh chính. Mở chi tiết để xem phản ánh chính."
+                              >
+                                <Lucide.GitMerge size={12} aria-hidden="true" />
+                                Đã gộp
+                              </span>
+                            ) : isPotentialDuplicate ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300"
+                                title="Hệ thống đang kiểm tra khả năng phản ánh này trùng với một phản ánh khác."
+                              >
+                                <Lucide.ScanSearch size={12} aria-hidden="true" />
+                                Nghi trùng
+                              </span>
+                            ) : null}
                           </div>
 
                           <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--public-muted)]">
