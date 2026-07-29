@@ -48,6 +48,8 @@ export const TicketAssignment = () => {
         const normalizedCategories = Array.isArray(categoryResponse) && categoryResponse.length > 0
           ? categoryResponse
           : FALLBACK_CATEGORIES;
+        const slaConfig = toolsApi.getSlaConfig();
+        const slaHours = slaConfig[resTicket.priority]?.hours || 24;
         const normalizedOperators = Array.isArray(providerCandidates)
           ? providerCandidates.map((candidate) => ({
               coordinatorId: candidate.coordinatorId ?? candidate.operatorId ?? candidate.id,

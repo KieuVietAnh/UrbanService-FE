@@ -8,6 +8,7 @@ import { managementTypes, STATUS_BADGE_CLASSES, PRIORITY_BADGE_CLASSES } from '@
 import { signalrService } from '../../services/socket/signalrService';
 import { LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
+import DelightToast from '../../components/delight/DelightToast';
 import IncidentMap from '../../components/maps/IncidentMap';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
@@ -32,6 +33,26 @@ export const ManagementFeedbackDetailPage = () => {
   const [relatedFeedbacksLoading, setRelatedFeedbacksLoading] = useState(false);
   const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
 
+  const getUrgencyLevel = (currentFeedback) => {
+    const urgency = currentFeedback?.analysisResult?.urgencyLevel || currentFeedback?.urgencyLevel || currentFeedback?.urgency || '';
+    return `${urgency}`.trim();
+  };
+
+  const getSuggestedSeverity = (urgency = '') => {
+    const normalized = `${urgency || ''}`.trim().toLowerCase();
+    if (normalized === 'critical') return 'Critical';
+    if (normalized === 'high') return 'High';
+    return 'Medium';
+  };
+
+  const getFeedbackAreaId = (currentFeedback) => {
+    return currentFeedback?.areaId ?? currentFeedback?.area?.areaId ?? '';
+  };
+
+  const getFeedbackCategoryId = (currentFeedback) => {
+    return currentFeedback?.categoryId ?? currentFeedback?.category?.categoryId ?? '';
+  };
+
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -41,6 +62,22 @@ export const ManagementFeedbackDetailPage = () => {
   const [statusModal, setStatusModal] = useState(false);
   const [statusForm, setStatusForm] = useState({ status: '', note: '' });
   const [statusLoading, setStatusLoading] = useState(false);
+
+  // Area alert creation
+  const [showAreaAlertModal, setShowAreaAlertModal] = useState(false);
+  const [areaAlertForm, setAreaAlertForm] = useState({
+    title: '',
+    message: '',
+    severity: 'Medium',
+    startAt: '',
+    endAt: '',
+    radiusMeters: '',
+    areaId: '',
+    categoryId: '',
+  });
+  const [areaAlertErrors, setAreaAlertErrors] = useState({});
+  const [areaAlertLoading, setAreaAlertLoading] = useState(false);
+  const [areaAlertToast, setAreaAlertToast] = useState({ open: false, message: '', sub: '' });
 
   // Verify
   const [verifyLoading, setVerifyLoading] = useState(false);
@@ -86,6 +123,27 @@ export const ManagementFeedbackDetailPage = () => {
         }
 
         setFeedback(feedbackRes);
+        // Debug: log urgency-related fields so we can see why the button may be hidden
+        try {
+          const dbg = {
+            id: feedbackRes?.feedbackId || feedbackId,
+            urgencyFromHelper: getUrgencyLevel(feedbackRes),
+            urgencyLevel: feedbackRes?.urgencyLevel,
+            urgency: feedbackRes?.urgency,
+            priority: feedbackRes?.priority,
+          };
+          console.debug('DEBUG_FEEDBACK_URGENCY', dbg);
+          // also print a compact string for easy copy/paste
+          let analysisJson = '';
+          try {
+            analysisJson = JSON.stringify(feedbackRes?.analysisResult || {});
+          } catch {
+            analysisJson = '[unserializable]';
+          }
+          console.info(`DEBUG_FEEDBACK_URGENCY_SUMMARY id=${dbg.id} helper=${dbg.urgencyFromHelper} urgencyLevel=${dbg.urgencyLevel} urgency=${dbg.urgency} priority=${dbg.priority} analysisResult=${analysisJson}`);
+        } catch {
+          // ignore
+        }
         setEditForm({
           categoryId: feedbackRes?.categoryId ?? '',
           title: feedbackRes?.title || '',
@@ -97,6 +155,16 @@ export const ManagementFeedbackDetailPage = () => {
           dueDate: feedbackRes?.dueDate || '',
           status: feedbackRes?.status || '',
           statusNote: '',
+        });
+        setAreaAlertForm({
+          title: feedbackRes?.title || feedbackRes?.description || '',
+          message: feedbackRes?.description || feedbackRes?.title || '',
+          severity: getSuggestedSeverity(getUrgencyLevel(feedbackRes)),
+          startAt: '',
+          endAt: '',
+          radiusMeters: '',
+          areaId: String(getFeedbackAreaId(feedbackRes) || ''),
+          categoryId: String(getFeedbackCategoryId(feedbackRes) || ''),
         });
       } catch (err) {
         console.error('Failed to load feedback details', err);
@@ -144,8 +212,8 @@ export const ManagementFeedbackDetailPage = () => {
       setFeedback(prev => ({ ...prev, status: statusForm.status }));
       try {
         signalrService.notifyStatusChanged(feedbackId, feedback?.status, statusForm.status, user);
-      } catch (e) {
-        console.warn('SignalR notify failed', e);
+      } catch {
+        console.warn('SignalR notify failed');
       }
       setStatusModal(false);
       setStatusForm({ status: '', note: '' });
@@ -215,8 +283,8 @@ export const ManagementFeedbackDetailPage = () => {
       try {
         signalrService.notifyAssignmentUpdated(feedbackId, operatorId, selectedCandidate.coordinatorName || selectedCandidate.providerName, user);
         signalrService.notifyStatusChanged(feedbackId, feedback?.status, managementTypes.feedbackStatus.ASSIGNED, user);
-      } catch (e) {
-        console.warn('SignalR notify failed', e);
+      } catch {
+        console.warn('SignalR notify failed');
       }
       setAssignModal(false);
       setAssignForm({ operatorId: '', note: '' });
@@ -225,6 +293,51 @@ export const ManagementFeedbackDetailPage = () => {
       setError(err.message || 'Không thể phân công phản ánh. Vui lòng thử lại.');
     } finally {
       setAssignLoading(false);
+    }
+  };
+
+  const handleAreaAlertFieldChange = (field, value) => {
+    setAreaAlertForm((current) => ({ ...current, [field]: value }));
+    setAreaAlertErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const validateAreaAlertForm = () => {
+    const nextErrors = {};
+    if (!areaAlertForm.title?.trim()) nextErrors.title = 'Vui lòng nhập tiêu đề cảnh báo.';
+    if (!areaAlertForm.message?.trim()) nextErrors.message = 'Vui lòng nhập nội dung cảnh báo.';
+    if (!areaAlertForm.severity?.trim()) nextErrors.severity = 'Vui lòng chọn mức độ nghiêm trọng.';
+    if (!areaAlertForm.startAt?.trim()) nextErrors.startAt = 'Vui lòng chọn thời gian bắt đầu.';
+    return nextErrors;
+  };
+
+  const handleCreateAreaAlert = async () => {
+    const validationErrors = validateAreaAlertForm();
+    if (Object.keys(validationErrors).length > 0) {
+      setAreaAlertErrors(validationErrors);
+      return;
+    }
+
+    setAreaAlertLoading(true);
+    try {
+      const payload = {
+        title: areaAlertForm.title,
+        message: areaAlertForm.message,
+        severity: areaAlertForm.severity,
+        startAt: areaAlertForm.startAt,
+        endAt: areaAlertForm.endAt || undefined,
+        radiusMeters: areaAlertForm.radiusMeters ? Number(areaAlertForm.radiusMeters) : undefined,
+        areaId: areaAlertForm.areaId || undefined,
+        categoryId: areaAlertForm.categoryId || undefined,
+        source: 'Staff Feedback',
+      };
+      await managementFeedbackApi.createAreaAlertFromFeedback(feedbackId, payload);
+      setShowAreaAlertModal(false);
+      setAreaAlertToast({ open: true, message: 'Cảnh báo khu vực đã được tạo', sub: 'Cảnh báo mới đã gửi thành công từ phản ánh.' });
+    } catch (err) {
+      console.error('Failed to create area alert', err);
+      setAreaAlertErrors({ submit: err?.message || 'Không thể tạo cảnh báo khu vực. Vui lòng thử lại.' });
+    } finally {
+      setAreaAlertLoading(false);
     }
   };
 
@@ -276,6 +389,20 @@ export const ManagementFeedbackDetailPage = () => {
     };
     return labels[p] || p;
   };
+
+  const isHighOrCriticalUrgency = (currentFeedback) => {
+    const urgency = getUrgencyLevel(currentFeedback).toLowerCase();
+    // Match common variants like 'High', 'high (ai)', 'HIGH', 'HighUrgency', etc.
+    return urgency.includes('high') || urgency.includes('critical');
+  };
+
+  const forceShowAreaAlert = (() => {
+    try {
+      return typeof window !== 'undefined' && window.location.search.includes('forceAreaAlert');
+    } catch {
+      return false;
+    }
+  })();
 
   const formatDate = (date) => {
     if (!date) return '';
@@ -605,6 +732,7 @@ export const ManagementFeedbackDetailPage = () => {
                     Xác minh
                   </button>
                 )}
+                {/* area alert button moved to map section for better context */}
                 {canAssign && (
                   <div className="relative">
                     <button
@@ -658,7 +786,7 @@ export const ManagementFeedbackDetailPage = () => {
                                       return (c.providerName || '').toLowerCase().includes(q) || (c.coordinatorName || '').toLowerCase().includes(q);
                                     }).map(c => (
                                       <option key={c.coordinatorId} value={c.coordinatorId}>
-                                        {`${c.providerName || `Nhà thầu ${c.coordinatorId}`} — ${c.coordinatorName || 'Điều phối viên'}`}
+                                        {c.providerName ? `${c.providerName} — ${c.coordinatorName || 'Điều phối viên'}` : `Nhà thầu ${c.coordinatorId} — ${c.coordinatorName || 'Điều phối viên'}`}
                                       </option>
                                     ))}
                                   </select>
@@ -963,7 +1091,7 @@ export const ManagementFeedbackDetailPage = () => {
 
           {/* Map */}
           {feedback.latitude && feedback.longitude && (
-            <div className="card bg-white border border-slate-200 p-4 rounded-2xl space-y-4">
+            <div className="card relative overflow-visible bg-white border border-slate-200 p-4 rounded-2xl space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="text-xs font-bold text-slate-600">Bản đồ</div>
@@ -981,6 +1109,150 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
               <div className="h-[300px] rounded-3xl overflow-hidden">
                 <IncidentMap incidents={[feedback]} />
+              </div>
+              <div className="mt-4 flex items-center justify-end">
+                {(isHighOrCriticalUrgency(feedback) || forceShowAreaAlert) && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowAreaAlertModal(true)}
+                      disabled={areaAlertLoading}
+                      className="btn btn-sm bg-amber-600 hover:bg-amber-700 text-white border-none rounded-lg text-xs font-bold"
+                    >
+                      <Lucide.BellRing size={14} />
+                      Tạo Cảnh Báo Khu Vực
+                    </button>
+
+                    {showAreaAlertModal && (
+                      <div className="absolute right-0 bottom-full mb-3 z-50 w-[min(100vw-2rem,36rem)] rounded-[1.5rem] border border-slate-200 bg-white shadow-xl">
+                        <div className="p-4 sm:p-5">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h2 className="text-lg font-black text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
+                              <p className="mt-1 text-sm text-slate-500">Giữ lại thông tin từ phản ánh và điều chỉnh trước khi gửi.</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowAreaAlertModal(false)}
+                              className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+                              aria-label="Đóng"
+                            >
+                              <Lucide.X size={18} />
+                            </button>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                              <span>Tiêu đề</span>
+                              <input
+                                value={areaAlertForm.title}
+                                onChange={(e) => handleAreaAlertFieldChange('title', e.target.value)}
+                                className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
+                              />
+                              {areaAlertErrors.title && <span className="text-xs font-medium text-rose-600">{areaAlertErrors.title}</span>}
+                            </label>
+                            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                              <span>Mức độ</span>
+                              <select
+                                value={areaAlertForm.severity}
+                                onChange={(e) => handleAreaAlertFieldChange('severity', e.target.value)}
+                                className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
+                              >
+                                <option value="Critical">Critical</option>
+                                <option value="High">High</option>
+                                <option value="Medium">Medium</option>
+                                <option value="Low">Low</option>
+                              </select>
+                              {areaAlertErrors.severity && <span className="text-xs font-medium text-rose-600">{areaAlertErrors.severity}</span>}
+                            </label>
+                          </div>
+
+                          <label className="flex flex-col gap-2 mt-3 text-sm font-semibold text-slate-700">
+                            <span>Nội dung cảnh báo</span>
+                            <textarea
+                              value={areaAlertForm.message}
+                              onChange={(e) => handleAreaAlertFieldChange('message', e.target.value)}
+                              rows={4}
+                              className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
+                            />
+                            {areaAlertErrors.message && <span className="text-xs font-medium text-rose-600">{areaAlertErrors.message}</span>}
+                          </label>
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                              <span>Bán kính (m)</span>
+                              <input
+                                type="number"
+                                value={areaAlertForm.radiusMeters}
+                                onChange={(e) => handleAreaAlertFieldChange('radiusMeters', e.target.value)}
+                                className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                              <span>Danh mục</span>
+                              <select
+                                value={areaAlertForm.categoryId}
+                                onChange={(e) => handleAreaAlertFieldChange('categoryId', e.target.value)}
+                                className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
+                              >
+                                <option value="">Không chọn</option>
+                                {categories.map((cat) => (
+                                  <option key={cat.categoryId} value={cat.categoryId}>{getCategoryLabel(cat.categoryName || cat.name || cat.categoryType || cat.type)}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                              <span>Bắt đầu</span>
+                              <input
+                                type="datetime-local"
+                                value={areaAlertForm.startAt}
+                                onChange={(e) => handleAreaAlertFieldChange('startAt', e.target.value)}
+                                className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
+                              />
+                              {areaAlertErrors.startAt && <span className="text-xs font-medium text-rose-600">{areaAlertErrors.startAt}</span>}
+                            </label>
+                            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                              <span>Kết thúc</span>
+                              <input
+                                type="datetime-local"
+                                value={areaAlertForm.endAt}
+                                onChange={(e) => handleAreaAlertFieldChange('endAt', e.target.value)}
+                                className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
+                              />
+                            </label>
+                          </div>
+
+                          {areaAlertErrors.submit && (
+                            <div className="rounded-[1rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 mt-4">
+                              {areaAlertErrors.submit}
+                            </div>
+                          )}
+
+                          <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setShowAreaAlertModal(false)}
+                              className="btn btn-ghost rounded-[1rem] px-4 py-2.5 text-sm"
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCreateAreaAlert}
+                              disabled={areaAlertLoading}
+                              className="btn btn-primary rounded-[1rem] px-4 py-2.5 text-sm"
+                            >
+                              {areaAlertLoading ? <span className="loading loading-spinner loading-xs" /> : 'Tạo cảnh báo'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1300,6 +1572,31 @@ export const ManagementFeedbackDetailPage = () => {
             )}
           </div>
 
+          {showAreaAlertModal && (
+            <div className="absolute right-4 bottom-16 z-50 w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow pointer-events-auto">
+              <div className="p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
+                    <p className="mt-1 text-sm text-slate-500">Sửa tiêu đề, nội dung hoặc thời gian trước khi gửi.</p>
+                  </div>
+                  <button type="button" onClick={() => setShowAreaAlertModal(false)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Đóng">
+                    <Lucide.X size={18} />
+                  </button>
+                </div>
+
+                <div className="mt-3 space-y-3">
+                  <input value={areaAlertForm.title} onChange={(e) => handleAreaAlertFieldChange('title', e.target.value)} className="input w-full" />
+                  <textarea value={areaAlertForm.message} onChange={(e) => handleAreaAlertFieldChange('message', e.target.value)} className="textarea w-full" rows={3} />
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setShowAreaAlertModal(false)} className="btn btn-ghost">Hủy</button>
+                    <button onClick={handleCreateAreaAlert} className="btn btn-primary">Tạo cảnh báo</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Sidebar */}
@@ -1481,6 +1778,8 @@ export const ManagementFeedbackDetailPage = () => {
               />
             )}
           </div>
+
+          <DelightToast open={areaAlertToast.open} message={areaAlertToast.message} sub={areaAlertToast.sub} onClose={() => setAreaAlertToast({ open: false, message: '', sub: '' })} />
         </div>
       )}
     </div>
