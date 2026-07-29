@@ -181,6 +181,22 @@ export default function ManagementFeedbackListPage() {
     });
   };
 
+  const openProviderReport = async (feedbackId) => {
+    try {
+      const reports = await managementFeedbackApi.getProviderReports(feedbackId);
+      const report = Array.isArray(reports) ? reports[0] : (reports && typeof reports === 'object' ? reports : null);
+      const providerReportId = report?.providerReportId || report?.id || report?.providerReport?.providerReportId || report?.providerReportId;
+      if (providerReportId) {
+        navigate(`/staff/provider-reports/${providerReportId}`, { state: { feedbackId, providerReport: report } });
+      } else {
+        setError('Không tìm thấy báo cáo xử lý cho phản ánh này.');
+      }
+    } catch (err) {
+      console.error('Failed to open provider report', err);
+      setError('Không thể mở báo cáo xử lý. Vui lòng thử lại.');
+    }
+  };
+
   const handleResetFilters = () => {
     setSearch('');
     setStatus('');
@@ -305,9 +321,20 @@ export default function ManagementFeedbackListPage() {
                     </div>
                   </div>
                   <div className="text-sm text-slate-500">
-                    <div className="font-semibold text-slate-700">{getCategoryLabel(item.categoryName || item.category?.name || item.categoryType || item.type, '—')}</div>
-                    <div className="mt-1">{formatDate(item.createdAt)}</div>
-                  </div>
+                      <div className="font-semibold text-slate-700">{getCategoryLabel(item.categoryName || item.category?.name || item.categoryType || item.type, '—')}</div>
+                      <div className="mt-1">{formatDate(item.createdAt)}</div>
+                      { (item.status === managementTypes.feedbackStatus.ASSIGNED || item.status === managementTypes.feedbackStatus.IN_PROGRESS) && (
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openProviderReport(item.feedbackId || item.id); }}
+                            className="btn btn-xs btn-outline rounded-full"
+                          >
+                            Mở Báo Cáo Xử Lý
+                          </button>
+                        </div>
+                      )}
+                    </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
                   <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">

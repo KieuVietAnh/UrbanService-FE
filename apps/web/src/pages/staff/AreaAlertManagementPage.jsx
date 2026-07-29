@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as Lucide from 'lucide-react';
+import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
+import { toolsApi } from '@urbanmind/shared-api';
+import { LoadingSpinner } from '@urbanmind/shared-ui';
+import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
-import { getSeverityBadgeClasses, normalizeAreaAlertRecord, SEVERITY_OPTIONS, validateAreaAlertForm } from './areaAlertManagement.utils.mjs';
+import { ManagerPageHeader, ManagerSectionHeader, ManagerEmptyState } from '../../components/manager/ManagerPageElements';
+import { LocationPicker } from '../../components/maps/LocationPicker';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
-const initialFormState = {
-  area: '',
-  category: '',
-  hotspot: '',
+const DEFAULT_FORM = {
   title: '',
   message: '',
-  severity: 'High',
+  severity: 'Medium',
+  areaId: '',
+  categoryId: '',
   latitude: '',
   longitude: '',
   radiusMeters: '',
@@ -17,350 +22,414 @@ const initialFormState = {
   endAt: '',
 };
 
-const formatDateTime = (value) => {
-  if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '—';
-  }
+const normalizeLookupList = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
 };
 
-const buildPayload = (values) => ({
-  area: values.area,
-  category: values.category || undefined,
-  hotspot: values.hotspot || undefined,
-  title: values.title,
-  message: values.message,
-  severity: values.severity,
-  latitude: values.latitude ? Number(values.latitude) : undefined,
-  longitude: values.longitude ? Number(values.longitude) : undefined,
-  radiusMeters: values.radiusMeters ? Number(values.radiusMeters) : undefined,
-  startAt: values.startAt,
-  endAt: values.endAt || undefined,
-});
+const normalizeAlertsList = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
+};
 
-export const AreaAlertManagementPage = () => {
+const getAreaLabel = (area) => area?.areaName || area?.name || area?.displayName || 'Khu vực chưa xác định';
+
+export default function AreaAlertManagementPage() {
+  const [areas, setAreas] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loadingCreate, setLoadingCreate] = useState(false);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
   const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [formErrors, setFormErrors] = useState({});
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [formState, setFormState] = useState(initialFormState);
-  const [errors, setErrors] = useState({});
-  const [toastState, setToastState] = useState({ open: false, message: '', sub: '' });
+  const [toast, setToast] = useState({ open: false, message: '', sub: '' });
 
   useEffect(() => {
-    const loadAlerts = async () => {
+    const loadLookups = async () => {
+      setLoadingAlerts(true);
+      setError('');
       try {
-        setLoading(true);
-        const response = await fetch('/api/management/area-alerts', {
-          headers: { Accept: 'application/json' },
-        });
+        const [areasRes, categoriesRes, alertsRes] = await Promise.allSettled([
+          toolsApi.getAreas(),
+          toolsApi.getCategories(),
+          managementFeedbackApi.getAreaAlerts(),
+        ]);
 
-        if (!response.ok) {
-          throw new Error('Không thể tải dữ liệu cảnh báo');
-        }
-
-        const payload = await response.json();
-        const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : [];
-        setAlerts(items.map(normalizeAreaAlertRecord));
-      } catch (error) {
-        console.error('Failed to load area alerts', error);
-        setAlerts([]);
+        setAreas(normalizeLookupList(areasRes.status === 'fulfilled' ? areasRes.value : []));
+        setCategories(normalizeLookupList(categoriesRes.status === 'fulfilled' ? categoriesRes.value : []));
+        setAlerts(normalizeAlertsList(alertsRes.status === 'fulfilled' ? alertsRes.value : []));
+      } catch (err) {
+        console.error('Failed to load area alert lookups', err);
+        setError('Không thể tải dữ liệu khu vực và danh mục. Vui lòng thử lại.');
       } finally {
-        setLoading(false);
+        setLoadingAlerts(false);
       }
     };
 
-    loadAlerts();
+    loadLookups();
   }, []);
 
-  const canShowEmptyState = !loading && alerts.length === 0;
-
-  const summary = useMemo(() => {
-    const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
-    alerts.forEach((alert) => {
-      const severity = `${alert.severity || ''}`.trim();
-      if (counts[severity] !== undefined) {
-        counts[severity] += 1;
-      }
-    });
-
-    return counts;
-  }, [alerts]);
-
   const handleFieldChange = (field, value) => {
-    setFormState((current) => ({ ...current, [field]: value }));
-    setErrors((current) => ({ ...current, [field]: undefined }));
+    setForm((current) => ({ ...current, [field]: value }));
+    setFormErrors((current) => ({ ...current, [field]: undefined }));
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const validation = validateAreaAlertForm(formState);
-    if (!validation.isValid) {
-      setErrors(validation.errors);
+  const handleLocationSelect = (latitude, longitude) => {
+    setForm((current) => ({
+      ...current,
+      latitude: latitude != null ? String(latitude) : '',
+      longitude: longitude != null ? String(longitude) : '',
+    }));
+    setFormErrors((current) => ({ ...current, latitude: undefined, longitude: undefined }));
+  };
+
+  const validateForm = () => {
+    const nextErrors = {};
+
+    if (!form.title?.trim()) {
+      nextErrors.title = 'Vui lòng nhập tiêu đề cảnh báo.';
+    }
+    if (!form.message?.trim()) {
+      nextErrors.message = 'Vui lòng nhập nội dung cảnh báo.';
+    }
+    if (!form.severity?.trim()) {
+      nextErrors.severity = 'Vui lòng chọn mức độ nghiêm trọng.';
+    }
+    if (!form.startAt?.trim()) {
+      nextErrors.startAt = 'Vui lòng chọn thời gian bắt đầu.';
+    }
+    if ((form.latitude || form.longitude) && !(form.latitude && form.longitude)) {
+      nextErrors.latitude = 'Cần nhập cả kinh độ và vĩ độ nếu muốn định vị chính xác.';
+      nextErrors.longitude = 'Cần nhập cả kinh độ và vĩ độ nếu muốn định vị chính xác.';
+    }
+    if (form.radiusMeters && Number(form.radiusMeters) <= 0) {
+      nextErrors.radiusMeters = 'Bán kính phải lớn hơn 0.';
+    }
+
+    return nextErrors;
+  };
+
+  const handleCreateAlert = async () => {
+    const nextErrors = validateForm();
+    if (Object.keys(nextErrors).length > 0) {
+      setFormErrors(nextErrors);
       return;
     }
 
+    setLoadingCreate(true);
+    setError('');
+
+    const payload = {
+      title: form.title.trim(),
+      message: form.message.trim(),
+      severity: form.severity,
+      startAt: form.startAt,
+      endAt: form.endAt || undefined,
+      radiusMeters: form.radiusMeters ? Number(form.radiusMeters) : undefined,
+      areaId: form.areaId ? Number(form.areaId) : undefined,
+      categoryId: form.categoryId ? Number(form.categoryId) : undefined,
+      latitude: form.latitude ? Number(form.latitude) : undefined,
+      longitude: form.longitude ? Number(form.longitude) : undefined,
+    };
+
     try {
-      setSubmitting(true);
-      const response = await fetch('/api/management/area-alerts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(buildPayload(formState)),
-      });
-
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => ({}));
-        throw new Error(errorPayload?.message || 'Không thể tạo cảnh báo');
-      }
-
-      const created = await response.json().catch(() => ({}));
-      const normalized = normalizeAreaAlertRecord(created || { ...buildPayload(formState), id: `local-${Date.now()}` });
-      setAlerts((current) => [normalized, ...current]);
-      setFormState(initialFormState);
-      setErrors({});
+      await managementFeedbackApi.createAreaAlert(payload);
+      setToast({ open: true, message: 'Cảnh báo khu vực đã được tạo', sub: 'Yêu cầu tạo cảnh báo thủ công đã được gửi.' });
       setShowCreateModal(false);
-      setToastState({ open: true, message: 'Cảnh báo đã được tạo', sub: 'Cảnh báo mới đã được thêm vào danh sách và sẵn sàng theo dõi.' });
-    } catch (error) {
-      setToastState({ open: true, message: 'Không thể tạo cảnh báo', sub: error?.message || 'Vui lòng thử lại sau.' });
+      setForm(DEFAULT_FORM);
+      setLoadingAlerts(true);
+      try {
+        const alertsRes = await managementFeedbackApi.getAreaAlerts();
+        setAlerts(normalizeAlertsList(alertsRes));
+      } catch (reloadErr) {
+        console.warn('Failed to refresh alerts list after creation', reloadErr);
+      } finally {
+        setLoadingAlerts(false);
+      }
+    } catch (err) {
+      console.error('Failed to create area alert', err);
+      setError(err?.message || 'Không thể tạo cảnh báo khu vực. Vui lòng thử lại.');
     } finally {
-      setSubmitting(false);
+      setLoadingCreate(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 text-slate-800">
-      <section className="overflow-hidden rounded-[2rem] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.18),_transparent_45%),linear-gradient(135deg,_#0f172a_0%,_#1e293b_45%,_#334155_100%)] p-6 text-white shadow-[0_30px_90px_-35px_rgba(15,23,42,0.8)] sm:p-7">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl space-y-4">
-            <div className="inline-flex max-w-max items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.24em] text-slate-100 backdrop-blur-sm">
-              <Lucide.AlertTriangle size={14} />
-              Quản lý cảnh báo khu vực
-            </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-[-0.025em] text-white sm:text-3xl">Theo dõi và phát hành cảnh báo cho khu vực đang quan tâm</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-                Quản lý danh sách cảnh báo theo mức độ ưu tiên và cập nhật thông tin cho từng khu vực một cách trực quan.
-              </p>
-            </div>
-          </div>
+    <div className="space-y-6 p-4">
+      <ManagerPageHeader
+        title="Quản Lý Cảnh Báo Khu Vực"
+        description="Tạo cảnh báo thủ công và quản lý thông tin cảnh báo theo khu vực."
+        icon={Lucide.BellRing}
+        actions={(
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-[1.1rem] bg-white px-4 py-2.5 text-sm font-black text-slate-900 shadow-[0_10px_30px_-12px_rgba(255,255,255,0.7)] transition hover:bg-slate-100"
+            className="btn btn-primary rounded-[1rem] px-5 py-3 text-sm font-semibold"
           >
-            <Lucide.PlusCircle size={16} />
-            Tạo cảnh báo
+            <Lucide.PlusCircle size={18} />
+            <span>Tạo cảnh báo thủ công</span>
           </button>
+        )}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Hướng dẫn</div>
+          <div className="mt-4 text-sm leading-7 text-slate-600">Tạo cảnh báo khu vực khi cần phát hành thông tin xử lý khẩn cấp hoặc cảnh báo sự cố mà không cần liên kết trực tiếp với phản ánh có sẵn.</div>
         </div>
-      </section>
-
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {SEVERITY_OPTIONS.map((severity) => (
-          <div key={severity} className="rounded-[1.35rem] border border-slate-200/80 bg-gradient-to-br from-white to-slate-50 p-4 shadow-[0_16px_45px_-30px_rgba(15,23,42,0.32)]">
-            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">{severity}</div>
-            <div className="mt-2 text-2xl font-black tracking-[-0.02em] text-slate-900">{summary[severity] || 0}</div>
-            <div className="mt-1 text-sm text-slate-500">Cảnh báo {severity.toLowerCase()}</div>
-          </div>
-        ))}
-      </section>
-
-      <section className="rounded-[1.75rem] border border-slate-200/80 bg-white p-4 shadow-[0_20px_60px_-35px_rgba(15,23,42,0.32)] sm:p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
-          <div>
-            <h2 className="text-lg font-black tracking-[-0.02em] text-slate-900">Danh sách cảnh báo</h2>
-            <p className="mt-1 text-sm text-slate-500">Thông tin được sắp xếp theo mức ưu tiên để dễ theo dõi.</p>
-          </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-600">
-            {alerts.length} mục
-          </div>
+        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Đầu vào bắt buộc</div>
+          <ul className="mt-4 space-y-2 text-sm text-slate-600">
+            <li>Tiêu đề</li>
+            <li>Nội dung cảnh báo</li>
+            <li>Mức độ nghiêm trọng</li>
+            <li>Thời gian bắt đầu</li>
+          </ul>
         </div>
+        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Lưu ý</div>
+          <p className="mt-4 text-sm leading-7 text-slate-600">Nếu chọn kinh độ/vĩ độ thì mục này sẽ ghi đè vị trí hiển thị cảnh báo. Khu vực và danh mục giúp phân loại cảnh báo.</p>
+        </div>
+      </div>
 
-        {loading ? (
-          <div className="space-y-3 py-2">
-            {[1, 2, 3].map((value) => (
-              <div key={value} className="animate-pulse rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="h-7 w-24 rounded-full bg-slate-200" />
-                  <div className="h-7 w-24 rounded-full bg-slate-200" />
-                  <div className="h-7 w-24 rounded-full bg-slate-200" />
-                </div>
-                <div className="mt-4 h-4 w-2/3 rounded bg-slate-200" />
-                <div className="mt-2 h-4 w-1/2 rounded bg-slate-200" />
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {[1, 2, 3, 4].map((cell) => (
-                    <div key={cell} className="h-16 rounded-[1.1rem] border border-slate-200 bg-white" />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : canShowEmptyState ? (
-          <div className="rounded-[1.6rem] border border-dashed border-slate-300 bg-slate-50/70 px-6 py-12 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
-              <Lucide.BellOff className="text-slate-500" size={20} />
+      <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <ManagerSectionHeader
+          title="Danh sách cảnh báo thủ công"
+          description="Danh sách cảnh báo khu vực sẽ hiển thị khi backend cung cấp dữ liệu cảnh báo."
+        />
+
+        <div className="mt-6">
+          {loadingAlerts ? (
+            <div className="flex justify-center py-12">
+              <LoadingSpinner />
             </div>
-            <h3 className="mt-4 text-lg font-black tracking-[-0.02em] text-slate-900">Chưa có cảnh báo nào</h3>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-slate-500">
-              Tạo cảnh báo đầu tiên để truyền tín hiệu cho khu vực liên quan và giúp đội ngũ phản ứng nhanh hơn.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {alerts.map((alert) => (
-              <article key={alert.id} className="rounded-[1.4rem] border border-slate-200/80 bg-gradient-to-br from-slate-50/80 to-white p-4 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.35)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_42px_-24px_rgba(15,23,42,0.45)]">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0 flex-1 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`inline-flex items-center rounded-full border border-transparent px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] shadow-sm ${getSeverityBadgeClasses(alert.severity)}`}>
-                        {alert.severity || 'Medium'}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                        {alert.alertType || 'Area Alert'}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-                        {alert.status || 'Active'}
-                      </span>
-                    </div>
+          ) : error ? (
+            <ErrorAlert title="Lỗi tải dữ liệu" message={error} onClose={() => setError('')} />
+          ) : alerts.length === 0 ? (
+            <ManagerEmptyState
+              title="Chưa có cảnh báo thủ công"
+              description="Nhấn nút Tạo cảnh báo thủ công để thêm cảnh báo mới."
+              action={(
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="btn btn-primary rounded-[1rem]"
+                >
+                  Tạo cảnh báo ngay
+                </button>
+              )}
+            />
+          ) : (
+            <div className="space-y-4">
+              {alerts.map((alert) => (
+                <div key={alert.areaAlertId || alert.id || alert.alertId} className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <h3 className="text-base font-black tracking-[-0.02em] text-slate-900">{alert.title}</h3>
-                      <p className="mt-1 text-sm leading-7 text-slate-600">{alert.message}</p>
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{alert.severity || 'Không rõ mức'} </div>
+                      <h3 className="mt-2 text-lg font-black text-slate-900">{alert.title || 'Không có tiêu đề'}</h3>
+                      <p className="mt-2 text-sm text-slate-600">{alert.message || 'Không có nội dung cảnh báo'}</p>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-[1.1rem] border border-slate-200 bg-white p-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Khu vực</div>
-                        <div className="mt-1 font-semibold text-slate-700">{alert.areaName || alert.area || '—'}</div>
-                      </div>
-                      <div className="rounded-[1.1rem] border border-slate-200 bg-white p-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Danh mục</div>
-                        <div className="mt-1 font-semibold text-slate-700">{alert.categoryName || alert.category || '—'}</div>
-                      </div>
-                      <div className="rounded-[1.1rem] border border-slate-200 bg-white p-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Bắt đầu</div>
-                        <div className="mt-1 font-semibold text-slate-700">{formatDateTime(alert.startAt)}</div>
-                      </div>
-                      <div className="rounded-[1.1rem] border border-slate-200 bg-white p-3">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Kết thúc</div>
-                        <div className="mt-1 font-semibold text-slate-700">{formatDateTime(alert.endAt)}</div>
-                      </div>
+                    <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      {alert.areaName || getAreaLabel(alert.area) || 'Khu vực chưa xác định'}
                     </div>
                   </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm text-slate-500">
+                    <div>Danh mục: {getCategoryLabel(alert.categoryName || alert.category?.name || alert.categoryType || alert.type) || 'Không rõ'}</div>
+                    <div>Thời gian: {alert.startAt ? new Date(alert.startAt).toLocaleString('vi-VN') : 'Chưa có'}</div>
+                    <div>Bán kính: {alert.radiusMeters ? `${alert.radiusMeters} m` : 'Không xác định'}</div>
+                  </div>
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       {showCreateModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-3xl rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
-              <div>
-                <h2 className="text-lg font-black text-slate-900">Tạo cảnh báo khu vực</h2>
-                <p className="mt-1 text-sm text-slate-500">Điền thông tin dưới đây để kích hoạt cảnh báo mới cho khu vực.</p>
-              </div>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Đóng cửa sổ">
-                <Lucide.X size={18} />
-              </button>
+        <div className="fixed left-1/2 top-16 z-50 w-[min(95vw,820px)] max-h-[calc(100vh-112px)] -translate-x-1/2 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-black text-slate-900">Tạo cảnh báo thủ công</h2>
+              <p className="mt-2 text-sm text-slate-500">Điền thông tin chi tiết để gửi cảnh báo mới qua API quản lý cảnh báo khu vực.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(false)}
+              className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+              aria-label="Đóng"
+            >
+              <Lucide.X size={18} />
+            </button>
+          </div>
+          <div className="max-h-[calc(100vh-192px)] overflow-y-auto p-6 space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                <span>Tiêu đề</span>
+                <input
+                  type="text"
+                  value={form.title}
+                  onChange={(e) => handleFieldChange('title', e.target.value)}
+                  className="input input-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                />
+                {formErrors.title && <span className="text-xs font-medium text-rose-600">{formErrors.title}</span>}
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                <span>Mức độ</span>
+                <select
+                  value={form.severity}
+                  onChange={(e) => handleFieldChange('severity', e.target.value)}
+                  className="select select-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                >
+                  <option value="Critical">Critical</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+                {formErrors.severity && <span className="text-xs font-medium text-rose-600">{formErrors.severity}</span>}
+              </label>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5 sm:px-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Khu vực <span className="text-rose-500">*</span></span>
-                  <input value={formState.area} onChange={(event) => handleFieldChange('area', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" placeholder="Ví dụ: Khu vực A" />
-                  {errors.area && <span className="text-xs font-medium text-rose-600">{errors.area}</span>}
-                </label>
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Danh mục</span>
-                  <input value={formState.category} onChange={(event) => handleFieldChange('category', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" placeholder="Ví dụ: Môi trường" />
-                </label>
-              </div>
+            <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+              <span>Nội dung cảnh báo</span>
+              <textarea
+                rows={4}
+                value={form.message}
+                onChange={(e) => handleFieldChange('message', e.target.value)}
+                className="textarea textarea-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+              />
+              {formErrors.message && <span className="text-xs font-medium text-rose-600">{formErrors.message}</span>}
+            </label>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Hotspot</span>
-                  <input value={formState.hotspot} onChange={(event) => handleFieldChange('hotspot', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" placeholder="Ví dụ: Điểm đèn đỏ" />
-                </label>
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Mức độ nghiêm trọng <span className="text-rose-500">*</span></span>
-                  <select value={formState.severity} onChange={(event) => handleFieldChange('severity', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400">
-                    {SEVERITY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                  {errors.severity && <span className="text-xs font-medium text-rose-600">{errors.severity}</span>}
-                </label>
-              </div>
-
-              <div className="rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Thông tin cảnh báo</div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700 md:col-span-2">
-                    <span>Tiêu đề <span className="text-rose-500">*</span></span>
-                    <input value={formState.title} onChange={(event) => handleFieldChange('title', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-slate-400" placeholder="Nhập tiêu đề cảnh báo" />
-                    {errors.title && <span className="text-xs font-medium text-rose-600">{errors.title}</span>}
-                  </label>
-                  <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700 md:col-span-2">
-                    <span>Nội dung <span className="text-rose-500">*</span></span>
-                    <textarea value={formState.message} onChange={(event) => handleFieldChange('message', event.target.value)} rows={4} className="rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-slate-400" placeholder="Mô tả cảnh báo chi tiết" />
-                    {errors.message && <span className="text-xs font-medium text-rose-600">{errors.message}</span>}
-                  </label>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Vĩ độ</span>
-                  <input type="number" value={formState.latitude} onChange={(event) => handleFieldChange('latitude', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" placeholder="10.762" />
-                </label>
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Kinh độ</span>
-                  <input type="number" value={formState.longitude} onChange={(event) => handleFieldChange('longitude', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" placeholder="106.660" />
-                </label>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Bán kính (m)</span>
-                  <input type="number" value={formState.radiusMeters} onChange={(event) => handleFieldChange('radiusMeters', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" placeholder="250" />
-                </label>
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Thời gian bắt đầu <span className="text-rose-500">*</span></span>
-                  <input type="datetime-local" value={formState.startAt} onChange={(event) => handleFieldChange('startAt', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" />
-                  {errors.startAt && <span className="text-xs font-medium text-rose-600">{errors.startAt}</span>}
-                </label>
-              </div>
-
+            <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                <span>Thời gian kết thúc</span>
-                <input type="datetime-local" value={formState.endAt} onChange={(event) => handleFieldChange('endAt', event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400" />
+                <span>Khu vực</span>
+                <select
+                  value={form.areaId}
+                  onChange={(e) => handleFieldChange('areaId', e.target.value)}
+                  className="select select-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                >
+                  <option value="">Không chọn</option>
+                  {areas.map((area) => (
+                    <option key={area.areaId ?? area.id} value={area.areaId ?? area.id}>
+                      {getAreaLabel(area)}
+                    </option>
+                  ))}
+                </select>
               </label>
+              <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                <span>Danh mục</span>
+                <select
+                  value={form.categoryId}
+                  onChange={(e) => handleFieldChange('categoryId', e.target.value)}
+                  className="select select-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                >
+                  <option value="">Không chọn</option>
+                  {categories.map((category) => (
+                    <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>
+                      {getCategoryLabel(category.categoryName || category.name || category.categoryType || category.type)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-              <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="rounded-[1rem] border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">Hủy</button>
-                <button type="submit" disabled={submitting} className="inline-flex items-center justify-center gap-2 rounded-[1rem] bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70">
-                  {submitting ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={16} />}
-                  {submitting ? 'Đang tạo...' : 'Tạo cảnh báo'}
-                </button>
+            <div className="space-y-4">
+              <div className="text-sm font-semibold text-slate-700">Chọn vị trí</div>
+              <div className="text-sm text-slate-500">Nhấp vào bản đồ để định vị cảnh báo khu vực. Nếu không chọn vị trí, cảnh báo sẽ chỉ dùng khu vực hoặc danh mục.</div>
+              <LocationPicker
+                latitude={form.latitude ? Number(form.latitude) : null}
+                longitude={form.longitude ? Number(form.longitude) : null}
+                onSelectLocation={handleLocationSelect}
+                className="rounded-[1.5rem] border border-slate-200"
+              />
+              <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                {form.latitude && form.longitude ? (
+                  <p>Vị trí đã chọn: {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}</p>
+                ) : (
+                  <p className="text-slate-500">Chưa chọn vị trí. Nhấp vào bản đồ để thiết lập vĩ độ/kinh độ.</p>
+                )}
               </div>
-            </form>
+              {(formErrors.latitude || formErrors.longitude) && (
+                <div className="text-xs font-medium text-rose-600">
+                  {formErrors.latitude || formErrors.longitude}
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                <span>Bán kính (m)</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.radiusMeters}
+                  onChange={(e) => handleFieldChange('radiusMeters', e.target.value)}
+                  className="input input-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                />
+                {formErrors.radiusMeters && <span className="text-xs font-medium text-rose-600">{formErrors.radiusMeters}</span>}
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                  <span>Bắt đầu</span>
+                  <input
+                    type="datetime-local"
+                    value={form.startAt}
+                    onChange={(e) => handleFieldChange('startAt', e.target.value)}
+                    className="input input-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                  />
+                  {formErrors.startAt && <span className="text-xs font-medium text-rose-600">{formErrors.startAt}</span>}
+                </label>
+                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                  <span>Kết thúc</span>
+                  <input
+                    type="datetime-local"
+                    value={form.endAt}
+                    onChange={(e) => handleFieldChange('endAt', e.target.value)}
+                    className="input input-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {error && (
+              <div className="rounded-[1rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {error}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="btn btn-ghost rounded-[1rem] px-5 py-3"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateAlert}
+                disabled={loadingCreate}
+                className="btn btn-primary rounded-[1rem] px-5 py-3"
+              >
+                {loadingCreate ? <span className="loading loading-spinner loading-xs" /> : 'Tạo cảnh báo'}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      <DelightToast open={toastState.open} message={toastState.message} sub={toastState.sub} onClose={() => setToastState({ open: false, message: '', sub: '' })} />
+      <DelightToast
+        open={toast.open}
+        message={toast.message}
+        sub={toast.sub}
+        onClose={() => setToast({ open: false, message: '', sub: '' })}
+      />
     </div>
   );
-};
-
-export default AreaAlertManagementPage;
+}

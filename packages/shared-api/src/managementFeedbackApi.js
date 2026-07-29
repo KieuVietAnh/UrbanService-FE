@@ -357,6 +357,16 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  async createAreaAlert(payload = {}) {
+    const response = await axiosClient.post('/api/management/area-alerts', payload);
+    return response;
+  },
+
+  async getAreaAlerts(params = {}) {
+    const response = await axiosClient.get('/api/management/area-alerts', { params });
+    return response;
+  },
+
   async getProviderReports(feedbackId) {
     const candidates = [
       `/api/management/feedbacks/${feedbackId}/provider-reports`,
@@ -553,6 +563,34 @@ export const managementFeedbackApi = {
       normalizedPayload
     );
     return response;
+  },
+
+  async createAreaAlertFromFeedback(feedbackId, payload = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) {
+      throw new Error('Thiếu feedbackId để tạo cảnh báo.');
+    }
+
+    const endpoints = [
+      `/api/management/feedbacks/${normalizedFeedbackId}/area-alert`,
+      '/api/management/area-alerts',
+    ];
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        return await axiosClient.post(endpoint, payload);
+      } catch (error) {
+        const status = error?.response?.status;
+        if (endpoint === endpoints[0] && (status === 404 || status === 405)) {
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw lastError || new Error('Không thể tạo cảnh báo.');
   },
 
   async getCompletionDocuments(feedbackId) {
