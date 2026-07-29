@@ -98,19 +98,17 @@ export const CitizenAiCopilot = () => {
   const aiDragStateRef = useRef(null);
   const suppressAiClickRef = useRef(false);
 
-  useEffect(() => {
-    const handleResize = () => {
-      setViewportHeight(window.innerHeight);
-      setAiDragTop(null);
-    };
+useEffect(() => {
+  const handleResize = () => {
+    setViewportHeight(window.innerHeight);
+    setAiDragTop(null);
+  };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
 
-  if (!isAuthenticated || !isCitizen) return null;
-
-  const getAiDockTop = (dock) => {
+const getAiDockTop = (dock) => {
     const maxTop = Math.max(
       AI_MIN_TOP,
       viewportHeight - AI_BUTTON_SIZE - AI_CITIZEN_BOTTOM_GAP
@@ -202,21 +200,27 @@ export const CitizenAiCopilot = () => {
   };
 
   useEffect(() => {
-    if (chatOpen) loadConversations();
-  }, [chatOpen]);
+  if (chatOpen) {
+    loadConversations();
+  }
+}, [chatOpen]);
 
-  const selectConversation = async (conversationId) => {
+if (!isAuthenticated || !isCitizen) {
+  return null;
+}
+
+const selectConversation = async (conversationId) => {
     setActiveConversationId(conversationId);
     setMessagesLoading(true);
     try {
       const messages = await toolsApi.getAiConversationMessages(conversationId);
       setChatMessages(messages.map(normalizeAiMessage).filter((message) => message.text));
-    } catch (error) {
-      setChatMessages((current) => [
-        ...current,
-        { sender: 'ai', text: 'Không thể tải tin nhắn của hội thoại này.' },
-      ]);
-    } finally {
+    } catch {
+  setChatMessages((current) => [
+    ...current,
+    { sender: 'ai', text: 'Không thể tải tin nhắn của hội thoại này.' },
+  ]);
+} finally {
       setMessagesLoading(false);
     }
   };
