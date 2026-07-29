@@ -39,9 +39,7 @@ const CoordinatorDetailPage = lazy(() => import('../pages/staff/CoordinatorDetai
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
 const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
-const AreaAlertManagementPage = lazy(() => import('../pages/staff/AreaAlertManagementPage').then((m) => ({ default: m.AreaAlertManagementPage })));
-const CriticalFeedbackQueuePage = lazy(() => import('../pages/staff/CriticalFeedbackQueuePage').then((m) => ({ default: m.CriticalFeedbackQueuePage })));
-const CriticalFeedbackDetailPage = lazy(() => import('../pages/staff/CriticalFeedbackDetailPage').then((m) => ({ default: m.CriticalFeedbackDetailPage })));
+const AreaAlertManagementPage = lazy(() => import('../pages/staff/AreaAlertManagementPage').then((m) => ({ default: m.default })));
 
 const ProviderCandidateCheckerPage = lazy(() => import('../pages/staff/ProviderCandidateCheckerPage').then((m) => ({ default: m.default })));
 
@@ -344,15 +342,6 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/staff/provider-reports/:providerReportId" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <ProviderReportWorkspacePage />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
       <Route path="/staff/area-alerts" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
@@ -362,20 +351,11 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/staff/critical-feedbacks" element={
+      <Route path="/staff/provider-reports/:providerReportId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
-              <CriticalFeedbackQueuePage />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
-      <Route path="/staff/critical-feedbacks/:feedbackId" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <CriticalFeedbackDetailPage />
+              <ProviderReportWorkspacePage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

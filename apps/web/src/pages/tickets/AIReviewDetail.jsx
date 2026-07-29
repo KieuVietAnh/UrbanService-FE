@@ -1,5 +1,5 @@
 // src/pages/tickets/AIReviewDetail.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
@@ -8,6 +8,17 @@ import { managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
+
+const getUrgencyBadgeClass = (urgency = '') => {
+  const normalized = `${urgency || ''}`.trim().toLowerCase();
+  if (normalized === 'critical') {
+    return 'border-rose-200 bg-rose-50 text-rose-700';
+  }
+  if (normalized === 'high') {
+    return 'border-amber-200 bg-amber-50 text-amber-700';
+  }
+  return 'border-slate-200 bg-slate-100 text-slate-500';
+};
 
 const FALLBACK_CATEGORIES = [
   { categoryId: 1, categoryName: 'Vệ sinh môi trường' },
@@ -24,6 +35,8 @@ export const AIReviewDetail = () => {
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [urgencyFilter, setUrgencyFilter] = useState('');
+  const [showUrgencyDropdown, setShowUrgencyDropdown] = useState(false);
   
   // Edit variables
   const [editCategoryId, setEditCategoryId] = useState('');
@@ -67,6 +80,42 @@ export const AIReviewDetail = () => {
     loadQueue();
     loadCategories();
   }, []);
+
+  const URGENCY_OPTIONS = ['High', 'Critical'];
+
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (!showUrgencyDropdown) return;
+      try {
+        const target = event.target;
+        if (!target.closest('.urgency-dropdown') && !target.closest('.urgency-filter-button')) {
+          setShowUrgencyDropdown(false);
+        }
+      } catch {
+        setShowUrgencyDropdown(false);
+      }
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, [showUrgencyDropdown]);
+
+  const displayedTickets = useMemo(() => {
+    return tickets.filter((t) => {
+      if (!urgencyFilter) return true;
+      const urgency = `${t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency || ''}`.trim();
+      return urgency === urgencyFilter;
+    });
+  }, [tickets, urgencyFilter]);
+
+  useEffect(() => {
+    if (!displayedTickets || displayedTickets.length === 0) {
+      setSelectedTicket(null);
+      return;
+    }
+    // keep selection in sync: if current selectedTicket isn't in displayed list, pick first
+    const isSelectedVisible = selectedTicket && displayedTickets.some((d) => d.feedbackId === selectedTicket.feedbackId);
+    if (!isSelectedVisible) setSelectedTicket(displayedTickets[0]);
+  }, [displayedTickets, selectedTicket]);
 
   const handleApprove = async () => {
     if (!selectedTicket) return;
@@ -113,23 +162,64 @@ export const AIReviewDetail = () => {
           <aside className="lg:sticky lg:top-28 self-start">
             <div className="card bg-base-100 border border-base-200 p-4 rounded-[28px] shadow-sm">
               <div className="border-b border-base-200 pb-4 mb-4">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400">Danh sách phản ánh mới ({tickets.length})</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400">Danh sách phản ánh mới ({displayedTickets.length})</h4>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowUrgencyDropdown((v) => !v)}
+                      className="urgency-filter-button btn btn-sm btn-outline border-slate-300 rounded-xl text-xs font-bold text-slate-600 h-9 min-h-0 flex gap-1.5 items-center"
+                    >
+                      <Lucide.SlidersHorizontal size={14} />
+                      Bộ lọc
+                    </button>
+                  </div>
+                </div>
+                {showUrgencyDropdown ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 mt-3 urgency-dropdown">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Tùy chọn lọc</span>
+                      <button
+                        type="button"
+                        onClick={() => { setUrgencyFilter(''); setShowUrgencyDropdown(false); }}
+                        className={`btn btn-xs rounded-full border-slate-300 ${urgencyFilter === '' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
+                      >
+                        Tất cả
+                      </button>
+                      {URGENCY_OPTIONS.map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => { setUrgencyFilter(u); setShowUrgencyDropdown(false); }}
+                          className={`btn btn-xs rounded-full border-slate-300 ${urgencyFilter === u ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
+                        >
+                          {u}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <div className="space-y-3 max-h-[calc(100vh-18rem)] overflow-y-auto pr-1">
-                {tickets.map((t) => (
+                {displayedTickets.map((t) => (
                   <button
                     key={t.feedbackId}
                     type="button"
                     onClick={() => handleSelectTicket(t)}
-                    className={`w-full text-left p-4 rounded-3xl border transition duration-200 flex flex-col gap-2 ${
+                    className={`w-full text-left p-4 rounded-3xl border transition duration-200 flex flex-col gap-3 ${
                       selectedTicket?.feedbackId === t.feedbackId
                         ? 'border-primary bg-primary/10 shadow-sm text-primary'
-                        : 'border-base-200 bg-white hover:border-base-300 hover:shadow-sm'
+                        : `border-base-200 ${getUrgencyBadgeClass(t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency) === 'border-amber-200 bg-amber-50 text-amber-700' || getUrgencyBadgeClass(t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency) === 'border-rose-200 bg-rose-50 text-rose-700' ? 'bg-amber-50/20 hover:border-amber-300' : 'bg-white hover:border-base-300 hover:shadow-sm'}`
                     }`}
                   >
                     <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500">
                       <span className="truncate">{t.feedbackId}</span>
                       <span>{new Date(t.createdAt).toLocaleDateString('vi-VN')}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${getUrgencyBadgeClass(t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency)}`}>
+                        {t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency || 'Unknown'}
+                      </span>
                     </div>
                     <h5 className="font-bold text-sm text-base-content line-clamp-2">{t.title}</h5>
                     <span className="text-xs font-semibold text-gray-500 line-clamp-1">{t.locationText}</span>
@@ -163,8 +253,11 @@ export const AIReviewDetail = () => {
                         <p className="text-2xl font-black">{Math.round((selectedTicket.confidenceScore || 0) * 100)}%</p>
                       </div>
                     </div>
+                  </div>                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${getUrgencyBadgeClass(selectedTicket.urgencyLevel || selectedTicket.analysisResult?.urgencyLevel || selectedTicket.urgency)}`}>
+                      {selectedTicket.urgencyLevel || selectedTicket.analysisResult?.urgencyLevel || selectedTicket.urgency || 'Unknown'}
+                    </span>
                   </div>
-
                   <div className="mt-6 grid gap-6">
                     <div className="rounded-[28px] border border-base-200 bg-base-200/70 p-6">
                       <p className="text-sm uppercase tracking-[0.18em] text-gray-500">Tóm tắt sự cố</p>
