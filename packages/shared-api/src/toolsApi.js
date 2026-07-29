@@ -64,7 +64,36 @@ export const toolsApi = {
   async getUsers() { const db = await getMockDb(); return db?.getUsers?.() || []; },
   async aiClassify(title, description) { const db = await getMockDb(); return db?.aiClassify?.(title, description) || { summary: '', confidence: 0 }; },
   async checkDuplicates(categoryId, lat, lng) { const db = await getMockDb(); return db?.checkDuplicates?.(categoryId, lat, lng) || []; },
-  async getAiChatReply(message) { const db = await getMockDb(); return db?.getAiChatReply?.(message) || ''; },
+  async getAiConversations() {
+    const response = await axiosClient.get('/api/ai/conversations/me');
+    return normalizeCollection(response);
+  },
+  async getAiConversationMessages(conversationId) {
+    const response = await axiosClient.get(`/api/ai/conversations/${conversationId}/messages`);
+    return normalizeCollection(response);
+  },
+  async getAiChatReply(messageOrPayload) {
+    const payload = typeof messageOrPayload === 'string'
+      ? { message: messageOrPayload }
+      : messageOrPayload;
+
+    try {
+      const response = await axiosClient.post('/api/ai/chat', payload);
+      return response?.data ?? response;
+    } catch (error) {
+      console.warn('toolsApi.getAiChatReply failed, falling back to mock reply', error);
+      const db = await getMockDb();
+      const fallbackMessage = typeof payload?.message === 'string' ? payload.message : '';
+      return {
+        message: db?.getAiChatReply?.(fallbackMessage) || 'Mình đã ghi nhận nội dung. Nếu bạn muốn tạo phản ánh, hãy bổ sung vị trí và ảnh minh chứng rồi bấm “Tạo bản nháp phản ánh”.',
+        createdAt: new Date().toISOString(),
+      };
+    }
+  },
+  async createAiFeedbackDraft(payload) {
+    const response = await axiosClient.post('/api/ai/feedback-draft', payload);
+    return response?.data ?? response;
+  },
   async addAudit(userId, action, entityName, entityId, oldValues, newValues) { const db = await getMockDb(); return db?.addAudit?.(userId, action, entityName, entityId, oldValues, newValues); },
   async updatePosts(updated) { const db = await getMockDb(); return db?.updateTickets?.(updated); },
   async updateIntegrations(updated) { const db = await getMockDb(); return db?.updateIntegrations?.(updated); },

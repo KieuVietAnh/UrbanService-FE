@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -91,6 +91,20 @@ const getAreaName = (area) => (
   area?.areaName ?? area?.name ?? area?.displayName ?? 'Chưa xác định khu vực'
 );
 
+const normalizeAiDraftPayload = (payload) => payload?.data ?? payload?.draft ?? payload ?? null;
+
+const findCategoryIdByAiSuggestion = (categories, suggestedCategory) => {
+  if (!suggestedCategory) return '';
+  const normalizedSuggestion = String(suggestedCategory).trim().toLowerCase();
+  const matchedCategory = categories.find((category) => {
+    const categoryIdValue = String(getCategoryId(category) ?? '').toLowerCase();
+    const categoryNameValue = String(getCategoryName(category) ?? '').toLowerCase();
+    const categoryLabelValue = String(getCategoryLabel(category) ?? '').toLowerCase();
+    return [categoryIdValue, categoryNameValue, categoryLabelValue].includes(normalizedSuggestion);
+  });
+  return matchedCategory ? String(getCategoryId(matchedCategory)) : '';
+};
+
 const getAreaBoundaryGeoJson = (area) => (
   area?.BoundaryGeoJson ??
   area?.boundaryGeoJson ??
@@ -141,6 +155,7 @@ const isVideo = (attachment) => (
 export const CreateTicketPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const routeLocation = useLocation();
   const draftStorageKey = `${DRAFT_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
 
   const [step, setStep] = useState(1);
@@ -167,6 +182,9 @@ export const CreateTicketPage = () => {
   const [fieldErrors, setFieldErrors] = useState({});
   const [pendingFocusField, setPendingFocusField] = useState(null);
   const [draftNotice, setDraftNotice] = useState('');
+  const [aiDraftNotice, setAiDraftNotice] = useState('');
+  const [aiMissingFields, setAiMissingFields] = useState([]);
+  const [aiImageUrls, setAiImageUrls] = useState([]);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [pendingExit, setPendingExit] = useState(null);
   const draftHydratedRef = useRef(false);
@@ -213,6 +231,37 @@ export const CreateTicketPage = () => {
       draftHydratedRef.current = true;
     }
   }, [draftStorageKey]);
+
+  useEffect(() => {
+    const aiDraft = normalizeAiDraftPayload(routeLocation.state?.aiDraft);
+    if (!aiDraft) return;
+
+    const nextTitle = aiDraft.title || aiDraft.summary || '';
+    const nextDescription = aiDraft.description || aiDraft.summary || '';
+    const nextLocation = aiDraft.location || routeLocation.state?.aiDraftSource?.location || '';
+    const nextImageUrls = Array.isArray(aiDraft.imageUrls) ? aiDraft.imageUrls : [];
+    const nextMissingFields = Array.isArray(aiDraft.missingFields) ? aiDraft.missingFields : [];
+
+    if (nextTitle) setTitle(nextTitle);
+    if (nextDescription) setDescription(nextDescription);
+    if (nextLocation) setLocationText(nextLocation);
+    if (Number.isFinite(Number(aiDraft.latitude))) setLatitude(Number(aiDraft.latitude));
+    if (Number.isFinite(Number(aiDraft.longitude))) setLongitude(Number(aiDraft.longitude));
+    if (aiDraft.urgencyLevel) setPriority(normalizePriority(aiDraft.urgencyLevel));
+    if (nextImageUrls.length > 0) setAiImageUrls(nextImageUrls);
+    setAiMissingFields(nextMissingFields);
+
+    const suggestedCategoryId = findCategoryIdByAiSuggestion(categories, aiDraft.suggestedCategory);
+    if (suggestedCategoryId) setCategoryId(suggestedCategoryId);
+
+    setStep(1);
+    setDraftNotice('');
+    setAiDraftNotice(
+      aiDraft.confirmationMessage ||
+      'AI đã tạo bản nháp phản ánh. Vui lòng xem trước, bổ sung thông tin còn thiếu và xác nhận gửi.'
+    );
+    window.history.replaceState({}, document.title);
+  }, [categories, routeLocation.state]);
 
   useEffect(() => {
     if (!draftHydratedRef.current || submitted) return undefined;
@@ -1052,6 +1101,28 @@ export const CreateTicketPage = () => {
             })}
           </ol>
         </section>
+
+      {aiDraftNotice ? (
+        <aside className="mb-5 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100" role="status">
+          <div className="flex gap-3">
+            <Lucide.Sparkles size={18} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
+            <div>
+              <p className="font-semibold">Bản nháp phản ánh từ AI đã sẵn sàng</p>
+              <p className="mt-1 leading-5">{aiDraftNotice}</p>
+              {aiMissingFields.length > 0 ? (
+                <p className="mt-2 text-xs font-medium">
+                  Cần bổ sung: {aiMissingFields.join(', ')}
+                </p>
+              ) : null}
+              {aiImageUrls.length > 0 ? (
+                <p className="mt-2 text-xs">
+                  AI trả về {aiImageUrls.length} ảnh đã upload. Nếu hệ thống yêu cầu minh chứng khi gửi, vui lòng chọn lại ảnh ở bước Minh chứng.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </aside>
+      ) : null}
 
       {draftNotice ? (
         <aside className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-200/80 bg-blue-50/80 px-4 py-3 text-sm text-blue-900 sm:flex-row sm:items-center dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-100" role="status">
