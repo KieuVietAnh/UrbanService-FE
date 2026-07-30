@@ -1,33 +1,97 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { duplicateManagementApi } from '@urbanmind/shared-api';
+import { duplicateManagementApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import * as Lucide from 'lucide-react';
-import { normalizeDuplicateCandidatePayload, getCandidateReasoning } from './duplicateDetailUtils';
+import { normalizeDuplicateCandidatePayload, extractImageUrls } from './duplicateDetailUtils';
 
-const formatDate = (value) => {
+// formatDate removed from this file; other pages use their own helpers
+
+const formatDateTime = (value) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('vi-VN', {
+  return date.toLocaleString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 };
 
 const getTextValue = (value, fallback = '—') => {
   if (value === null || value === undefined || value === '') return fallback;
   if (typeof value === 'string') return value.trim() || fallback;
-  return String(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return fallback;
 };
 
-const getImageSources = (feedback = {}) => {
-  const candidates = [];
-  if (Array.isArray(feedback?.images)) candidates.push(...feedback.images);
-  if (Array.isArray(feedback?.attachments)) candidates.push(...feedback.attachments);
-  if (Array.isArray(feedback?.photos)) candidates.push(...feedback.photos);
-  return candidates.filter(Boolean);
+const getImageSources = (feedback = {}) => extractImageUrls(feedback || {});
+
+const parseCoordinates = (value) => {
+  if (!value) return null;
+  if (Array.isArray(value) && value.length >= 2) return [Number(value[0]), Number(value[1])];
+  if (typeof value === 'object') {
+    if (value?.lat != null && value?.lng != null) return [Number(value.lat), Number(value.lng)];
+    if (value?.latitude != null && value?.longitude != null) return [Number(value.latitude), Number(value.longitude)];
+    if (Array.isArray(value?.coordinates) && value.coordinates.length >= 2) return [Number(value.coordinates[0]), Number(value.coordinates[1])];
+  }
+  if (typeof value === 'string') {
+    const matches = value.match(/-?\d+(?:\.\d+)?/g);
+    if (matches && matches.length >= 2) return [Number(matches[0]), Number(matches[1])];
+  }
+  return null;
+};
+
+const formatCoordinates = (value) => {
+  const parsed = parseCoordinates(value);
+  if (!parsed) return getTextValue(value, '—');
+  const [lat, lng] = parsed;
+  if (Number.isFinite(lat) && Number.isFinite(lng)) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  return getTextValue(value, '—');
+};
+
+const getDistanceKm = (coordsA, coordsB) => {
+  if (!coordsA || !coordsB) return Infinity;
+  const [lat1, lon1] = coordsA;
+  const [lat2, lon2] = coordsB;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+const getNormalizedConfidence = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const score = Number(value);
+  if (!Number.isFinite(score)) return null;
+  return score > 1 ? score : score * 100;
+};
+
+const getStatusLabel = (status) => {
+  switch (status) {
+    case 'Pending':
+      return 'Chờ xử lý';
+    case 'Confirmed':
+      return 'Đã xác nhận';
+    case 'Rejected':
+      return 'Đã từ chối';
+    default:
+      return status || 'Không xác định';
+  }
+};
+
+const getRecommendationText = (confidence) => {
+  if (confidence === null) return 'Cần phân tích thêm';
+  if (confidence >= 90) return 'Độ tin cậy cao';
+  if (confidence >= 75) return 'Khả năng trùng';
+  return 'Cần kiểm tra cẩn thận';
 };
 
 export const DuplicateDetailPage = () => {
@@ -42,6 +106,7 @@ export const DuplicateDetailPage = () => {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [rejectLoading, setRejectLoading] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const loadCandidate = useCallback(async () => {
     if (!duplicateCandidateId) {
@@ -54,8 +119,66 @@ export const DuplicateDetailPage = () => {
     setError('');
     try {
       const response = await duplicateManagementApi.getDuplicateById(duplicateCandidateId);
+      console.debug('Raw detail response', response);
       const normalizedCandidate = normalizeDuplicateCandidatePayload(response || null);
-      setCandidate(normalizedCandidate);
+      console.debug('Loaded candidate', normalizedCandidate);
+      console.debug('Primary images (loaded):', normalizedCandidate?.primaryFeedback?.images || []);
+      console.debug('Duplicate images (loaded):', normalizedCandidate?.duplicateFeedback?.images || []);
+
+      // If attachments are stored on the referenced feedback resources, fetch them by id
+      const fbId = response?.feedbackId || response?.feedback?.feedbackId || response?.feedback?.id || response?.feedback?.feedback_id || null;
+      const parentId = response?.potentialParentFeedbackId || response?.potentialParentFeedback?.feedbackId || response?.potentialParentFeedback?.id || response?.potentialParentFeedback?.feedback_id || null;
+
+      let fetchedFb = null;
+      let fetchedParent = null;
+      try {
+        const promises = [];
+        if (fbId) promises.push(managementFeedbackApi.getFeedbackById(fbId));
+        if (parentId) promises.push(managementFeedbackApi.getFeedbackById(parentId));
+        const settled = await Promise.allSettled(promises);
+        if (fbId) fetchedFb = settled.shift()?.status === 'fulfilled' ? settled[0]?.value ?? null : null; // handled below
+        // Note: shifting above mutated array; instead map by index
+      } catch {
+        // ignore fetch errors
+      }
+
+      // Simpler: fetch individually to ensure correct mapping
+      try {
+        if (fbId) fetchedFb = await managementFeedbackApi.getFeedbackById(fbId);
+      } catch {
+        fetchedFb = null;
+      }
+      try {
+        if (parentId) fetchedParent = await managementFeedbackApi.getFeedbackById(parentId);
+      } catch {
+        fetchedParent = null;
+      }
+
+      const fbUrls = extractImageUrls(fetchedFb || response?.feedback || {});
+      const parentUrls = extractImageUrls(fetchedParent || response?.potentialParentFeedback || {});
+      console.debug('Fetched feedback attachments (A):', fbUrls);
+      console.debug('Fetched parent attachments (B):', parentUrls);
+
+      // If normalized images empty, populate each side from the corresponding fetched resource
+      const hasPrimaryImages = normalizedCandidate?.primaryFeedback?.images?.length;
+      const hasDuplicateImages = normalizedCandidate?.duplicateFeedback?.images?.length;
+
+      if (!hasPrimaryImages || !hasDuplicateImages) {
+        const patched = {
+          ...normalizedCandidate,
+          primaryFeedback: {
+            ...(normalizedCandidate.primaryFeedback || {}),
+            images: hasPrimaryImages ? normalizedCandidate.primaryFeedback.images : fbUrls,
+          },
+          duplicateFeedback: {
+            ...(normalizedCandidate.duplicateFeedback || {}),
+            images: hasDuplicateImages ? normalizedCandidate.duplicateFeedback.images : parentUrls,
+          },
+        };
+        setCandidate(patched);
+      } else {
+        setCandidate(normalizedCandidate);
+      }
     } catch (err) {
       console.error(err);
       setError(err?.message || 'Không thể tải chi tiết phản ánh trùng lặp.');
@@ -70,7 +193,106 @@ export const DuplicateDetailPage = () => {
 
   const primaryFeedback = useMemo(() => candidate?.primaryFeedback || null, [candidate]);
   const duplicateFeedback = useMemo(() => candidate?.duplicateFeedback || null, [candidate]);
-  const reasoning = useMemo(() => getCandidateReasoning(candidate), [candidate]);
+  // reasoning not displayed here; keep helper available in utils if needed
+  const primaryImages = useMemo(() => getImageSources(primaryFeedback), [primaryFeedback]);
+  const duplicateImages = useMemo(() => getImageSources(duplicateFeedback), [duplicateFeedback]);
+  const imageSources = useMemo(() => [...primaryImages, ...duplicateImages], [primaryImages, duplicateImages]);
+
+  useEffect(() => {
+    if (!selectedImage && imageSources.length) {
+      setSelectedImage(imageSources[0]);
+    }
+  }, [imageSources, selectedImage]);
+
+  // refreshImages removed — reload handled by page reload or candidate load
+
+  const confidenceValue = getNormalizedConfidence(candidate?.confidenceScore ?? candidate?.confidence);
+  const confidenceLabel = getRecommendationText(confidenceValue);
+  const statusLabel = getStatusLabel(candidate?.status);
+
+  const comparisonRows = useMemo(() => {
+    const titleA = getTextValue(primaryFeedback?.title, '—');
+    const titleB = getTextValue(duplicateFeedback?.title, '—');
+    const descriptionA = getTextValue(primaryFeedback?.description, '—');
+    const descriptionB = getTextValue(duplicateFeedback?.description, '—');
+    const categoryA = getTextValue(primaryFeedback?.categoryName || primaryFeedback?.category?.name, '—');
+    const categoryB = getTextValue(duplicateFeedback?.categoryName || duplicateFeedback?.category?.name, '—');
+    const areaA = getTextValue(primaryFeedback?.areaName || primaryFeedback?.area?.name, '—');
+    const areaB = getTextValue(duplicateFeedback?.areaName || duplicateFeedback?.area?.name, '—');
+    const priorityA = getTextValue(primaryFeedback?.priority, '—');
+    const priorityB = getTextValue(duplicateFeedback?.priority, '—');
+    const reporterA = getTextValue(primaryFeedback?.reporterName || primaryFeedback?.userName || primaryFeedback?.reporter?.name, '—');
+    const reporterB = getTextValue(duplicateFeedback?.reporterName || duplicateFeedback?.userName || duplicateFeedback?.reporter?.name, '—');
+    const createdA = formatDateTime(primaryFeedback?.createdAt || primaryFeedback?.createdDate);
+    const createdB = formatDateTime(duplicateFeedback?.createdAt || duplicateFeedback?.createdDate);
+    const coordinatesA = formatCoordinates(primaryFeedback?.coordinates || primaryFeedback?.locationCoordinates || primaryFeedback?.geo);
+    const coordinatesB = formatCoordinates(duplicateFeedback?.coordinates || duplicateFeedback?.locationCoordinates || duplicateFeedback?.geo);
+    const statusA = getTextValue(primaryFeedback?.status, '—');
+    const statusB = getTextValue(duplicateFeedback?.status, '—');
+
+    const coordsA = parseCoordinates(primaryFeedback?.coordinates || primaryFeedback?.locationCoordinates || primaryFeedback?.geo);
+    const coordsB = parseCoordinates(duplicateFeedback?.coordinates || duplicateFeedback?.locationCoordinates || duplicateFeedback?.geo);
+    const distance = getDistanceKm(coordsA, coordsB);
+    const coordinateMatch = coordsA && coordsB ? (distance <= 0.5 ? 'same' : distance <= 5 ? 'similar' : 'neutral') : coordinatesA === coordinatesB ? 'same' : 'neutral';
+
+    return [
+      { label: 'Tiêu đề', a: titleA, b: titleB, match: titleA === titleB ? 'same' : 'neutral' },
+      { label: 'Mô tả', a: descriptionA, b: descriptionB, match: descriptionA === descriptionB ? 'same' : 'neutral' },
+      { label: 'Danh mục', a: categoryA, b: categoryB, match: categoryA === categoryB ? 'same' : 'neutral' },
+      { label: 'Khu vực', a: areaA, b: areaB, match: areaA === areaB ? 'same' : 'neutral' },
+      { label: 'Ưu tiên', a: priorityA, b: priorityB, match: priorityA === priorityB ? 'same' : 'neutral' },
+      { label: 'Người báo cáo', a: reporterA, b: reporterB, match: reporterA === reporterB ? 'same' : 'neutral' },
+      { label: 'Ngày tạo', a: createdA, b: createdB, match: Math.abs(new Date(primaryFeedback?.createdAt || primaryFeedback?.createdDate) - new Date(duplicateFeedback?.createdAt || duplicateFeedback?.createdDate)) <= 24 * 60 * 60 * 1000 ? 'same' : 'neutral' },
+      { label: 'Tọa độ', a: coordinatesA, b: coordinatesB, match: coordinateMatch },
+      { label: 'Trạng thái', a: statusA, b: statusB, match: statusA === statusB ? 'same' : 'neutral' },
+    ];
+  }, [primaryFeedback, duplicateFeedback]);
+
+  const evidenceItems = useMemo(() => {
+    const categoryMatch = comparisonRows.find((row) => row.label === 'Danh mục')?.match === 'same';
+    const areaMatch = comparisonRows.find((row) => row.label === 'Khu vực')?.match === 'same';
+    const coordinatesMatch = comparisonRows.find((row) => row.label === 'Tọa độ')?.match;
+    const descriptionMatch = comparisonRows.find((row) => row.label === 'Mô tả')?.match === 'same';
+    const timeMatch = comparisonRows.find((row) => row.label === 'Ngày tạo')?.match;
+
+    return [
+      {
+        title: 'Cùng danh mục',
+        description: categoryMatch ? 'Danh mục phản ánh trùng nhau.' : 'Danh mục khác nhau.',
+        confidence: categoryMatch ? 96 : 35,
+        impact: categoryMatch ? 'Cao' : 'Trung bình',
+        active: categoryMatch,
+      },
+      {
+        title: 'Cùng khu vực',
+        description: areaMatch ? 'Khu vực báo cáo trùng nhau.' : 'Khu vực khác nhau.',
+        confidence: areaMatch ? 92 : 38,
+        impact: areaMatch ? 'Cao' : 'Trung bình',
+        active: areaMatch,
+      },
+      {
+        title: 'Tọa độ gần giống',
+        description: coordinatesMatch === 'same' ? 'Tọa độ gần như giống nhau.' : coordinatesMatch === 'similar' ? 'Tọa độ gần nhau.' : 'Tọa độ khác nhau.',
+        confidence: coordinatesMatch === 'same' ? 88 : coordinatesMatch === 'similar' ? 68 : 30,
+        impact: coordinatesMatch === 'same' ? 'Cao' : coordinatesMatch === 'similar' ? 'Trung bình' : 'Thấp',
+        active: coordinatesMatch !== 'neutral',
+      },
+      {
+        title: 'Nội dung tương đồng',
+        description: descriptionMatch ? 'Nội dung trùng khớp.' : 'Nội dung khác biệt.',
+        confidence: descriptionMatch ? 85 : 40,
+        impact: descriptionMatch ? 'Trung bình' : 'Thấp',
+        active: descriptionMatch,
+      },
+      {
+        title: 'Ngày tạo gần nhau',
+        description: timeMatch === 'same' ? 'Ngày tạo gần nhau.' : 'Ngày tạo khác nhau.',
+        confidence: timeMatch === 'same' ? 82 : 30,
+        impact: timeMatch === 'same' ? 'Trung bình' : 'Thấp',
+        active: timeMatch === 'same',
+      },
+    ];
+  }, [comparisonRows]);
 
   const handleConfirmDuplicate = async () => {
     if (!duplicateCandidateId) return;
@@ -125,67 +347,8 @@ export const DuplicateDetailPage = () => {
     }
   };
 
-  const renderFeedbackCard = (feedback, title) => {
-    const images = getImageSources(feedback);
-    return (
-      <div className="card bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-black text-slate-900">{title}</h3>
-          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">{getTextValue(feedback?.feedbackId || feedback?.id, '—')}</span>
-        </div>
-
-        <div className="space-y-3 text-sm">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Tiêu đề</div>
-            <div className="mt-1 font-semibold text-slate-900">{getTextValue(feedback?.title, 'Không có tiêu đề')}</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Mô tả</div>
-            <div className="mt-1 whitespace-pre-line text-slate-700">{getTextValue(feedback?.description, 'Không có mô tả')}</div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Danh mục</div>
-              <div className="mt-1 font-semibold text-slate-900">{getTextValue(feedback?.categoryName || feedback?.category?.name || feedback?.categoryType || feedback?.type, '—')}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Địa điểm</div>
-              <div className="mt-1 font-semibold text-slate-900">{getTextValue(feedback?.locationText || feedback?.location || feedback?.address, '—')}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Người báo cáo</div>
-              <div className="mt-1 font-semibold text-slate-900">{getTextValue(feedback?.reporterName || feedback?.userName || feedback?.reporter?.name, '—')}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Ngày tạo</div>
-              <div className="mt-1 font-semibold text-slate-900">{formatDate(feedback?.createdAt || feedback?.createdDate)}</div>
-            </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
-              <div className="mt-1 font-semibold text-slate-900">{getTextValue(feedback?.status, '—')}</div>
-            </div>
-          </div>
-        </div>
-
-        {images.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Hình ảnh</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {images.slice(0, 4).map((image, index) => {
-                const src = typeof image === 'string' ? image : image?.fileUrl || image?.url || image?.src || '';
-                return src ? (
-                  <img key={`${src}-${index}`} src={src} alt={`Attachment ${index + 1}`} className="h-36 w-full rounded-2xl object-cover border border-slate-200" />
-                ) : null;
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-40">
       {pageMessage.type === 'success' && (
         <SuccessAlert message={pageMessage.text} onClose={() => setPageMessage({ type: '', text: '' })} />
       )}
@@ -193,7 +356,7 @@ export const DuplicateDetailPage = () => {
         <ErrorAlert message={pageMessage.text} onClose={() => setPageMessage({ type: '', text: '' })} />
       )}
 
-      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-400">
         <button type="button" onClick={() => navigate('/staff/duplicates')} className="hover:text-slate-600">
           Xử lý trùng lặp
         </button>
@@ -203,29 +366,13 @@ export const DuplicateDetailPage = () => {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black">Chi Tiết Phản Ánh Trùng Lặp</h2>
-          <p className="text-xs text-gray-500 font-semibold">So sánh phản ánh chính với phản ánh được đề xuất là trùng lặp.</p>
+          <h2 className="text-2xl font-black">Chi tiết candidate trùng lặp</h2>
+          <p className="text-xs text-slate-500 font-semibold">Hỗ trợ staff đưa ra kết luận dựa trên AI, hình ảnh và so sánh chi tiết.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
             ID: {duplicateCandidateId || '—'}
           </div>
-          <button
-            type="button"
-            onClick={() => setConfirmModalOpen(true)}
-            className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
-          >
-            <Lucide.CheckCircle2 size={14} />
-            Xác nhận trùng lặp
-          </button>
-          <button
-            type="button"
-            onClick={() => setRejectModalOpen(true)}
-            className="btn btn-sm btn-outline border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg"
-          >
-            <Lucide.XCircle size={14} />
-            Từ chối trùng lặp
-          </button>
         </div>
       </div>
 
@@ -244,28 +391,149 @@ export const DuplicateDetailPage = () => {
         </div>
       ) : (
         <>
-          <div className="card bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Điểm độ tin cậy</div>
-                <div className="text-2xl font-black text-slate-900">{candidate?.confidenceScore ?? candidate?.confidence ?? '—'}</div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Độ tương đồng</div>
+              <div className="mt-3 text-3xl font-black text-slate-900">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</div>
+            </div>
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Mức tin cậy</div>
+              <div className="mt-3 text-3xl font-black text-slate-900">{confidenceLabel}</div>
+            </div>
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Trạng thái</div>
+              <div className="mt-3 text-3xl font-black text-slate-900">{statusLabel}</div>
+            </div>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Feedback A</div>
+                  <div className="mt-2 text-lg font-semibold text-slate-900">{getTextValue(primaryFeedback?.title, '—')}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">A</div>
+                </div>
               </div>
-              <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm whitespace-nowrap">
-                {candidate?.status || 'Pending'}
+
+              <div className="mt-5 space-y-4">
+                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100">
+                  {primaryImages.length ? (
+                    <img src={primaryImages[0]} alt="Feedback A" className="h-72 w-full object-cover" />
+                  ) : (
+                    <div className="flex h-72 items-center justify-center text-slate-500">
+                      <div className="text-center">
+                        <Lucide.ImageOff size={28} className="mx-auto mb-2 text-slate-400" />
+                        Không có ảnh
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {primaryImages.length > 1 && (
+                  <div className="grid grid-cols-4 gap-3">
+                    {primaryImages.slice(0, 4).map((src, index) => (
+                      <div key={`${src}-${index}`} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
+                        <img src={src} alt={`A ${index + 1}`} className="h-20 w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid gap-3">
+                  {comparisonRows.map((row) => (
+                    <div key={`A-${row.label}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-slate-900">{row.label}</div>
+                        <div className={`rounded-full px-2 py-1 text-[11px] font-semibold ${row.match === 'same' ? 'bg-emerald-100 text-emerald-700' : row.match === 'similar' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-sm text-slate-700">{row.a}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Feedback B</div>
+                  <div className="mt-2 text-lg font-semibold text-slate-900">{getTextValue(duplicateFeedback?.title, '—')}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">B</div>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100">
+                  {duplicateImages.length ? (
+                    <img src={duplicateImages[0]} alt="Feedback B" className="h-72 w-full object-cover" />
+                  ) : (
+                    <div className="flex h-72 items-center justify-center text-slate-500">
+                      <div className="text-center">
+                        <Lucide.ImageOff size={28} className="mx-auto mb-2 text-slate-400" />
+                        Không có ảnh
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {duplicateImages.length > 1 && (
+                  <div className="grid grid-cols-4 gap-3">
+                    {duplicateImages.slice(0, 4).map((src, index) => (
+                      <div key={`${src}-${index}`} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
+                        <img src={src} alt={`B ${index + 1}`} className="h-20 w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid gap-3">
+                  {comparisonRows.map((row) => (
+                    <div key={`B-${row.label}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-slate-900">{row.label}</div>
+                        <div className={`rounded-full px-2 py-1 text-[11px] font-semibold ${row.match === 'same' ? 'bg-emerald-100 text-emerald-700' : row.match === 'similar' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-sm text-slate-700">{row.b}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
 
-          {reasoning && (
-            <div className="card bg-slate-50 border border-slate-200 rounded-3xl p-5 shadow-sm">
-              <h3 className="text-sm font-black text-slate-900">Lý giải trùng lặp</h3>
-              <p className="mt-2 text-sm text-slate-700 whitespace-pre-line">{reasoning}</p>
+          <div className="rounded-[32px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">AI evidence</div>
+                <div className="mt-2 text-lg font-semibold text-slate-900">Bằng chứng hỗ trợ</div>
+              </div>
+              <div className="text-sm text-slate-500">AI là dữ liệu tham khảo, cần kiểm định bởi staff.</div>
             </div>
-          )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {renderFeedbackCard(primaryFeedback, 'Phản ánh chính')}
-            {renderFeedbackCard(duplicateFeedback, 'Phản ánh trùng')}
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {evidenceItems.slice(0, 4).map((item) => (
+                <div key={item.title} className="rounded-3xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-2xl ${item.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <Lucide.CheckCircle2 size={18} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{item.title}</div>
+                      <div className="text-xs text-slate-500">{item.description}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </>
       )}
@@ -360,6 +628,33 @@ export const DuplicateDetailPage = () => {
           </div>
         </div>
       )}
+
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-4 py-4 shadow-[0_-20px_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1360px] flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">AI Confidence</div>
+            <div className="text-lg font-black text-slate-900">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={handleConfirmDuplicate}
+              className="btn btn-primary rounded-2xl px-5 py-3 shadow-lg shadow-blue-500/15"
+            >
+              <Lucide.CheckCircle2 size={16} className="mr-2" />
+              Xác nhận trùng lặp
+            </button>
+            <button
+              type="button"
+              onClick={() => setRejectModalOpen(true)}
+              className="btn btn-outline rounded-2xl px-5 py-3"
+            >
+              <Lucide.XCircle size={16} className="mr-2" />
+              Không trùng lặp
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
