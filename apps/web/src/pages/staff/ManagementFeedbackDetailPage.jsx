@@ -557,7 +557,17 @@ export const ManagementFeedbackDetailPage = () => {
   }, [notificationForm.templateId, notificationForm.title, notificationForm.message]);
 
   const recipientSummary = useMemo(() => ({
-    name: feedback?.citizenName || feedback?.residentName || feedback?.createdByName || feedback?.reporterName || 'Chưa có thông tin',
+    name: feedback?.userName
+      || feedback?.reporterName
+      || feedback?.reporter?.name
+      || feedback?.user?.fullName
+      || feedback?.user?.name
+      || feedback?.citizenName
+      || feedback?.residentName
+      || feedback?.createdByName
+      || feedback?.createdBy?.name
+      || feedback?.ownerName
+      || 'Chưa có thông tin',
     feedbackCode: feedback?.feedbackCode || feedback?.code || feedback?.feedbackId || feedback?.id || '—',
     area: feedback?.area?.name || feedback?.areaName || feedback?.wardName || feedback?.locationText || 'Chưa cập nhật',
   }), [feedback]);
@@ -1457,7 +1467,7 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
 
             <div className="rounded-[1rem] border border-slate-200/80 bg-white p-3 shadow-sm">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người nhận</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thông tin người nhận</div>
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người nhận</div>
