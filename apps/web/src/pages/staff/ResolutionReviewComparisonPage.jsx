@@ -7,6 +7,8 @@ import PageTransition from '../../components/motion/PageTransition';
 import { ConfirmationModal } from '@urbanmind/shared-ui';
 import DelightToast from '../../components/delight/DelightToast';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
 
 const buildImageList = (attachments = []) => {
   if (!Array.isArray(attachments) || attachments.length === 0) return [];
@@ -99,7 +101,7 @@ export const ResolutionReviewComparisonPage = () => {
     return (
       <PageTransition>
         <div className="page-container py-4">
-          <div className="animate-pulse rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="admin-panel animate-pulse p-6">
             <div className="h-5 w-40 rounded-full bg-slate-100" />
             <div className="mt-4 h-8 w-2/3 rounded-2xl bg-slate-100" />
             <div className="mt-3 h-4 w-1/2 rounded-full bg-slate-100" />
@@ -111,72 +113,72 @@ export const ResolutionReviewComparisonPage = () => {
 
   return (
     <PageTransition>
-      <div className="page-container space-y-6 py-4 text-slate-800">
+      <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
         {message.type === 'success' && <SuccessAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />}
         {message.type === 'error' && <ErrorAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />}
 
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <div className="admin-page-hero p-5 sm:p-7">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700">
+              <Badge intent="success" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
                 <Lucide.GitCompareArrows size={14} />
                 Xem xét kết quả xử lý
-              </div>
+              </Badge>
               <div>
-                <h1 className="text-2xl font-black text-slate-900">So sánh kết quả trước và sau xử lý</h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">Trang quyết định dành cho nhân viên tiếp nhận để xem xét cùng lúc tình trạng ban đầu, kết quả xử lý và thông tin đơn vị thực hiện.</p>
+                <h1 className="admin-hero-title">So sánh kết quả trước và sau xử lý</h1>
+                <p className="admin-hero-description mt-2 max-w-2xl">Trang quyết định dành cho nhân viên tiếp nhận để xem xét cùng lúc tình trạng ban đầu, kết quả xử lý và thông tin đơn vị thực hiện.</p>
               </div>
             </div>
-            <button type="button" onClick={() => navigate('/staff/review')} className="btn btn-ghost rounded-2xl text-sm">
+            <Button type="button" onClick={() => navigate('/staff/review')} variant="ghost" size="sm" className="rounded-2xl">
               Quay lại hàng chờ
-            </button>
+            </Button>
           </div>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section className="admin-panel p-5 sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Phản ánh ban đầu</div>
-                  <h2 className="mt-1 text-lg font-black text-slate-900">{feedback?.title || '—'}</h2>
+                  <div className="admin-section-description uppercase tracking-[0.24em]">Phản ánh ban đầu</div>
+                  <h2 className="mt-1 heading-3 text-slate-900">{feedback?.title || '—'}</h2>
                 </div>
                 <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   {getCategoryLabel(feedback?.categoryName || feedback?.category?.name || feedback?.categoryType || feedback?.type, '—')}
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm leading-7 text-slate-600">{feedback?.description || 'Không có mô tả chi tiết.'}</p>
+              <div className="admin-inset-panel mt-4 p-4">
+                <p className="body-text">{feedback?.description || 'Không có mô tả chi tiết.'}</p>
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1.2rem] border border-slate-200 bg-white p-3 text-sm">
-                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Vị trí</div>
+                <div className="admin-inset-panel p-3 text-sm">
+                  <div className="admin-section-description uppercase tracking-[0.24em]">Vị trí</div>
                   <div className="mt-2 font-semibold text-slate-700">{feedback?.locationText || '—'}</div>
                 </div>
-                <div className="rounded-[1.2rem] border border-slate-200 bg-white p-3 text-sm">
-                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Đơn vị xử lý</div>
+                <div className="admin-inset-panel p-3 text-sm">
+                  <div className="admin-section-description uppercase tracking-[0.24em]">Đơn vị xử lý</div>
                   <div className="mt-2 font-semibold text-slate-700">{feedback?.assignment?.operatorName || 'Chưa phân công'}</div>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section className="admin-panel p-5 sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Trước / Sau</div>
-                  <h2 className="mt-1 text-lg font-black text-slate-900">So sánh hình ảnh</h2>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Trước / Sau</div>
+                  <h2 className="mt-1 text-lg font-semibold text-slate-900">So sánh hình ảnh</h2>
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 p-1">
-                  <button type="button" onClick={() => setActiveImage('before')} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${activeImage === 'before' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>Trước</button>
-                  <button type="button" onClick={() => setActiveImage('after')} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${activeImage === 'after' ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>Sau</button>
+                  <Button type="button" onClick={() => setActiveImage('before')} variant={activeImage === 'before' ? 'primary' : 'ghost'} size="sm" className="rounded-full">Trước</Button>
+                  <Button type="button" onClick={() => setActiveImage('after')} variant={activeImage === 'after' ? 'primary' : 'ghost'} size="sm" className="rounded-full">Sau</Button>
                 </div>
               </div>
 
               <div className="mt-4 hidden gap-4 lg:grid lg:grid-cols-2">
                 <div className="rounded-[1.4rem] border border-rose-200 bg-rose-50 p-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-rose-600">Ảnh trước xử lý</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-rose-600">Ảnh trước xử lý</div>
                   <div className="mt-3 grid gap-3">
                     {beforeImages.length > 0 ? beforeImages.map((image, index) => (
                       <img key={`${image}-${index}`} src={image} alt={`Trước ${index + 1}`} className="h-48 w-full rounded-[1.1rem] object-cover" />
@@ -186,7 +188,7 @@ export const ResolutionReviewComparisonPage = () => {
                   </div>
                 </div>
                 <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 p-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">Ảnh sau xử lý</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-600">Ảnh sau xử lý</div>
                   <div className="mt-3 grid gap-3">
                     {afterImages.length > 0 ? afterImages.map((image, index) => (
                       <img key={`${image}-${index}`} src={image} alt={`Sau ${index + 1}`} className="h-48 w-full rounded-[1.1rem] object-cover" />
@@ -198,7 +200,7 @@ export const ResolutionReviewComparisonPage = () => {
               </div>
 
               <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-3 lg:hidden">
-                <div className="rounded-[1.1rem] border border-slate-200 bg-white p-2">
+                <div className="admin-inset-panel p-2">
                   <img src={activeImage === 'before' ? (beforeImages[0] || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80') : (afterImages[0] || 'https://images.unsplash.com/photo-1465101046530-73398c7f28ca?auto=format&fit=crop&w=900&q=80')} alt={activeImage === 'before' ? 'Trước' : 'Sau'} className="h-64 w-full rounded-[0.9rem] object-cover" />
                 </div>
               </div>
@@ -206,18 +208,18 @@ export const ResolutionReviewComparisonPage = () => {
           </div>
 
           <div className="space-y-6">
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Ghi chú kết quả xử lý</div>
-              <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="admin-section-description uppercase tracking-[0.24em]">Ghi chú kết quả xử lý</div>
+              <div className="admin-inset-panel mt-4 p-4 text-sm leading-6 text-slate-600">
                 {feedback?.resolution?.resolutionSummary || feedback?.resolution?.notes || 'Không có ghi chú từ đơn vị xử lý.'}
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Thông tin đơn vị xử lý</div>
-              <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="admin-section-description uppercase tracking-[0.24em]">Thông tin đơn vị xử lý</div>
+              <div className="admin-inset-panel mt-4 p-4 text-sm text-slate-700">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-black text-white">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white">
                     {feedback?.assignment?.operatorName?.slice(0, 2)?.toUpperCase() || 'OP'}
                   </div>
                   <div>
@@ -228,8 +230,8 @@ export const ResolutionReviewComparisonPage = () => {
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Quyết định</div>
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Quyết định</div>
               <div className="mt-4 space-y-3">
                 <textarea
                   rows="4"
@@ -239,15 +241,15 @@ export const ResolutionReviewComparisonPage = () => {
                   className="textarea textarea-bordered w-full rounded-[1.2rem] border-slate-200 bg-white text-sm"
                 />
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <button type="button" onClick={() => handleDecisionRequest('approve')} disabled={submitting} className="btn btn-success rounded-2xl text-sm">
-                    <Lucide.CheckCircle2 size={16} className="mr-2" />{submitting && pendingDecision === 'approve' ? 'Đang xử lý...' : 'Phê duyệt'}
-                  </button>
-                  <button type="button" onClick={() => handleDecisionRequest('reject')} disabled={submitting} className="btn btn-error rounded-2xl text-sm">
-                    <Lucide.XCircle size={16} className="mr-2" />{submitting && pendingDecision === 'reject' ? 'Đang xử lý...' : 'Từ chối'}
-                  </button>
-                  <button type="button" onClick={() => handleDecisionRequest('rework')} disabled={submitting} className="btn btn-outline rounded-2xl text-sm">
-                    <Lucide.RefreshCw size={16} className="mr-2" />{submitting && pendingDecision === 'rework' ? 'Đang xử lý...' : 'Yêu cầu làm lại'}
-                  </button>
+                  <Button type="button" onClick={() => handleDecisionRequest('approve')} disabled={submitting} variant="primary">
+                    <Lucide.CheckCircle2 size={16} />{submitting && pendingDecision === 'approve' ? 'Đang xử lý...' : 'Phê duyệt'}
+                  </Button>
+                  <Button type="button" onClick={() => handleDecisionRequest('reject')} disabled={submitting} variant="outline">
+                    <Lucide.XCircle size={16} />{submitting && pendingDecision === 'reject' ? 'Đang xử lý...' : 'Từ chối'}
+                  </Button>
+                  <Button type="button" onClick={() => handleDecisionRequest('rework')} disabled={submitting} variant="ghost">
+                    <Lucide.RefreshCw size={16} />{submitting && pendingDecision === 'rework' ? 'Đang xử lý...' : 'Yêu cầu làm lại'}
+                  </Button>
                 </div>
               </div>
             </section>

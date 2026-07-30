@@ -4,18 +4,16 @@ import * as Lucide from 'lucide-react';
 import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
 
 const URGENCY_OPTIONS = ['High', 'Critical'];
 
-const getUrgencyBadgeClass = (urgency = '') => {
+const getUrgencyIntent = (urgency = '') => {
   const normalized = `${urgency || ''}`.trim().toLowerCase();
-  if (normalized === 'critical') {
-    return 'border-rose-200 bg-rose-50 text-rose-700';
-  }
-  if (normalized === 'high') {
-    return 'border-amber-200 bg-amber-50 text-amber-700';
-  }
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  if (normalized === 'critical') return 'danger';
+  if (normalized === 'high') return 'warning';
+  return 'neutral';
 };
 
 const formatDateTime = (value) => {
@@ -103,38 +101,38 @@ export const CriticalFeedbackQueuePage = () => {
 
   return (
     <div className="space-y-5 text-slate-800">
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <section className="admin-page-hero">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-amber-700">
+            <Badge intent="warning" className="gap-2 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em]">
               <Lucide.AlertCircle size={14} />
               Hàng chờ phản ánh khẩn cấp
-            </div>
-            <h1 className="mt-3 text-2xl font-black text-slate-900">Theo dõi phản ánh có mức độ ưu tiên cao</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
+            </Badge>
+            <h1 className="admin-hero-title mt-3">Theo dõi phản ánh có mức độ ưu tiên cao</h1>
+            <p className="admin-hero-description mt-2 max-w-2xl">
               Chỉ hiển thị các phản ánh đã được AI đánh dấu là High hoặc Critical để nhân viên xử lý nhanh hơn.
             </p>
           </div>
-          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Tổng phản ánh</div>
-            <div className="mt-1 text-xl font-black text-slate-900">{filteredFeedbacks.length}</div>
+          <div className="admin-inset-panel px-4 py-3 text-sm text-slate-600">
+            <div className="admin-section-description uppercase tracking-[0.24em]">Tổng phản ánh</div>
+            <div className="mt-1 heading-2 text-slate-900">{filteredFeedbacks.length}</div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="admin-panel p-4 sm:p-5">
         <div className="grid gap-3 lg:grid-cols-3">
           <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
             <span>Tìm kiếm</span>
-            <div className="flex items-center gap-2 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <div className="flex items-center gap-2 rounded-[1rem] border border-slate-200/80 bg-[rgba(248,250,252,0.88)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
               <Lucide.Search size={16} className="text-slate-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tiêu đề, khu vực, danh mục" className="w-full bg-transparent text-sm outline-none" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tiêu đề, khu vực, danh mục" className="w-full bg-transparent text-sm outline-none text-slate-800" />
             </div>
           </label>
 
           <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
             <span>Danh mục</span>
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none">
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="rounded-[1rem] border border-slate-200/80 bg-[rgba(248,250,252,0.88)] px-3 py-2.5 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] outline-none">
               <option value="">Tất cả</option>
               {categories.map((category) => (
                 <option key={category.id || category.categoryId} value={category.name || category.categoryName || category.categoryType || category.type}>
@@ -146,7 +144,7 @@ export const CriticalFeedbackQueuePage = () => {
 
           <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
             <span>Mức độ ưu tiên</span>
-            <select value={urgencyFilter} onChange={(event) => setUrgencyFilter(event.target.value)} className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none">
+            <select value={urgencyFilter} onChange={(event) => setUrgencyFilter(event.target.value)} className="rounded-[1rem] border border-slate-200/80 bg-[rgba(248,250,252,0.88)] px-3 py-2.5 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] outline-none">
               <option value="">Tất cả</option>
               {URGENCY_OPTIONS.map((urgency) => (
                 <option key={urgency} value={urgency}>{urgency}</option>
@@ -157,11 +155,11 @@ export const CriticalFeedbackQueuePage = () => {
       </section>
 
       {loading ? (
-        <div className="rounded-[1.6rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
+        <div className="admin-panel p-10 text-center">
           <LoadingSpinner />
         </div>
       ) : filteredFeedbacks.length === 0 ? (
-        <div className="rounded-[1.6rem] border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
+        <div className="admin-empty-panel p-10 text-center">
           <EmptyState title="Không có phản ánh khẩn cấp" description="Không có dữ liệu phù hợp với bộ lọc hiện tại." />
         </div>
       ) : (
@@ -173,24 +171,24 @@ export const CriticalFeedbackQueuePage = () => {
               const isActive = String(feedbackIdValue) === String(feedbackId);
 
               return (
-                <article key={feedbackIdValue} className={`rounded-[1.4rem] border p-4 shadow-sm transition ${isActive ? 'border-amber-300 bg-amber-50/60' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                <article key={feedbackIdValue} className={`rounded-[1.4rem] border p-4 shadow-[0_14px_34px_rgba(15,23,42,0.058)] transition ${isActive ? 'border-amber-300 bg-amber-50/60' : 'border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,251,255,0.96))] hover:border-slate-300'}`}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] ${getUrgencyBadgeClass(urgency)}`}>
+                        <Badge intent={getUrgencyIntent(urgency)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
                           {urgency || 'High'}
-                        </span>
+                        </Badge>
                         <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
                           {item?.confidenceScore ? formatConfidence(item.confidenceScore) : '—'}
                         </span>
                       </div>
-                      <h2 className="mt-3 text-base font-black text-slate-900">{item?.title || item?.description || 'Không có tiêu đề'}</h2>
+                      <h2 className="mt-3 heading-3 text-slate-900">{item?.title || item?.description || 'Không có tiêu đề'}</h2>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div className="rounded-[1.1rem] border border-slate-200 bg-slate-50 p-3">
+                        <div className="admin-inset-panel p-3">
                           <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Khu vực</div>
                           <div className="mt-1 font-semibold text-slate-700">{item?.areaName || item?.area?.name || item?.locationText || '—'}</div>
                         </div>
-                        <div className="rounded-[1.1rem] border border-slate-200 bg-slate-50 p-3">
+                        <div className="admin-inset-panel p-3">
                           <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Danh mục</div>
                           <div className="mt-1 font-semibold text-slate-700">{item?.categoryName || item?.detectedCategoryName || item?.category?.name || '—'}</div>
                         </div>
@@ -206,26 +204,26 @@ export const CriticalFeedbackQueuePage = () => {
                         </span>
                       </div>
                     </div>
-                    <button type="button" onClick={() => navigate(`/staff/critical-feedbacks/${feedbackIdValue}`)} className="inline-flex items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-amber-300 hover:text-amber-700">
+                    <Button type="button" onClick={() => navigate(`/staff/critical-feedbacks/${feedbackIdValue}`)} variant="outline" size="sm">
                       <Lucide.Eye size={16} />
                       Xem chi tiết
-                    </button>
+                    </Button>
                   </div>
                 </article>
               );
             })}
           </section>
 
-          <aside className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <aside className="admin-panel p-5">
             {detailFeedback ? (
               <div className="space-y-4">
                 <div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-amber-700">
+                  <Badge intent="warning" className="gap-2 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em]">
                     <Lucide.FileText size={14} />
                     Chi tiết phản ánh
-                  </div>
-                  <h2 className="mt-3 text-lg font-black text-slate-900">{detailFeedback?.title || detailFeedback?.description || 'Không có tiêu đề'}</h2>
-                  <p className="mt-2 text-sm leading-7 text-slate-600">{detailFeedback?.description || 'Không có nội dung mô tả chi tiết.'}</p>
+                  </Badge>
+                  <h2 className="mt-3 heading-3 text-slate-900">{detailFeedback?.title || detailFeedback?.description || 'Không có tiêu đề'}</h2>
+                  <p className="mt-2 body-text">{detailFeedback?.description || 'Không có nội dung mô tả chi tiết.'}</p>
                 </div>
 
                 <div className="grid gap-3">

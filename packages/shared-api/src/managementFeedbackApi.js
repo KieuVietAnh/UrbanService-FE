@@ -565,6 +565,15 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  async notifyProviderResult(feedbackId, payload = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) {
+      throw new Error('Thiếu feedbackId để gửi thông báo cho người dân.');
+    }
+
+    return axiosClient.post(`/api/management/feedbacks/${normalizedFeedbackId}/notify-provider-result`, payload);
+  },
+
   async createAreaAlertFromFeedback(feedbackId, payload = {}) {
     const normalizedFeedbackId = String(feedbackId ?? '').trim();
     if (!normalizedFeedbackId) {

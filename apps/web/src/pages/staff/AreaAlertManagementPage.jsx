@@ -8,6 +8,9 @@ import DelightToast from '../../components/delight/DelightToast';
 import { ManagerPageHeader, ManagerSectionHeader, ManagerEmptyState } from '../../components/manager/ManagerPageElements';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
+import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 
 const DEFAULT_FORM = {
   title: '',
@@ -129,8 +132,8 @@ export default function AreaAlertManagementPage() {
       title: form.title.trim(),
       message: form.message.trim(),
       severity: form.severity,
-      startAt: form.startAt,
-      endAt: form.endAt || undefined,
+      startAt: form.startAt ? new Date(form.startAt).toISOString() : undefined,
+      endAt: form.endAt ? new Date(form.endAt).toISOString() : undefined,
       radiusMeters: form.radiusMeters ? Number(form.radiusMeters) : undefined,
       areaId: form.areaId ? Number(form.areaId) : undefined,
       categoryId: form.categoryId ? Number(form.categoryId) : undefined,
@@ -161,44 +164,44 @@ export default function AreaAlertManagementPage() {
   };
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="admin-page-shell space-y-6 p-4">
       <ManagerPageHeader
         title="Quản Lý Cảnh Báo Khu Vực"
         description="Tạo cảnh báo thủ công và quản lý thông tin cảnh báo theo khu vực."
         icon={Lucide.BellRing}
         actions={(
-          <button
+          <Button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="btn btn-primary rounded-[1rem] px-5 py-3 text-sm font-semibold"
+            variant="primary"
           >
             <Lucide.PlusCircle size={18} />
             <span>Tạo cảnh báo thủ công</span>
-          </button>
+          </Button>
         )}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Hướng dẫn</div>
-          <div className="mt-4 text-sm leading-7 text-slate-600">Tạo cảnh báo khu vực khi cần phát hành thông tin xử lý khẩn cấp hoặc cảnh báo sự cố mà không cần liên kết trực tiếp với phản ánh có sẵn.</div>
+        <div className="admin-panel p-5">
+          <div className="admin-section-description uppercase tracking-[0.24em]">Hướng dẫn</div>
+          <div className="mt-4 body-text">Tạo cảnh báo khu vực khi cần phát hành thông tin xử lý khẩn cấp hoặc cảnh báo sự cố mà không cần liên kết trực tiếp với phản ánh có sẵn.</div>
         </div>
-        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Đầu vào bắt buộc</div>
-          <ul className="mt-4 space-y-2 text-sm text-slate-600">
+        <div className="admin-panel p-5">
+          <div className="admin-section-description uppercase tracking-[0.24em]">Đầu vào bắt buộc</div>
+          <ul className="mt-4 space-y-2 body-text">
             <li>Tiêu đề</li>
             <li>Nội dung cảnh báo</li>
             <li>Mức độ nghiêm trọng</li>
             <li>Thời gian bắt đầu</li>
           </ul>
         </div>
-        <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Lưu ý</div>
-          <p className="mt-4 text-sm leading-7 text-slate-600">Nếu chọn kinh độ/vĩ độ thì mục này sẽ ghi đè vị trí hiển thị cảnh báo. Khu vực và danh mục giúp phân loại cảnh báo.</p>
+        <div className="admin-panel p-5">
+          <div className="admin-section-description uppercase tracking-[0.24em]">Lưu ý</div>
+          <p className="mt-4 body-text">Nếu chọn kinh độ/vĩ độ thì mục này sẽ ghi đè vị trí hiển thị cảnh báo. Khu vực và danh mục giúp phân loại cảnh báo.</p>
         </div>
       </div>
 
-      <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="admin-panel p-5">
         <ManagerSectionHeader
           title="Danh sách cảnh báo thủ công"
           description="Danh sách cảnh báo khu vực sẽ hiển thị khi backend cung cấp dữ liệu cảnh báo."
@@ -216,24 +219,26 @@ export default function AreaAlertManagementPage() {
               title="Chưa có cảnh báo thủ công"
               description="Nhấn nút Tạo cảnh báo thủ công để thêm cảnh báo mới."
               action={(
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowCreateModal(true)}
-                  className="btn btn-primary rounded-[1rem]"
+                  variant="primary"
                 >
                   Tạo cảnh báo ngay
-                </button>
+                </Button>
               )}
             />
           ) : (
             <div className="space-y-4">
               {alerts.map((alert) => (
-                <div key={alert.areaAlertId || alert.id || alert.alertId} className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                <div key={alert.areaAlertId || alert.id || alert.alertId} className="admin-inset-panel p-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{alert.severity || 'Không rõ mức'} </div>
-                      <h3 className="mt-2 text-lg font-black text-slate-900">{alert.title || 'Không có tiêu đề'}</h3>
-                      <p className="mt-2 text-sm text-slate-600">{alert.message || 'Không có nội dung cảnh báo'}</p>
+                      <Badge intent={getBadgeIntent(alert.severity || 'Không rõ mức', 'severity')} className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] whitespace-nowrap">
+                        {alert.severity || 'Không rõ mức'}
+                      </Badge>
+                      <h3 className="mt-2 heading-3 text-slate-900">{alert.title || 'Không có tiêu đề'}</h3>
+                      <p className="mt-2 body-text">{alert.message || 'Không có nội dung cảnh báo'}</p>
                     </div>
                     <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                       {alert.areaName || getAreaLabel(alert.area) || 'Khu vực chưa xác định'}
@@ -252,11 +257,11 @@ export default function AreaAlertManagementPage() {
       </section>
 
       {showCreateModal && (
-        <div className="fixed left-1/2 top-16 z-50 w-[min(95vw,820px)] max-h-[calc(100vh-112px)] -translate-x-1/2 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl">
+        <div className="fixed left-1/2 top-16 z-50 w-[min(95vw,820px)] max-h-[calc(100vh-112px)] -translate-x-1/2 overflow-hidden shadow-2xl admin-panel">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-black text-slate-900">Tạo cảnh báo thủ công</h2>
-              <p className="mt-2 text-sm text-slate-500">Điền thông tin chi tiết để gửi cảnh báo mới qua API quản lý cảnh báo khu vực.</p>
+              <h2 className="heading-2 text-slate-900">Tạo cảnh báo thủ công</h2>
+              <p className="admin-hero-description mt-2">Điền thông tin chi tiết để gửi cảnh báo mới qua API quản lý cảnh báo khu vực.</p>
             </div>
             <button
               type="button"
@@ -301,7 +306,7 @@ export default function AreaAlertManagementPage() {
                 rows={4}
                 value={form.message}
                 onChange={(e) => handleFieldChange('message', e.target.value)}
-                className="textarea textarea-bordered w-full rounded-[1rem] border-slate-200 bg-slate-50"
+                className="textarea textarea-bordered w-full rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
               />
               {formErrors.message && <span className="text-xs font-medium text-rose-600">{formErrors.message}</span>}
             </label>
@@ -348,7 +353,7 @@ export default function AreaAlertManagementPage() {
                 onSelectLocation={handleLocationSelect}
                 className="rounded-[1.5rem] border border-slate-200"
               />
-              <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <div className="admin-inset-panel p-4 text-sm text-slate-700">
                 {form.latitude && form.longitude ? (
                   <p>Vị trí đã chọn: {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}</p>
                 ) : (
@@ -404,21 +409,21 @@ export default function AreaAlertManagementPage() {
             )}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <button
+              <Button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="btn btn-ghost rounded-[1rem] px-5 py-3"
+                variant="ghost"
               >
                 Hủy
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={handleCreateAlert}
                 disabled={loadingCreate}
-                className="btn btn-primary rounded-[1rem] px-5 py-3"
+                variant="primary"
               >
                 {loadingCreate ? <span className="loading loading-spinner loading-xs" /> : 'Tạo cảnh báo'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

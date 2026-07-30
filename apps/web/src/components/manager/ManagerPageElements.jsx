@@ -69,11 +69,11 @@ export const ManagerSectionHeader = ({ id, title, description, icon: Icon, actio
 );
 
 export const ManagerEmptyState = ({ icon: Icon = Lucide.Inbox, title, description, action }) => (
-  <section className="admin-empty-panel m-5 flex flex-col items-center justify-center px-6 py-14 text-center sm:m-6">
-    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-700" aria-hidden="true">
+  <section className="flex flex-col items-center justify-center rounded-[1.5rem] border border-slate-200 bg-white px-6 py-12 text-center shadow-sm sm:px-8">
+    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-600" aria-hidden="true">
       <Icon size={24} />
     </span>
-    <h3 className="mt-4 text-base font-semibold text-slate-950">{title}</h3>
+    <h3 className="mt-4 text-base font-black text-slate-900">{title}</h3>
     {description ? <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p> : null}
     {action ? <footer className="mt-5">{action}</footer> : null}
   </section>

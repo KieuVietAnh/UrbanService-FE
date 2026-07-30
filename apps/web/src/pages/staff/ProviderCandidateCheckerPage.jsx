@@ -2,6 +2,8 @@ import { useState, useMemo, useCallback } from 'react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
 import * as Lucide from 'lucide-react';
 
 export default function ProviderCandidateCheckerPage() {
@@ -65,43 +67,43 @@ export default function ProviderCandidateCheckerPage() {
 
   return (
     <div className="space-y-6 p-4">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="admin-page-hero">
         <div className="flex items-center justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-indigo-700">
+            <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em]">
               <Lucide.Search size={14} />
               Kiểm tra ứng viên nhà cung cấp
-            </div>
-            <h1 className="mt-3 text-2xl font-black text-slate-900">Kiểm tra ứng viên nhà cung cấp</h1>
-            <p className="mt-2 text-sm text-slate-500">Kiểm tra các điều phối viên ứng viên cho một phản ánh dựa trên coverage.</p>
+            </Badge>
+            <h1 className="admin-hero-title mt-3">Kiểm tra ứng viên nhà cung cấp</h1>
+            <p className="admin-hero-description mt-2">Kiểm tra các điều phối viên ứng viên cho một phản ánh dựa trên coverage.</p>
           </div>
           <div className="text-sm text-slate-600">Tổng: <span className="font-black">{summary.total}</span></div>
         </div>
       </div>
 
-      <div className="rounded-[1.4rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="admin-panel p-4 sm:p-5">
         <div className="flex gap-2 items-center">
-            <label className="input input-bordered flex items-center gap-2 rounded-2xl border-slate-200 bg-slate-50">
+            <label className="input input-bordered flex items-center gap-2 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
             <Lucide.Hash size={16} className="text-slate-400" />
             <input value={feedbackId} onChange={(e) => setFeedbackId(e.target.value)} placeholder="ID phản ánh" className="grow bg-transparent text-sm" />
           </label>
-          <button onClick={runCheck} className="btn btn-primary">{loading ? <LoadingSpinner /> : 'Kiểm tra ứng viên'}</button>
-          <label className="input input-bordered flex items-center gap-2 rounded-2xl border-slate-200 bg-slate-50 ml-auto">
+          <Button onClick={runCheck} variant="primary">{loading ? <LoadingSpinner /> : 'Kiểm tra ứng viên'}</Button>
+          <label className="input input-bordered flex items-center gap-2 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] ml-auto">
             <Lucide.Search size={16} className="text-slate-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm trong kết quả" className="grow bg-transparent text-sm" />
           </label>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-lg border p-3">
+          <div className="admin-inset-panel p-3">
             <div className="text-xs text-slate-500">Tổng ứng viên</div>
             <div className="font-black text-xl">{summary.total}</div>
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="admin-inset-panel p-3">
             <div className="text-xs text-slate-500">Ứng viên chính</div>
             <div className="font-black text-xl text-blue-600">{summary.primary}</div>
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="admin-inset-panel p-3">
             <div className="text-xs text-slate-500">Ứng viên hoạt động</div>
             <div className="font-black text-xl text-green-600">{summary.active}</div>
           </div>
@@ -142,9 +144,9 @@ export default function ProviderCandidateCheckerPage() {
                       <td>{c.phoneNumber || c.phone || '—'}</td>
                       <td>{c.email || '—'}</td>
                       
-                      <td>{isPrimaryFlag(c) ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">Chính</span> : ''}</td>
+                      <td>{isPrimaryFlag(c) ? <Badge intent="info" className="px-3 py-1 text-xs font-semibold">Chính</Badge> : ''}</td>
                       <td>{c.priorityOrder ?? c.priority ?? '—'}</td>
-                      <td>{isActiveFlag(c) ? <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">Hoạt động</span> : <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Không hoạt động</span>}</td>
+                      <td>{isActiveFlag(c) ? <Badge intent="success" className="px-3 py-1 text-xs font-semibold">Hoạt động</Badge> : <Badge intent="neutral" className="px-3 py-1 text-xs font-semibold">Không hoạt động</Badge>}</td>
                     </tr>
                   ))}
                 </tbody>

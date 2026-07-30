@@ -20,6 +20,10 @@ const getUrgencyBadgeClass = (urgency = '') => {
   return 'border-slate-200 bg-slate-100 text-slate-500';
 };
 
+const getTicketPriority = (ticket = {}) => {
+  return `${ticket.priority || ticket.urgencyLevel || ticket.analysisResult?.urgencyLevel || ticket.urgency || 'Medium'}`.trim();
+};
+
 const FALLBACK_CATEGORIES = [
   { categoryId: 1, categoryName: 'Vệ sinh môi trường' },
   { categoryId: 2, categoryName: 'Đường sá' },
@@ -47,7 +51,7 @@ export const AIReviewDetail = () => {
     const detectedCategoryId = t?.analysisResult?.detectedCategoryId || t?.detectedCategoryId || t?.categoryId;
     setSelectedTicket(t);
     setEditCategoryId(detectedCategoryId || '');
-    setEditPriority(t.priority || 'Medium');
+    setEditPriority(getTicketPriority(t));
   };
 
   useEffect(() => {
@@ -102,7 +106,7 @@ export const AIReviewDetail = () => {
   const displayedTickets = useMemo(() => {
     return tickets.filter((t) => {
       if (!urgencyFilter) return true;
-      const urgency = `${t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency || ''}`.trim();
+      const urgency = getTicketPriority(t);
       return urgency === urgencyFilter;
     });
   }, [tickets, urgencyFilter]);
@@ -209,7 +213,7 @@ export const AIReviewDetail = () => {
                     className={`w-full text-left p-4 rounded-3xl border transition duration-200 flex flex-col gap-3 ${
                       selectedTicket?.feedbackId === t.feedbackId
                         ? 'border-primary bg-primary/10 shadow-sm text-primary'
-                        : `border-base-200 ${getUrgencyBadgeClass(t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency) === 'border-amber-200 bg-amber-50 text-amber-700' || getUrgencyBadgeClass(t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency) === 'border-rose-200 bg-rose-50 text-rose-700' ? 'bg-amber-50/20 hover:border-amber-300' : 'bg-white hover:border-base-300 hover:shadow-sm'}`
+                        : `border-base-200 ${getUrgencyBadgeClass(getTicketPriority(t)) === 'border-amber-200 bg-amber-50 text-amber-700' || getUrgencyBadgeClass(getTicketPriority(t)) === 'border-rose-200 bg-rose-50 text-rose-700' ? 'bg-amber-50/20 hover:border-amber-300' : 'bg-white hover:border-base-300 hover:shadow-sm'}`
                     }`}
                   >
                     <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500">
@@ -217,8 +221,8 @@ export const AIReviewDetail = () => {
                       <span>{new Date(t.createdAt).toLocaleDateString('vi-VN')}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${getUrgencyBadgeClass(t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency)}`}>
-                        {t.urgencyLevel || t.analysisResult?.urgencyLevel || t.urgency || 'Unknown'}
+                      <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${getUrgencyBadgeClass(getTicketPriority(t))}`}>
+                        {getTicketPriority(t)}
                       </span>
                     </div>
                     <h5 className="font-bold text-sm text-base-content line-clamp-2">{t.title}</h5>
@@ -254,8 +258,8 @@ export const AIReviewDetail = () => {
                       </div>
                     </div>
                   </div>                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${getUrgencyBadgeClass(selectedTicket.urgencyLevel || selectedTicket.analysisResult?.urgencyLevel || selectedTicket.urgency)}`}>
-                      {selectedTicket.urgencyLevel || selectedTicket.analysisResult?.urgencyLevel || selectedTicket.urgency || 'Unknown'}
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${getUrgencyBadgeClass(getTicketPriority(selectedTicket))}`}>
+                      {getTicketPriority(selectedTicket)}
                     </span>
                   </div>
                   <div className="mt-6 grid gap-6">
@@ -283,7 +287,7 @@ export const AIReviewDetail = () => {
                           </span>
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Ưu tiên</p>
-                            <p className="mt-2 text-xl font-bold text-gray-900">{selectedTicket.urgencyLevel || 'Medium'}</p>
+                            <p className="mt-2 text-xl font-bold text-gray-900">{getTicketPriority(selectedTicket)}</p>
                           </div>
                         </div>
                       </div>
@@ -377,7 +381,7 @@ export const AIReviewDetail = () => {
                         <div className="space-y-4">
                           <div>
                             <p className="font-semibold text-gray-900">Ưu tiên xử lý</p>
-                            <p className="mt-3 text-gray-600">{selectedTicket.urgencyLevel ? `Xử lý ở mức ${selectedTicket.urgencyLevel.toLowerCase()}` : 'Chưa xác định mức độ ưu tiên.'}</p>
+                            <p className="mt-3 text-gray-600">{getTicketPriority(selectedTicket) ? `Xử lý ở mức ${getTicketPriority(selectedTicket).toLowerCase()}` : 'Chưa xác định mức độ ưu tiên.'}</p>
                           </div>
                           <div>
                             <p className="font-semibold text-gray-900">Hành động đề xuất</p>

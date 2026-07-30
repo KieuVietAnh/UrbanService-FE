@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { LoadingSpinner, EmptyState } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import Button from '../../components/design-system/Button';
 // Lucide icons not used in this file
 
 export default function CoordinatorDetailPage() {
@@ -65,7 +66,7 @@ export default function CoordinatorDetailPage() {
   if (error) return (
     <div className="space-y-4">
       <ErrorAlert title="Lỗi tải chi tiết" message={error} />
-      <button onClick={() => window.location.reload()} className="btn btn-primary btn-sm">Thử lại</button>
+      <Button onClick={() => window.location.reload()} variant="primary" size="sm">Thử lại</Button>
     </div>
   );
 
@@ -74,46 +75,46 @@ export default function CoordinatorDetailPage() {
       <div className="text-lg font-bold">Không tìm thấy điều phối viên</div>
       <div className="mt-3 text-sm text-slate-500">ID: {coordinatorId}</div>
       <div className="mt-4">
-        <button onClick={() => navigate(-1)} className="btn btn-sm">Quay lại</button>
+        <Button onClick={() => navigate(-1)} variant="outline" size="sm">Quay lại</Button>
       </div>
     </div>
   );
 
   return (
-    <div className="space-y-6 p-4">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <div className="admin-page-shell space-y-6 p-4">
+      <div className="admin-page-hero p-5 sm:p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-black">{item.coordinatorName || item.name || item.fullName || '—'}</h1>
+            <h1 className="text-2xl font-semibold">{item.coordinatorName || item.name || item.fullName || '—'}</h1>
             <div className="mt-1 text-sm text-slate-500">{item.providerName || item.provider?.name || ''}</div>
           </div>
           <div>
-            <button onClick={() => navigate(-1)} className="btn btn-ghost btn-sm">Quay lại</button>
+            <Button onClick={() => navigate(-1)} variant="ghost" size="sm">Quay lại</Button>
           </div>
         </div>
       </div>
-      <div className="rounded-[1.4rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="admin-panel p-5">
         <div className="flex items-center gap-3">
-          <button className={`btn btn-sm btn-ghost ${activeTab === 'details' ? 'btn-active' : ''}`} onClick={() => setActiveTab('details')}>Chi tiết</button>
-          <button className={`btn btn-sm btn-ghost ${activeTab === 'coverages' ? 'btn-active' : ''}`} onClick={() => setActiveTab('coverages')}>Vùng phủ</button>
+          <Button className={activeTab === 'details' ? 'bg-slate-900 text-white' : ''} variant={activeTab === 'details' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('details')}>Chi tiết</Button>
+          <Button className={activeTab === 'coverages' ? 'bg-slate-900 text-white' : ''} variant={activeTab === 'coverages' ? 'primary' : 'ghost'} size="sm" onClick={() => setActiveTab('coverages')}>Vùng phủ</Button>
           
         </div>
 
         {activeTab === 'details' && (
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
+            <div className="admin-inset-panel p-4">
               <div className="text-xs text-slate-500">Số điện thoại</div>
               <div className="font-semibold mt-1">{item.phoneNumber || item.phone || '—'}</div>
             </div>
-            <div>
+            <div className="admin-inset-panel p-4">
               <div className="text-xs text-slate-500">Email</div>
               <div className="font-semibold mt-1">{item.email || '—'}</div>
             </div>
-            <div>
+            <div className="admin-inset-panel p-4">
               <div className="text-xs text-slate-500">Trạng thái</div>
               <div className="font-semibold mt-1">{item.isActive ? 'Active' : 'Inactive'}</div>
             </div>
-            <div>
+            <div className="admin-inset-panel p-4">
               <div className="text-xs text-slate-500">Coverage</div>
               <div className="font-semibold mt-1">{item.coverageCount ?? item.coverage?.length ?? 0}</div>
             </div>
@@ -128,13 +129,13 @@ export default function CoordinatorDetailPage() {
               <div className="space-y-4">
                 <ErrorAlert title="Lỗi tải vùng phủ" message={errorCoverages} />
                 <div>
-                  <button onClick={() => setActiveTab('coverages')} className="btn btn-primary btn-sm">Thử lại</button>
+                  <Button onClick={() => setActiveTab('coverages')} variant="primary" size="sm">Thử lại</Button>
                 </div>
               </div>
             ) : coverages.length === 0 ? (
               <EmptyState title="Chưa có vùng phủ" description="Không có vùng phủ dành cho điều phối viên này." />
             ) : (
-              <div className="overflow-x-auto">
+              <div className="admin-table-wrap overflow-x-auto">
                 <table className="table table-zebra w-full text-sm">
                   <thead>
                     <tr>
