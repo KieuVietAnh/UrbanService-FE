@@ -6,7 +6,7 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { toolsApi } from '@urbanmind/shared-api';
 import { managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
-import { LoadingSpinner, EmptyState } from '@urbanmind/shared-ui';
+import { LoadingSpinner, EmptyState, ConfirmationModal } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
 import IncidentMap from '../../components/maps/IncidentMap';
@@ -15,6 +15,51 @@ import * as Lucide from 'lucide-react';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
+
+const CITIZEN_NOTIFICATION_TEMPLATES = [
+  {
+    id: 'received',
+    label: 'Đã tiếp nhận',
+    shortLabel: 'Tiếp nhận phản ánh',
+    title: 'Phản ánh đã được tiếp nhận',
+    message: 'Đơn vị phụ trách đã tiếp nhận phản ánh của bạn và đang xem xét xử lý.',
+  },
+  {
+    id: 'processing',
+    label: 'Đang xử lý',
+    shortLabel: 'Đang xử lý phản ánh',
+    title: 'Phản ánh đang được xử lý',
+    message: 'Đơn vị phụ trách đang tiến hành xử lý phản ánh của bạn.',
+  },
+  {
+    id: 'completed',
+    label: 'Đã hoàn thành',
+    shortLabel: 'Hoàn tất xử lý',
+    title: 'Phản ánh đã được xử lý',
+    message: 'Đơn vị phụ trách đã hoàn thành việc xử lý phản ánh của bạn.',
+  },
+  {
+    id: 'need-info',
+    label: 'Cần bổ sung thông tin',
+    shortLabel: 'Yêu cầu thêm thông tin',
+    title: 'Cần bổ sung thông tin',
+    message: 'Vui lòng cung cấp thêm thông tin để hỗ trợ quá trình xử lý phản ánh.',
+  },
+  {
+    id: 'rejected',
+    label: 'Từ chối xử lý',
+    shortLabel: 'Không đủ điều kiện',
+    title: 'Phản ánh không đủ điều kiện xử lý',
+    message: 'Phản ánh hiện chưa đủ điều kiện để tiếp tục xử lý.',
+  },
+  {
+    id: 'custom',
+    label: 'Tùy chỉnh',
+    shortLabel: 'Soạn riêng',
+    title: '',
+    message: '',
+  },
+];
 
 export const ManagementFeedbackDetailPage = () => {
   const { feedbackId } = useParams();
@@ -93,6 +138,16 @@ export const ManagementFeedbackDetailPage = () => {
   // Preview attachment
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [selectedTimelineEventId, setSelectedTimelineEventId] = useState(null);
+
+  // Citizen notification
+  const [notificationForm, setNotificationForm] = useState({ templateId: 'custom', title: '', message: '', targetUrl: '' });
+  const [notificationErrors, setNotificationErrors] = useState({});
+  const [notificationSubmitting, setNotificationSubmitting] = useState(false);
+  const [notificationConfirmOpen, setNotificationConfirmOpen] = useState(false);
+  const [pendingNotificationPayload, setPendingNotificationPayload] = useState(null);
+  const [notificationToast, setNotificationToast] = useState({ open: false, message: '', sub: '' });
+  const [notificationActivities, setNotificationActivities] = useState([]);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
 
   // Load feedback details
   useEffect(() => {
@@ -343,6 +398,74 @@ export const ManagementFeedbackDetailPage = () => {
     }
   };
 
+  const handleNotificationFieldChange = (field, value) => {
+    setNotificationForm((current) => ({ ...current, [field]: value }));
+    setNotificationErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const validateNotificationForm = () => {
+    const nextErrors = {};
+    if (!notificationForm.title?.trim()) nextErrors.title = 'Vui lòng nhập tiêu đề thông báo.';
+    if (!notificationForm.message?.trim()) nextErrors.message = 'Vui lòng nhập nội dung thông báo.';
+    return nextErrors;
+  };
+
+  const openNotificationConfirmation = () => {
+    const validationErrors = validateNotificationForm();
+    if (Object.keys(validationErrors).length > 0) {
+      setNotificationErrors(validationErrors);
+      return;
+    }
+
+    const payload = {
+      templateId: notificationForm.templateId,
+      title: notificationForm.title?.trim(),
+      message: notificationForm.message?.trim(),
+      targetUrl: notificationForm.targetUrl?.trim() || undefined,
+    };
+
+    setPendingNotificationPayload(payload);
+    setNotificationConfirmOpen(true);
+  };
+
+  const handleSendCitizenNotification = async () => {
+    if (!feedbackId || !pendingNotificationPayload) return;
+
+    setNotificationSubmitting(true);
+    setNotificationConfirmOpen(false);
+    try {
+      await managementFeedbackApi.notifyProviderResult(feedbackId, pendingNotificationPayload);
+      setNotificationToast({
+        open: true,
+        message: 'Đã gửi thông báo cho người dân',
+        sub: 'Thông báo sẽ được gửi ngay sau khi xác nhận.',
+      });
+      setNotificationActivities((current) => [
+        {
+          id: `${Date.now()}`,
+          title: 'Đã gửi thông báo cho người dân',
+          subtitle: pendingNotificationPayload.title,
+          timestamp: new Date().toISOString(),
+        },
+        ...current,
+      ].slice(0, 3));
+      if (notificationForm.templateId === 'custom') {
+        setNotificationForm({ templateId: 'custom', title: '', message: '', targetUrl: '' });
+      }
+      setNotificationErrors({});
+    } catch (err) {
+      console.error('Failed to send citizen notification', err);
+      setNotificationToast({
+        open: true,
+        message: 'Gửi thông báo thất bại',
+        sub: err?.message || 'Không thể gửi thông báo cho người dân lúc này.',
+      });
+    } finally {
+      setNotificationSubmitting(false);
+      setPendingNotificationPayload(null);
+    }
+  };
+
   // Open provider report workspace for this feedback
   const openProviderReportWorkspace = async () => {
     try {
@@ -416,6 +539,28 @@ export const ManagementFeedbackDetailPage = () => {
       minute: '2-digit',
     });
   };
+
+  const suggestedNotificationTemplateId = useMemo(() => {
+    const status = `${feedback?.status || ''}`.trim();
+    if (status === managementTypes.feedbackStatus.IN_PROGRESS) return 'processing';
+    if (status === managementTypes.feedbackStatus.RESOLVED || status === managementTypes.feedbackStatus.APPROVED || status === managementTypes.feedbackStatus.CLOSED) return 'completed';
+    if (status === managementTypes.feedbackStatus.REJECTED) return 'rejected';
+    if (status === managementTypes.feedbackStatus.NEED_REWORK) return 'need-info';
+    if (status === managementTypes.feedbackStatus.SUBMITTED || status === managementTypes.feedbackStatus.VERIFIED || status === managementTypes.feedbackStatus.ASSIGNED) return 'received';
+    return 'custom';
+  }, [feedback?.status]);
+
+  const notificationContentValid = useMemo(() => {
+    const title = notificationForm.title?.trim();
+    const message = notificationForm.message?.trim();
+    return Boolean(notificationForm.templateId && title && message);
+  }, [notificationForm.templateId, notificationForm.title, notificationForm.message]);
+
+  const recipientSummary = useMemo(() => ({
+    name: feedback?.citizenName || feedback?.residentName || feedback?.createdByName || feedback?.reporterName || 'Chưa có thông tin',
+    feedbackCode: feedback?.feedbackCode || feedback?.code || feedback?.feedbackId || feedback?.id || '—',
+    area: feedback?.area?.name || feedback?.areaName || feedback?.wardName || feedback?.locationText || 'Chưa cập nhật',
+  }), [feedback]);
 
   const isVideoFile = (fileUrl = '') => {
     const url = fileUrl.toLowerCase();
@@ -1283,6 +1428,210 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           )}
 
+          <div className="admin-panel p-5 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-sm">
+                <Lucide.BellRing size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thông báo cho người dân</div>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">Thông báo cho người dân</h3>
+                <p className="mt-1 text-sm text-slate-500">Gửi thông báo thủ công tới người dân về trạng thái xử lý phản ánh.</p>
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] border border-slate-200/80 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                <Lucide.Info size={12} />
+                Trạng thái hiện tại
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">{feedback ? getStatusLabel(feedback.status) : 'Đang tải...'}</div>
+                  <div className="mt-1 text-sm text-slate-500">Thông báo đề xuất sẽ được đánh dấu phù hợp với trạng thái hiện tại.</div>
+                </div>
+                <Badge intent={feedback?.status ? getBadgeIntent(feedback.status, 'status') : 'neutral'} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
+                  {feedback ? getStatusLabel(feedback.status) : 'Đang tải'}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="rounded-[1rem] border border-slate-200/80 bg-white p-3 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người nhận</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người nhận</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">{recipientSummary.name}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Mã phản ánh</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">{recipientSummary.feedbackCode}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Khu vực</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">{recipientSummary.area}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {CITIZEN_NOTIFICATION_TEMPLATES.map((template) => {
+                const selected = notificationForm.templateId === template.id;
+                const isSuggested = template.id === suggestedNotificationTemplateId;
+                const semanticClass = template.id === 'received'
+                  ? 'status-info'
+                  : template.id === 'processing'
+                    ? 'status-warning'
+                    : template.id === 'completed'
+                      ? 'status-success'
+                      : template.id === 'rejected'
+                        ? 'status-danger'
+                        : 'status-neutral';
+                const selectedClass = selected
+                  ? `${semanticClass} shadow-[0_12px_24px_rgba(15,23,42,0.08)]`
+                  : `${semanticClass} bg-white/80 hover:bg-slate-50`;
+                return (
+                  <Button
+                    key={template.id}
+                    type="button"
+                    variant={selected ? 'primary' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setNotificationForm((current) => ({ ...current, templateId: template.id, title: template.title, message: template.message }));
+                      setNotificationErrors((current) => ({ ...current, title: undefined, message: undefined }));
+                    }}
+                    className={`justify-start rounded-[1rem] px-3 py-2.5 text-left ${selectedClass} ${isSuggested && !selected ? 'ring-1 ring-slate-200' : ''}`}
+                  >
+                    <span className="flex w-full items-start justify-between gap-2">
+                      <span className="flex flex-col items-start gap-0.5">
+                        <span className="text-sm font-semibold">{template.label}</span>
+                        <span className="text-xs font-medium opacity-80">{template.shortLabel}</span>
+                      </span>
+                      {isSuggested && (
+                        <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          Gợi ý
+                        </span>
+                      )}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="space-y-3">
+                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                  <span>Tiêu đề</span>
+                  <input
+                    value={notificationForm.title}
+                    onChange={(event) => handleNotificationFieldChange('title', event.target.value)}
+                    className="w-full rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-slate-400"
+                    placeholder="Nhập tiêu đề thông báo"
+                  />
+                  {notificationErrors.title && <span className="text-xs font-medium text-rose-600">{notificationErrors.title}</span>}
+                </label>
+
+                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                  <span>Nội dung</span>
+                  <textarea
+                    value={notificationForm.message}
+                    onChange={(event) => handleNotificationFieldChange('message', event.target.value)}
+                    rows={5}
+                    className="w-full rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-slate-400"
+                    placeholder="Nhập nội dung thông báo"
+                  />
+                  {notificationErrors.message && <span className="text-xs font-medium text-rose-600">{notificationErrors.message}</span>}
+                </label>
+
+                <div className="rounded-[1rem] border border-slate-200/80 bg-slate-50 p-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedOptions((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 text-sm font-semibold text-slate-700"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Lucide.Settings2 size={14} className="text-slate-500" />
+                      Tùy chọn nâng cao
+                    </span>
+                    {showAdvancedOptions ? <Lucide.ChevronUp size={16} className="text-slate-500" /> : <Lucide.ChevronDown size={16} className="text-slate-500" />}
+                  </button>
+                  {showAdvancedOptions && (
+                    <label className="mt-3 flex flex-col gap-2 text-sm font-semibold text-slate-700">
+                      <span>Link đính kèm</span>
+                      <input
+                        value={notificationForm.targetUrl}
+                        onChange={(event) => handleNotificationFieldChange('targetUrl', event.target.value)}
+                        className="w-full rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-slate-400"
+                        placeholder="https://..."
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <div className="admin-inset-panel p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <Lucide.BellRing size={15} className="text-rose-600" />
+                  Xem trước thông báo
+                </div>
+                <div className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                    <Lucide.BellRing size={12} />
+                    Thông báo
+                  </div>
+                  <div className="mt-3 rounded-[0.9rem] border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                    {notificationForm.templateId === 'processing' ? 'Đang xử lý' : notificationForm.templateId === 'completed' ? 'Đã hoàn thành' : notificationForm.templateId === 'received' ? 'Đã tiếp nhận' : notificationForm.templateId === 'rejected' ? 'Từ chối xử lý' : notificationForm.templateId === 'need-info' ? 'Cần bổ sung thông tin' : 'Tùy chỉnh'}
+                  </div>
+                  <div className="mt-3 text-sm font-semibold text-slate-900">{notificationForm.title || 'Tiêu đề thông báo'}</div>
+                  <div className="mt-2 text-sm leading-6 text-slate-600 whitespace-pre-line">{notificationForm.message || 'Nội dung thông báo sẽ hiển thị ở đây.'}</div>
+                  <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    <span>Ngày giờ gửi</span>
+                    <span>{formatDate(new Date().toISOString())}</span>
+                  </div>
+                  {notificationForm.targetUrl && (
+                    <div className="mt-3 rounded-[0.9rem] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      {notificationForm.targetUrl}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3">
+              <div className="text-sm text-slate-500">
+                {notificationContentValid ? 'Thông báo đã sẵn sàng để gửi cho người dân.' : 'Vui lòng nhập tiêu đề và nội dung trước khi gửi.'}
+              </div>
+              <Button
+                type="button"
+                onClick={openNotificationConfirmation}
+                disabled={notificationSubmitting || !notificationContentValid}
+                variant="primary"
+                size="sm"
+              >
+                {notificationSubmitting ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={14} />}
+                Gửi thông báo
+              </Button>
+            </div>
+
+            {notificationActivities.length > 0 && (
+              <div className="rounded-[1.2rem] border border-slate-200/80 bg-slate-50 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Lịch sử thông báo</div>
+                <div className="mt-3 space-y-3">
+                  {notificationActivities.map((activity) => (
+                    <div key={activity.id} className="relative pl-5">
+                      <div className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full bg-rose-600" />
+                      <div className="rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5">
+                        <div className="text-sm font-semibold text-slate-900">{activity.title}</div>
+                        <div className="mt-0.5 text-sm text-slate-600">{activity.subtitle}</div>
+                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{formatDate(activity.timestamp)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Attachments */}
           {attachments.length > 0 && (
             <div className="admin-panel p-6 space-y-4">
@@ -1822,6 +2171,20 @@ export const ManagementFeedbackDetailPage = () => {
         </div>
       )}
       <DelightToast open={areaAlertToast.open} message={areaAlertToast.message} sub={areaAlertToast.sub} onClose={() => setAreaAlertToast({ open: false, message: '', sub: '' })} />
+      <DelightToast open={notificationToast.open} message={notificationToast.message} sub={notificationToast.sub} onClose={() => setNotificationToast({ open: false, message: '', sub: '' })} />
+
+      <ConfirmationModal
+        open={notificationConfirmOpen}
+        title="Xác nhận gửi thông báo"
+        message="Người dân sẽ nhận được thông báo này ngay sau khi gửi."
+        confirmLabel="Gửi thông báo"
+        cancelLabel="Hủy"
+        onConfirm={handleSendCitizenNotification}
+        onCancel={() => {
+          setNotificationConfirmOpen(false);
+          setPendingNotificationPayload(null);
+        }}
+      />
     </div>
   );
 };
