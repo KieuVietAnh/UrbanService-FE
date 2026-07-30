@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap");
 @import "tailwindcss";
 @plugin "daisyui";
 
@@ -6,7 +7,10 @@ html, body, #root {
   padding: 0;
   width: 100%;
   height: 100%;
-  font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
   background-color: var(--bg);
   color: var(--ink);
@@ -21,6 +25,7 @@ html, body, #root {
   --space-lg: calc(var(--p-density) * 24px);
   --space-xl: calc(var(--p-density) * 40px);
   --content-max: 1180px;
+  --font-sans: "Geist", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 /* Semantic color tokens (trust-oriented, government palette) */
@@ -1085,13 +1090,45 @@ html[data-theme="dark"] .admin-page-shell .card.border-slate-200 {
   color: #0f172a;
   font-size: 1rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
 }
 
 .admin-section-description {
   color: #64748b;
-  font-size: 0.78rem;
-  line-height: 1.55;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: 0.001em;
+}
+
+.admin-panel,
+.admin-inset-panel,
+.admin-info-note,
+.admin-warning-note,
+.admin-stat-card {
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.admin-panel h1,
+.admin-panel h2,
+.admin-panel h3,
+.admin-panel h4,
+.admin-inset-panel h1,
+.admin-inset-panel h2,
+.admin-inset-panel h3,
+.admin-inset-panel h4 {
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.admin-panel p,
+.admin-inset-panel p,
+.admin-info-note p,
+.admin-warning-note p {
+  line-height: 1.65;
 }
 
 .admin-info-note {
