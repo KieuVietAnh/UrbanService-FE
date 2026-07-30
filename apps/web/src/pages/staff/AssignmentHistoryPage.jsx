@@ -3,7 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
 import PageTransition from '../../components/motion/PageTransition';
+import { EmptyState } from '@urbanmind/shared-ui';
 
 const FILTER_OPTIONS = [
   { id: 'all', label: 'Tất cả', icon: Lucide.ListFilter },
@@ -111,7 +114,7 @@ export const AssignmentHistoryPage = () => {
     return (
       <PageTransition>
         <div className="page-container py-4">
-          <div className="animate-pulse rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="admin-panel animate-pulse p-6">
             <div className="h-5 w-40 rounded-full bg-slate-100" />
             <div className="mt-4 h-8 w-2/3 rounded-2xl bg-slate-100" />
             <div className="mt-3 h-4 w-1/2 rounded-full bg-slate-100" />
@@ -123,37 +126,37 @@ export const AssignmentHistoryPage = () => {
 
   return (
     <PageTransition>
-      <div className="page-container space-y-6 py-4 text-slate-800">
+      <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
         {error && <ErrorAlert message={error} onClose={() => setError('')} />}
 
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <div className="admin-page-hero p-5 sm:p-7">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-indigo-700">
+              <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
                 <Lucide.History size={14} />
                 Lịch sử phân công
-              </div>
+              </Badge>
               <div>
-                <h1 className="text-2xl font-black text-slate-900">Theo dõi thay đổi người phụ trách</h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">Một dòng thời gian rõ ràng cho các lần phân công, chuyển giao và leo thang xử lý, giúp đội vận hành giữ được sự minh bạch và trách nhiệm.</p>
+                <h1 className="admin-hero-title">Theo dõi thay đổi người phụ trách</h1>
+                <p className="admin-hero-description mt-2 max-w-2xl">Một dòng thời gian rõ ràng cho các lần phân công, chuyển giao và leo thang xử lý, giúp đội vận hành giữ được sự minh bạch và trách nhiệm.</p>
               </div>
             </div>
-            <button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} className="btn btn-ghost rounded-2xl text-sm">
+            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="ghost" size="sm">
               Quay lại chi tiết
-            </button>
+            </Button>
           </div>
         </div>
 
-        <div className="rounded-[2rem] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-5 text-white shadow-sm sm:p-6">
+        <div className="admin-panel p-5 sm:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Phản ánh</div>
-              <h2 className="mt-2 text-xl font-black">{feedback?.title || '—'}</h2>
-              <p className="mt-2 max-w-2xl text-sm text-slate-300">{feedback?.description || 'Không có mô tả bổ sung.'}</p>
+              <div className="admin-section-title uppercase tracking-[0.24em]">Phản ánh</div>
+              <h2 className="admin-section-title mt-2">{feedback?.title || '—'}</h2>
+              <p className="admin-hero-description mt-2 max-w-2xl">{feedback?.description || 'Không có mô tả bổ sung.'}</p>
             </div>
-            <div className="rounded-[1.2rem] border border-white/10 bg-white/10 px-4 py-3 backdrop-blur">
-              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Trạng thái hiện tại</div>
-              <div className="mt-1 text-sm font-semibold">{feedback?.status || '—'}</div>
+            <div className="admin-inset-panel px-4 py-3">
+              <div className="admin-section-description uppercase tracking-[0.24em]">Trạng thái hiện tại</div>
+              <div className="mt-1 text-sm font-semibold text-slate-700">{feedback?.status || '—'}</div>
             </div>
           </div>
         </div>
@@ -163,29 +166,32 @@ export const AssignmentHistoryPage = () => {
             const Icon = option.icon;
             const active = activeFilter === option.id;
             return (
-              <button
+              <Button
                 key={option.id}
                 type="button"
                 onClick={() => setActiveFilter(option.id)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition ${active ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                variant={active ? 'primary' : 'outline'}
+                size="sm"
+                className={active ? 'rounded-full' : 'rounded-full'}
               >
                 <Icon size={14} />
                 {option.label}
-              </button>
+              </Button>
             );
           })}
         </div>
 
         <div className="space-y-4">
           {visibleEvents.length === 0 ? (
-            <div className="rounded-[2rem] border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
-              Chưa có dữ liệu lịch sử cho bộ lọc này.
-            </div>
+            <EmptyState
+              title="Chưa có dữ liệu lịch sử"
+              description="Chưa có dữ liệu lịch sử cho bộ lọc này."
+            />
           ) : (
             visibleEvents.map((event, index) => {
               const Icon = event.type === 'escalation' ? Lucide.Siren : event.type === 'reassignment' ? Lucide.RefreshCw : Lucide.UserCheck;
               return (
-                <div key={event.id} className="relative rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div key={event.id} className="admin-panel relative p-5 sm:p-6">
                   <div className="absolute left-6 top-6 bottom-[-1.2rem] w-px bg-slate-200" />
                   <div className="flex gap-4">
                     <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
@@ -194,8 +200,8 @@ export const AssignmentHistoryPage = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                          <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">{index + 1}. {event.type === 'escalation' ? 'Leo thang' : event.type === 'reassignment' ? 'Chuyển giao' : 'Phân công'}</div>
-                          <h3 className="mt-1 text-lg font-black text-slate-900">{event.title}</h3>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{index + 1}. {event.type === 'escalation' ? 'Leo thang' : event.type === 'reassignment' ? 'Chuyển giao' : 'Phân công'}</div>
+                          <h3 className="mt-1 text-lg font-semibold text-slate-900">{event.title}</h3>
                         </div>
                         <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                           {formatDate(event.assignmentDate)}
@@ -203,35 +209,35 @@ export const AssignmentHistoryPage = () => {
                       </div>
 
                       <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                        <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
+                        <div className="admin-inset-panel p-4">
                           <div className="grid gap-3 text-sm">
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Người phân công</div>
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người phân công</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.assignedBy}</div>
                             </div>
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Được phân công cho</div>
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Được phân công cho</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.assignedTo}</div>
                             </div>
                           </div>
                         </div>
-                        <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
+                        <div className="admin-inset-panel p-4">
                           <div className="grid gap-3 text-sm">
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Người phụ trách cũ</div>
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người phụ trách cũ</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.previousAssignee}</div>
                             </div>
                             <div>
-                              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Người phụ trách hiện tại</div>
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người phụ trách hiện tại</div>
                               <div className="mt-1 font-semibold text-slate-700">{event.currentAssignee}</div>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-white p-4">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Ghi chú</div>
-                        <p className="mt-2 text-sm leading-7 text-slate-600">{event.note}</p>
+                      <div className="admin-inset-panel mt-4 p-4">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Ghi chú</div>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{event.note}</p>
                       </div>
                     </div>
                   </div>

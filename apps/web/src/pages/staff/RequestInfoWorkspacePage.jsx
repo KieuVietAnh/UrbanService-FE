@@ -5,7 +5,10 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import PageTransition from '../../components/motion/PageTransition';
 import { managementTypes } from '@urbanmind/shared-types';
+import { EmptyState } from '@urbanmind/shared-ui';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
 
 const TEMPLATE_OPTIONS = [
   {
@@ -121,8 +124,8 @@ export const RequestInfoWorkspacePage = () => {
   if (loading) {
     return (
       <PageTransition>
-        <div className="page-container space-y-4 py-4">
-          <div className="animate-pulse rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="admin-page-shell page-container space-y-4 py-4">
+          <div className="admin-panel animate-pulse p-6">
             <div className="h-5 w-44 rounded-full bg-slate-100" />
             <div className="mt-4 h-8 w-2/3 rounded-2xl bg-slate-100" />
             <div className="mt-3 h-4 w-1/2 rounded-full bg-slate-100" />
@@ -134,55 +137,55 @@ export const RequestInfoWorkspacePage = () => {
 
   return (
     <PageTransition>
-      <div className="page-container space-y-6 py-4 text-slate-800">
+      <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
         {message.type === 'success' && <SuccessAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />}
         {message.type === 'error' && <ErrorAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />}
 
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <div className="admin-page-hero p-5 sm:p-7">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-sky-700">
+              <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
                 <Lucide.MessageSquarePlus size={14} />
                 Yêu cầu thêm thông tin
-              </div>
+              </Badge>
               <div>
-                <h1 className="text-2xl font-black text-slate-900">Workspace yêu cầu bổ sung thông tin</h1>
-                <p className="mt-2 max-w-2xl text-sm text-slate-500">Gửi một yêu cầu rõ ràng, có cấu trúc và có thể hành động ngay cho người dân để rút ngắn vòng lặp xử lý.</p>
+                <h1 className="admin-hero-title">Workspace yêu cầu bổ sung thông tin</h1>
+                <p className="admin-hero-description mt-2 max-w-2xl">Gửi một yêu cầu rõ ràng, có cấu trúc và có thể hành động ngay cho người dân để rút ngắn vòng lặp xử lý.</p>
               </div>
             </div>
-            <button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} className="btn btn-ghost rounded-2xl text-sm">
+            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="ghost" size="sm" className="rounded-2xl">
               Quay lại chi tiết
-            </button>
+            </Button>
           </div>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           <div className="space-y-6">
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-black text-slate-900">
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Lucide.FileText size={16} className="text-slate-600" />
                 Tóm tắt phản ánh
               </div>
-              <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Tiêu đề</p>
-                <p className="mt-2 text-sm font-semibold text-slate-800">{feedback?.title || '—'}</p>
-                <p className="mt-4 text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Nội dung</p>
-                <p className="mt-2 text-sm leading-7 text-slate-600">{feedback?.description || 'Không có mô tả.'}</p>
+              <div className="admin-inset-panel mt-4 p-4">
+                <p className="admin-section-description uppercase tracking-[0.24em]">Tiêu đề</p>
+                <p className="mt-2 heading-3 text-slate-800">{feedback?.title || '—'}</p>
+                <p className="mt-4 admin-section-description uppercase tracking-[0.24em]">Nội dung</p>
+                <p className="mt-2 body-text">{feedback?.description || 'Không có mô tả.'}</p>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[1.2rem] border border-slate-200 bg-white p-3 text-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Danh mục</p>
+                <div className="admin-inset-panel p-3 text-sm">
+                  <p className="admin-section-description uppercase tracking-[0.24em]">Danh mục</p>
                   <p className="mt-2 font-semibold text-slate-700">{getCategoryLabel(feedback?.categoryName || feedback?.category?.name || feedback?.categoryType || feedback?.type, '—')}</p>
                 </div>
-                <div className="rounded-[1.2rem] border border-slate-200 bg-white p-3 text-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Đơn vị xử lý</p>
+                <div className="admin-inset-panel p-3 text-sm">
+                  <p className="admin-section-description uppercase tracking-[0.24em]">Đơn vị xử lý</p>
                   <p className="mt-2 font-semibold text-slate-700">{feedback?.assignment?.operatorName || 'Chưa phân công'}</p>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-black text-slate-900">
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Lucide.ListChecks size={16} className="text-slate-600" />
                 Checklist thông tin còn thiếu
               </div>
@@ -190,7 +193,7 @@ export const RequestInfoWorkspacePage = () => {
                 {CHECKLIST_ITEMS.map((item) => {
                   const checked = selectedChecklist.includes(item);
                   return (
-                    <label key={item} className="flex cursor-pointer items-center justify-between rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                    <label key={item} className="admin-inset-panel flex cursor-pointer items-center justify-between px-3 py-3 text-sm text-slate-700">
                       <span>{item}</span>
                       <input type="checkbox" checked={checked} onChange={() => toggleChecklist(item)} className="checkbox checkbox-primary checkbox-sm" />
                     </label>
@@ -199,30 +202,32 @@ export const RequestInfoWorkspacePage = () => {
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-black text-slate-900">
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Lucide.LayoutTemplate size={16} className="text-slate-600" />
                 Mẫu phản hồi đề xuất
               </div>
               <div className="mt-4 space-y-3">
                 {TEMPLATE_OPTIONS.map((template) => (
-                  <button key={template.title} type="button" onClick={() => handleApplyTemplate(template)} className={`w-full rounded-[1.2rem] border px-4 py-3 text-left transition ${requestType === template.title ? 'border-sky-300 bg-sky-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                    <div className="text-sm font-semibold text-slate-800">{template.title}</div>
-                    <div className="mt-1 text-sm text-slate-500">{template.body}</div>
-                  </button>
+                  <Button key={template.title} type="button" onClick={() => handleApplyTemplate(template)} variant={requestType === template.title ? 'primary' : 'outline'} className={`w-full justify-start rounded-[1.2rem] px-4 py-3 text-left ${requestType === template.title ? 'border-sky-300 bg-sky-50 shadow-sm' : ''}`}>
+                    <span className="flex flex-col items-start">
+                      <span className="text-sm font-semibold text-slate-800">{template.title}</span>
+                      <span className="mt-1 text-sm text-slate-500">{template.body}</span>
+                    </span>
+                  </Button>
                 ))}
               </div>
             </section>
           </div>
 
           <div className="space-y-6">
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-black text-slate-900">
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Lucide.Edit3 size={16} className="text-slate-600" />
                 Soạn tin nhắn cho công dân
               </div>
               <div className="mt-4 space-y-4">
-                <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                <div className="admin-inset-panel p-3 text-sm text-slate-600">
                   <div className="font-semibold text-slate-700">Đang dùng mẫu</div>
                   <div className="mt-1">{selectedTemplate.title}</div>
                 </div>
@@ -236,39 +241,40 @@ export const RequestInfoWorkspacePage = () => {
                 />
 
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={handleSaveDraft} disabled={saving} className="btn btn-outline btn-primary rounded-2xl">
+                  <Button type="button" onClick={handleSaveDraft} disabled={saving} variant="outline">
                     {saving ? <span className="loading loading-spinner" /> : <><Lucide.Save size={16} className="mr-2" />Lưu bản nháp</>}
-                  </button>
-                  <button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} className="btn btn-ghost rounded-2xl">Hủy</button>
-                  <button type="button" onClick={handleSendRequest} disabled={sending} className="btn btn-primary rounded-2xl">
+                  </Button>
+                  <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="ghost">Hủy</Button>
+                  <Button type="button" onClick={handleSendRequest} disabled={sending} variant="primary">
                     {sending ? <span className="loading loading-spinner" /> : <><Lucide.Send size={16} className="mr-2" />Gửi yêu cầu</>}
-                  </button>
+                  </Button>
                 </div>
 
                 {draftSaved && (
-                  <div className="rounded-[1.1rem] border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">
+                  <div className="admin-info-note p-3 text-sm font-semibold">
                     Bản nháp đã được lưu sẵn sàng gửi sau.
                   </div>
                 )}
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-black text-slate-900">
+            <section className="admin-panel p-5 sm:p-6">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Lucide.Clock3 size={16} className="text-slate-600" />
                 Lịch sử yêu cầu
               </div>
               <div className="mt-4 space-y-3">
-                <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <div className="admin-inset-panel p-4 text-sm text-slate-600">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-slate-800">Yêu cầu mới</span>
                     <span className="text-[11px] text-slate-400">Mới</span>
                   </div>
                   <p className="mt-2">Sẵn sàng gửi cho công dân với nội dung vừa soạn.</p>
                 </div>
-                <div className="rounded-[1.2rem] border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
-                  Chưa có lịch sử yêu cầu bổ sung thông tin trước đây cho phản ánh này.
-                </div>
+                <EmptyState
+                  title="Chưa có lịch sử yêu cầu"
+                  description="Chưa có lịch sử yêu cầu bổ sung thông tin trước đây cho phản ánh này."
+                />
               </div>
             </section>
           </div>

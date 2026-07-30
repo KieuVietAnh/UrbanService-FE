@@ -6,6 +6,7 @@ import { LoadingSpinner, CompletionDocumentsCard, ConfirmationModal } from '@urb
 import { canTransitionProviderReportStatus, normalizeProviderReportStatus } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
+import Button from '../../components/design-system/Button';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -34,20 +35,11 @@ const STEPS = [
 
 /* ─── Status chip colours ────────────────────────────────────────────────── */
 
-const STATUS_COLOR = {
-  Done:       { bg: 'var(--color-success-bg)', fg: 'var(--color-success)',  bd: 'rgba(4,120,87,0.18)' },
-  InProgress: { bg: 'var(--color-warning-bg)', fg: 'var(--color-warning)',  bd: 'rgba(180,83,9,0.18)'  },
-  Failed:     { bg: 'var(--color-danger-bg)',  fg: 'var(--color-danger)',   bd: 'rgba(185,28,28,0.18)' },
-  Cancelled:  { bg: '#f1f5f9',                 fg: '#475569',               bd: 'rgba(71,85,105,0.15)' },
-  Accepted:   { bg: 'var(--color-info-bg)',    fg: 'var(--color-info)',     bd: 'rgba(37,99,235,0.15)' },
-  Contacted:  { bg: 'var(--color-info-bg)',    fg: 'var(--color-info)',     bd: 'rgba(37,99,235,0.15)' },
-  Reported:   { bg: '#f1f5f9',                 fg: '#475569',               bd: 'rgba(71,85,105,0.12)' },
-};
-
-const statusChip = (status) => {
-  const c = STATUS_COLOR[status] ?? { bg: '#f1f5f9', fg: '#475569', bd: 'rgba(71,85,105,0.12)' };
-  return { backgroundColor: c.bg, color: c.fg, border: `1px solid ${c.bd}` };
-};
+const statusChip = () => ({
+  backgroundColor: '#f8fafc',
+  color: '#475569',
+  border: '1px solid #e2e8f0',
+});
 
 /* ─── Design tokens (inline so only this file changes) ───────────────────── */
 
@@ -212,20 +204,22 @@ const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextD
       }}
     >
       {!isFirst && (
-        <button
+        <Button
           type="button"
-          className="btn btn-ghost btn-sm"
+          variant="ghost"
+          size="sm"
           onClick={onBack}
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', color: '#475569' }}
         >
           <Lucide.ArrowLeft size={14} />
           Quay lại
-        </button>
+        </Button>
       )}
       {!isLast && !hideNext && (
-        <button
+        <Button
           type="button"
-          className={`btn btn-sm ${nextVariant === 'primary' ? 'btn-primary' : 'btn-success'}`}
+          variant={nextVariant === 'primary' ? 'primary' : 'outline'}
+          size="sm"
           onClick={onNext}
           disabled={nextDisabled}
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
@@ -233,7 +227,7 @@ const StepFooter = ({ currentIndex, totalSteps, onBack, onNext, nextLabel, nextD
           {nextLoading ? <span className="loading loading-spinner loading-xs" /> : null}
           {nextLabel || 'Bước tiếp theo'}
           {!nextLoading && <Lucide.ArrowRight size={14} />}
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -868,7 +862,7 @@ export const ProviderReportWorkspacePage = () => {
           <h2 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>Báo cáo xử lý không tìm thấy</h2>
           <p style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>Không thể tìm thấy báo cáo tương ứng với id cung cấp.</p>
           <div style={{ marginTop: '1.25rem' }}>
-            <button type="button" className="btn btn-outline" onClick={() => navigate(-1)}>Quay lại</button>
+            <Button type="button" variant="outline" onClick={() => navigate(-1)}>Quay lại</Button>
           </div>
         </div>
       </div>
@@ -913,9 +907,9 @@ export const ProviderReportWorkspacePage = () => {
               {currentStatus || 'Không rõ'}
             </span>
             {feedbackId && (
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+              <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
                 <Lucide.ExternalLink size={13} /> Mở phản ánh
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -1014,14 +1008,15 @@ export const ProviderReportWorkspacePage = () => {
                 )}
               </div>
               <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                <button
+                <Button
                   type="button"
-                  className="btn btn-primary btn-sm"
+                  variant="primary"
+                  size="sm"
                   onClick={handleWorkflowActionClick}
                   disabled={statusUpdating || workflowAction.disabled}
                 >
                   {workflowAction.actionLabel}
-                </button>
+                </Button>
               </div>
             </div>
           </section>
@@ -1168,10 +1163,10 @@ export const ProviderReportWorkspacePage = () => {
                         <input type="datetime-local" value={logForm.contactedAt} onChange={(e) => handleLogInputChange('contactedAt', e.target.value)} className="input input-bordered w-full" required />
                       </label>
                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <button type="submit" className="btn btn-outline btn-sm" disabled={logSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                        <Button type="submit" variant="outline" size="sm" disabled={logSaving} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
                           {logSaving ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Plus size={13} />}
                           {logSaving ? 'Đang lưu...' : 'Lưu liên hệ'}
-                        </button>
+                        </Button>
                       </div>
                     </form>
                   )}
@@ -1218,18 +1213,18 @@ export const ProviderReportWorkspacePage = () => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" style={{ display: 'none' }} onChange={handleDocumentFileChange} />
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
                           <Lucide.FolderPlus size={14} /> Chọn tệp
-                        </button>
+                        </Button>
                         <div style={{ minHeight: '1.1rem', color: selectedDocumentFile ? '#0f172a' : '#6b7280', fontSize: '0.9rem' }}>
                           {selectedDocumentFile ? selectedDocumentFile.name : 'Chưa chọn tệp nào'}
                         </div>
                       </div>
 
-                      <button type="submit" className="btn btn-primary btn-sm" disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', alignSelf: 'flex-start' }}>
+                      <Button type="submit" variant="primary" size="sm" disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', alignSelf: 'flex-start' }}>
                         {uploadingDocuments ? <span className="loading loading-spinner loading-xs" /> : <Lucide.CheckCircle2 size={14} />}
                         {uploadingDocuments ? 'Đang gửi...' : 'Gửi tài liệu'}
-                      </button>
+                      </Button>
                     </div>
 
                     {uploadError && <ErrorAlert message={uploadError} onClose={() => setUploadError('')} />}
@@ -1392,15 +1387,16 @@ export const ProviderReportWorkspacePage = () => {
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
-                      <button
+                      <Button
                         type="submit"
-                        className="btn btn-primary btn-sm"
+                        variant="primary"
+                        size="sm"
                         disabled={submittingResolution || !canAccessResolution}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
                       >
                         {submittingResolution ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={13} />}
                         {submittingResolution ? 'Đang gửi...' : 'Gửi kết quả xử lý'}
-                      </button>
+                      </Button>
                     </div>
                   </form>
                 )}
@@ -1429,9 +1425,9 @@ export const ProviderReportWorkspacePage = () => {
               </p>
               {feedbackId && (
                 <div style={{ marginTop: '1.5rem' }}>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
                     <Lucide.ArrowLeft size={13} /> Quay lại phản ánh
-                  </button>
+                  </Button>
                 </div>
               )}
             </section>
@@ -1451,9 +1447,9 @@ export const ProviderReportWorkspacePage = () => {
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageDocuments[selectedImageIndex]?.fileName || imageDocuments[selectedImageIndex]?.name || 'Xem ảnh'}</div>
               <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
                 {[{ dir: -1, icon: Lucide.ChevronLeft, label: 'Ảnh trước' }, { dir: 1, icon: Lucide.ChevronRight, label: 'Ảnh tiếp' }].map(({ dir, icon: Icon, label }) => (
-                  <button key={label} type="button" className="btn btn-ghost btn-sm" onClick={() => showImagePreview(dir)} aria-label={label} style={{ color: '#cbd5e1' }}><Icon size={16} /></button>
+                  <Button key={label} type="button" variant="ghost" size="sm" onClick={() => showImagePreview(dir)} aria-label={label} style={{ color: '#cbd5e1' }}><Icon size={16} /></Button>
                 ))}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={closeImagePreview} aria-label="Đóng" style={{ color: '#cbd5e1' }}><Lucide.X size={16} /></button>
+                <Button type="button" variant="ghost" size="sm" onClick={closeImagePreview} aria-label="Đóng" style={{ color: '#cbd5e1' }}><Lucide.X size={16} /></Button>
               </div>
             </div>
             <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '1rem', backgroundColor: '#020617' }}>

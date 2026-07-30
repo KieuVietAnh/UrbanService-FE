@@ -4,14 +4,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
-import { managementTypes, STATUS_BADGE_CLASSES, PRIORITY_BADGE_CLASSES } from '@urbanmind/shared-types';
+import { managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
-import { LoadingSpinner } from '@urbanmind/shared-ui';
+import { LoadingSpinner, EmptyState } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
 import IncidentMap from '../../components/maps/IncidentMap';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
+import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 
 export const ManagementFeedbackDetailPage = () => {
   const { feedbackId } = useParams();
@@ -34,7 +37,7 @@ export const ManagementFeedbackDetailPage = () => {
   const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
 
   const getUrgencyLevel = (currentFeedback) => {
-    const urgency = currentFeedback?.analysisResult?.urgencyLevel || currentFeedback?.urgencyLevel || currentFeedback?.urgency || '';
+    const urgency = currentFeedback?.priority || currentFeedback?.analysisResult?.urgencyLevel || currentFeedback?.urgencyLevel || currentFeedback?.urgency || '';
     return `${urgency}`.trim();
   };
 
@@ -320,22 +323,21 @@ export const ManagementFeedbackDetailPage = () => {
     setAreaAlertLoading(true);
     try {
       const payload = {
-        title: areaAlertForm.title,
-        message: areaAlertForm.message,
+        title: areaAlertForm.title?.trim(),
+        message: areaAlertForm.message?.trim(),
         severity: areaAlertForm.severity,
-        startAt: areaAlertForm.startAt,
-        endAt: areaAlertForm.endAt || undefined,
+        startAt: areaAlertForm.startAt ? new Date(areaAlertForm.startAt).toISOString() : undefined,
+        endAt: areaAlertForm.endAt ? new Date(areaAlertForm.endAt).toISOString() : undefined,
         radiusMeters: areaAlertForm.radiusMeters ? Number(areaAlertForm.radiusMeters) : undefined,
-        areaId: areaAlertForm.areaId || undefined,
-        categoryId: areaAlertForm.categoryId || undefined,
-        source: 'Staff Feedback',
       };
       await managementFeedbackApi.createAreaAlertFromFeedback(feedbackId, payload);
       setShowAreaAlertModal(false);
       setAreaAlertToast({ open: true, message: 'Cảnh báo khu vực đã được tạo', sub: 'Cảnh báo mới đã gửi thành công từ phản ánh.' });
     } catch (err) {
       console.error('Failed to create area alert', err);
-      setAreaAlertErrors({ submit: err?.message || 'Không thể tạo cảnh báo khu vực. Vui lòng thử lại.' });
+      const submitMessage = err?.message || 'Không thể tạo cảnh báo khu vực. Vui lòng thử lại.';
+      setAreaAlertErrors({ submit: submitMessage });
+      setAreaAlertToast({ open: true, message: 'Tạo cảnh báo khu vực thất bại', sub: submitMessage });
     } finally {
       setAreaAlertLoading(false);
     }
@@ -665,19 +667,21 @@ export const ManagementFeedbackDetailPage = () => {
           title="Không thể tải chi tiết phản ánh"
           message={error || 'Đã xảy ra lỗi khi tải dữ liệu. Vui lòng thử lại hoặc quay lại danh sách.'}
         />
-        <button
+        <Button
+          type="button"
           onClick={() => navigate('/staff/queue')}
-          className="btn btn-outline btn-sm rounded-lg"
+          variant="outline"
+          size="sm"
         >
           <Lucide.ArrowLeft size={16} />
           Quay lại danh sách
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="admin-page-shell space-y-6 p-4">
       {pageMessage.type === 'success' && (
         <SuccessAlert
           message={pageMessage.text}
@@ -691,7 +695,7 @@ export const ManagementFeedbackDetailPage = () => {
         />
       )}
       {/* Breadcrumb */}
-      <div className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+      <div className="admin-info-note flex items-center gap-1 px-4 py-3 text-[11px] font-bold text-slate-500">
         <button
           type="button"
           onClick={() => navigate('/staff/queue')}
@@ -708,46 +712,50 @@ export const ManagementFeedbackDetailPage = () => {
         {/* Main Content */}
         <div className="col-span-2 space-y-6">
           {/* Header Card */}
-          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+          <div className="admin-panel p-6 space-y-4">
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">{feedback.title}</h1>
+                <h1 className="admin-hero-title">{feedback.title}</h1>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${STATUS_BADGE_CLASSES[feedback.status]}`}>
+                  <Badge intent={getBadgeIntent(feedback.status, 'status')} className="px-2 py-1 text-[10px] font-bold">
                     {getStatusLabel(feedback.status)}
-                  </span>
-                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${PRIORITY_BADGE_CLASSES[feedback.priority]}`}>
+                  </Badge>
+                  <Badge intent={getBadgeIntent(feedback.priority, 'priority')} className="px-2 py-1 text-[10px] font-bold">
                     {getPriorityLabel(feedback.priority)}
-                  </span>
+                  </Badge>
                 </div>
               </div>
               <div className="flex gap-2">
                 {canVerify && (
-                  <button
+                  <Button
+                    type="button"
                     onClick={handleVerify}
                     disabled={verifyLoading}
-                    className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg text-xs font-bold"
+                    variant="primary"
+                    size="sm"
                   >
                     {verifyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Check size={14} />}
                     Xác minh
-                  </button>
+                  </Button>
                 )}
                 {/* area alert button moved to map section for better context */}
                 {canAssign && (
                   <div className="relative">
-                    <button
+                    <Button
+                      type="button"
                       onClick={() => setAssignModal(true)}
-                      className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg text-xs font-bold"
+                      variant="primary"
+                      size="sm"
                     >
                       <Lucide.UserPlus size={14} />
                       Giao việc
-                    </button>
+                    </Button>
                     {assignModal && (
                       <>
                         <div className="fixed inset-0 z-[9998]" onClick={() => setAssignModal(false)} />
                         <div className="absolute left-0 top-full mt-2 z-[10000] w-[min(100vw-2rem,28rem)]">
                           <div className="card max-h-[calc(100vh-6rem)] overflow-y-auto space-y-4 rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
-                            <h3 className="font-bold text-lg text-slate-900">Giao việc cho nhân viên xử lý</h3>
+                            <h3 className="admin-section-title">Giao việc cho nhân viên xử lý</h3>
                             
                             {candidates.length === 0 ? (
                               <div className="card bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-3">
@@ -772,12 +780,12 @@ export const ManagementFeedbackDetailPage = () => {
                                     placeholder="Tìm theo tên nhà cung cấp hoặc điều phối viên..."
                                     value={candidateSearch}
                                     onChange={(e) => setCandidateSearch(e.target.value)}
-                                    className="input input-bordered w-full text-xs h-10 rounded-lg mb-2"
+                                    className="input input-bordered w-full text-xs h-10 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] mb-2"
                                   />
                                   <select
                                     value={assignForm.operatorId}
                                     onChange={(e) => setAssignForm(p => ({ ...p, operatorId: e.target.value }))}
-                                    className="select select-bordered w-full text-xs h-10 rounded-lg"
+                                    className="select select-bordered w-full text-xs h-10 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
                                   >
                                     <option value="">-- Chọn nhà cung cấp --</option>
                                     {candidates.filter(c => {
@@ -798,7 +806,7 @@ export const ManagementFeedbackDetailPage = () => {
                                     value={assignForm.note}
                                     onChange={(e) => setAssignForm(p => ({ ...p, note: e.target.value }))}
                                     placeholder="Nhập ghi chú cho nhân viên..."
-                                    className="textarea textarea-bordered w-full text-xs rounded-lg"
+                                    className="textarea textarea-bordered w-full text-xs rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
                                     rows="3"
                                   />
                                 </div>
@@ -821,19 +829,25 @@ export const ManagementFeedbackDetailPage = () => {
                             )}
 
                             <div className="flex gap-2">
-                              <button
+                              <Button
+                                type="button"
                                 onClick={() => setAssignModal(false)}
-                                className="btn btn-ghost flex-1 rounded-lg text-xs"
+                                variant="ghost"
+                                size="sm"
+                                className="flex-1"
                               >
                                 Hủy
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                type="button"
                                 onClick={handleAssign}
                                 disabled={assignLoading || !assignForm.operatorId || candidates.length === 0}
-                                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none flex-1 rounded-lg text-xs disabled:opacity-50"
+                                variant="primary"
+                                size="sm"
+                                className="flex-1"
                               >
                                 {assignLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Giao việc'}
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -845,7 +859,7 @@ export const ManagementFeedbackDetailPage = () => {
                   <div className="relative">
                     <button
                       onClick={() => setStatusModal(true)}
-                      className="btn btn-sm btn-outline border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-bold"
+                      className="btn btn-sm btn-outline rounded-[1rem] border-slate-200/80 bg-white/90 text-slate-700 hover:bg-slate-50 hover:text-slate-900 text-xs font-bold"
                     >
                       <Lucide.RefreshCw size={14} />
                       Cập nhật
@@ -855,7 +869,7 @@ export const ManagementFeedbackDetailPage = () => {
                         <div className="fixed inset-0 z-[9998]" onClick={() => setStatusModal(false)} />
                         <div className="absolute left-0 top-full mt-2 z-[10000] w-[min(100vw-2rem,28rem)]">
                           <div className="card max-h-[calc(100vh-6rem)] overflow-y-auto space-y-4 rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
-                            <h3 className="font-bold text-lg text-slate-900">Cập nhật trạng thái</h3>
+                            <h3 className="admin-section-title">Cập nhật trạng thái</h3>
                             
                             <div>
                               <label className="text-xs font-bold text-slate-600 block mb-1.5">Trạng thái mới</label>
@@ -883,19 +897,25 @@ export const ManagementFeedbackDetailPage = () => {
                             </div>
 
                             <div className="flex gap-2">
-                              <button
+                              <Button
+                                type="button"
                                 onClick={() => setStatusModal(false)}
-                                className="btn btn-ghost flex-1 rounded-lg text-xs"
+                                variant="ghost"
+                                size="sm"
+                                className="flex-1"
                               >
                                 Hủy
-                              </button>
-                              <button
+                              </Button>
+                              <Button
+                                type="button"
                                 onClick={handleStatusUpdate}
                                 disabled={statusLoading || !statusForm.status}
-                                className="btn bg-[#0052CC] hover:bg-[#0043a4] text-white border-none flex-1 rounded-lg text-xs"
+                                variant="primary"
+                                size="sm"
+                                className="flex-1"
                               >
                                 {statusLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Cập nhật'}
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -903,20 +923,22 @@ export const ManagementFeedbackDetailPage = () => {
                     )}
                   </div>
                 )}
-                <button
+                <Button
+                  type="button"
                   onClick={() => setIsEditing(!isEditing)}
-                  className="btn btn-sm btn-outline border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-bold"
+                  variant="outline"
+                  size="sm"
                 >
                   <Lucide.Edit size={14} />
                   {isEditing ? 'Hủy' : 'Sửa'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
 
           {/* Edit Form */}
           {isEditing && (
-            <div className="card bg-blue-50 border border-blue-200 p-6 rounded-2xl space-y-4">
+            <div className="admin-info-note p-6 space-y-4">
               <h3 className="font-bold text-slate-900">Chỉnh sửa thông tin</h3>
               
               <div className="grid grid-cols-2 gap-4">
@@ -1049,41 +1071,43 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
 
               <div className="flex gap-2">
-                <button
+                <Button
+                  type="button"
                   onClick={handleEdit}
                   disabled={editLoading}
-                  className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
+                  variant="primary"
+                  size="sm"
                 >
                   {editLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Save size={14} />}
                   Lưu
-                </button>
+                </Button>
               </div>
             </div>
           )}
 
           {/* Details Grid */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="card bg-white border border-slate-200 p-4 rounded-xl col-span-2">
+            <div className="admin-panel p-4 rounded-xl col-span-2">
               <div className="text-[10px] text-slate-500 font-bold">Mô tả</div>
               <div className="text-sm font-bold text-slate-900 mt-1 whitespace-pre-line">{feedback.description || 'Không có mô tả'}</div>
             </div>
-            <div className="card bg-white border border-slate-200 p-4 rounded-xl">
+            <div className="admin-panel p-4 rounded-xl">
               <div className="text-[10px] text-slate-500 font-bold">Người báo cáo</div>
               <div className="text-sm font-bold text-slate-900 mt-1">{feedback.userName || feedback.reporterName}</div>
             </div>
-            <div className="card bg-white border border-slate-200 p-4 rounded-xl">
+            <div className="admin-panel p-4 rounded-xl">
               <div className="text-[10px] text-slate-500 font-bold">Ngày tạo</div>
               <div className="text-sm font-bold text-slate-900 mt-1">{formatDate(feedback.createdAt)}</div>
             </div>
-            <div className="card bg-white border border-slate-200 p-4 rounded-xl">
+            <div className="admin-panel p-4 rounded-xl">
               <div className="text-[10px] text-slate-500 font-bold">Danh mục</div>
               <div className="text-sm font-bold text-slate-900 mt-1">{getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type)}</div>
             </div>
-            <div className="card bg-white border border-slate-200 p-4 rounded-xl">
+            <div className="admin-panel p-4 rounded-xl">
               <div className="text-[10px] text-slate-500 font-bold">Địa điểm</div>
               <div className="text-sm font-bold text-slate-900 mt-1">{feedback.locationText || '-'}</div>
             </div>
-            <div className="card bg-white border border-slate-200 p-4 rounded-xl">
+            <div className="admin-panel p-4 rounded-xl">
               <div className="text-[10px] text-slate-500 font-bold">Ngày hạn</div>
               <div className="text-sm font-bold text-slate-900 mt-1">{feedback.dueDate ? formatDate(feedback.dueDate) : 'Chưa có'}</div>
             </div>
@@ -1091,7 +1115,7 @@ export const ManagementFeedbackDetailPage = () => {
 
           {/* Map */}
           {feedback.latitude && feedback.longitude && (
-            <div className="card relative overflow-visible bg-white border border-slate-200 p-4 rounded-2xl space-y-4">
+            <div className="admin-panel relative overflow-visible p-4 rounded-2xl space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="text-xs font-bold text-slate-600">Bản đồ</div>
@@ -1113,22 +1137,24 @@ export const ManagementFeedbackDetailPage = () => {
               <div className="mt-4 flex items-center justify-end">
                 {(isHighOrCriticalUrgency(feedback) || forceShowAreaAlert) && (
                   <div className="relative">
-                    <button
+                    <Button
                       type="button"
                       onClick={() => setShowAreaAlertModal(true)}
                       disabled={areaAlertLoading}
-                      className="btn btn-sm bg-amber-600 hover:bg-amber-700 text-white border-none rounded-lg text-xs font-bold"
+                      variant="primary"
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700"
                     >
                       <Lucide.BellRing size={14} />
                       Tạo Cảnh Báo Khu Vực
-                    </button>
+                    </Button>
 
                     {showAreaAlertModal && (
-                      <div className="absolute right-0 bottom-full mb-3 z-50 w-[min(100vw-2rem,36rem)] rounded-[1.5rem] border border-slate-200 bg-white shadow-xl">
+                      <div className="absolute right-0 bottom-full mb-3 z-50 w-[min(100vw-2rem,36rem)] admin-panel shadow-xl">
                         <div className="p-4 sm:p-5">
                           <div className="flex items-start justify-between gap-4">
                             <div>
-                              <h2 className="text-lg font-black text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
+                              <h2 className="text-lg font-semibold text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
                               <p className="mt-1 text-sm text-slate-500">Giữ lại thông tin từ phản ánh và điều chỉnh trước khi gửi.</p>
                             </div>
                             <button
@@ -1232,21 +1258,21 @@ export const ManagementFeedbackDetailPage = () => {
                           )}
 
                           <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                            <button
+                            <Button
                               type="button"
                               onClick={() => setShowAreaAlertModal(false)}
-                              className="btn btn-ghost rounded-[1rem] px-4 py-2.5 text-sm"
+                              variant="ghost"
                             >
                               Hủy
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
                               onClick={handleCreateAreaAlert}
                               disabled={areaAlertLoading}
-                              className="btn btn-primary rounded-[1rem] px-4 py-2.5 text-sm"
+                              variant="primary"
                             >
                               {areaAlertLoading ? <span className="loading loading-spinner loading-xs" /> : 'Tạo cảnh báo'}
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -1259,7 +1285,7 @@ export const ManagementFeedbackDetailPage = () => {
 
           {/* Attachments */}
           {attachments.length > 0 && (
-            <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+            <div className="admin-panel p-6 space-y-4">
               <h3 className="font-bold text-slate-900">Tệp đính kèm ({attachments.length})</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {attachments.map((attachment, idx) => {
@@ -1291,15 +1317,16 @@ export const ManagementFeedbackDetailPage = () => {
           )}
 
           {/* Comments */}
-          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+          <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-bold text-slate-900">Bình luận</h3>
               <span className="text-xs text-slate-500">{comments.length} bình luận</span>
             </div>
             {comments.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-slate-500 text-xs text-center">
-                Chưa có bình luận nào.
-              </div>
+              <EmptyState
+                title="Chưa có bình luận nào"
+                description="Phản ánh này hiện chưa có bình luận nào."
+              />
             ) : (
               <div className="space-y-4">
                 {comments.map((comment, idx) => (
@@ -1319,11 +1346,11 @@ export const ManagementFeedbackDetailPage = () => {
 
           {/* Timeline */}
           {timelineEvents.length > 0 && (
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="admin-panel p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Theo dõi hồ sơ</div>
-                  <h3 className="mt-1 text-lg font-black text-slate-900">Theo dõi hồ sơ từ đầu đến cuối</h3>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Theo dõi hồ sơ</div>
+                  <h3 className="mt-1 text-lg font-semibold text-slate-900">Theo dõi hồ sơ từ đầu đến cuối</h3>
                 </div>
                 <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   {timelineEvents.length} mốc thời gian
@@ -1360,14 +1387,14 @@ export const ManagementFeedbackDetailPage = () => {
                         key={event.id}
                         type="button"
                         onClick={() => setSelectedTimelineEventId(event.id)}
-                        className={`flex w-full items-start gap-3 rounded-[1.25rem] border p-4 text-left transition ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+                        className={`flex w-full items-start gap-3 rounded-[1.25rem] border p-4 text-left transition ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,251,255,0.96))] hover:border-slate-300 hover:bg-slate-50'}`}
                       >
                         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${isActive ? 'border-white/20 bg-white/10 text-white' : accentClass}`}>
                           <Icon size={18} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
-                            <div className={`text-sm font-black ${isActive ? 'text-white' : 'text-slate-900'}`}>{event.title}</div>
+                            <div className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-slate-900'}`}>{event.title}</div>
                             <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>
                               {event.type === 'assignment' ? 'Phân công' : event.type === 'approval' ? 'Phê duyệt' : 'Trạng thái'}
                             </span>
@@ -1380,7 +1407,7 @@ export const ManagementFeedbackDetailPage = () => {
                   })}
                 </div>
 
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                <div className="admin-inset-panel p-4 sm:p-5">
                   {(() => {
                     const activeEvent = timelineEvents.find((event) => event.id === selectedTimelineEventId) || timelineEvents[0];
                     if (!activeEvent) return null;
@@ -1389,22 +1416,22 @@ export const ManagementFeedbackDetailPage = () => {
                       <div className="space-y-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Mốc đang xem</div>
-                            <div className="mt-1 text-xl font-black text-slate-900">{activeEvent.title}</div>
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Mốc đang xem</div>
+                            <div className="mt-1 text-xl font-semibold text-slate-900">{activeEvent.title}</div>
                           </div>
                           <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700">
                             <ActiveIcon size={18} />
                           </div>
                         </div>
 
-                        <div className="rounded-[1.25rem] border border-slate-200 bg-white p-4">
+                        <div className="admin-inset-panel p-4">
                           <div className="text-sm font-semibold text-slate-900">{activeEvent.subtitle}</div>
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                             <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">{activeEvent.actor}</span>
                             <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">{formatDate(activeEvent.timestamp)}</span>
                           </div>
                           {activeEvent.note ? (
-                            <div className="mt-3 rounded-[1rem] border border-slate-200 bg-slate-50 p-3 text-sm leading-7 text-slate-600">
+                            <div className="mt-3 rounded-[1rem] border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
                               {activeEvent.note}
                             </div>
                           ) : (
@@ -1415,12 +1442,12 @@ export const ManagementFeedbackDetailPage = () => {
                         </div>
 
                         <div className="grid gap-2 sm:grid-cols-2">
-                          <div className="rounded-[1rem] border border-slate-200 bg-white p-3 text-sm">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Thực hiện bởi</div>
+                          <div className="admin-inset-panel p-3 text-sm">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thực hiện bởi</div>
                             <div className="mt-1 font-semibold text-slate-700">{activeEvent.actor}</div>
                           </div>
-                          <div className="rounded-[1rem] border border-slate-200 bg-white p-3 text-sm">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Thời điểm</div>
+                          <div className="admin-inset-panel p-3 text-sm">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thời điểm</div>
                             <div className="mt-1 font-semibold text-slate-700">{formatDate(activeEvent.timestamp)}</div>
                           </div>
                         </div>
@@ -1432,7 +1459,7 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           )}
 
-          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+          <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-bold text-slate-900">Phản ánh liên kết</h3>
               <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -1441,24 +1468,25 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
 
             {linkedFeedbacksLoading ? (
-              <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+              <div className="admin-empty-panel p-4 text-sm text-slate-500">
                 <span className="loading loading-spinner loading-sm mr-2" />
                 Đang tải phản ánh liên kết...
               </div>
             ) : linkedFeedbacksError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              <div className="admin-info-note p-4 text-sm text-rose-700">
                 {linkedFeedbacksError}
               </div>
             ) : linkedFeedbacks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 text-center">
-                Không có phản ánh liên kết nào.
-              </div>
+              <EmptyState
+                title="Chưa có phản ánh liên kết"
+                description="Không có phản ánh con nào được liên kết với phản ánh này."
+              />
             ) : (
               <div className="space-y-3">
                 {linkedFeedbacks.map((item, index) => {
                   const childFeedbackId = item?.feedbackId || item?.id;
                   return (
-                    <div key={childFeedbackId || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div key={childFeedbackId || index} className="admin-inset-panel p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
                           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
@@ -1502,7 +1530,7 @@ export const ManagementFeedbackDetailPage = () => {
             )}
           </div>
 
-          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+          <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-bold text-slate-900">Phản ánh liên quan</h3>
               <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -1511,24 +1539,25 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
 
             {relatedFeedbacksLoading ? (
-              <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+              <div className="admin-empty-panel p-4 text-sm text-slate-500">
                 <span className="loading loading-spinner loading-sm mr-2" />
                 Đang tải phản ánh liên quan...
               </div>
             ) : relatedFeedbacksError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              <div className="admin-info-note p-4 text-sm text-rose-700">
                 {relatedFeedbacksError}
               </div>
             ) : relatedFeedbacks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 text-center">
-                Không có phản ánh liên quan nào.
-              </div>
+              <EmptyState
+                title="Chưa có phản ánh liên quan"
+                description="Không có phản ánh liên quan nào được tìm thấy cho phản ánh này."
+              />
             ) : (
               <div className="space-y-3">
                 {relatedFeedbacks.map((item, index) => {
                   const relatedId = item?.feedbackId || item?.id;
                   return (
-                    <div key={relatedId || index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div key={relatedId || index} className="admin-inset-panel p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
                           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
@@ -1577,7 +1606,7 @@ export const ManagementFeedbackDetailPage = () => {
               <div className="p-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h2 className="text-lg font-black text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
+                    <h2 className="text-lg font-semibold text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
                     <p className="mt-1 text-sm text-slate-500">Sửa tiêu đề, nội dung hoặc thời gian trước khi gửi.</p>
                   </div>
                   <button type="button" onClick={() => setShowAreaAlertModal(false)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Đóng">
@@ -1602,9 +1631,9 @@ export const ManagementFeedbackDetailPage = () => {
         {/* Sidebar */}
         <div className="col-span-1 space-y-6">
           {/* Timeline Progress */}
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="admin-panel p-6">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-black text-slate-900">Tiến độ hồ sơ</h3>
+              <h3 className="font-semibold text-slate-900">Tiến độ hồ sơ</h3>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700">
                 Trực tiếp
               </span>
@@ -1650,7 +1679,7 @@ export const ManagementFeedbackDetailPage = () => {
               );
             })()}
           </div>
-          <div className="card bg-white border border-slate-200 p-6 rounded-2xl space-y-4">
+          <div className="admin-panel p-6 space-y-4">
             <h3 className="font-bold text-slate-900">Hành động tiếp theo</h3>
             <p className="text-sm text-slate-600">
               {canVerify
@@ -1663,56 +1692,68 @@ export const ManagementFeedbackDetailPage = () => {
             </p>
             <div className="space-y-3">
               {canVerify && (
-                <button
+                <Button
+                  type="button"
                   onClick={handleVerify}
                   disabled={verifyLoading}
-                  className="btn btn-sm w-full bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
+                  variant="primary"
+                  size="sm"
+                  className="w-full"
                 >
                   {verifyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Check size={14} />}
                   Xác minh phản ánh
-                </button>
+                </Button>
               )}
               {canAssign && (
-                <button
+                <Button
+                  type="button"
                   onClick={() => setAssignModal(true)}
-                  className="btn btn-sm w-full bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
+                  variant="primary"
+                  size="sm"
+                  className="w-full"
                 >
                   <Lucide.UserPlus size={14} />
                   Phân công đơn vị xử lý
-                </button>
+                </Button>
               )}
-              <button
+              <Button
+                type="button"
                 onClick={() => navigate(`/staff/feedbacks/${feedbackId}/request-info`)}
-                className="btn btn-sm w-full btn-outline rounded-lg"
+                variant="outline"
+                size="sm"
+                className="w-full"
               >
                 <Lucide.MessageSquarePlus size={14} />
                 Yêu cầu thêm thông tin
-              </button>
-              <button
+              </Button>
+              <Button
+                type="button"
                 onClick={() => navigate(`/staff/feedbacks/${feedbackId}/history`)}
-                className="btn btn-sm w-full btn-outline rounded-lg"
+                variant="outline"
+                size="sm"
+                className="w-full"
               >
                 <Lucide.History size={14} />
                 Xem lịch sử phân công
-              </button>
-              <button
+              </Button>
+              <Button
+                type="button"
                 onClick={openProviderReportWorkspace}
-                className="btn btn-sm w-full btn-outline rounded-lg"
+                variant="outline"
+                size="sm"
+                className="w-full"
               >
                 <Lucide.FileText size={14} />
                 Mở báo cáo xử lý
-              </button>
+              </Button>
               {nextStatusOptions.length > 0 && (
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="admin-inset-panel p-4">
                   <div className="text-xs text-slate-500 font-bold mb-2">Trạng thái tiếp theo</div>
                   <div className="flex flex-wrap gap-2">
                     {nextStatusOptions.map((nextStatus) => (
-                      <span
-                        key={nextStatus}
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_BADGE_CLASSES[nextStatus] || 'bg-slate-100 text-slate-700'}`}
-                      >
+                      <Badge intent={getBadgeIntent(nextStatus, 'status')} className="px-3 py-1 text-[11px] font-semibold">
                         {getStatusLabel(nextStatus)}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -1721,14 +1762,14 @@ export const ManagementFeedbackDetailPage = () => {
                 canVerify &&
                 !canAssign &&
                 nextStatusOptions.length === 0 && (
-                  <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                  <div className="admin-inset-panel p-4 text-sm text-slate-600">
                     Không còn bước nào cần thực hiện cho phản ánh này.
                   </div>
                 )}
             </div>
           </div>
 
-          <div className="card bg-gradient-to-br from-blue-50 to-slate-50 border border-blue-200 p-6 rounded-2xl space-y-4">
+          <div className="admin-info-note p-6 space-y-4">
             <h3 className="font-bold text-slate-900">Thông tin</h3>
             <div className="space-y-3 text-xs">
               <div>
@@ -1778,10 +1819,9 @@ export const ManagementFeedbackDetailPage = () => {
               />
             )}
           </div>
-
-          <DelightToast open={areaAlertToast.open} message={areaAlertToast.message} sub={areaAlertToast.sub} onClose={() => setAreaAlertToast({ open: false, message: '', sub: '' })} />
         </div>
       )}
+      <DelightToast open={areaAlertToast.open} message={areaAlertToast.message} sub={areaAlertToast.sub} onClose={() => setAreaAlertToast({ open: false, message: '', sub: '' })} />
     </div>
   );
 };

@@ -250,7 +250,7 @@ export const DuplicateDetailPage = () => {
                 <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Điểm độ tin cậy</div>
                 <div className="text-2xl font-black text-slate-900">{candidate?.confidenceScore ?? candidate?.confidence ?? '—'}</div>
               </div>
-              <div className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">
+              <div className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm whitespace-nowrap">
                 {candidate?.status || 'Pending'}
               </div>
             </div>

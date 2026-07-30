@@ -4,6 +4,8 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { toolsApi } from '@urbanmind/shared-api';
 import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import Badge from '../../components/design-system/Badge';
+import Button from '../../components/design-system/Button';
 import * as Lucide from 'lucide-react';
 
 export default function CoordinatorDirectoryPage() {
@@ -92,41 +94,41 @@ export default function CoordinatorDirectoryPage() {
     return (
       <div className="space-y-4">
         <ErrorAlert title="Lỗi tải danh bạ" message={error} />
-        <button onClick={fetchCoordinators} className="btn btn-primary btn-sm rounded-lg">
+        <Button onClick={fetchCoordinators} variant="primary" size="sm" className="rounded-[1rem]">
           <Lucide.RefreshCw size={16} /> Thử lại
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-4">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+    <div className="admin-page-shell space-y-6 p-4">
+      <div className="admin-page-hero p-5 sm:p-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-indigo-700">
+            <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
               <Lucide.Users size={14} /> Danh bạ Điều phối viên
-            </div>
-            <h1 className="mt-3 text-2xl font-black text-slate-900">Danh bạ Điều phối viên</h1>
-            <p className="mt-2 text-sm text-slate-500">Tìm kiếm và quản lý danh sách điều phối viên theo khu vực và danh mục.</p>
+            </Badge>
+            <h1 className="admin-hero-title mt-3">Danh bạ Điều phối viên</h1>
+            <p className="admin-hero-description mt-2">Tìm kiếm và quản lý danh sách điều phối viên theo khu vực và danh mục.</p>
           </div>
-          <div className="text-sm text-slate-600">Tổng: <span className="font-black">{totalCount}</span></div>
+          <div className="text-sm text-slate-600">Tổng: <span className="font-semibold text-slate-900">{totalCount}</span></div>
         </div>
       </div>
 
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="admin-panel p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="input input-bordered flex items-center gap-2 rounded-2xl border-slate-200 bg-slate-50">
+          <label className="input input-bordered flex items-center gap-2 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
             <Lucide.Search size={16} className="text-slate-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm tên, email hoặc điện thoại" className="grow bg-transparent text-sm" />
           </label>
 
-          <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="select select-bordered rounded-2xl border-slate-200 bg-slate-50 text-sm">
+          <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="select select-bordered rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
             <option value="">Tất cả khu vực</option>
             {areas.map((a) => (<option key={a.id || a.areaId} value={a.id || a.areaId}>{a.name || a.areaName}</option>))}
           </select>
 
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="select select-bordered rounded-2xl border-slate-200 bg-slate-50 text-sm">
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="select select-bordered rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
             <option value="">Tất cả danh mục</option>
             {categories.map((c) => (<option key={c.id || c.categoryId} value={c.id || c.categoryId}>{c.name || c.categoryName}</option>))}
           </select>
@@ -137,7 +139,7 @@ export default function CoordinatorDirectoryPage() {
           </label>
         </div>
 
-        <div className="mt-4 overflow-x-auto">
+        <div className="admin-table-wrap mt-4 overflow-x-auto">
           {items.length === 0 ? (
             <EmptyState title="Chưa có điều phối viên" description="Không có dữ liệu phù hợp với bộ lọc hiện tại." />
           ) : (
@@ -174,9 +176,9 @@ export default function CoordinatorDirectoryPage() {
           <div className="mt-5 flex items-center justify-between">
             <div className="text-sm text-slate-500">Hiển thị trang {currentPage} trên {totalPages}</div>
             <div className="flex items-center gap-2">
-              <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="btn btn-sm rounded-2xl">Trước</button>
+              <Button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} variant="outline" size="sm" className="rounded-2xl">Trước</Button>
               <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-700">{currentPage}/{totalPages}</span>
-              <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="btn btn-sm rounded-2xl">Sau</button>
+              <Button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} variant="outline" size="sm" className="rounded-2xl">Sau</Button>
             </div>
           </div>
         )}

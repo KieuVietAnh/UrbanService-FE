@@ -10,7 +10,7 @@ function Badge({ intent = 'neutral', children, className }) {
   }[intent];
 
   return (
-    <span className={clsx('status-label', intentClass, className)}>
+    <span className={clsx('status-label border-0 shadow-none', intentClass, className)}>
       {children}
     </span>
   );

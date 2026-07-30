@@ -53,25 +53,27 @@ export const getStatusStep = (status) => {
   }
 };
 
+const COMMON_BADGE_CLASS = 'inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm whitespace-nowrap';
+
 export const PRIORITY_BADGE_CLASSES = {
-  Critical: 'bg-red-50 text-red-600 border-red-200',
-  High: 'bg-amber-50 text-amber-600 border-amber-200',
-  Medium: 'bg-blue-50 text-blue-600 border-blue-200',
-  Low: 'bg-slate-100 text-slate-600 border-slate-300'
+  Critical: COMMON_BADGE_CLASS,
+  High: COMMON_BADGE_CLASS,
+  Medium: COMMON_BADGE_CLASS,
+  Low: COMMON_BADGE_CLASS,
 };
 
 export const STATUS_BADGE_CLASSES = {
-  [managementTypes.feedbackStatus.SUBMITTED]: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-400/30',
-  [managementTypes.feedbackStatus.AI_REVIEWED]: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-400/30',
-  [managementTypes.feedbackStatus.VERIFIED]: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-300 dark:border-cyan-400/30',
-  [managementTypes.feedbackStatus.ASSIGNED]: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-400/30',
-  [managementTypes.feedbackStatus.IN_PROGRESS]: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-400/30',
-  [managementTypes.feedbackStatus.RESOLVED]: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-400/30',
-  [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-300 dark:border-yellow-400/30',
-  [managementTypes.feedbackStatus.APPROVED]: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-400/30',
-  [managementTypes.feedbackStatus.NEED_REWORK]: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-400/30',
-  [managementTypes.feedbackStatus.REJECTED]: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-400/30',
-  [managementTypes.feedbackStatus.CLOSED]: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-500/10 dark:text-slate-300 dark:border-slate-400/30',
-  [managementTypes.feedbackStatus.CANCELLED]: 'bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-500/10 dark:text-zinc-300 dark:border-zinc-400/30',
-  default: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-500/10 dark:text-slate-300 dark:border-slate-400/30'
+  [managementTypes.feedbackStatus.SUBMITTED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.AI_REVIEWED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.VERIFIED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.ASSIGNED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.IN_PROGRESS]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.RESOLVED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.APPROVED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.NEED_REWORK]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.REJECTED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.CLOSED]: COMMON_BADGE_CLASS,
+  [managementTypes.feedbackStatus.CANCELLED]: COMMON_BADGE_CLASS,
+  default: COMMON_BADGE_CLASS,
 };

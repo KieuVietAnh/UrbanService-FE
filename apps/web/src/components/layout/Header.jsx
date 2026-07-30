@@ -295,97 +295,132 @@ export const Header = ({ onMenuToggle }) => {
   const isCitizen = normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
 
   const getBreadcrumbs = () => {
-    const paths = location.pathname.split('/').filter(Boolean);
+    // Build breadcrumb path dynamically, omitting internal segments like 'staff'
+    const paths = location.pathname.split('/').filter(Boolean).filter(Boolean);
 
+    // Mapping of route segments -> human labels (Vietnamese)
     const labelMap = {
       dashboard: 'Tổng quan hệ thống',
+      feedbacks: 'Quản lý phản ánh',
+      duplicates: 'Xử lý trùng lặp',
+      'provider-candidates': 'Kiểm tra ứng viên nhà cung cấp',
+      coordinators: 'Danh bạ điều phối viên',
+      'area-alerts': 'Quản lý cảnh báo khu vực',
+      'ai-review': 'Hàng chờ kiểm duyệt AI',
+      // keep some common mappings
       admin: 'Quản trị hệ thống',
-      audit: 'Nhật ký hệ thống',
-      performance: 'Hiệu năng & Logs',
-      management: 'Quản trị vận hành',
-      users: 'Quản lý người dùng',
-      feedbacks: 'Quản lý feedback',
-      categories: 'Danh mục phản ánh',
-      sla: 'Cấu hình SLA',
-      integrations: 'Cấu hình tích hợp',
       analytics: 'Báo cáo phân tích',
-      sentiment: 'Cảm xúc người dân',
-      heatmap: 'Bản đồ nhiệt',
-      manager: 'Quản lý tương tác',
-      interactions: 'Giám sát tương tác',
-      approvals: 'Hàng đợi duyệt',
-      provider: 'Đơn vị xử lý',
-      tasks: 'Nhiệm vụ được giao',
-      tickets: 'Phản ánh',
-      create: 'Gửi phản ánh mới',
-      queue: 'Hàng chờ kiểm duyệt',
-      duplicates: 'Hộp thư trùng lặp',
-      review: 'Duyệt kết quả',
-      community: 'Cộng đồng',
-      feed: 'Bảng tin',
-      map: 'Bản đồ sự cố',
-      profile: 'Hồ sơ',
       settings: 'Cài đặt',
     };
 
-    if (location.pathname === '/dashboard') {
-      return <span className="font-semibold text-slate-950">Tổng quan hệ thống</span>;
+    // Segments to hide entirely from breadcrumb
+    const hiddenSegments = new Set(['admin', 'management', 'tickets', 'community', 'manager', 'staff']);
+
+    const visibleSegments = paths.filter((seg) => !hiddenSegments.has(seg));
+
+    // Helper: detect id-like segments (uuid or numeric)
+    const isIdSegment = (s) => {
+      if (!s) return false;
+      if (/^\d+$/.test(s)) return true;
+      if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s)) return true;
+      return false;
+    };
+
+    // If at root dashboard
+    if (location.pathname === '/dashboard' || visibleSegments.length === 0) {
+      return <span className="font-semibold text-slate-900">Tổng quan hệ thống</span>;
     }
 
-    const hiddenBreadcrumbSegments = new Set([
-      'admin',
-      'management',
-      'analytics',
-      'provider',
-      'tickets',
-      'community',
-      'manager',
-    ]);
+    // Build items with accumulated path
+    const items = [];
+    let acc = '';
+    visibleSegments.forEach((seg) => {
+      acc += `/${seg}`;
+      items.push({ seg, path: acc });
+    });
 
-    const visiblePaths = paths.filter((path) => !hiddenBreadcrumbSegments.has(path));
+    // Responsive render rules:
+    // - Desktop (sm+): show full path
+    // - Tablet (md): collapse middle items when >3 segments (show first, ellipsis, last 2)
+    // - Mobile: show parent > current only
+
+    const renderSegmentLabel = (seg, idx, prevSeg) => {
+      if (isIdSegment(seg)) {
+        // Prefer contextual label based on previous segment
+        if (prevSeg === 'feedbacks') return 'Chi tiết phản ánh';
+        if (prevSeg === 'area-alerts') return 'Chi tiết cảnh báo';
+        return 'Chi tiết';
+      }
+
+      return labelMap[seg] || seg.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    };
+
+    // Compute parent and current for mobile view
+    const lastIndex = items.length - 1;
+    const parent = items[Math.max(0, lastIndex - 1)];
+    const current = items[lastIndex];
 
     return (
-      <div className="flex items-center gap-1.5">
-        <Link to="/dashboard" className="font-medium text-slate-500 transition-colors hover:text-blue-700">
-          Tổng quan hệ thống
-        </Link>
+      <div className="flex items-center gap-2">
+        {/* Mobile: parent > current (visible on xs only) */}
+        <div className="flex items-center gap-2 sm:hidden">
+          <Link to="/dashboard" className="text-sm font-medium text-slate-500 hover:text-blue-700 transition-colors">Tổng quan hệ thống</Link>
+          <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
+          {parent && (
+            <Link to={parent.path} className="text-sm text-slate-500 hover:text-blue-700 transition-colors">{renderSegmentLabel(parent.seg, Math.max(0, lastIndex - 1), items[Math.max(0, lastIndex - 2)]?.seg)}</Link>
+          )}
+          <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
+          <span className="text-sm font-semibold text-slate-900">{renderSegmentLabel(current.seg, lastIndex, parent?.seg)}</span>
+        </div>
 
-        {visiblePaths.map((path, index) => {
-          if (index === 0 && path === 'dashboard') return null;
+        {/* Desktop / Tablet: full breadcrumb with collapse */}
+        <div className="hidden sm:flex items-center gap-2 text-sm">
+          <Link to="/dashboard" className="text-sm font-medium text-slate-500 hover:text-blue-700 transition-colors">Tổng quan hệ thống</Link>
+          {items.length <= 3 && items.map((it, idx) => {
+            const isLast = idx === items.length - 1;
+            const prevSeg = items[idx - 1]?.seg;
+            const label = renderSegmentLabel(it.seg, idx, prevSeg);
+            return (
+              <span key={`crumb-${it.path}`} className="flex items-center gap-2">
+                <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
+                {!isLast ? (
+                  <Link to={it.path} className="text-sm text-slate-500 hover:text-blue-700 transition-colors">{label}</Link>
+                ) : (
+                  <span className="text-sm font-semibold text-slate-900">{label}</span>
+                )}
+              </span>
+            );
+          })}
 
-          const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
-          const segmentName = isFeedbackId
-            ? 'Chi tiết phản ánh'
-            : path === 'sla' && location.pathname.startsWith('/analytics/')
-              ? 'Phân tích SLA'
-              : labelMap[path] || path;
-          const isLast = index === visiblePaths.length - 1;
+          {items.length > 3 && (
+            // Tablet collapse: show first, ellipsis, last two
+            <>
+              <span className="flex items-center gap-2">
+                <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
+                <Link to={items[0].path} className="text-sm text-slate-500 hover:text-blue-700 transition-colors">{renderSegmentLabel(items[0].seg, 0)}</Link>
+              </span>
 
-          const breadcrumbLinkMap = {
-            interactions: '/manager/interactions',
-            approvals: '/manager/approvals',
-            heatmap: '/analytics/heatmap',
-            sentiment: '/analytics/sentiment',
-            settings: '/settings',
-          };
+              <span className="px-2 text-slate-400">…</span>
 
-          const breadcrumbLink = path === 'sla' && location.pathname.startsWith('/analytics/')
-            ? '/analytics/sla'
-            : breadcrumbLinkMap[path];
-
-          return (
-            <span key={`${path}-${index}`} className="flex items-center gap-1.5">
-              <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
-              {!isLast && breadcrumbLink ? (
-                <Link to={breadcrumbLink} className="font-semibold text-slate-500 transition-colors hover:text-blue-700">
-                  {segmentName}
-                </Link>
-              ) : (
-                <span className="font-semibold text-slate-950">{segmentName}</span>
-              )}
-            </span>
-          );
-        })}
+              {items.slice(-2).map((it, idxRel) => {
+                const realIdx = items.length - 2 + idxRel;
+                const isLast = realIdx === lastIndex;
+                const prevSeg = items[realIdx - 1]?.seg;
+                const label = renderSegmentLabel(it.seg, realIdx, prevSeg);
+                return (
+                  <span key={`crumb-${it.path}`} className="flex items-center gap-2">
+                    <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
+                    {!isLast ? (
+                      <Link to={it.path} className="text-sm text-slate-500 hover:text-blue-700 transition-colors">{label}</Link>
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-900">{label}</span>
+                    )}
+                  </span>
+                );
+              })}
+            </>
+          )}
+        </div>
       </div>
     );
   };

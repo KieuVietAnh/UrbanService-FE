@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
+import { EmptyState } from '@urbanmind/shared-ui';
+import Badge from '../../components/design-system/Badge';
+import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 import PageTransition from '../../components/motion/PageTransition';
 
 const formatDateTime = (value) => {
@@ -104,33 +107,33 @@ export const StaffAuditTrailPage = () => {
 
   return (
     <PageTransition>
-      <div className="space-y-5 text-slate-800">
-        <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 p-5 text-white shadow-[0_24px_70px_-24px_rgba(15,23,42,0.8)] sm:p-6">
+      <div className="admin-page-shell space-y-5 text-slate-800">
+        <section className="admin-page-hero p-5 sm:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] backdrop-blur">
+              <Badge intent="info" className="gap-2 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] backdrop-blur">
                 <Lucide.ShieldCheck size={14} />
                 Nhật ký kiểm toán
-              </div>
+              </Badge>
               <div>
-                <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Theo dõi toàn bộ hành động quan trọng</h1>
-                <p className="mt-2 text-sm leading-7 text-slate-300 sm:text-base">
+                <h1 className="admin-hero-title">Theo dõi toàn bộ hành động quan trọng</h1>
+                <p className="admin-hero-description mt-2">
                   Giao diện timeline-first giúp nhân viên nắm nhanh ai đã làm gì, khi nào và thay đổi gì trong phản ánh hoặc hệ thống.
                 </p>
               </div>
             </div>
             <div className="rounded-[1.2rem] border border-white/15 bg-white/10 px-4 py-3 text-sm backdrop-blur">
-              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-300">Sự kiện ghi nhận</div>
-              <div className="mt-1 text-xl font-black text-white">{logs.length}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-300">Sự kiện ghi nhận</div>
+              <div className="mt-1 text-xl font-semibold text-white">{logs.length}</div>
             </div>
           </div>
         </section>
 
-        <section className="rounded-[1.6rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="admin-panel p-4 sm:p-5">
           <div className="grid gap-3 md:grid-cols-3">
             <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
               <span>Ngày</span>
-              <select value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="select select-bordered rounded-[1rem] border-slate-200 bg-slate-50 text-sm">
+              <select value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} className="select select-bordered rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
                 <option value="all">Tất cả thời gian</option>
                 <option value="30">30 ngày gần đây</option>
                 <option value="90">90 ngày gần đây</option>
@@ -140,7 +143,7 @@ export const StaffAuditTrailPage = () => {
 
             <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
               <span>Người dùng</span>
-              <select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} className="select select-bordered rounded-[1rem] border-slate-200 bg-slate-50 text-sm">
+              <select value={userFilter} onChange={(event) => setUserFilter(event.target.value)} className="select select-bordered rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
                 <option value="all">Tất cả người dùng</option>
                 {users.map((userId) => (
                   <option key={userId} value={userId}>{userId}</option>
@@ -150,7 +153,7 @@ export const StaffAuditTrailPage = () => {
 
             <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
               <span>Loại hành động</span>
-              <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} className="select select-bordered rounded-[1rem] border-slate-200 bg-slate-50 text-sm">
+              <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} className="select select-bordered rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
                 <option value="all">Tất cả</option>
                 {actions.map((action) => (
                   <option key={action} value={action}>{action}</option>
@@ -162,19 +165,20 @@ export const StaffAuditTrailPage = () => {
 
         <section className="space-y-4">
           {loading ? (
-            <div className="rounded-[1.6rem] border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+            <div className="admin-empty-panel p-8 text-center text-sm text-slate-500">
               Đang tải lịch sử hành động...
             </div>
           ) : filteredLogs.length === 0 ? (
-            <div className="rounded-[1.6rem] border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
-              Không có sự kiện nào phù hợp với bộ lọc hiện tại.
-            </div>
+            <EmptyState
+              title="Không có sự kiện nào"
+              description="Không có sự kiện nào phù hợp với bộ lọc hiện tại."
+            />
           ) : (
             filteredLogs.map((log) => {
               const actionMeta = getActionMeta(log.action);
               const ActionIcon = actionMeta.icon;
               return (
-                <article key={log.auditId} className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <article key={log.auditId} className="admin-panel p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 flex-1 gap-3">
                       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${actionMeta.tone}`}>
@@ -182,10 +186,10 @@ export const StaffAuditTrailPage = () => {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-base font-black text-slate-900">{log.action || 'Hành động hệ thống'}</h2>
-                          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${actionMeta.tone}`}>
+                          <h2 className="text-base font-semibold text-slate-900">{log.action || 'Hành động hệ thống'}</h2>
+                          <Badge intent={getBadgeIntent(log.action, 'action')} className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]">
                             {actionMeta.label}
-                          </span>
+                          </Badge>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-500">
                           <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
@@ -203,16 +207,16 @@ export const StaffAuditTrailPage = () => {
                         </div>
 
                         <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Mã phản ánh</div>
+                          <div className="admin-inset-panel p-4">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Mã phản ánh</div>
                             <div className="mt-2 font-semibold text-slate-700">{log.entityId || '—'}</div>
                           </div>
-                          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Giá trị cũ</div>
+                          <div className="admin-inset-panel p-4">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Giá trị cũ</div>
                             <div className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{readValue(log.oldValues)}</div>
                           </div>
-                          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4 xl:col-span-2">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Giá trị mới</div>
+                          <div className="admin-inset-panel p-4 xl:col-span-2">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Giá trị mới</div>
                             <div className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{readValue(log.newValues)}</div>
                           </div>
                         </div>

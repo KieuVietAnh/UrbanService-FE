@@ -18,6 +18,8 @@ const formatDate = (value) => {
   });
 };
 
+const badgeClass = 'inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm whitespace-nowrap';
+
 const getStatusLabel = (status) => {
   switch (status) {
     case 'Pending':
@@ -146,7 +148,7 @@ export const DuplicateDetection = () => {
                       <td>{item.confidenceScore ?? item.confidence ?? '—'}</td>
                       <td>{formatDate(item.createdAt || item.createdDate)}</td>
                       <td>
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                        <span className={badgeClass}>
                           {getStatusLabel(item.status || 'Pending')}
                         </span>
                       </td>
