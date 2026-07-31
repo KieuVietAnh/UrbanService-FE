@@ -41,6 +41,7 @@ const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistor
 const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
 const AreaAlertManagementPage = lazy(() => import('../pages/staff/AreaAlertManagementPage').then((m) => ({ default: m.default })));
 
+const ProviderCandidateCheckerPage = lazy(() => import('../pages/staff/ProviderCandidateCheckerPage').then((m) => ({ default: m.default })));
 
 const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspacePage').then((m) => ({ default: m.HelperWorkspacePage })));
 
@@ -180,9 +181,7 @@ export const AppRoutes = () => {
           ) : !user?.isVerified ? (
             <Navigate to="/verify-email" replace />
           ) : isCitizen ? (
-            <DashboardLayout>
-              <Dashboard />
-            </DashboardLayout>
+            <LandingPage />
           ) : (
             <Navigate to={roleEntryPath} replace />
           )
@@ -343,15 +342,6 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/staff/provider-reports/:providerReportId" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <ProviderReportWorkspacePage />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
       <Route path="/staff/area-alerts" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
@@ -361,7 +351,15 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      
+      <Route path="/staff/provider-reports/:providerReportId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <ProviderReportWorkspacePage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/staff/duplicates" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
@@ -380,7 +378,15 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      {/* Provider Candidate Checker removed */}
+      <Route path="/staff/provider-candidates-checker" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ProviderCandidateCheckerPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/staff/coordinators/:coordinatorId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
