@@ -2,6 +2,7 @@
 export default [
   { name: 'Tổng Quan Hệ Thống', path: '/dashboard', icon: 'LayoutDashboard' },
   { name: 'Quản Lý Người Dùng', path: '/management/users', icon: 'Users2' },
+  { name: 'Quản Lý Điều Phối Viên', path: '/management/coordinators', icon: 'Network' },
   { name: 'Quản Lý Feedback', path: '/management/feedbacks', icon: 'MessageSquare' },
   // Provider candidate checker removed
   { name: 'Danh Mục Phản Ánh', path: '/management/categories', icon: 'FolderKanban' },

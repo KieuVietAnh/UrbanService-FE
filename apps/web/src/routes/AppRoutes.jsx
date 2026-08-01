@@ -36,6 +36,9 @@ const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementF
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
 const CoordinatorDirectoryPage = lazy(() => import('../pages/staff/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
 const CoordinatorDetailPage = lazy(() => import('../pages/staff/CoordinatorDetailPage').then((m) => ({ default: m.default })));
+const ManagementCoordinatorDirectoryPage = lazy(() => import('../pages/management/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
+const ManagementCoordinatorCreatePage = lazy(() => import('../pages/management/CoordinatorCreatePage').then((m) => ({ default: m.default })));
+const ManagementCoordinatorDetailPage = lazy(() => import('../pages/management/CoordinatorDetailPage').then((m) => ({ default: m.default })));
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
 const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
@@ -516,6 +519,33 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <FeedbackDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/coordinators" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagementCoordinatorDirectoryPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/coordinators/new" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagementCoordinatorCreatePage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/coordinators/:coordinatorId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagementCoordinatorDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

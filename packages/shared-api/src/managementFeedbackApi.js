@@ -537,6 +537,18 @@ export const managementFeedbackApi = {
     }
   },
 
+  async createServiceProvider(payload) {
+    return axiosClient.post('/api/management/service-providers', payload);
+  },
+
+  async updateServiceProvider(coordinatorId, payload) {
+    return axiosClient.put(`/api/management/service-providers/${coordinatorId}`, payload);
+  },
+
+  async setServiceProviderActive(coordinatorId, isActive) {
+    return axiosClient.patch(`/api/management/service-providers/${coordinatorId}/active`, { isActive });
+  },
+
   // Get coverages for a coordinator
   async getCoordinatorCoverages(coordinatorId) {
     if (!coordinatorId) return [];
@@ -556,6 +568,17 @@ export const managementFeedbackApi = {
     }
   },
 
+  async createCoordinatorCoverage(coordinatorId, payload) {
+    return axiosClient.post(`/api/management/service-providers/${coordinatorId}/coverages`, payload);
+  },
+
+  async updateCoordinatorCoverage(coordinatorId, coverageId, payload) {
+    return axiosClient.put(
+      `/api/management/service-providers/${coordinatorId}/coverages/${coverageId}`,
+      payload
+    );
+  },
+
   async createProviderReportContactLog(providerReportId, payload) {
     const normalizedPayload = normalizeProviderContactLogPayload(payload);
     const response = await axiosClient.post(
@@ -563,15 +586,6 @@ export const managementFeedbackApi = {
       normalizedPayload
     );
     return response;
-  },
-
-  async notifyProviderResult(feedbackId, payload = {}) {
-    const normalizedFeedbackId = String(feedbackId ?? '').trim();
-    if (!normalizedFeedbackId) {
-      throw new Error('Thiếu feedbackId để gửi thông báo cho người dân.');
-    }
-
-    return axiosClient.post(`/api/management/feedbacks/${normalizedFeedbackId}/notify-provider-result`, payload);
   },
 
   async createAreaAlertFromFeedback(feedbackId, payload = {}) {
