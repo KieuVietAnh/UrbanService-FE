@@ -29,6 +29,7 @@ export const FeedbackLocationMapCard = ({
   locationText,
   areaName,
   className = '',
+  variant = 'public',
 }) => {
   const navigate = useNavigate();
   const lat = Number(latitude);
@@ -46,16 +47,18 @@ export const FeedbackLocationMapCard = ({
     });
   };
 
+  const isAdmin = variant === 'admin';
+
   return (
-    <section className={`overflow-hidden rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)] ${className}`} aria-labelledby={`feedback-location-${feedbackId}`}>
-      <header className="flex items-start justify-between gap-3 px-4 py-4 sm:px-5">
+    <section className={`${isAdmin ? 'admin-panel' : 'rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]'} overflow-hidden ${className}`} aria-labelledby={`feedback-location-${feedbackId}`}>
+      <header className={`flex items-start justify-between gap-3 px-5 py-4 sm:px-6 ${isAdmin ? 'border-b border-slate-200' : ''}`}>
         <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">
+          <span className={isAdmin ? 'admin-mini-icon' : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary'} aria-hidden="true">
             <Lucide.MapPinned size={18} />
           </span>
           <div className="min-w-0">
-            <h2 id={`feedback-location-${feedbackId}`} className="text-base font-bold">Vị trí phản ánh</h2>
-            <p className="mt-1 break-words text-sm font-medium text-base-content/65">
+            <h2 id={`feedback-location-${feedbackId}`} className={isAdmin ? 'admin-section-title' : 'text-base font-bold'}>Vị trí phản ánh</h2>
+            <p className={isAdmin ? 'mt-1 break-words text-sm text-slate-500' : 'mt-1 break-words text-sm font-medium text-base-content/65'}>
               {areaName || locationText || 'Chưa xác định khu vực'}
             </p>
           </div>
@@ -63,7 +66,7 @@ export const FeedbackLocationMapCard = ({
       </header>
 
       {hasCoordinates ? (
-        <button type="button" onClick={openCommunityMap} className="group relative block h-56 w-full overflow-hidden border-y border-[var(--public-border)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35" aria-label="Xem vị trí phản ánh trên bản đồ sự cố">
+        <button type="button" onClick={openCommunityMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label="Xem vị trí phản ánh trên bản đồ sự cố">
           <MapContainer center={position} zoom={16} dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false} boxZoom={false} keyboard={false} zoomControl={false} attributionControl={false} className="pointer-events-none h-full w-full">
             <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <SyncView position={position} />

@@ -55,6 +55,7 @@ const InteractionApprovalDetailPage = lazy(() => import('../pages/manager/Intera
 
 const UserManagement = lazy(() => import('../pages/management/UserManagement').then((m) => ({ default: m.UserManagement })));
 const FeedbackManagement = lazy(() => import('../pages/management/FeedbackManagement').then((m) => ({ default: m.FeedbackManagement })));
+const FeedbackDetailPage = lazy(() => import('../pages/management/FeedbackDetailPage').then((m) => ({ default: m.FeedbackDetailPage })));
 const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
 const IntegrationSettings = lazy(() => import('../pages/management/IntegrationSettings').then((m) => ({ default: m.IntegrationSettings })));
@@ -506,6 +507,15 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <FeedbackManagement />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/feedbacks/:feedbackId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <FeedbackDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
