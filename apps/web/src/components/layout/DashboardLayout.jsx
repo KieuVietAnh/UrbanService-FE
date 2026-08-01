@@ -65,7 +65,11 @@ export const DashboardLayout = ({ children }) => {
 
     // Trang danh sách sẽ tự khôi phục đúng card khi quay lại từ chi tiết.
     // Không reset vùng cuộn dùng chung trong trường hợp này để tránh ghi đè vị trí.
-    if (location.state?.restoreFeedbackId || location.state?.restoreTicketId) return undefined;
+    if (
+      location.state?.restoreFeedbackId ||
+      location.state?.restoreTicketId ||
+      location.state?.restoreCoordinatorList
+    ) return undefined;
 
     const rawHash = String(location.hash || '').replace(/^#/, '');
     let targetId = '';
@@ -129,6 +133,7 @@ export const DashboardLayout = ({ children }) => {
     location.key,
     location.state?.restoreFeedbackId,
     location.state?.restoreTicketId,
+    location.state?.restoreCoordinatorList,
   ]);
 
   const getAiDockTop = (dock) => {

@@ -1,4 +1,5 @@
-const CACHE_KEY = 'urbanmind:coordinator-directory:v1';
+const CACHE_KEY = 'urbanmind:admin-coordinator-directory:v2';
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const EMPTY_CACHE = {
   items: [],
@@ -9,6 +10,8 @@ const EMPTY_CACHE = {
   scrollY: 0,
   hasLoaded: false,
   updatedAt: 0,
+  selectedCoordinatorId: '',
+  pendingRestore: false,
 };
 
 let memoryCache = { ...EMPTY_CACHE };
@@ -28,7 +31,15 @@ const readSessionCache = () => {
 export const getCoordinatorDirectoryCache = () => {
   const stored = readSessionCache();
   if (stored && typeof stored === 'object') {
-    memoryCache = { ...EMPTY_CACHE, ...stored };
+    const isExpired = stored.updatedAt && Date.now() - stored.updatedAt > CACHE_TTL_MS;
+    memoryCache = isExpired ? { ...EMPTY_CACHE } : { ...EMPTY_CACHE, ...stored };
+    if (isExpired && canUseSessionStorage()) {
+      try {
+        window.sessionStorage.removeItem(CACHE_KEY);
+      } catch {
+        // Ignore storage failures.
+      }
+    }
   }
   return { ...memoryCache, items: Array.isArray(memoryCache.items) ? memoryCache.items : [] };
 };

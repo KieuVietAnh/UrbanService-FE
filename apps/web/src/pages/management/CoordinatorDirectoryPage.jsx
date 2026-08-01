@@ -21,11 +21,25 @@ const unwrapList = (value) => {
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.response?.data?.msg || error?.message || fallback;
 
+const getScrollContainer = () =>
+  document.querySelector('[data-dashboard-scroll-container]') || document.scrollingElement;
+
 export default function CoordinatorDirectoryPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const initialCache = useMemo(() => getCoordinatorDirectoryCache(), []);
-  const shouldRestoreRef = useRef(Boolean(location.state?.restoreCoordinatorList && initialCache.hasLoaded));
+  const restoredContext = useMemo(() => {
+    if (!location.state?.restoreCoordinatorList || !initialCache.hasLoaded) return null;
+    return {
+      coordinatorId: String(initialCache.selectedCoordinatorId || ''),
+      scrollY: Number(initialCache.scrollY) || 0,
+      pendingRestore: Boolean(initialCache.pendingRestore),
+    };
+  }, [initialCache, location.state?.restoreCoordinatorList]);
+  const restoreContextRef = useRef(restoredContext);
+  const highlightTimerRef = useRef(null);
+  const shouldDeferBackgroundRefreshRef = useRef(Boolean(restoredContext));
+  const hasLoadedRef = useRef(initialCache.hasLoaded);
   const { user } = useAuth();
   const role = normalizeRole(user?.role);
   const canManage = role === APP_ROLES.ADMINISTRATOR || role === APP_ROLES.INTERACTION_MANAGER;
@@ -34,11 +48,14 @@ export default function CoordinatorDirectoryPage() {
   const [areas, setAreas] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(!initialCache.hasLoaded);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState(initialCache.search);
   const [areaId, setAreaId] = useState(initialCache.areaId);
   const [categoryId, setCategoryId] = useState(initialCache.categoryId);
   const [includeInactive, setIncludeInactive] = useState(initialCache.includeInactive);
+  const [restoreComplete, setRestoreComplete] = useState(() => !restoredContext);
+  const [highlightedCoordinatorId, setHighlightedCoordinatorId] = useState('');
 
   useEffect(() => {
     Promise.allSettled([toolsApi.getAreas(), toolsApi.getCategories()]).then(([areaResult, categoryResult]) => {
@@ -48,7 +65,9 @@ export default function CoordinatorDirectoryPage() {
   }, []);
 
   const fetchCoordinators = useCallback(async ({ keepCurrent = false } = {}) => {
-    if (!keepCurrent) setLoading(true);
+    const shouldKeepCurrent = keepCurrent || hasLoadedRef.current;
+    if (shouldKeepCurrent) setRefreshing(true);
+    else setLoading(true);
     setError('');
     try {
       const response = await managementFeedbackApi.getServiceProviders({
@@ -59,6 +78,7 @@ export default function CoordinatorDirectoryPage() {
       });
       const nextItems = unwrapList(response);
       setItems(nextItems);
+      hasLoadedRef.current = true;
       setCoordinatorDirectoryCache({
         items: nextItems,
         search,
@@ -70,30 +90,130 @@ export default function CoordinatorDirectoryPage() {
       });
     } catch (err) {
       setError(getErrorMessage(err, 'Không thể tải danh sách điều phối viên.'));
-      if (!keepCurrent) setItems([]);
+      if (!shouldKeepCurrent) setItems([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [search, areaId, categoryId, includeInactive]);
 
   useEffect(() => {
-    if (shouldRestoreRef.current) {
-      shouldRestoreRef.current = false;
-      const frame = window.requestAnimationFrame(() => window.scrollTo({ top: initialCache.scrollY || 0, behavior: 'auto' }));
-      return () => window.cancelAnimationFrame(frame);
-    }
+    if (shouldDeferBackgroundRefreshRef.current) return undefined;
 
-    const timer = window.setTimeout(() => fetchCoordinators({ keepCurrent: initialCache.hasLoaded }), 250);
+    const timer = window.setTimeout(
+      () => fetchCoordinators({ keepCurrent: hasLoadedRef.current }),
+      250
+    );
     return () => window.clearTimeout(timer);
-  }, [fetchCoordinators, initialCache.hasLoaded, initialCache.scrollY]);
+  }, [fetchCoordinators]);
+
+  useEffect(() => {
+    if (!restoreComplete || !shouldDeferBackgroundRefreshRef.current) return;
+
+    shouldDeferBackgroundRefreshRef.current = false;
+    fetchCoordinators({ keepCurrent: true });
+  }, [fetchCoordinators, restoreComplete]);
 
   useEffect(() => {
     setCoordinatorDirectoryCache({ search, areaId, categoryId, includeInactive });
   }, [search, areaId, categoryId, includeInactive]);
 
   useEffect(() => () => {
-    setCoordinatorDirectoryCache({ scrollY: window.scrollY });
+    if (highlightTimerRef.current) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
   }, []);
+
+  useEffect(() => {
+    const savedContext = restoreContextRef.current;
+    if (!savedContext?.pendingRestore || loading || items.length === 0) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let retryCount = 0;
+    let retryTimer = null;
+
+    const consumeReturnContext = () => {
+      setCoordinatorDirectoryCache({
+        selectedCoordinatorId: '',
+        pendingRestore: false,
+      });
+      restoreContextRef.current = null;
+      setRestoreComplete(true);
+    };
+
+    const restorePosition = () => {
+      if (cancelled) return;
+
+      const coordinatorId = String(savedContext.coordinatorId || '');
+      const escapedCoordinatorId = (
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(coordinatorId)
+          : coordinatorId.replace(/["\\]/g, '\\$&')
+      );
+      const targetRow = escapedCoordinatorId
+        ? document.querySelector(
+          `[data-admin-coordinator-id="${escapedCoordinatorId}"]`
+        )
+        : null;
+      const scrollContainer = getScrollContainer();
+
+      if (!targetRow || !scrollContainer) {
+        retryCount += 1;
+        if (retryCount < 30) {
+          retryTimer = window.setTimeout(restorePosition, 100);
+          return;
+        }
+
+        scrollContainer?.scrollTo({
+          top: Number(savedContext.scrollY) || 0,
+          left: 0,
+          behavior: 'auto',
+        });
+        consumeReturnContext();
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        if (cancelled) return;
+
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const rowRect = targetRow.getBoundingClientRect();
+        const rowTopInContainer = (
+          scrollContainer.scrollTop + rowRect.top - containerRect.top
+        );
+        const centeredTop = Math.max(
+          0,
+          rowTopInContainer - Math.max(
+            24,
+            (scrollContainer.clientHeight - targetRow.offsetHeight) / 2
+          )
+        );
+
+        scrollContainer.scrollTo({
+          top: centeredTop,
+          left: 0,
+          behavior: 'auto',
+        });
+        setHighlightedCoordinatorId(coordinatorId);
+        if (highlightTimerRef.current) {
+          window.clearTimeout(highlightTimerRef.current);
+        }
+        highlightTimerRef.current = window.setTimeout(() => {
+          setHighlightedCoordinatorId('');
+        }, 2500);
+        consumeReturnContext();
+      });
+    };
+
+    restorePosition();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
+  }, [items, loading]);
 
   const openCoordinator = (id) => {
     setCoordinatorDirectoryCache({
@@ -102,7 +222,9 @@ export default function CoordinatorDirectoryPage() {
       areaId,
       categoryId,
       includeInactive,
-      scrollY: window.scrollY,
+      scrollY: getScrollContainer()?.scrollTop || 0,
+      selectedCoordinatorId: String(id),
+      pendingRestore: true,
       hasLoaded: true,
     });
     navigate(`/management/coordinators/${id}`);
@@ -173,21 +295,34 @@ export default function CoordinatorDirectoryPage() {
 
         {error && <div className="mt-4"><ErrorAlert title="Không tải được dữ liệu" message={error} /></div>}
 
-        <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
+        <div className="mt-4 flex min-h-5 items-center justify-end text-xs font-medium text-slate-500 dark:text-slate-400" aria-live="polite">
+          {refreshing && <span className="inline-flex items-center gap-2"><span className="loading loading-spinner loading-xs text-blue-600" /> Đang cập nhật danh sách...</span>}
+        </div>
+
+        <div className="mt-2 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
           <table className="table w-full text-sm text-slate-700 dark:text-slate-200">
             <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
               <tr><th>Đơn vị cung cấp</th><th>Người phụ trách</th><th>Liên hệ</th><th>Phạm vi phụ trách</th><th>Trạng thái</th><th /></tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="6" className="py-12 text-center"><span className="loading loading-spinner loading-md text-blue-600" /></td></tr>
+                <tr><td colSpan="6" className="py-12 text-center"><div className="inline-flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400"><span className="loading loading-spinner loading-md text-blue-600" /> Đang tải danh sách điều phối viên...</div></td></tr>
               ) : items.length === 0 ? (
                 <tr><td colSpan="6" className="py-12 text-center text-slate-500">Không có điều phối viên phù hợp với bộ lọc.</td></tr>
               ) : items.map((item) => {
                 const id = item.coordinatorId ?? item.id;
                 return (
-                  <tr key={id} className="cursor-pointer transition-colors hover:bg-blue-50/60 dark:hover:bg-blue-500/5" onClick={() => openCoordinator(id)}>
-                    <td><div className="font-semibold text-slate-950 dark:text-slate-100">{item.providerName || '—'}</div><div className="mt-1 text-xs text-slate-400 dark:text-slate-500">ID: {id}</div></td>
+                  <tr
+                    key={id}
+                    data-admin-coordinator-id={String(id)}
+                    className={`cursor-pointer transition-colors hover:bg-blue-50/60 dark:hover:bg-blue-500/5 ${
+                      String(highlightedCoordinatorId) === String(id)
+                        ? 'bg-blue-100/80 ring-1 ring-inset ring-blue-300 dark:bg-blue-500/15 dark:ring-blue-400/40'
+                        : ''
+                    }`}
+                    onClick={() => openCoordinator(id)}
+                  >
+                    <td><div className="font-semibold text-slate-950 dark:text-slate-100">{item.providerName || '—'}</div><div className="mt-1 text-xs text-slate-400 dark:text-slate-500">Mã: {id}</div></td>
                     <td className="font-medium text-slate-700 dark:text-slate-300">{item.coordinatorName || item.name || '—'}</td>
                     <td><div>{item.phoneNumber || '—'}</div><div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{item.email || '—'}</div></td>
                     <td><span className="inline-flex rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">{item.coverageCount ?? 0}</span></td>
