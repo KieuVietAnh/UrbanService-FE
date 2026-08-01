@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api/userApi';
 import * as Lucide from 'lucide-react';
+import { readAdminUserManagementCache, writeAdminUserManagementCache } from '../../services/cache/adminUserManagementCache';
 
 const ROLE_META = {
   'service-user': {
@@ -40,8 +41,8 @@ const ROLE_DESCRIPTIONS = {
   'service-user': 'Gửi phản ánh, theo dõi trạng thái xử lý và đánh giá kết quả.',
   'system-staff': 'Tiếp nhận, kiểm tra, phân loại và điều phối phản ánh mới.',
   'service-provider': 'Cập nhật tiến độ xử lý từ hiện trường hoặc từ đầu mối bên ngoài.',
-  'interaction-manager': 'Theo dõi tương tác cộng đồng, sentiment và các kênh phản hồi.',
-  administrator: 'Quản trị tài khoản, danh mục, SLA, tích hợp, audit log và vận hành hệ thống.',
+  'interaction-manager': 'Theo dõi tương tác cộng đồng, cảm xúc người dùng và các kênh phản hồi.',
+  administrator: 'Quản trị tài khoản, danh mục, SLA, tích hợp, nhật ký hệ thống và vận hành nền tảng.',
 };
 
 const USERS_PAGE_SIZE = 8;
@@ -55,11 +56,11 @@ const getApiErrorMessage = (error, fallback) => {
   const apiMessage = error?.response?.data?.message || error?.response?.data?.error;
 
   if (status === 404) {
-    return 'Không tìm thấy API người dùng. Kiểm tra endpoint quản lý người dùng trên backend.';
+    return 'Không tìm thấy dịch vụ quản lý người dùng trên máy chủ.';
   }
 
   if (error?.code === 'ERR_NETWORK') {
-    return 'Không kết nối được API người dùng. Kiểm tra backend hoặc cấu hình API.';
+    return 'Không thể kết nối đến máy chủ quản lý người dùng. Vui lòng thử lại.';
   }
 
   return apiMessage || error?.message || fallback;
@@ -490,7 +491,7 @@ const EditAccessModal = ({
               {targetUser.avatarUrl ? (
                 <div className="avatar">
                   <div className="h-12 w-12 rounded-xl ring-1 ring-slate-200">
-                    <img src={targetUser.avatarUrl} alt={targetUser.fullName || 'Avatar'} />
+                    <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
                   </div>
                 </div>
               ) : (
@@ -586,7 +587,7 @@ const EditAccessModal = ({
               <div>
                 <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Trạng thái tài khoản</p>
                 <p className="mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Khi khóa tài khoản, người dùng sẽ không thể đăng nhập cho đến khi Admin mở lại.
+                  Khi khóa tài khoản, người dùng sẽ không thể đăng nhập cho đến khi quản trị viên mở lại.
                 </p>
               </div>
               <label className="um-access-status-toggle grid cursor-pointer grid-cols-[104px_44px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/60">
@@ -609,7 +610,7 @@ const EditAccessModal = ({
           }`}>
             <span className="font-semibold">{isAdminRole ? 'Lưu ý:' : 'Ghi chú:'}</span>{' '}
             {isAdminRole
-              ? 'Vai trò Quản trị viên có quyền truy cập cấu hình hệ thống, audit log và quản lý tài khoản. Chỉ cấp cho tài khoản thật sự cần vận hành hệ thống.'
+              ? 'Vai trò Quản trị viên có quyền truy cập cấu hình hệ thống, nhật ký hệ thống và quản lý tài khoản. Chỉ cấp cho tài khoản thật sự cần vận hành hệ thống.'
               : 'Thay đổi vai trò hoặc trạng thái chỉ được áp dụng sau khi bấm Lưu thay đổi.'}
           </div>
 
@@ -643,7 +644,7 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
   const title = nextActive ? 'Mở khóa tài khoản?' : 'Khóa tài khoản?';
   const description = nextActive
     ? 'Tài khoản này sẽ có thể đăng nhập lại sau khi được mở khóa.'
-    : 'Tài khoản này sẽ không thể đăng nhập cho đến khi Admin mở lại.';
+    : 'Tài khoản này sẽ không thể đăng nhập cho đến khi quản trị viên mở lại.';
 
   return createPortal((
     <div
@@ -693,7 +694,7 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
                 {targetUser.avatarUrl ? (
                   <div className="avatar">
                     <div className="h-11 w-11 rounded-2xl ring-1 ring-slate-200 dark:ring-slate-700">
-                      <img src={targetUser.avatarUrl} alt={targetUser.fullName || 'Avatar'} />
+                      <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
                     </div>
                   </div>
                 ) : (
@@ -747,8 +748,11 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
 
 export const UserManagement = () => {
   const { user: currentAdmin } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialCache] = useState(readAdminUserManagementCache);
+  const [users, setUsers] = useState(() => initialCache?.users || []);
+  const [loading, setLoading] = useState(() => !initialCache?.users?.length);
+  const [refreshing, setRefreshing] = useState(false);
+  const usersRef = useRef(initialCache?.users || []);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -771,25 +775,44 @@ export const UserManagement = () => {
   const [pendingStatusUser, setPendingStatusUser] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
+
+  const fetchUsers = useCallback(async ({ silent = false } = {}) => {
+    const hasCurrentUsers = usersRef.current.length > 0;
+
+    if (silent || hasCurrentUsers) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const res = await userApi.getUsers();
-      setUsers(Array.isArray(res) ? res : []);
+      const nextUsers = Array.isArray(res) ? res : [];
+      setUsers(nextUsers);
+      writeAdminUserManagementCache(nextUsers);
       setMessage((prev) => (prev.type === 'error' ? { type: '', text: '' } : prev));
+      return nextUsers;
     } catch (err) {
       console.error(err);
-      setUsers([]);
-      setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể tải danh sách người dùng.') });
+      if (!hasCurrentUsers) {
+        setUsers([]);
+        setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể tải danh sách người dùng.') });
+      } else if (!silent) {
+        setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể làm mới danh sách người dùng.') });
+      }
+      return null;
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    fetchUsers({ silent: Boolean(initialCache?.users?.length) });
+  }, [fetchUsers, initialCache]);
 
   useEffect(() => {
     if (!message.text) return undefined;
@@ -928,7 +951,7 @@ export const UserManagement = () => {
       if (roleApiMissing) {
         setMessage({
           type: 'error',
-          text: 'API đổi vai trò chưa được kết nối. Cần backend bổ sung endpoint trước khi lưu thay đổi vai trò.',
+          text: 'Chức năng đổi vai trò chưa được máy chủ hỗ trợ. Không thể lưu thay đổi vai trò lúc này.',
         });
         return;
       }
@@ -937,7 +960,14 @@ export const UserManagement = () => {
         await userApi.updateUserStatus(selectedUser.userId, editActive, currentAdmin?.userId);
       }
 
-      await fetchUsers();
+      const updatedUsers = users.map((item) => (
+        item.userId === selectedUser.userId
+          ? { ...item, role: editRole, isActive: editActive }
+          : item
+      ));
+      setUsers(updatedUsers);
+      writeAdminUserManagementCache(updatedUsers);
+      void fetchUsers({ silent: true });
       setMessage({ type: 'success', text: 'Đã cập nhật quyền truy cập tài khoản.' });
 
       setSelectedUser(null);
@@ -968,7 +998,14 @@ export const UserManagement = () => {
 
     try {
       await userApi.updateUserStatus(pendingStatusUser.userId, nextActive, currentAdmin?.userId);
-      await fetchUsers();
+      const updatedUsers = users.map((item) => (
+        item.userId === pendingStatusUser.userId
+          ? { ...item, isActive: nextActive }
+          : item
+      ));
+      setUsers(updatedUsers);
+      writeAdminUserManagementCache(updatedUsers);
+      void fetchUsers({ silent: true });
       setMessage({ type: 'success', text: `${nextActive ? 'Đã mở khóa' : 'Đã khóa'} tài khoản ${targetName}.` });
       setPendingStatusUser(null);
     } catch (err) {
@@ -1016,7 +1053,7 @@ export const UserManagement = () => {
       setMessage({ type: 'success', text: 'Tạo tài khoản thành công. Mật khẩu mặc định: 123456.' });
       setShowCreateModal(false);
       resetCreateForm();
-      fetchUsers();
+      void fetchUsers({ silent: true });
     } catch (err) {
       setMessage({ type: 'error', text: getApiErrorMessage(err, 'Lỗi khi tạo tài khoản.') });
     } finally {
@@ -1059,9 +1096,9 @@ export const UserManagement = () => {
               type="button"
               onClick={fetchUsers}
               className="btn btn-outline h-11 rounded-xl border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              disabled={loading}
+              disabled={loading || refreshing}
             >
-              <Lucide.RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+              <Lucide.RefreshCcw size={16} className={loading || refreshing ? 'animate-spin' : ''} />
               Làm mới
             </button>
             <button
@@ -1080,7 +1117,7 @@ export const UserManagement = () => {
         <StatCard icon={Lucide.Users} label="Tổng tài khoản" value={stats.total} helper="Tất cả người dùng" tone="blue" />
         <StatCard icon={Lucide.UserCheck} label="Đang hoạt động" value={stats.active} helper="Có thể đăng nhập" tone="emerald" />
         <StatCard icon={Lucide.UserX} label="Đã khóa" value={stats.locked} helper="Đang bị vô hiệu hóa" tone="rose" />
-        <StatCard icon={Lucide.UserCog} label="Tài khoản nội bộ" value={stats.operatorCount} helper="Staff, điều phối, quản trị" tone="slate" />
+        <StatCard icon={Lucide.UserCog} label="Tài khoản nội bộ" value={stats.operatorCount} helper="Cán bộ, điều phối, quản trị" tone="slate" />
       </section>
 
       <section className="um-users-card overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-950/70">
@@ -1088,7 +1125,7 @@ export const UserManagement = () => {
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Danh sách tài khoản</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {loading ? 'Đang tải dữ liệu...' : `${filteredUsers.length}/${stats.total} tài khoản`}
+              {loading ? 'Đang tải dữ liệu...' : refreshing ? 'Đang cập nhật dữ liệu...' : `${filteredUsers.length}/${stats.total} tài khoản`}
             </p>
           </div>
 
@@ -1197,7 +1234,7 @@ export const UserManagement = () => {
                           {u.avatarUrl ? (
                             <div className="avatar shrink-0">
                               <div className="h-12 w-12 rounded-2xl ring-1 ring-slate-200 dark:ring-slate-700">
-                                <img src={u.avatarUrl} alt={u.fullName || 'Avatar'} />
+                                <img src={u.avatarUrl} alt={u.fullName ? `Ảnh đại diện của ${u.fullName}` : 'Ảnh đại diện'} />
                               </div>
                             </div>
                           ) : (
@@ -1319,7 +1356,7 @@ export const UserManagement = () => {
                           {u.avatarUrl ? (
                             <div className="avatar">
                               <div className="h-11 w-11 rounded-xl ring-1 ring-slate-200">
-                                <img src={u.avatarUrl} alt={u.fullName || 'Avatar'} />
+                                <img src={u.avatarUrl} alt={u.fullName ? `Ảnh đại diện của ${u.fullName}` : 'Ảnh đại diện'} />
                               </div>
                             </div>
                           ) : (
