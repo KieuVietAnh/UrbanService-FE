@@ -1,5 +1,9 @@
 import { axiosClient } from './axiosClient.js';
 import { normalizeTicketsResponse } from './ticketApiHelpers.js';
+import {
+  normalizeLinkedFeedbacksPayload,
+  normalizeRelatedFeedbacksPayload,
+} from './feedbackRelations.js';
 
 export const normalizeAiReviewedPayload = (payload = {}) => {
   const items = Array.isArray(payload?.items) ? payload.items : [];
@@ -194,8 +198,8 @@ export const normalizeProviderReportStatus = (value = '') => {
 
   const normalizedValue = rawValue.toLowerCase();
   if (normalizedValue === 'reported') return 'Reported';
-  if (normalizedValue === 'contacted') return 'Contacted';
-  if (normalizedValue === 'accepted') return 'Accepted';
+  if (normalizedValue === 'contacted') return 'InProgress';
+  if (normalizedValue === 'accepted') return 'InProgress';
   if (['inprogress', 'in_progress', 'in progress'].includes(normalizedValue)) return 'InProgress';
   if (['done', 'completed', 'complete'].includes(normalizedValue)) return 'Done';
   if (normalizedValue === 'failed') return 'Failed';
@@ -251,9 +255,7 @@ export const canTransitionProviderReportStatus = (currentStatus, nextStatus) => 
   const next = normalizeProviderReportStatus(nextStatus);
 
   const allowedTransitions = {
-    Reported: ['Contacted', 'Accepted', 'Failed', 'Cancelled'],
-    Contacted: ['Accepted', 'Failed', 'Cancelled'],
-    Accepted: ['InProgress', 'Failed', 'Cancelled'],
+    Reported: ['InProgress', 'Failed', 'Cancelled'],
     InProgress: ['Done', 'Failed', 'Cancelled'],
     Done: [],
     Failed: [],
@@ -411,28 +413,30 @@ export const managementFeedbackApi = {
     return [];
   },
 
-  async getLinkedFeedbacks(feedbackId) {
-    const response = await axiosClient.get(`/api/staff/feedbacks/${feedbackId}/linked-feedbacks`);
-    const payload = response?.data ?? response?.item ?? response?.result ?? response ?? {};
+  async getLinkedFeedbacks(feedbackId, options = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) return [];
 
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.items)) return payload.items;
-    if (Array.isArray(payload?.data)) return payload.data;
-    if (Array.isArray(payload?.results)) return payload.results;
-
-    return [];
+    const response = await axiosClient.get(
+      `/api/management/feedbacks/${normalizedFeedbackId}/linked-feedbacks`,
+      { signal: options?.signal },
+    );
+    return normalizeLinkedFeedbacksPayload(response);
   },
 
-  async getRelatedFeedbacks(feedbackId) {
-    const response = await axiosClient.get(`/api/feedbacks/${feedbackId}/related`);
-    const payload = response?.data ?? response?.item ?? response?.result ?? response ?? {};
+  async getRelatedFeedbacks(feedbackId, options = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) return [];
 
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.items)) return payload.items;
-    if (Array.isArray(payload?.data)) return payload.data;
-    if (Array.isArray(payload?.results)) return payload.results;
+    const scope = options?.scope || 'management';
+    const endpoint = scope === 'community'
+      ? `/api/user/feedbacks/feed/${normalizedFeedbackId}/related`
+      : scope === 'user'
+        ? `/api/user/feedbacks/${normalizedFeedbackId}/related`
+        : `/api/management/feedbacks/${normalizedFeedbackId}/related`;
 
-    return [];
+    const response = await axiosClient.get(endpoint, { signal: options?.signal });
+    return normalizeRelatedFeedbacksPayload(response, normalizedFeedbackId);
   },
 
   // Get a single provider report by its id.

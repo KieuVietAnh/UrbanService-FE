@@ -23,13 +23,43 @@ const formatContactDateTime = (value) => {
   } catch { return 'Không xác định'; }
 };
 
+const isSuccessfulCoordinatorContact = (contactResult) => {
+  const normalized = String(contactResult || '').trim().toLowerCase();
+  if (!normalized) return false;
+
+  if (
+    normalized.includes('liên hệ lại') ||
+    normalized.includes('lien he lai') ||
+    normalized.includes('cần gọi lại') ||
+    normalized.includes('can goi lai') ||
+    normalized.includes('không') ||
+    normalized.includes('khong') ||
+    normalized.includes('chưa') ||
+    normalized.includes('chua') ||
+    normalized.includes('thất bại') ||
+    normalized.includes('that bai') ||
+    normalized.includes('failed')
+  ) {
+    return false;
+  }
+
+  return (
+    normalized.includes('thành công') ||
+    normalized.includes('thanh cong') ||
+    normalized.includes('đã liên hệ') ||
+    normalized.includes('da lien he') ||
+    normalized.includes('successful') ||
+    normalized.includes('success')
+  );
+};
+
 /* ─── Step definitions ───────────────────────────────────────────────────── */
 
 const STEPS = [
   { id: 'overview',              label: 'Tổng quan',            icon: Lucide.LayoutDashboard, description: 'Thông tin nhà thầu & cập nhật trạng thái' },
   { id: 'contact-logs',         label: 'Lịch sử liên hệ',      icon: Lucide.Phone,           description: 'Ghi nhận lịch sử liên hệ với nhà thầu'  },
   { id: 'completion-documents', label: 'Tài liệu hoàn thành',  icon: Lucide.FileText,        description: 'Tải lên tài liệu bằng chứng hoàn thành'  },
-  { id: 'resolution',           label: 'Kết quả xử lý',        icon: Lucide.CheckSquare,     description: 'Gửi kết quả xử lý chờ phê duyệt',  requiresDone: true },
+  { id: 'resolution',           label: 'Kết quả xử lý',        icon: Lucide.CheckSquare,     description: 'Gửi kết quả xử lý chờ phê duyệt',  requiresInProgress: true },
   { id: 'submitted',            label: 'Chờ phê duyệt',        icon: Lucide.Send,            description: 'Đã gửi — chờ quản lý phê duyệt',    terminal: true },
 ];
 
@@ -80,8 +110,8 @@ const WizardRail = ({ steps, currentIndex, maxReached, isResolutionSubmitted, ca
       const isPast      = idx < currentIndex;
       const isCurrent   = idx === currentIndex;
       const isFuture    = idx > currentIndex && idx <= maxReached;
-      const statusLocked = (step.id === 'completion-documents' && !canAccessCompletionDocuments) || (step.requiresDone && !canAccessResolution);
-      const isLocked    = idx > maxReached || statusLocked || (step.requiresDone && !canAccessResolution && idx > currentIndex);
+      const statusLocked = (step.id === 'completion-documents' && !canAccessCompletionDocuments) || (step.requiresInProgress && !canAccessResolution);
+      const isLocked    = idx > maxReached || statusLocked || (step.requiresInProgress && !canAccessResolution && idx > currentIndex);
       const isClickable = isPast || isCurrent || isFuture; /* can go back or re-visit reached */
 
       const Icon = step.icon;
@@ -146,9 +176,9 @@ const WizardRail = ({ steps, currentIndex, maxReached, isResolutionSubmitted, ca
                   {step.description}
                 </div>
               )}
-              {step.requiresDone && !canAccessResolution && (
+              {step.requiresInProgress && !canAccessResolution && (
                 <div style={{ fontSize: '0.6875rem', color: 'var(--color-warning)', fontWeight: 600, lineHeight: 1.3, marginTop: '1px' }}>
-                  Yêu cầu trạng thái: Done
+                  Yêu cầu trạng thái: InProgress
                 </div>
               )}
             </div>
@@ -500,11 +530,11 @@ export const ProviderReportWorkspacePage = () => {
   const providerPhone   = report?.phoneNumber || coordinator?.phone || provider?.phoneNumber || '—';
   const providerEmail   = report?.email || coordinator?.email || provider?.email || '—';
   const currentStatus   = normalizeProviderReportStatus(report?.status || report?.reportStatus || '');
-  const canAccessCompletionDocuments = ['Accepted', 'InProgress'].includes(currentStatus);
-  const canAccessResolution   = currentStatus === 'Done';
+  const canAccessCompletionDocuments = currentStatus === 'InProgress';
+  const canAccessResolution   = currentStatus === 'InProgress';
   const isResolutionSubmitted = existingResolutions.length > 0;
-  const canReviewContactLogs = ['Reported', 'Contacted', 'Accepted', 'InProgress', 'Done'].includes(currentStatus);
-  const canUploadCompletionDocuments = ['Accepted', 'InProgress'].includes(currentStatus);
+  const canReviewContactLogs = ['Reported', 'InProgress', 'Done'].includes(currentStatus);
+  const canUploadCompletionDocuments = currentStatus === 'InProgress';
 
   const statusHistoryItems = (() => {
     const history = Array.isArray(report?.statusHistory)
@@ -528,18 +558,15 @@ export const ProviderReportWorkspacePage = () => {
   const workflowChecklist = (() => {
     const hasLogs = contactLogs.length > 0;
     const hasDocs = documents.length > 0;
-    const isContacted = ['Contacted', 'Accepted', 'InProgress', 'Done'].includes(currentStatus);
-    const isAccepted = ['Accepted', 'InProgress', 'Done'].includes(currentStatus);
     const isInProgress = ['InProgress', 'Done'].includes(currentStatus);
     const isDone = currentStatus === 'Done';
 
     return [
       { label: 'Báo cáo nhận', completed: Boolean(report) },
-      { label: 'Đã tạo contact log', completed: hasLogs || isContacted },
-      { label: 'Đã xác nhận chấp thuận', completed: isAccepted },
-      { label: 'Tài liệu hoàn thành sẵn sàng', completed: hasDocs || isInProgress || isDone },
-      { label: 'Đã đánh dấu hoàn tất', completed: isDone },
-      { label: 'Sẵn sàng kết quả', completed: isDone || isResolutionSubmitted },
+      { label: 'Đã liên hệ coordinator', completed: hasLogs || isInProgress || isDone },
+      { label: 'Đang xử lý', completed: isInProgress || isDone },
+      { label: 'Tài liệu/minh chứng đã có', completed: hasDocs || isResolutionSubmitted || isDone },
+      { label: 'Đã gửi kết quả chờ duyệt', completed: isResolutionSubmitted || isDone },
     ];
   })();
 
@@ -548,10 +575,10 @@ export const ProviderReportWorkspacePage = () => {
   const visibleSteps = STEPS;
 
   const workflowAction = (() => {
-    if (currentStatus === 'Done') {
+    if (currentStatus === 'InProgress') {
       return {
-        title: 'Ready for Resolution Submission',
-        description: 'Báo cáo đã hoàn tất. Tiếp theo là gửi kết quả xử lý để chuyển sang phê duyệt.',
+        title: 'Recommended next action: Submit Resolution',
+        description: 'Đã liên hệ coordinator thành công. Staff có thể bổ sung minh chứng nếu cần, rồi gửi kết quả xử lý để chờ quản lý phê duyệt.',
         actionLabel: 'Submit Resolution',
         targetStep: 'resolution',
         nextStatus: null,
@@ -559,47 +586,25 @@ export const ProviderReportWorkspacePage = () => {
       };
     }
 
-    if (currentStatus === 'InProgress') {
+    if (currentStatus === 'Done') {
       return {
-        title: 'Recommended next action: Mark Done',
-        description: 'Sau khi tài liệu hoàn thành đã được tải lên, hãy đánh dấu báo cáo là hoàn tất.',
-        actionLabel: 'Mark Done',
-        targetStep: 'overview',
-        nextStatus: 'Done',
-        disabled: false,
-      };
-    }
-
-    if (currentStatus === 'Accepted') {
-      return {
-        title: 'Recommended next action: Upload Completion Documents',
-        description: 'Sau khi báo cáo được chấp thuận, hãy tải lên ít nhất một tài liệu hoàn thành.',
-        actionLabel: 'Upload Completion Documents',
-        targetStep: 'completion-documents',
+        title: 'Resolution submitted',
+        description: 'Kết quả xử lý đã được gửi và đang chờ quản lý phê duyệt.',
+        actionLabel: 'View Resolution',
+        targetStep: 'resolution',
         nextStatus: null,
         disabled: false,
       };
     }
 
-    if (currentStatus === 'Contacted') {
       return {
-        title: 'Recommended next action: Mark Accepted',
-        description: 'Sau khi đã có contact log, hãy chấp nhận báo cáo và mở khóa bước tài liệu hoàn thành.',
-        actionLabel: 'Mark Accepted',
-        targetStep: 'overview',
-        nextStatus: 'Accepted',
+        title: 'Recommended next action: Contact Coordinator',
+        description: 'Tạo nhật ký liên hệ coordinator. Chỉ kết quả liên hệ thành công mới mở bước Submit Resolution; nếu cần liên hệ lại thì báo cáo vẫn ở Reported.',
+        actionLabel: 'Create Contact Log',
+        targetStep: 'contact-logs',
+        nextStatus: null,
         disabled: false,
       };
-    }
-
-    return {
-      title: 'Recommended next action: Create Contact Log',
-      description: 'Bắt đầu quy trình bằng một bản ghi liên hệ trước khi tiếp tục bước chấp thuận.',
-      actionLabel: 'Create Contact Log',
-      targetStep: 'contact-logs',
-      nextStatus: null,
-      disabled: false,
-    };
   })();
 
   const totalVisible = visibleSteps.length;
@@ -609,10 +614,8 @@ export const ProviderReportWorkspacePage = () => {
     if (hasUserChosenStepRef.current) return;
 
     let fallbackStepId = 'overview';
-    if (currentStatus === 'Done') {
+    if (['InProgress', 'Done'].includes(currentStatus)) {
       fallbackStepId = 'resolution';
-    } else if (['Accepted', 'Contacted', 'InProgress'].includes(currentStatus)) {
-      fallbackStepId = 'overview';
     } else if (currentStatus === 'Reported') {
       fallbackStepId = 'contact-logs';
     }
@@ -684,7 +687,6 @@ export const ProviderReportWorkspacePage = () => {
       return;
     }
 
-    const firstCompletionUpload = currentStatus === 'Accepted' && documents.length === 0;
     setUploadingDocuments(true);
     setUploadError('');
 
@@ -695,9 +697,6 @@ export const ProviderReportWorkspacePage = () => {
       setDocumentDescription('');
       setSelectedDocumentFile(null);
       openToast('Đã gửi tài liệu', 'Tài liệu hoàn thành đã được gửi thành công.');
-      if (firstCompletionUpload) {
-        await performStatusTransition('InProgress', 'Tự động chuyển trạng thái sau khi tải lên tài liệu hoàn thành đầu tiên.', { auto: true });
-      }
     } catch (err) {
       console.error('Upload failed', err);
       setUploadError(err?.message || 'Không thể tải lên tài liệu.');
@@ -786,16 +785,21 @@ export const ProviderReportWorkspacePage = () => {
     const method = String(logForm.contactMethod || '').trim();
     const result = String(logForm.contactResult || '').trim();
     const at     = String(logForm.contactedAt   || '').trim();
-    const shouldAutoTransition = currentStatus === 'Reported' && contactLogs.length === 0;
+    const shouldAutoTransition = currentStatus === 'Reported' && isSuccessfulCoordinatorContact(result);
     if (!method || !result || !at) { setLogFormError('Vui lòng điền phương thức, kết quả và thời điểm liên hệ.'); return; }
     setLogSaving(true);
     try {
       const created = await managementFeedbackApi.createProviderReportContactLog(providerReportId, { contactMethod: method, contactResult: result, contactNote: String(logForm.contactNote || '').trim() || null, contactedAt: at });
       setContactLogs((prev) => [created, ...(Array.isArray(prev) ? prev : [])]);
-      openToast('Đã lưu lịch sử liên hệ', 'Nhật ký liên hệ mới đã được thêm.');
+      openToast(
+        'Đã lưu lịch sử liên hệ',
+        isSuccessfulCoordinatorContact(result)
+          ? 'Liên hệ thành công. Báo cáo sẽ được chuyển sang InProgress để gửi kết quả xử lý.'
+          : 'Kết quả cần liên hệ lại/chưa thành công. Chưa thể Submit Resolution.'
+      );
       setLogForm({ contactMethod: '', contactResult: '', contactNote: '', contactedAt: toLocalDateTimeValue() });
       if (shouldAutoTransition) {
-        await performStatusTransition('Contacted', 'Tự động chuyển trạng thái sau khi tạo nhật ký liên hệ đầu tiên.', { auto: true });
+        await performStatusTransition('InProgress', 'Tự động chuyển trạng thái sau khi tạo nhật ký liên hệ coordinator đầu tiên.', { auto: true });
       }
     } catch (err) { console.error('Save log failed', err); setLogFormError(err?.message || 'Không thể lưu bản ghi liên hệ.'); }
     finally { setLogSaving(false); }
@@ -1138,7 +1142,7 @@ export const ProviderReportWorkspacePage = () => {
                 <SectionHeader title="Ghi nhật ký liên hệ" sub={canReviewContactLogs ? 'Bạn có thể xem lại và cập nhật nội dung liên hệ ở bước này.' : 'Ghi lại chi tiết cuộc gọi, email hoặc tin nhắn với nhà thầu.'} />
                 <div style={{ padding: '1rem 1.25rem' }}>
                   {logFormError && <div style={{ marginBottom: '0.75rem' }}><ErrorAlert message={logFormError} onClose={() => setLogFormError('')} /></div>}
-                  {canReviewContactLogs && !['Reported', 'Contacted'].includes(currentStatus) ? (
+                  {canReviewContactLogs && currentStatus !== 'Reported' ? (
                     <div style={{ borderRadius: '0.875rem', border: '1px solid rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.7)', padding: '1rem 1rem', color: '#475569', lineHeight: 1.6 }}>
                       Bước này đã được hoàn tất. Nội dung lịch sử liên hệ ở trên có thể xem lại bất cứ lúc nào để đối chiếu hoặc cập nhật thêm nếu cần.
                     </div>
@@ -1151,7 +1155,13 @@ export const ProviderReportWorkspacePage = () => {
                         </label>
                         <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                           <span style={fieldLabel}>Kết quả <span style={{ color: 'var(--color-danger)' }}>*</span></span>
-                          <input value={logForm.contactResult} onChange={(e) => handleLogInputChange('contactResult', e.target.value)} placeholder="Đã liên hệ thành công / Không có phản hồi" className="input input-bordered w-full" required />
+                          <select value={logForm.contactResult} onChange={(e) => handleLogInputChange('contactResult', e.target.value)} className="select select-bordered w-full" required>
+                            <option value="">Chọn kết quả liên hệ</option>
+                            <option value="Đã liên hệ thành công">Đã liên hệ thành công</option>
+                            <option value="Cần liên hệ lại">Cần liên hệ lại</option>
+                            <option value="Không có phản hồi">Không có phản hồi</option>
+                            <option value="Liên hệ thất bại">Liên hệ thất bại</option>
+                          </select>
                         </label>
                       </div>
                       <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
@@ -1193,7 +1203,7 @@ export const ProviderReportWorkspacePage = () => {
                 sub={canUploadCompletionDocuments ? 'Tải lên bằng chứng hoàn thành từ nhà thầu trước khi tiếp tục.' : 'Bước này có thể xem lại nội dung tài liệu đã tải lên sau khi báo cáo được hoàn tất.'}
                 action={canUploadCompletionDocuments ? null : (
                   <span style={{ ...statusChip(currentStatus), padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.8 }}>
-                    {currentStatus === 'Done' ? 'Đã hoàn tất' : 'Xem lại'}
+                    {currentStatus === 'Done' ? 'Đã gửi kết quả' : 'Xem lại'}
                   </span>
                 )}
               />
@@ -1279,7 +1289,7 @@ export const ProviderReportWorkspacePage = () => {
                 <div style={{ margin: '0 1.25rem 1rem', padding: '0.75rem 1rem', borderRadius: '0.875rem', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(180,83,9,0.18)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
                   <Lucide.AlertTriangle size={15} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
                   <div style={{ fontSize: '0.8125rem', color: 'var(--color-warning)', lineHeight: 1.45 }}>
-                    <strong>Bước tiếp theo bị khóa.</strong> Bạn cần cập nhật trạng thái báo cáo xử lý thành <strong>Hoàn thành (Done)</strong> từ bước Tổng quan trước khi có thể gửi Kết quả xử lý.
+                    <strong>Bước tiếp theo bị khóa.</strong> Bạn cần tạo nhật ký liên hệ coordinator thành công để báo cáo chuyển sang <strong>InProgress</strong> trước khi gửi Kết quả xử lý.
                   </div>
                 </div>
               )}
@@ -1308,7 +1318,7 @@ export const ProviderReportWorkspacePage = () => {
                   <div style={{ marginBottom: '1rem', padding: '0.875rem 1rem', borderRadius: '0.875rem', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(180,83,9,0.2)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
                     <Lucide.AlertTriangle size={15} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: '1px' }} />
                     <div style={{ fontSize: '0.8125rem', color: 'var(--color-warning)', lineHeight: 1.45 }}>
-                      <strong>Báo cáo xử lý phải ở trạng thái Hoàn thành (Done)</strong> trước khi gửi Kết quả xử lý. Quay lại bước Tổng quan để cập nhật.
+                      <strong>Báo cáo xử lý phải ở trạng thái InProgress</strong> trước khi gửi Kết quả xử lý. Hãy tạo nhật ký liên hệ coordinator thành công trước.
                     </div>
                   </div>
                 )}

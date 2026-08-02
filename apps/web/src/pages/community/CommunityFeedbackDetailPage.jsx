@@ -6,7 +6,6 @@ import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import useTicketDetail from '../../hooks/useTicketDetail';
 import { getCommunityFeedDetail } from '../../services/api/feedApi';
-import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { patchCommunityFeedCacheItem } from '../../services/cache/communityFeedCache';
 import SupportButton from '../../components/community/SupportButton';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
@@ -341,6 +340,7 @@ export const CommunityFeedDetailPage = () => {
   const [relatedFeedbacks, setRelatedFeedbacks] = useState([]);
   const [relatedFeedbacksLoading, setRelatedFeedbacksLoading] = useState(false);
   const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
+  const relatedParentFeedbackId = ticket?.parentTicketId || ticket?.parentFeedbackId || null;
   const commentsSectionRef = useRef(null);
   const commentInputRef = useRef(null);
 
@@ -386,16 +386,31 @@ export const CommunityFeedDetailPage = () => {
   }, [feedbackId, ticket?.supportCount, ticket?.supports]);
 
   useEffect(() => {
+    const abortController = new AbortController();
+
     const loadRelatedFeedbacks = async () => {
-      if (!feedbackId) return;
+      if (!relatedParentFeedbackId) {
+        setRelatedFeedbacks([]);
+        setRelatedFeedbacksError('');
+        setRelatedFeedbacksLoading(false);
+        return;
+      }
 
       setRelatedFeedbacksLoading(true);
       setRelatedFeedbacksError('');
 
       try {
-        const response = await managementFeedbackApi.getRelatedFeedbacks(feedbackId);
-        setRelatedFeedbacks(Array.isArray(response) ? response : []);
+        const parentFeedback = await getCommunityFeedDetail(
+          relatedParentFeedbackId,
+          { signal: abortController.signal },
+        );
+        setRelatedFeedbacks(parentFeedback ? [{
+          ...parentFeedback,
+          feedbackId: parentFeedback.feedbackId || parentFeedback.id || relatedParentFeedbackId,
+          relationType: 'master',
+        }] : []);
       } catch (err) {
+        if (abortController.signal.aborted) return;
         console.error('Failed to load related feedbacks', err);
         setRelatedFeedbacks([]);
         setRelatedFeedbacksError(
@@ -407,7 +422,9 @@ export const CommunityFeedDetailPage = () => {
     };
 
     loadRelatedFeedbacks();
-  }, [feedbackId]);
+
+    return () => abortController.abort();
+  }, [relatedParentFeedbackId]);
 
   useEffect(() => {
     if (!activeAttachment) return undefined;
@@ -454,6 +471,8 @@ export const CommunityFeedDetailPage = () => {
     className: 'border-base-300 bg-base-200 text-base-content/60',
   };
   const StatusIcon = statusMeta.icon;
+  const parentFeedbackId = relatedParentFeedbackId;
+  const isConfirmedDuplicate = Boolean(parentFeedbackId);
   const categoryLabel = translateCategoryName(
     ticket?.categoryName || ticket?.category?.name
   );
@@ -706,6 +725,12 @@ export const CommunityFeedDetailPage = () => {
                   <Lucide.Tag size={13} aria-hidden="true" />
                   {categoryLabel}
                 </span>
+                {isConfirmedDuplicate ? (
+                  <span className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-violet-300/70 bg-violet-50 px-3 text-xs font-semibold text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300">
+                    <Lucide.GitMerge size={13} aria-hidden="true" />
+                    Phản ánh trùng
+                  </span>
+                ) : null}
               </div>
 
               <h1 className="mt-5 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
@@ -751,13 +776,15 @@ export const CommunityFeedDetailPage = () => {
                     Trạng thái xử lý
                   </p>
                   <p className="mt-1 truncate text-lg font-bold text-warning">
-                    {statusMeta.label}
+                    {isConfirmedDuplicate ? 'Phản ánh trùng' : statusMeta.label}
                   </p>
                 </div>
                 <StatusIcon size={18} className="shrink-0 text-warning" aria-hidden="true" />
               </div>
               <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">
-                {statusMeta.description}
+                {isConfirmedDuplicate
+                  ? 'Phản ánh được theo dõi và xử lý chung theo phản ánh đã có.'
+                  : statusMeta.description}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <SupportButton
@@ -972,12 +999,15 @@ export const CommunityFeedDetailPage = () => {
             </div>
           </article>
 
+          {isConfirmedDuplicate ? (
           <section className="rounded-[28px] border border-base-300 bg-base-100 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold">Phản ánh liên quan</h2>
+                <h2 className="text-lg font-bold">{isConfirmedDuplicate ? 'Phản ánh đã có' : 'Phản ánh liên quan'}</h2>
                 <p className="mt-1 text-sm text-base-content/55">
-                  Các phản ánh có thể thuộc cùng một vấn đề hoặc khu vực.
+                  {isConfirmedDuplicate
+                    ? 'Phản ánh này đã được ghi nhận trước và là phản ánh chính đang được xử lý.'
+                    : 'Các phản ánh có thể thuộc cùng một vấn đề hoặc khu vực.'}
                 </p>
               </div>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/45 px-3 py-1.5 text-xs font-semibold text-base-content/55">
@@ -1007,7 +1037,7 @@ export const CommunityFeedDetailPage = () => {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
-                            Feedback ID
+                            {item?.relationType === 'master' ? 'Phản ánh chính đã có' : 'Feedback ID'}
                           </div>
                           <div className="mt-1 text-sm font-semibold text-base-content">{relatedId || '—'}</div>
                         </div>
@@ -1056,6 +1086,7 @@ export const CommunityFeedDetailPage = () => {
               </div>
             )}
           </section>
+          ) : null}
 
           <section
             id="community-comments"

@@ -121,8 +121,11 @@ export const AIReviewDetail = () => {
     if (!isSelectedVisible) setSelectedTicket(displayedTickets[0]);
   }, [displayedTickets, selectedTicket]);
 
+  const selectedParentFeedbackId = selectedTicket?.parentTicketId || selectedTicket?.parentFeedbackId || null;
+  const selectedIsConfirmedDuplicate = Boolean(selectedParentFeedbackId);
+
   const handleApprove = async () => {
-    if (!selectedTicket) return;
+    if (!selectedTicket || selectedIsConfirmedDuplicate) return;
     setLoading(true);
     try {
       await ticketApi.verifyAndApprove(selectedTicket.feedbackId, user.userId, {
@@ -205,7 +208,9 @@ export const AIReviewDetail = () => {
                 ) : null}
               </div>
               <div className="space-y-3 max-h-[calc(100vh-18rem)] overflow-y-auto pr-1">
-                {displayedTickets.map((t) => (
+                {displayedTickets.map((t) => {
+                  const isConfirmedDuplicate = Boolean(t?.parentTicketId || t?.parentFeedbackId);
+                  return (
                   <button
                     key={t.feedbackId}
                     type="button"
@@ -221,6 +226,12 @@ export const AIReviewDetail = () => {
                       <span>{new Date(t.createdAt).toLocaleDateString('vi-VN')}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {isConfirmedDuplicate ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                          <Lucide.GitMerge size={11} aria-hidden="true" />
+                          Phản ánh trùng
+                        </span>
+                      ) : null}
                       <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${getUrgencyBadgeClass(getTicketPriority(t))}`}>
                         {getTicketPriority(t)}
                       </span>
@@ -228,7 +239,8 @@ export const AIReviewDetail = () => {
                     <h5 className="font-bold text-sm text-base-content line-clamp-2">{t.title}</h5>
                     <span className="text-xs font-semibold text-gray-500 line-clamp-1">{t.locationText}</span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </aside>
@@ -236,6 +248,29 @@ export const AIReviewDetail = () => {
           <main className="space-y-6">
             {selectedTicket && (
               <>
+                {selectedIsConfirmedDuplicate ? (
+                  <section className="rounded-[28px] border border-violet-200 bg-violet-50 p-5 shadow-sm">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white">
+                          <Lucide.GitMerge size={20} aria-hidden="true" />
+                        </span>
+                        <div>
+                          <h3 className="font-bold text-violet-950">Phản ánh trùng</h3>
+                          <p className="mt-1 text-sm text-violet-800">Không duyệt hoặc phân công riêng; phản ánh này được xử lý theo phản ánh đã có.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/staff/feedbacks/${selectedParentFeedbackId}`)}
+                        className="btn btn-sm rounded-xl border-violet-200 bg-white text-violet-700 hover:bg-violet-100"
+                      >
+                        <Lucide.ExternalLink size={14} aria-hidden="true" />
+                        Xem phản ánh đã có
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
                 <div className="card bg-base-100 border border-base-200 p-6 rounded-[32px] shadow-sm">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="space-y-3">
@@ -395,14 +430,20 @@ export const AIReviewDetail = () => {
                       </div>
                     </div>
 
-                    <button 
-                      type="button"
-                      onClick={handleApprove}
-                      disabled={loading}
-                      className="btn btn-primary w-full rounded-2xl font-bold text-sm h-14"
-                    >
-                      {loading ? <span className="loading loading-spinner"></span> : 'Xác Nhận & Duyệt Chuyển Phân Công'}
-                    </button>
+                    {selectedIsConfirmedDuplicate ? (
+                      <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-center text-sm font-semibold text-violet-800">
+                        Phản ánh trùng không cần duyệt hoặc phân công riêng.
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleApprove}
+                        disabled={loading}
+                        className="btn btn-primary w-full rounded-2xl font-bold text-sm h-14"
+                      >
+                        {loading ? <span className="loading loading-spinner"></span> : 'Xác Nhận & Duyệt Chuyển Phân Công'}
+                      </button>
+                    )}
                   </div>
                 </div>
 

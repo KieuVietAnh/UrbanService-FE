@@ -151,6 +151,8 @@ export const ManagementFeedbackDetailPage = () => {
 
   // Load feedback details
   useEffect(() => {
+    let active = true;
+
     const loadFeedback = async () => {
       setLoading(true);
       setError('');
@@ -158,11 +160,12 @@ export const ManagementFeedbackDetailPage = () => {
       try {
         const feedbackRes = await managementFeedbackApi.getFeedbackById(feedbackId);
         const linkedFeedbackId = feedbackRes?.feedbackId || feedbackId;
-        const [categoriesRes, candidatesRes, linkedFeedbacksRes] = await Promise.allSettled([
+        const [categoriesRes, candidatesRes] = await Promise.allSettled([
           toolsApi.getCategories(),
           managementFeedbackApi.getProviderCandidates(linkedFeedbackId),
-          managementFeedbackApi.getLinkedFeedbacks(linkedFeedbackId),
         ]);
+
+        if (!active) return;
 
         setCategories(Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
         if (candidatesRes.status === 'fulfilled') {
@@ -170,14 +173,6 @@ export const ManagementFeedbackDetailPage = () => {
         } else {
           setCandidates([]);
           setCandidatesLoadError(candidatesRes.reason?.message || 'Không thể tải danh sách đơn vị xử lý.');
-        }
-
-        if (linkedFeedbacksRes.status === 'fulfilled') {
-          setLinkedFeedbacks(Array.isArray(linkedFeedbacksRes.value) ? linkedFeedbacksRes.value : []);
-          setLinkedFeedbacksError('');
-        } else {
-          setLinkedFeedbacks([]);
-          setLinkedFeedbacksError(linkedFeedbacksRes.reason?.message || 'Không thể tải danh sách phản ánh liên kết.');
         }
 
         setFeedback(feedbackRes);
@@ -225,16 +220,21 @@ export const ManagementFeedbackDetailPage = () => {
           categoryId: String(getFeedbackCategoryId(feedbackRes) || ''),
         });
       } catch (err) {
+        if (!active) return;
         console.error('Failed to load feedback details', err);
         setError('Không thể tải chi tiết phản ánh. Vui lòng thử lại.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     if (feedbackId) {
       loadFeedback();
     }
+
+    return () => {
+      active = false;
+    };
   }, [feedbackId]);
 
   // Handle edit
@@ -584,60 +584,98 @@ export const ManagementFeedbackDetailPage = () => {
 
   const nextStatusOptions = managementTypes.statusFlow[feedback?.status] || [];
 
-  const canVerify = [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED].includes(feedback?.status);
-  const canAssign = feedback?.status === managementTypes.feedbackStatus.VERIFIED;
-  const canUpdateStatus = nextStatusOptions.length > 0;
+  const parentFeedbackId = feedback?.parentTicketId || feedback?.parentFeedbackId || null;
+  const isConfirmedDuplicate = Boolean(parentFeedbackId);
+  const isMasterTicket = Boolean(feedback?.isMasterTicket);
+  const canVerify = !isConfirmedDuplicate && [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED].includes(feedback?.status);
+  const canAssign = !isConfirmedDuplicate && feedback?.status === managementTypes.feedbackStatus.VERIFIED;
+  const canUpdateStatus = !isConfirmedDuplicate && nextStatusOptions.length > 0;
 
   const attachments = Array.isArray(feedback?.attachments) ? feedback.attachments : [];
   const comments = Array.isArray(feedback?.comments) ? feedback.comments : [];
 
   useEffect(() => {
+    let active = true;
+    const abortController = new AbortController();
+
     const loadLinkedFeedbacks = async () => {
-      if (!feedbackId) return;
+      if (!feedbackId || !isMasterTicket) {
+        setLinkedFeedbacks([]);
+        setLinkedFeedbacksError('');
+        setLinkedFeedbacksLoading(false);
+        return;
+      }
 
       setLinkedFeedbacksLoading(true);
       setLinkedFeedbacksError('');
       try {
         const linkedFeedbackId = feedback?.feedbackId || feedbackId;
-        const response = await managementFeedbackApi.getLinkedFeedbacks(linkedFeedbackId);
-        setLinkedFeedbacks(Array.isArray(response) ? response : []);
+        const response = await managementFeedbackApi.getLinkedFeedbacks(linkedFeedbackId, {
+          signal: abortController.signal,
+        });
+        if (active) setLinkedFeedbacks(Array.isArray(response) ? response : []);
       } catch (err) {
+        if (abortController.signal.aborted) return;
         console.error('Failed to load linked feedbacks', err);
-        setLinkedFeedbacks([]);
-        setLinkedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên kết.');
+        if (active) {
+          setLinkedFeedbacks([]);
+          setLinkedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên kết.');
+        }
       } finally {
-        setLinkedFeedbacksLoading(false);
+        if (active) setLinkedFeedbacksLoading(false);
       }
     };
 
     if (feedback) {
       loadLinkedFeedbacks();
     }
-  }, [feedback, feedbackId]);
+
+    return () => {
+      active = false;
+      abortController.abort();
+    };
+  }, [feedback, feedbackId, isMasterTicket]);
 
   useEffect(() => {
+    let active = true;
+    const abortController = new AbortController();
+
     const loadRelatedFeedbacks = async () => {
-      if (!feedbackId) return;
+      if (!parentFeedbackId) {
+        setRelatedFeedbacks([]);
+        setRelatedFeedbacksError('');
+        setRelatedFeedbacksLoading(false);
+        return;
+      }
 
       setRelatedFeedbacksLoading(true);
       setRelatedFeedbacksError('');
       try {
-        const relatedFeedbackId = feedback?.feedbackId || feedbackId;
-        const response = await managementFeedbackApi.getRelatedFeedbacks(relatedFeedbackId);
-        setRelatedFeedbacks(Array.isArray(response) ? response : []);
+        const response = await managementFeedbackApi.getRelatedFeedbacks(feedbackId, {
+          signal: abortController.signal,
+        });
+        if (active) setRelatedFeedbacks(Array.isArray(response) ? response : []);
       } catch (err) {
+        if (abortController.signal.aborted) return;
         console.error('Failed to load related feedbacks', err);
-        setRelatedFeedbacks([]);
-        setRelatedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên quan.');
+        if (active) {
+          setRelatedFeedbacks([]);
+          setRelatedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên quan.');
+        }
       } finally {
-        setRelatedFeedbacksLoading(false);
+        if (active) setRelatedFeedbacksLoading(false);
       }
     };
 
     if (feedback) {
       loadRelatedFeedbacks();
     }
-  }, [feedback, feedbackId]);
+
+    return () => {
+      active = false;
+      abortController.abort();
+    };
+  }, [feedback, feedbackId, parentFeedbackId]);
   const statusHistories = useMemo(
     () => Array.isArray(feedback?.statusHistories) ? feedback.statusHistories : [],
     [feedback]
@@ -863,6 +901,28 @@ export const ManagementFeedbackDetailPage = () => {
         <span className="text-[#0052CC]">{feedback.title}</span>
       </div>
 
+      {isConfirmedDuplicate ? (
+        <section className="rounded-[1.4rem] border border-violet-200 bg-violet-50 p-5 shadow-sm" aria-labelledby="staff-duplicate-feedback-title">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white">
+                <Lucide.GitMerge size={20} aria-hidden="true" />
+              </span>
+              <div>
+                <h2 id="staff-duplicate-feedback-title" className="font-bold text-violet-950">Phản ánh trùng</h2>
+                <p className="mt-1 text-sm leading-6 text-violet-800">
+                  Phản ánh này đã được đánh dấu trùng và được xử lý theo phản ánh đã có.
+                </p>
+              </div>
+            </div>
+            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${parentFeedbackId}`)} variant="outline" size="sm">
+              <Lucide.ExternalLink size={14} aria-hidden="true" />
+              Xem phản ánh đã có
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
       <div className="grid grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="col-span-2 space-y-6">
@@ -872,6 +932,12 @@ export const ManagementFeedbackDetailPage = () => {
               <div>
                 <h1 className="admin-hero-title">{feedback.title}</h1>
                 <div className="flex items-center gap-2 mt-2">
+                  {isConfirmedDuplicate ? (
+                    <Badge intent="neutral" className="gap-1 border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                      <Lucide.GitMerge size={12} aria-hidden="true" />
+                      Phản ánh trùng
+                    </Badge>
+                  ) : null}
                   <Badge intent={getBadgeIntent(feedback.status, 'status')} className="px-2 py-1 text-[10px] font-bold">
                     {getStatusLabel(feedback.status)}
                   </Badge>
@@ -1818,6 +1884,7 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           )}
 
+          {isMasterTicket ? (
           <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-bold text-slate-900">Phản ánh liên kết</h3>
@@ -1853,7 +1920,13 @@ export const ManagementFeedbackDetailPage = () => {
                         </div>
                         <div className="space-y-1">
                           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
-                          <div className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</div>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                              <Lucide.GitMerge size={11} aria-hidden="true" />
+                              Phản ánh trùng
+                            </span>
+                            <span className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</span>
+                          </div>
                         </div>
                       </div>
                       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1888,10 +1961,12 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
             )}
           </div>
+          ) : null}
 
+          {isConfirmedDuplicate ? (
           <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Phản ánh liên quan</h3>
+              <h3 className="font-bold text-slate-900">Cụm phản ánh trùng</h3>
               <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                 {relatedFeedbacks.length} mục
               </span>
@@ -1919,7 +1994,9 @@ export const ManagementFeedbackDetailPage = () => {
                     <div key={relatedId || index} className="admin-inset-panel p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                            {item?.relationType === 'master' ? 'Phản ánh chính đã có' : 'Phản ánh trùng liên quan'}
+                          </div>
                           <div className="font-semibold text-slate-900">{relatedId || '—'}</div>
                         </div>
                         <div className="space-y-1">
@@ -1959,6 +2036,7 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
             )}
           </div>
+          ) : null}
 
           {showAreaAlertModal && (
             <div className="absolute right-4 bottom-16 z-50 w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow pointer-events-auto">

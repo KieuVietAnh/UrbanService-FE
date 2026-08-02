@@ -1031,7 +1031,6 @@ export const TicketListPage = () => {
   const startIndex = (safeCurrentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
   const paginatedTickets = filteredTickets.slice(startIndex, endIndex);
-
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
@@ -1586,10 +1585,10 @@ export const TicketListPage = () => {
                             {isConfirmedDuplicate ? (
                               <span
                                 className="inline-flex items-center gap-1 rounded-full border border-violet-300/70 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300"
-                                title="Phản ánh này đã được gộp vào một phản ánh chính. Mở chi tiết để xem phản ánh chính."
+                                title="Phản ánh này đã được đánh dấu trùng và xử lý theo phản ánh đã có."
                               >
                                 <Lucide.GitMerge size={12} aria-hidden="true" />
-                                Đã gộp
+                                Phản ánh trùng
                               </span>
                             ) : isPotentialDuplicate ? (
                               <span
