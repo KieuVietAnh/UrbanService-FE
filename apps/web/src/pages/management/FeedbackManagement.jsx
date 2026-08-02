@@ -175,6 +175,38 @@ const PriorityBadge = ({ priority }) => {
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
 };
 
+
+const FeedbackTableSkeleton = () => (
+  <div className="overflow-hidden">
+    <div className="border-b border-slate-200 bg-slate-50/80 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/40">
+      <div className="grid min-w-[1040px] grid-cols-[120px_minmax(280px,1.4fr)_180px_120px_140px_120px_96px] gap-6">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <div key={index} className="h-3 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+        ))}
+      </div>
+    </div>
+    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+      {Array.from({ length: 6 }).map((_, rowIndex) => (
+        <div
+          key={rowIndex}
+          className="grid min-w-[1040px] grid-cols-[120px_minmax(280px,1.4fr)_180px_120px_140px_120px_96px] items-center gap-6 px-6 py-5"
+        >
+          <div className="h-4 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="space-y-2">
+            <div className="h-4 w-4/5 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+            <div className="h-3 w-3/5 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+          </div>
+          <div className="h-4 w-3/4 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="h-7 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+          <div className="h-7 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+          <div className="h-4 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="h-9 w-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
   const toneClass = {
     blue: 'bg-blue-50 text-blue-700 ring-blue-100',
@@ -533,46 +565,73 @@ export const FeedbackManagement = () => {
         <StatCard icon={Lucide.CheckCircle2} label="Hoàn tất" value={stats.completed} helper="Đã nghiệm thu/đóng" tone="emerald" />
       </section>
 
-      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)]">
-        <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">Danh sách phản ánh</h2>
-            <p className="mt-1 text-sm text-slate-500">{filteredFeedbacks.length}/{feedbacks.length} phản ánh</p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative">
-              <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                className="input h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm focus:border-blue-300 focus:outline-none sm:w-72"
-                placeholder="Tìm mã, nội dung, vị trí, danh mục..."
-              />
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
+        <div className="border-b border-slate-200 px-5 py-5 sm:px-6 dark:border-slate-800">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách phản ánh</h2>
+                {refreshing && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                    <span className="loading loading-spinner loading-xs" />
+                    Đang cập nhật
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Hiển thị {filteredFeedbacks.length} trên tổng số {feedbacks.length} phản ánh
+              </p>
             </div>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="select h-11 rounded-xl border-slate-200 bg-slate-50 text-sm focus:border-blue-300 focus:outline-none"
-            >
-              <option value="all">Tất cả trạng thái</option>
-              {Object.entries(STATUS_META).map(([value, meta]) => (
-                <option key={value} value={value}>{meta.label}</option>
-              ))}
-            </select>
+
+            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
+              <label className="relative block min-w-0 flex-1 xl:w-80">
+                <span className="sr-only">Tìm kiếm phản ánh</span>
+                <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  className="input h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  placeholder="Tìm theo mã, nội dung, vị trí..."
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    aria-label="Xóa từ khóa tìm kiếm"
+                  >
+                    <Lucide.X size={15} />
+                  </button>
+                )}
+              </label>
+
+              <label className="relative block sm:w-56">
+                <span className="sr-only">Lọc theo trạng thái</span>
+                <Lucide.Filter className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  className="select h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-700 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="all">Tất cả trạng thái</option>
+                  {Object.entries(STATUS_META).map(([value, meta]) => (
+                    <option key={value} value={value}>{meta.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex min-h-[260px] items-center justify-center">
-            <span className="loading loading-spinner loading-lg text-blue-600" />
-          </div>
+          <FeedbackTableSkeleton />
         ) : error ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
               <Lucide.WifiOff size={24} />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-slate-950">Không thể tải phản ánh</h3>
-            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{error}</p>
+            <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không thể tải danh sách phản ánh</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">{error}</p>
             <button type="button" onClick={fetchFeedbacks} className="btn btn-outline mt-5 h-10 rounded-xl text-sm">
               <Lucide.RefreshCcw size={15} />
               Thử lại
@@ -583,14 +642,31 @@ export const FeedbackManagement = () => {
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
               <Lucide.MessageSquare size={24} />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-slate-950">Chưa có phản ánh phù hợp</h3>
-            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Thử thay đổi bộ lọc hoặc làm mới dữ liệu.</p>
+            <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không tìm thấy phản ánh phù hợp</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+              {searchTerm || statusFilter !== 'all'
+                ? 'Thử xóa từ khóa hoặc chọn trạng thái khác.'
+                : 'Danh sách chưa có dữ liệu để hiển thị.'}
+            </p>
+            {(searchTerm || statusFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setStatusFilter('all');
+                }}
+                className="btn btn-outline mt-5 h-10 rounded-xl border-slate-300 px-4 text-sm dark:border-slate-700"
+              >
+                <Lucide.RotateCcw size={15} />
+                Xóa bộ lọc
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="table w-full min-w-[1040px] text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium text-slate-500">
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-xs font-semibold uppercase tracking-[0.04em] text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
                   <th className="px-6 py-4">Mã</th>
                   <th className="px-6 py-4">Nội dung</th>
                   <th className="px-6 py-4">Danh mục</th>
@@ -600,7 +676,7 @@ export const FeedbackManagement = () => {
                   <th className="px-6 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredFeedbacks.map((feedback) => {
                   const feedbackId = feedback.feedbackId || feedback.id;
                   return (
@@ -609,20 +685,20 @@ export const FeedbackManagement = () => {
                       data-admin-feedback-id={String(feedbackId)}
                       className={`cursor-pointer transition ${
                         String(highlightedFeedbackId) === String(feedbackId)
-                          ? 'bg-blue-50 ring-1 ring-inset ring-blue-200'
-                          : 'hover:bg-slate-50/80'
+                          ? 'bg-blue-50 ring-1 ring-inset ring-blue-200 dark:bg-blue-500/10 dark:ring-blue-500/30'
+                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/70'
                       }`}
                       onClick={() => handleOpenFeedbackDetail(feedback)}
                     >
-                      <td className="px-6 py-4 text-sm font-semibold text-blue-700">{formatFeedbackId(feedbackId)}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-blue-700 dark:text-blue-300">{formatFeedbackId(feedbackId)}</td>
                       <td className="max-w-[320px] px-6 py-4">
-                        <p className="truncate text-sm font-semibold text-slate-900">{feedback.title || 'Không có tiêu đề'}</p>
-                        <p className="mt-1 truncate text-xs text-slate-500">{getLocationText(feedback)}</p>
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{feedback.title || 'Không có tiêu đề'}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{getLocationText(feedback)}</p>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{getCategoryName(feedback.categoryId, categories)}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{getCategoryName(feedback.categoryId, categories)}</td>
                       <td className="px-6 py-4"><PriorityBadge priority={feedback.priority} /></td>
                       <td className="px-6 py-4"><StatusBadge status={feedback.status} /></td>
-                      <td className="px-6 py-4 text-sm text-slate-500">{formatDate(feedback.createdAt)}</td>
+                      <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">{formatDate(feedback.createdAt)}</td>
                       <td className="px-6 py-4 text-right">
                         <button
                           type="button"
