@@ -307,7 +307,7 @@ export const Header = ({ onMenuToggle }) => {
       coordinators: 'Điều phối viên',
       feedbacks: 'Quản lý phản ánh',
       categories: 'Danh mục phản ánh',
-      sla: 'Cấu hình SLA',
+      sla: 'Chính sách SLA',
       integrations: 'Cấu hình tích hợp',
       analytics: 'Báo cáo phân tích',
       sentiment: 'Cảm xúc người dân',
