@@ -8,6 +8,7 @@ import { normalizeRole } from '../../utils/roleMap';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { getCoordinatorDirectoryCache, setCoordinatorDirectoryCache } from '../../services/cache/adminCoordinatorDirectoryCache';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 
 const unwrapList = (value) => {
@@ -27,6 +28,7 @@ const getScrollContainer = () =>
 export default function CoordinatorDirectoryPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const setupCoverage = location.state?.setupCoverage || null;
   const initialCache = useMemo(() => getCoordinatorDirectoryCache(), []);
   const restoredContext = useMemo(() => {
     if (!location.state?.restoreCoordinatorList || !initialCache.hasLoaded) return null;
@@ -227,7 +229,17 @@ export default function CoordinatorDirectoryPage() {
       pendingRestore: true,
       hasLoaded: true,
     });
-    navigate(`/management/coordinators/${id}`);
+    navigate(`/management/coordinators/${id}`, {
+      state: setupCoverage ? { setupCoverage } : undefined,
+    });
+  };
+
+  const cancelCoverageSetup = () => {
+    if (setupCoverage?.returnTo) {
+      navigate(setupCoverage.returnTo);
+      return;
+    }
+    navigate('/management/coordinators', { replace: true });
   };
 
   const stats = useMemo(() => ({
@@ -258,6 +270,28 @@ export default function CoordinatorDirectoryPage() {
         </div>
       </section>
 
+
+      {setupCoverage ? (
+        <section className="rounded-[22px] border border-blue-200 bg-blue-50/90 p-4 shadow-sm dark:border-blue-400/20 dark:bg-blue-500/10 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
+                <Lucide.Link2 size={20} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-semibold text-slate-950 dark:text-slate-100">Chọn điều phối viên để thiết lập đầu mối</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Danh mục <strong>{setupCoverage.categoryName || `Mã #${setupCoverage.categoryId}`}</strong> sẽ được chọn sẵn. Bấm vào một điều phối viên, sau đó chọn khu vực phụ trách và lưu.
+                </p>
+              </div>
+            </div>
+            <button type="button" onClick={cancelCoverageSetup} className="btn btn-sm rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">
+              <Lucide.X size={15} /> Hủy thiết lập
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           ['Tổng điều phối viên', stats.total, Lucide.Users, 'Tất cả đơn vị'],
@@ -286,7 +320,7 @@ export default function CoordinatorDirectoryPage() {
           </select>
           <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
             <option value="">Tất cả danh mục</option>
-            {categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{category.categoryName ?? category.name}</option>)}
+            {categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{getCategoryLabel(category.categoryName ?? category.name)}</option>)}
           </select>
           <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300">
             <input type="checkbox" checked={includeInactive} onChange={(event) => setIncludeInactive(event.target.checked)} className="checkbox checkbox-sm" /> Đã vô hiệu hóa

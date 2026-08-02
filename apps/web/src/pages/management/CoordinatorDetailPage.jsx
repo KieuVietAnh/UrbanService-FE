@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
@@ -8,6 +9,7 @@ import { normalizeRole } from '../../utils/roleMap';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { clearCoordinatorDirectoryCache } from '../../services/cache/adminCoordinatorDirectoryCache';
+import { getCategoryLabel } from '../../utils/categoryLabels';
 
 const EMPTY_COORDINATOR = {
   providerName: '', coordinatorName: '', phoneNumber: '', email: '', address: '', note: '',
@@ -48,6 +50,10 @@ function FieldHint({ message }) {
 export default function CoordinatorDetailPage() {
   const { coordinatorId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const setupCoverage = location.state?.setupCoverage || null;
+  const managedCategory = location.state?.managedCategory || null;
+  const setupCoverageOpenedRef = useRef(false);
   const { user } = useAuth();
   const role = normalizeRole(user?.role);
   const canManage = role === APP_ROLES.ADMINISTRATOR || role === APP_ROLES.INTERACTION_MANAGER;
@@ -68,6 +74,15 @@ export default function CoordinatorDetailPage() {
   const [coverageSaving, setCoverageSaving] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!showCoverageModal && !showLeaveConfirm) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showCoverageModal, showLeaveConfirm]);
 
   const loadData = useCallback(async () => {
     if (!coordinatorId) return;
@@ -107,7 +122,36 @@ export default function CoordinatorDetailPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (
+      !setupCoverage ||
+      !canManage ||
+      loading ||
+      setupCoverageOpenedRef.current ||
+      categories.length === 0 ||
+      areas.length === 0
+    ) {
+      return;
+    }
+
+    setupCoverageOpenedRef.current = true;
+    setEditingCoverageId(null);
+    setCoverageForm({
+      ...EMPTY_COVERAGE,
+      categoryId: String(setupCoverage.categoryId || ''),
+      isPrimary: true,
+    });
+    setShowCoverageModal(true);
+  }, [areas.length, canManage, categories.length, loading, setupCoverage]);
+
   const activeCoverages = useMemo(() => coverages.filter((coverage) => coverage.isActive).length, [coverages]);
+  const isCategoryPreset = Boolean(setupCoverage && !editingCoverageId);
+  const presetCategoryLabel = getCategoryLabel(
+    setupCoverage?.categoryName ||
+      categories.find((category) => String(category.categoryId ?? category.id) === String(coverageForm.categoryId))?.categoryName ||
+      categories.find((category) => String(category.categoryId ?? category.id) === String(coverageForm.categoryId))?.name,
+    setupCoverage?.categoryId ? `Danh mục #${setupCoverage.categoryId}` : 'Chưa chọn danh mục'
+  );
   const validation = useMemo(() => ({
     providerName: form.providerName.trim() ? '' : 'Vui lòng nhập tên đơn vị cung cấp.',
     coordinatorName: form.coordinatorName.trim() ? '' : 'Vui lòng nhập tên người phụ trách.',
@@ -189,7 +233,11 @@ export default function CoordinatorDetailPage() {
 
   const openNewCoverage = () => {
     setEditingCoverageId(null);
-    setCoverageForm(EMPTY_COVERAGE);
+    setCoverageForm({
+      ...EMPTY_COVERAGE,
+      categoryId: setupCoverage ? String(setupCoverage.categoryId || '') : '',
+      isPrimary: Boolean(setupCoverage),
+    });
     setShowCoverageModal(true);
   };
   const openEditCoverage = (coverage) => {
@@ -225,6 +273,16 @@ export default function CoordinatorDetailPage() {
       }
       setShowCoverageModal(false);
       clearCoordinatorDirectoryCache();
+
+      if (!editingCoverageId && setupCoverage?.returnTo) {
+        navigate(setupCoverage.returnTo, {
+          state: {
+            configuredCategoryId: String(setupCoverage.categoryId || ''),
+          },
+        });
+        return;
+      }
+
       await loadData();
       setMessage({ type: 'success', text: editingCoverageId ? 'Đã cập nhật phạm vi phụ trách.' : 'Đã thêm phạm vi phụ trách.' });
     } catch (err) {
@@ -238,6 +296,23 @@ export default function CoordinatorDetailPage() {
 
   return (
     <div className="admin-page-shell space-y-6">
+      {managedCategory ? (
+        <section className="rounded-[22px] border border-blue-200 bg-blue-50/90 p-4 shadow-sm dark:border-blue-400/20 dark:bg-blue-500/10 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white"><Lucide.Settings2 size={19} /></div>
+              <div>
+                <h2 className="font-semibold text-slate-950 dark:text-slate-100">Quản lý đầu mối cho {managedCategory.categoryName}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">Sửa phạm vi có danh mục này bằng nút bút chì trong bảng bên dưới, hoặc thêm một phạm vi mới.</p>
+              </div>
+            </div>
+            <button type="button" onClick={() => navigate(managedCategory.returnTo || '/management/categories')} className="btn btn-sm rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200">
+              <Lucide.ArrowLeft size={15} /> Về danh mục
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="admin-page-hero">
         <button type="button" onClick={goBack} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300"><Lucide.ArrowLeft size={17} /> Quay lại danh sách</button>
         <div className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -288,7 +363,7 @@ export default function CoordinatorDetailPage() {
               <tbody>
                 {coverages.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500">Chưa có phạm vi phụ trách. Điều phối viên này chưa thể được đề xuất theo khu vực và danh mục.</td></tr> : coverages.map((coverage) => {
                   const id = coverage.coverageId ?? coverage.id;
-                  return <tr key={id}><td><div className="font-semibold text-slate-900 dark:text-slate-100">{coverage.areaName ?? coverage.area?.name ?? '—'}</div><div className="text-xs text-slate-400 dark:text-slate-500">ID {coverage.areaId ?? coverage.area?.areaId ?? '—'}</div></td><td><div className="font-medium text-slate-800 dark:text-slate-200">{coverage.categoryName ?? coverage.category?.name ?? '—'}</div><div className="text-xs text-slate-400 dark:text-slate-500">ID {coverage.categoryId ?? coverage.category?.categoryId ?? '—'}</div></td><td><div className="flex items-center gap-2"><span className="font-semibold text-slate-900 dark:text-slate-100">{coverage.priorityOrder ?? coverage.priority ?? '—'}</span>{coverage.isPrimary && <span className="badge border-0 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chính</span>}</div></td><td><span className={`badge border-0 font-semibold ${coverage.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{coverage.isActive ? 'Hoạt động' : 'Đã tắt'}</span></td>{canManage && <td><button type="button" onClick={() => openEditCoverage(coverage)} className="btn btn-square btn-ghost btn-sm" aria-label="Sửa phạm vi phụ trách"><Lucide.Pencil size={16} /></button></td>}</tr>;
+                  return <tr key={id}><td><div className="font-semibold text-slate-900 dark:text-slate-100">{coverage.areaName ?? coverage.area?.name ?? '—'}</div><div className="text-xs text-slate-400 dark:text-slate-500">ID {coverage.areaId ?? coverage.area?.areaId ?? '—'}</div></td><td><div className="font-medium text-slate-800 dark:text-slate-200">{getCategoryLabel(coverage.categoryName ?? coverage.category?.name, '—')}</div><div className="text-xs text-slate-400 dark:text-slate-500">ID {coverage.categoryId ?? coverage.category?.categoryId ?? '—'}</div></td><td><div className="flex items-center gap-2"><span className="font-semibold text-slate-900 dark:text-slate-100">{coverage.priorityOrder ?? coverage.priority ?? '—'}</span>{coverage.isPrimary && <span className="badge border-0 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chính</span>}</div></td><td><span className={`badge border-0 font-semibold ${coverage.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{coverage.isActive ? 'Hoạt động' : 'Đã tắt'}</span></td>{canManage && <td><button type="button" onClick={() => openEditCoverage(coverage)} className="btn btn-square btn-ghost btn-sm" aria-label="Sửa phạm vi phụ trách"><Lucide.Pencil size={16} /></button></td>}</tr>;
                 })}
               </tbody>
             </table>
@@ -296,7 +371,7 @@ export default function CoordinatorDetailPage() {
         </section>
       </div>
 
-      {showLeaveConfirm && (
+      {showLeaveConfirm && createPortal(
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-labelledby="leave-detail-title">
           <div className="w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-950">
             <div className="flex items-start gap-4">
@@ -312,21 +387,86 @@ export default function CoordinatorDetailPage() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
-      {showCoverageModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true">
-          <form onSubmit={saveCoverage} className="w-full max-w-lg rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-950">
-            <div className="flex items-start justify-between"><div><h2 className="text-xl font-semibold text-slate-950 dark:text-slate-50">{editingCoverageId ? 'Cập nhật phạm vi' : 'Thêm phạm vi'}</h2><p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Thiết lập khu vực, danh mục và thứ tự ưu tiên.</p></div><button type="button" onClick={() => setShowCoverageModal(false)} className="btn btn-circle btn-ghost btn-sm"><Lucide.X size={18} /></button></div>
-            <div className="mt-6 space-y-4">
-              <label className="block"><span className="mb-2 block text-sm font-bold">Khu vực *</span><select value={coverageForm.areaId} onChange={(event) => updateCoverageForm('areaId', event.target.value)} className="select select-bordered w-full rounded-2xl border-slate-200"><option value="">Chọn khu vực</option>{areas.map((area) => <option key={area.areaId ?? area.id} value={area.areaId ?? area.id}>{area.areaName ?? area.name}</option>)}</select></label>
-              <label className="block"><span className="mb-2 block text-sm font-bold">Danh mục *</span><select value={coverageForm.categoryId} onChange={(event) => updateCoverageForm('categoryId', event.target.value)} className="select select-bordered w-full rounded-2xl border-slate-200"><option value="">Chọn danh mục</option>{categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{category.categoryName ?? category.name}</option>)}</select></label>
-              <label className="block"><span className="mb-2 block text-sm font-bold">Thứ tự ưu tiên</span><input type="number" min="1" value={coverageForm.priorityOrder} onChange={(event) => updateCoverageForm('priorityOrder', event.target.value)} className="input input-bordered w-full rounded-2xl border-slate-200" /></label>
-              <div className="grid gap-3 sm:grid-cols-2"><label className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-bold"><input type="checkbox" checked={coverageForm.isPrimary} onChange={(event) => updateCoverageForm('isPrimary', event.target.checked)} className="checkbox checkbox-sm" /> Phạm vi chính</label>{editingCoverageId && <label className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-bold"><input type="checkbox" checked={coverageForm.isActive} onChange={(event) => updateCoverageForm('isActive', event.target.checked)} className="checkbox checkbox-sm" /> Đang hoạt động</label>}</div>
+      {showCoverageModal && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="coverage-modal-title">
+          <form onSubmit={saveCoverage} className="flex max-h-[min(680px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6 sm:py-5">
+              <div className="min-w-0">
+                <h2 id="coverage-modal-title" className="text-xl font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-50">{editingCoverageId ? 'Cập nhật phạm vi' : 'Thêm phạm vi'}</h2>
+                <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">{setupCoverage && !editingCoverageId ? `Thiết lập đầu mối cho ${getCategoryLabel(setupCoverage.categoryName, `danh mục #${setupCoverage.categoryId}`)}.` : 'Chọn khu vực, danh mục và trạng thái áp dụng.'}</p>
+              </div>
+              <button type="button" onClick={() => setShowCoverageModal(false)} className="btn btn-circle btn-ghost btn-sm shrink-0" aria-label="Đóng cửa sổ"><Lucide.X size={18} /></button>
             </div>
-            <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setShowCoverageModal(false)} className="btn btn-ghost rounded-2xl">Hủy</button><button type="submit" disabled={coverageSaving} className="btn rounded-2xl border-0 bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">{coverageSaving ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={17} />} Lưu phạm vi</button></div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200">Khu vực <span className="text-rose-500">*</span></span>
+                  <select value={coverageForm.areaId} onChange={(event) => updateCoverageForm('areaId', event.target.value)} className="select select-bordered h-11 min-h-11 w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                    <option value="">Chọn khu vực</option>
+                    {areas.map((area) => <option key={area.areaId ?? area.id} value={area.areaId ?? area.id}>{area.areaName ?? area.name}</option>)}
+                  </select>
+                </label>
+
+                {isCategoryPreset ? (
+                  <div>
+                    <span className="mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200">Danh mục</span>
+                    <div className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-2.5 dark:border-blue-400/25 dark:bg-blue-500/10">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{presetCategoryLabel}</div>
+                        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Đã chọn từ trang Danh mục phản ánh</div>
+                      </div>
+                      <Lucide.LockKeyhole size={17} className="shrink-0 text-blue-600 dark:text-blue-300" />
+                    </div>
+                  </div>
+                ) : (
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200">Danh mục <span className="text-rose-500">*</span></span>
+                    <select value={coverageForm.categoryId} onChange={(event) => updateCoverageForm('categoryId', event.target.value)} className="select select-bordered h-11 min-h-11 w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                      <option value="">Chọn danh mục</option>
+                      {categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{getCategoryLabel(category.categoryName ?? category.name)}</option>)}
+                    </select>
+                  </label>
+                )}
+
+                {!isCategoryPreset && (
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200">Thứ tự ưu tiên</span>
+                    <input type="number" min="1" value={coverageForm.priorityOrder} onChange={(event) => updateCoverageForm('priorityOrder', event.target.value)} className="input input-bordered h-11 min-h-11 w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+                    <span className="mt-1.5 block text-xs text-slate-500 dark:text-slate-400">Số nhỏ hơn được ưu tiên trước khi hệ thống đề xuất đầu mối.</span>
+                  </label>
+                )}
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input type="checkbox" checked={coverageForm.isPrimary} onChange={(event) => updateCoverageForm('isPrimary', event.target.checked)} className="checkbox checkbox-sm mt-0.5 border-slate-300 dark:border-slate-600" />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">Đặt làm phạm vi chính</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">Ưu tiên điều phối viên này khi có nhiều đầu mối cùng khu vực và danh mục.</span>
+                    </span>
+                  </label>
+                  {editingCoverageId && (
+                    <label className="mt-3 flex cursor-pointer items-start gap-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+                      <input type="checkbox" checked={coverageForm.isActive} onChange={(event) => updateCoverageForm('isActive', event.target.checked)} className="checkbox checkbox-sm mt-0.5 border-slate-300 dark:border-slate-600" />
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">Phạm vi đang hoạt động</span>
+                        <span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">Tắt lựa chọn này để ngừng đề xuất đầu mối mà không xóa dữ liệu.</span>
+                      </span>
+                    </label>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-6">
+              <button type="button" onClick={() => setShowCoverageModal(false)} className="btn h-11 min-h-11 rounded-xl border border-slate-200 bg-white px-5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">Hủy</button>
+              <button type="submit" disabled={coverageSaving} className="btn h-11 min-h-11 rounded-xl border-0 bg-blue-600 px-5 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">{coverageSaving ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={17} />} {editingCoverageId ? 'Lưu thay đổi' : 'Lưu phạm vi'}</button>
+            </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
