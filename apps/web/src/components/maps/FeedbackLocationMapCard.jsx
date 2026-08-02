@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -16,9 +16,37 @@ const markerIcon = new L.Icon({
 
 const SyncView = ({ position }) => {
   const map = useMap();
-  useMemo(() => {
+
+  useEffect(() => {
     map.setView(position, 16, { animate: false });
   }, [map, position]);
+
+  return null;
+};
+
+const ResizeMap = () => {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    let frameId = window.requestAnimationFrame(() => map.invalidateSize(false));
+    const timeoutId = window.setTimeout(() => map.invalidateSize(false), 180);
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => {
+          window.cancelAnimationFrame(frameId);
+          frameId = window.requestAnimationFrame(() => map.invalidateSize(false));
+        });
+
+    observer?.observe(container);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+      observer?.disconnect();
+    };
+  }, [map]);
+
   return null;
 };
 
@@ -51,14 +79,14 @@ export const FeedbackLocationMapCard = ({
 
   return (
     <section className={`${isAdmin ? 'admin-panel' : 'rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]'} overflow-hidden ${className}`} aria-labelledby={`feedback-location-${feedbackId}`}>
-      <header className={`flex items-start justify-between gap-3 px-5 py-4 sm:px-6 ${isAdmin ? 'border-b border-slate-200' : ''}`}>
+      <header className={`flex items-start justify-between gap-3 px-5 py-4 sm:px-6 ${isAdmin ? 'border-b border-slate-200 dark:border-white/10' : ''}`}>
         <div className="flex min-w-0 items-start gap-3">
           <span className={isAdmin ? 'admin-mini-icon' : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary'} aria-hidden="true">
             <Lucide.MapPinned size={18} />
           </span>
           <div className="min-w-0">
             <h2 id={`feedback-location-${feedbackId}`} className={isAdmin ? 'admin-section-title' : 'text-base font-bold'}>Vị trí phản ánh</h2>
-            <p className={isAdmin ? 'mt-1 break-words text-sm text-slate-500' : 'mt-1 break-words text-sm font-medium text-base-content/65'}>
+            <p className={isAdmin ? 'mt-1 break-words text-sm text-slate-500 dark:text-slate-400' : 'mt-1 break-words text-sm font-medium text-base-content/65'}>
               {areaName || locationText || 'Chưa xác định khu vực'}
             </p>
           </div>
@@ -70,6 +98,7 @@ export const FeedbackLocationMapCard = ({
           <MapContainer center={position} zoom={16} dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false} boxZoom={false} keyboard={false} zoomControl={false} attributionControl={false} className="pointer-events-none h-full w-full">
             <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <SyncView position={position} />
+            <ResizeMap />
             <Marker position={position} icon={markerIcon} />
           </MapContainer>
           <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-slate-950/75 via-slate-950/35 to-transparent px-4 pb-3 pt-12 text-white">

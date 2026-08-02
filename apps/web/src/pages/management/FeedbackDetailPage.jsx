@@ -2,25 +2,30 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
-import { managementFeedbackApi, toolsApi } from '@urbanmind/shared-api';
 import { managementTypes } from '@urbanmind/shared-types';
+import { getAdminFeedbackCategories, loadAdminFeedbackDetail, peekAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
 
 const STATUS_META = {
-  [managementTypes.feedbackStatus.SUBMITTED]: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
-  [managementTypes.feedbackStatus.AI_REVIEWED]: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
-  [managementTypes.feedbackStatus.VERIFIED]: { label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
-  [managementTypes.feedbackStatus.ASSIGNED]: { label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  [managementTypes.feedbackStatus.IN_PROGRESS]: { label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
-  [managementTypes.feedbackStatus.RESOLVED]: { label: 'Chờ nghiệm thu', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  [managementTypes.feedbackStatus.CLOSED]: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  [managementTypes.feedbackStatus.SUBMITTED]: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/20' },
+  [managementTypes.feedbackStatus.AI_REVIEWED]: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/20' },
+  [managementTypes.feedbackStatus.VERIFIED]: { label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/20' },
+  [managementTypes.feedbackStatus.ASSIGNED]: { label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/20' },
+  [managementTypes.feedbackStatus.IN_PROGRESS]: { label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/20' },
+  [managementTypes.feedbackStatus.RESOLVED]: { label: 'Đã xử lý', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/20' },
+  [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: { label: 'Chờ nghiệm thu', className: 'bg-cyan-50 text-cyan-700 ring-cyan-100 dark:bg-cyan-500/15 dark:text-cyan-300 dark:ring-cyan-500/20' },
+  [managementTypes.feedbackStatus.APPROVED]: { label: 'Đã duyệt', className: 'bg-teal-50 text-teal-700 ring-teal-100 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/20' },
+  [managementTypes.feedbackStatus.NEED_REWORK]: { label: 'Cần xử lý lại', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/20' },
+  [managementTypes.feedbackStatus.REJECTED]: { label: 'Đã từ chối', className: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/20' },
+  [managementTypes.feedbackStatus.CANCELLED]: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700' },
+  [managementTypes.feedbackStatus.CLOSED]: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700' },
 };
 
 const PRIORITY_META = {
-  Critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
-  High: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
-  Medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  Low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  Critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/20' },
+  High: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/20' },
+  Medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/20' },
+  Low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700' },
 };
 
 const CATEGORY_TRANSLATIONS = {
@@ -102,18 +107,18 @@ const isVideo = (file) => /video\/|\.mp4|\.webm|\.mov|\.m4v|\.ogg/i.test(`${file
 
 const Badge = ({ type, value }) => {
   const meta = type === 'status'
-    ? STATUS_META[value] || { label: value || 'Chưa rõ', className: 'bg-slate-100 text-slate-700 ring-slate-200' }
+    ? STATUS_META[value] || { label: value || 'Chưa rõ', className: 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700' }
     : PRIORITY_META[value] || PRIORITY_META.Medium;
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${meta.className}`}>{meta.label}</span>;
 };
 
 const SectionHeading = ({ icon: Icon, title, description, action }) => (
-  <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:px-6">
+  <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 dark:border-white/10 px-5 py-4 sm:px-6">
     <div className="flex min-w-0 items-start gap-3">
       <span className="admin-mini-icon" aria-hidden="true"><Icon size={17} /></span>
       <div className="min-w-0">
         <h2 className="admin-section-title">{title}</h2>
-        {description ? <p className="mt-1 text-sm leading-5 text-slate-500">{description}</p> : null}
+        {description ? <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">{description}</p> : null}
       </div>
     </div>
     {action}
@@ -122,12 +127,12 @@ const SectionHeading = ({ icon: Icon, title, description, action }) => (
 
 const DetailRow = ({ icon: Icon, label, value }) => (
   <div className="flex gap-3 py-3.5 first:pt-0 last:pb-0">
-    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500" aria-hidden="true">
+    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-white/[0.06] text-slate-500 dark:text-slate-400" aria-hidden="true">
       <Icon size={15} />
     </span>
     <div className="min-w-0">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-sm font-semibold leading-5 text-slate-900">{value || '—'}</p>
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold leading-5 text-slate-900 dark:text-slate-100">{value || '—'}</p>
     </div>
   </div>
 );
@@ -136,27 +141,36 @@ export const FeedbackDetailPage = () => {
   const { feedbackId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const [feedback, setFeedback] = useState(location.state?.feedback || null);
+  const [initialCachedDetail] = useState(() => peekAdminFeedbackDetail(feedbackId));
+  const [feedback, setFeedback] = useState(() => ({
+    ...(location.state?.feedback || {}),
+    ...(normalizeResponse(initialCachedDetail) || {}),
+  }));
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialCachedDetail);
+  const [detailResolved, setDetailResolved] = useState(() => Boolean(initialCachedDetail));
   const [error, setError] = useState('');
   const [activeMedia, setActiveMedia] = useState(0);
   const [previewIndex, setPreviewIndex] = useState(null);
   const [failedMedia, setFailedMedia] = useState(() => new Set());
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
+
+    const loadDetail = async () => {
       setLoading(true);
       setError('');
       try {
-        const [detailResponse, categoryResponse] = await Promise.all([
-          managementFeedbackApi.getFeedbackById(feedbackId),
-          toolsApi.getCategories().catch(() => []),
-        ]);
+        const detailResponse = await loadAdminFeedbackDetail(feedbackId, {
+          force: reloadNonce > 0,
+        });
         if (!mounted) return;
-        setFeedback((current) => ({ ...(current || {}), ...(normalizeResponse(detailResponse) || {}) }));
-        setCategories(Array.isArray(categoryResponse) ? categoryResponse : []);
+        setFeedback((current) => ({
+          ...(current || {}),
+          ...(normalizeResponse(detailResponse) || {}),
+        }));
+        setDetailResolved(true);
       } catch (err) {
         if (!mounted) return;
         setError(err?.message || 'Không thể tải chi tiết phản ánh.');
@@ -164,11 +178,24 @@ export const FeedbackDetailPage = () => {
         if (mounted) setLoading(false);
       }
     };
-    load();
+
+    const loadCategories = async () => {
+      try {
+        const categoryResponse = await getAdminFeedbackCategories();
+        if (mounted) setCategories(categoryResponse);
+      } catch {
+        if (mounted) setCategories([]);
+      }
+    };
+
+    void loadDetail();
+    void loadCategories();
+
     return () => { mounted = false; };
-  }, [feedbackId]);
+  }, [feedbackId, reloadNonce]);
 
   const attachments = useMemo(() => getAttachments(feedback), [feedback]);
+  const mediaLoading = loading && !detailResolved && attachments.length === 0;
   const safeActiveIndex = Math.min(activeMedia, Math.max(attachments.length - 1, 0));
   const currentMedia = attachments[safeActiveIndex];
   const activePreview = previewIndex === null ? null : attachments[previewIndex];
@@ -233,10 +260,26 @@ export const FeedbackDetailPage = () => {
 
   if (loading && !feedback) {
     return (
-      <div className="admin-page-shell flex min-h-[520px] items-center justify-center">
-        <div className="text-center">
-          <span className="loading loading-spinner loading-lg text-blue-600" />
-          <p className="mt-3 text-sm font-medium text-slate-500">Đang tải chi tiết phản ánh...</p>
+      <div className="admin-page-shell space-y-5 pb-4" aria-busy="true" aria-label="Đang tải chi tiết phản ánh">
+        <div className="h-10 w-44 animate-pulse rounded-xl bg-slate-200 dark:bg-white/10" />
+        <div className="admin-page-hero animate-pulse">
+          <div className="h-4 w-52 rounded-full bg-slate-200 dark:bg-white/10" />
+          <div className="mt-4 h-9 w-3/4 max-w-3xl rounded-xl bg-slate-200 dark:bg-white/10" />
+          <div className="mt-5 flex gap-4">
+            <div className="h-4 w-56 rounded-full bg-slate-200 dark:bg-white/10" />
+            <div className="h-4 w-40 rounded-full bg-slate-200 dark:bg-white/10" />
+          </div>
+        </div>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-5">
+            <div className="admin-panel h-52 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
+            <div className="admin-panel aspect-video min-h-[280px] animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
+            <div className="admin-panel h-72 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
+          </div>
+          <div className="space-y-5">
+            <div className="admin-panel h-80 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
+            <div className="admin-panel h-40 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
+          </div>
         </div>
       </div>
     );
@@ -247,9 +290,15 @@ export const FeedbackDetailPage = () => {
       <div className="admin-page-shell">
         <div className="admin-panel mx-auto max-w-xl p-8 text-center">
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600"><Lucide.CircleAlert size={24} /></span>
-          <h1 className="mt-4 text-xl font-semibold text-slate-950">Không thể mở phản ánh</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{error}</p>
-          <button type="button" onClick={goBack} className="btn admin-primary-action mt-5 h-10 rounded-xl px-5 text-sm font-semibold normal-case">Quay lại danh sách</button>
+          <h1 className="mt-4 text-xl font-semibold text-slate-950 dark:text-white">Không thể mở phản ánh</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{error}</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+            <button type="button" onClick={() => setReloadNonce((value) => value + 1)} className="btn admin-primary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">
+              <Lucide.RefreshCw size={16} />
+              Thử tải lại
+            </button>
+            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">Quay lại danh sách</button>
+          </div>
         </div>
       </div>
     );
@@ -282,7 +331,7 @@ export const FeedbackDetailPage = () => {
               {loading ? <span className="loading loading-spinner loading-xs text-blue-600" aria-label="Đang cập nhật" /> : null}
             </div>
             <h1 className="admin-hero-title mt-3 max-w-4xl break-words">{title}</h1>
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600 dark:text-slate-300">
               <span className="inline-flex min-w-0 items-center gap-2"><Lucide.MapPin size={16} className="shrink-0 text-slate-400" /><span className="break-words">{getLocationText(feedback)}</span></span>
               <span className="inline-flex items-center gap-2"><Lucide.Clock3 size={16} className="text-slate-400" />Gửi lúc {formatDateTime(feedback?.createdAt)}</span>
             </div>
@@ -291,11 +340,11 @@ export const FeedbackDetailPage = () => {
       </header>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <main className="min-w-0 space-y-5 border-0 bg-transparent shadow-none" style={{ background: 'transparent' }}>
+        <div className="min-w-0 space-y-5">
           <section className="admin-panel overflow-hidden">
             <SectionHeading icon={Lucide.FileText} title="Nội dung phản ánh" description="Thông tin do người dân cung cấp" />
             <div className="px-5 py-5 sm:px-6">
-              <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-700">{description}</p>
+              <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-700 dark:text-slate-200">{description}</p>
             </div>
           </section>
 
@@ -303,16 +352,18 @@ export const FeedbackDetailPage = () => {
             <SectionHeading
               icon={Lucide.Images}
               title="Hình ảnh và video"
-              description={attachments.length ? `${attachments.length} tệp đính kèm` : 'Không có tệp đính kèm'}
-              action={attachments.length > 1 ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{safeActiveIndex + 1}/{attachments.length}</span> : null}
+              description={mediaLoading ? 'Đang tải tệp đính kèm...' : attachments.length ? `${attachments.length} tệp đính kèm` : 'Không có tệp đính kèm'}
+              action={attachments.length > 1 ? <span className="rounded-full bg-slate-100 dark:bg-white/[0.06] px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">{safeActiveIndex + 1}/{attachments.length}</span> : null}
             />
             <div className="p-4 sm:p-5">
-              {attachments.length ? (
+              {mediaLoading ? (
+                <div className="min-h-64 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/[0.04]" aria-label="Đang tải hình ảnh và video" />
+              ) : attachments.length ? (
                 <>
                   <button
                     type="button"
                     onClick={() => setPreviewIndex(safeActiveIndex)}
-                    className="group relative flex aspect-video min-h-[260px] max-h-[520px] w-full items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/45"
+                    className="group relative flex aspect-video min-h-[260px] max-h-[520px] w-full items-center justify-center overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-950 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/45"
                     aria-label={`Mở xem toàn màn hình tệp ${safeActiveIndex + 1}`}
                   >
                     {failedMedia.has(currentMedia?.id || currentMedia?.url) ? (
@@ -352,7 +403,7 @@ export const FeedbackDetailPage = () => {
                             onClick={() => setActiveMedia(index)}
                             aria-label={`Xem tệp ${index + 1}: ${file.name}`}
                             aria-pressed={selected}
-                            className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 bg-slate-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${selected ? 'border-blue-500 shadow-sm' : 'border-transparent hover:border-slate-300'}`}
+                            className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 bg-slate-100 dark:bg-white/[0.06] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${selected ? 'border-blue-500 shadow-sm' : 'border-transparent hover:border-slate-300'}`}
                           >
                             {failed ? <Lucide.ImageOff className="absolute inset-0 m-auto text-slate-400" size={20} /> : isVideo(file) ? <><video src={file.url} preload="metadata" className="h-full w-full object-cover" /><span className="absolute inset-0 flex items-center justify-center bg-slate-950/30 text-white"><Lucide.PlayCircle size={21} /></span></> : <img src={file.url} alt="" loading="lazy" onError={() => markMediaFailed(file)} className="h-full w-full object-cover" />}
                           </button>
@@ -365,7 +416,7 @@ export const FeedbackDetailPage = () => {
                 <div className="admin-empty-panel flex min-h-40 items-center justify-center px-5 py-10 text-center">
                   <div>
                     <Lucide.ImageOff className="mx-auto text-slate-300" size={30} />
-                    <p className="mt-3 text-sm font-semibold text-slate-600">Chưa có hình ảnh hoặc video</p>
+                    <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Chưa có hình ảnh hoặc video</p>
                     <p className="mt-1 text-xs text-slate-400">Phản ánh này không kèm theo tệp minh chứng.</p>
                   </div>
                 </div>
@@ -381,12 +432,12 @@ export const FeedbackDetailPage = () => {
             areaName={feedback?.areaName}
             variant="admin"
           />
-        </main>
+        </div>
 
         <aside className="space-y-5 xl:sticky xl:top-5 xl:self-start">
           <section className="admin-panel overflow-hidden">
             <SectionHeading icon={Lucide.Info} title="Thông tin phản ánh" />
-            <div className="divide-y divide-slate-200 px-5 py-4">
+            <div className="divide-y divide-slate-200 dark:divide-white/10 px-5 py-4">
               <DetailRow icon={Lucide.Tag} label="Danh mục" value={getCategoryName(feedback, categories)} />
               <DetailRow icon={Lucide.UserRound} label="Người gửi" value={getReporter(feedback)} />
               <DetailRow icon={Lucide.CalendarPlus} label="Ngày tiếp nhận" value={formatDateTime(feedback?.createdAt)} />

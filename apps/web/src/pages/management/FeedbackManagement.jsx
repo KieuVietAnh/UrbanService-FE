@@ -4,6 +4,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi, toolsApi } from '@urbanmind/shared-api';
 import { managementTypes } from '@urbanmind/shared-types';
+import { getCategoryLabel } from '../../utils/categoryLabels';
+import { peekAdminFeedbackDetail, prefetchAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 
 
 const ADMIN_FEEDBACK_SNAPSHOT_KEY = 'adminFeedbackListSnapshot';
@@ -112,9 +114,20 @@ const normalizeFeedbackResponse = (response) => {
   return matchedArray || [];
 };
 
-const getCategoryName = (categoryId, categories = []) => {
+const getCategoryName = (feedback, categories = []) => {
   const safeCategories = Array.isArray(categories) ? categories : [];
-  return safeCategories.find((category) => String(category.categoryId) === String(categoryId))?.categoryName || 'Chưa phân loại';
+  const categoryId = feedback?.categoryId ?? feedback?.category?.categoryId ?? feedback?.category?.id;
+  const matchedCategory = safeCategories.find((category) =>
+    String(category?.categoryId ?? category?.id) === String(categoryId)
+  );
+  const categoryName =
+    feedback?.categoryName ??
+    feedback?.category?.categoryName ??
+    feedback?.category?.name ??
+    matchedCategory?.categoryName ??
+    matchedCategory?.name;
+
+  return getCategoryLabel(categoryName);
 };
 
 const formatFeedbackId = (feedbackId) => {
@@ -132,12 +145,17 @@ const formatDate = (value) => {
 };
 
 const getLocationText = (feedback) => {
-  const lat = feedback?.latitude ?? feedback?.lat ?? feedback?.location?.latitude ?? feedback?.location?.lat;
-  const lng = feedback?.longitude ?? feedback?.lng ?? feedback?.location?.longitude ?? feedback?.location?.lng;
+  const areaName = [
+    feedback?.wardName,
+    feedback?.areaName,
+    feedback?.area?.areaName,
+    feedback?.area?.name,
+    feedback?.ward?.name,
+    feedback?.location?.wardName,
+    feedback?.location?.areaName,
+  ].find((value) => typeof value === 'string' && value.trim());
 
-  if (feedback?.locationText || feedback?.address) return feedback.locationText || feedback.address;
-  if (lat && lng) return 'Vị trí đã được đánh dấu trên bản đồ';
-  return 'Chưa có vị trí';
+  return areaName?.trim() || 'Chưa xác định khu vực';
 };
 
 const getStatusLabel = (status) => {
@@ -359,9 +377,13 @@ export const FeedbackManagement = () => {
       console.warn('Không thể lưu vị trí danh sách phản ánh', storageError);
     }
 
+    const prefetchedDetail = peekAdminFeedbackDetail(feedbackId);
+
     navigate(`/management/feedbacks/${feedbackId}`, {
       state: {
-        feedback,
+        feedback: prefetchedDetail
+          ? { ...feedback, ...(prefetchedDetail?.data || prefetchedDetail?.item || prefetchedDetail?.result || prefetchedDetail?.record || prefetchedDetail) }
+          : feedback,
         from: '/management/feedbacks',
       },
     });
@@ -401,7 +423,7 @@ export const FeedbackManagement = () => {
         item.locationText,
         item.address,
         getLocationText(item),
-        getCategoryName(item.categoryId, categories),
+        getCategoryName(item, categories),
         item.status,
         getStatusLabel(item.status),
         item.priority,
@@ -689,13 +711,16 @@ export const FeedbackManagement = () => {
                           : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/70'
                       }`}
                       onClick={() => handleOpenFeedbackDetail(feedback)}
+                      onMouseEnter={() => prefetchAdminFeedbackDetail(feedbackId)}
+                      onFocus={() => prefetchAdminFeedbackDetail(feedbackId)}
+                      onPointerDown={() => prefetchAdminFeedbackDetail(feedbackId)}
                     >
                       <td className="px-6 py-4 text-sm font-semibold text-blue-700 dark:text-blue-300">{formatFeedbackId(feedbackId)}</td>
                       <td className="max-w-[320px] px-6 py-4">
                         <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{feedback.title || 'Không có tiêu đề'}</p>
                         <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{getLocationText(feedback)}</p>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{getCategoryName(feedback.categoryId, categories)}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{getCategoryName(feedback, categories)}</td>
                       <td className="px-6 py-4"><PriorityBadge priority={feedback.priority} /></td>
                       <td className="px-6 py-4"><StatusBadge status={feedback.status} /></td>
                       <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">{formatDate(feedback.createdAt)}</td>
