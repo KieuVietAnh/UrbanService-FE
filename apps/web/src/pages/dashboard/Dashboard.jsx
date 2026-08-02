@@ -958,6 +958,9 @@ export const Dashboard = () => {
   };
 
   const residentTickets = Array.isArray(tickets) ? tickets : [];
+  const isConfirmedDuplicateTicket = (ticket) => Boolean(
+    ticket?.parentTicketId || ticket?.parentFeedbackId
+  );
   const residentTotal = Math.max(ticketTotal, residentTickets.length);
   const residentInProgressStatuses = [
     managementTypes.feedbackStatus.VERIFIED,
@@ -990,16 +993,16 @@ export const Dashboard = () => {
     return 0;
   });
   const residentInProgress = residentTickets.filter((ticket) => (
-    residentInProgressStatuses.includes(ticket.status)
+    !isConfirmedDuplicateTicket(ticket) && residentInProgressStatuses.includes(ticket.status)
   )).length;
   const residentEnded = residentTickets.filter((ticket) => (
     ticket.status === managementTypes.feedbackStatus.CLOSED
   )).length;
   const needsReworkTickets = residentTickets.filter((ticket) => (
-    ticket.status === managementTypes.feedbackStatus.NEED_REWORK
+    !isConfirmedDuplicateTicket(ticket) && ticket.status === managementTypes.feedbackStatus.NEED_REWORK
   ));
   const awaitingReviewTickets = residentTickets.filter((ticket) => (
-    ticket.status === managementTypes.feedbackStatus.APPROVED
+    !isConfirmedDuplicateTicket(ticket) && ticket.status === managementTypes.feedbackStatus.APPROVED
   ));
   const residentNeedsAttention = (
     needsReworkTickets.length + awaitingReviewTickets.length
@@ -1449,6 +1452,7 @@ export const Dashboard = () => {
                   const feedbackId = ticket.feedbackId || ticket.id;
                   const statusMeta = getResidentStatusMeta(ticket.status);
                   const updatedAt = ticket.updatedAt || ticket.createdAt;
+                  const isConfirmedDuplicate = isConfirmedDuplicateTicket(ticket);
 
                   return (
                     <li key={feedbackId}>
@@ -1467,7 +1471,12 @@ export const Dashboard = () => {
                                 {ticket.title || 'Phản ánh chưa có tiêu đề'}
                               </h3>
                               <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusMeta.className}`}>
-                                {statusMeta.label}
+                                {isConfirmedDuplicate ? (
+                                  <span className="inline-flex items-center gap-1 text-violet-700">
+                                    <Lucide.GitMerge size={11} aria-hidden="true" />
+                                    Phản ánh trùng
+                                  </span>
+                                ) : statusMeta.label}
                               </span>
                             </div>
 

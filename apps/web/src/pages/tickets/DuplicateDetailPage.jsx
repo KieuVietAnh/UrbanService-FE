@@ -94,6 +94,17 @@ const getRecommendationText = (confidence) => {
   return 'Cần kiểm tra cẩn thận';
 };
 
+const ELIGIBLE_MASTER_STATUSES = new Set([
+  'verified',
+  'assigned',
+  'inprogress',
+  'resolved',
+  'submittedforapproval',
+  'approved',
+  'needrework',
+  'closed',
+]);
+
 export const DuplicateDetailPage = () => {
   const navigate = useNavigate();
   const { duplicateCandidateId } = useParams();
@@ -209,6 +220,13 @@ export const DuplicateDetailPage = () => {
   const confidenceValue = getNormalizedConfidence(candidate?.confidenceScore ?? candidate?.confidence);
   const confidenceLabel = getRecommendationText(confidenceValue);
   const statusLabel = getStatusLabel(candidate?.status);
+  const candidateIsPending = String(candidate?.status || '').toLowerCase() === 'pending';
+  const parentStatus = String(duplicateFeedback?.status || '').trim();
+  const parentIsEligibleMaster = ELIGIBLE_MASTER_STATUSES.has(parentStatus.toLowerCase());
+  const canConfirmDuplicate = candidateIsPending && parentIsEligibleMaster;
+  const confirmBlockedMessage = !candidateIsPending
+    ? 'Đề xuất này không còn ở trạng thái chờ xử lý.'
+    : `Phản ánh chính đang ở trạng thái ${parentStatus || 'không xác định'} và chưa thể công khai. Hãy duyệt phản ánh chính trước khi xác nhận trùng.`;
 
   const comparisonRows = useMemo(() => {
     const titleA = getTextValue(primaryFeedback?.title, '—');
@@ -296,6 +314,11 @@ export const DuplicateDetailPage = () => {
 
   const handleConfirmDuplicate = async () => {
     if (!duplicateCandidateId) return;
+
+    if (!canConfirmDuplicate) {
+      setPageMessage({ type: 'error', text: confirmBlockedMessage });
+      return;
+    }
 
     setConfirmLoading(true);
     setPageMessage({ type: '', text: '' });
@@ -405,6 +428,16 @@ export const DuplicateDetailPage = () => {
               <div className="mt-3 text-3xl font-black text-slate-900">{statusLabel}</div>
             </div>
           </div>
+
+          {!parentIsEligibleMaster && candidateIsPending && (
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <Lucide.AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <div>
+                <div className="font-semibold">Chưa thể xác nhận phản ánh trùng</div>
+                <p className="mt-1 text-amber-800">{confirmBlockedMessage}</p>
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-6 xl:grid-cols-2">
             <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -564,7 +597,7 @@ export const DuplicateDetailPage = () => {
               <button
                 type="button"
                 onClick={handleConfirmDuplicate}
-                disabled={confirmLoading}
+                disabled={confirmLoading || !canConfirmDuplicate}
                 className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
               >
                 {confirmLoading ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Check size={14} />}
@@ -639,6 +672,8 @@ export const DuplicateDetailPage = () => {
             <button
               type="button"
               onClick={handleConfirmDuplicate}
+              disabled={!canConfirmDuplicate || confirmLoading}
+              title={!canConfirmDuplicate ? confirmBlockedMessage : undefined}
               className="btn btn-primary rounded-2xl px-5 py-3 shadow-lg shadow-blue-500/15"
             >
               <Lucide.CheckCircle2 size={16} className="mr-2" />

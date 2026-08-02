@@ -307,6 +307,8 @@ export default function ManagementFeedbackListPage() {
           ) : (
             feedbacks.map((item) => {
               const feedbackId = item.feedbackId || item.id;
+              const parentFeedbackId = item.parentTicketId || item.parentFeedbackId || null;
+              const isConfirmedDuplicate = Boolean(parentFeedbackId);
               const handleCardKeyDown = (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
@@ -326,6 +328,12 @@ export default function ManagementFeedbackListPage() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
+                      {isConfirmedDuplicate ? (
+                        <Badge intent="neutral" className="gap-1 border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold text-violet-700">
+                          <Lucide.GitMerge size={13} aria-hidden="true" />
+                          Phản ánh trùng
+                        </Badge>
+                      ) : null}
                       <Badge intent={getStatusBadgeIntent(item.status)} className="px-3 py-1 text-[11px] font-semibold">
                         {getStatusLabel(item.status)}
                       </Badge>
@@ -341,7 +349,7 @@ export default function ManagementFeedbackListPage() {
                   <div className="text-sm text-slate-500">
                       <div className="font-semibold text-slate-700">{getCategoryLabel(item.categoryName || item.category?.name || item.categoryType || item.type, '—')}</div>
                       <div className="mt-1">{formatDate(item.createdAt)}</div>
-                      { (item.status === managementTypes.feedbackStatus.ASSIGNED || item.status === managementTypes.feedbackStatus.IN_PROGRESS) && (
+                      { !isConfirmedDuplicate && (item.status === managementTypes.feedbackStatus.ASSIGNED || item.status === managementTypes.feedbackStatus.IN_PROGRESS) && (
                         <div className="mt-2">
                           <Button
                             type="button"
