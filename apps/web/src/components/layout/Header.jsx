@@ -300,7 +300,6 @@ export const Header = ({ onMenuToggle }) => {
     const labelMap = {
       dashboard: 'Tổng quan hệ thống',
       admin: 'Quản trị hệ thống',
-      audit: 'Nhật ký hệ thống',
       performance: 'Hiệu năng & nhật ký',
       management: 'Quản trị vận hành',
       users: 'Quản lý người dùng',

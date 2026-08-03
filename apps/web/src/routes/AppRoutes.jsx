@@ -61,7 +61,6 @@ const FeedbackManagement = lazy(() => import('../pages/management/FeedbackManage
 const FeedbackDetailPage = lazy(() => import('../pages/management/FeedbackDetailPage').then((m) => ({ default: m.FeedbackDetailPage })));
 const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
-const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ default: m.AuditLog })));
 const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
 
 const RouteFallback = ({ isAuthenticated = false }) => {
@@ -151,7 +150,7 @@ const roleEntryPaths = {
   [APP_ROLES.SYSTEM_STAFF]: '/staff/queue',
   [APP_ROLES.SERVICE_PROVIDER]: '/provider/tasks',
   [APP_ROLES.INTERACTION_MANAGER]: '/manager/interactions',
-  [APP_ROLES.ADMINISTRATOR]: '/admin/audit',
+  [APP_ROLES.ADMINISTRATOR]: '/dashboard',
 };
 
 export const AppRoutes = () => {
@@ -568,15 +567,7 @@ export const AppRoutes = () => {
         </ProtectedRoute>
       } />
       <Route path="/management/integrations" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/admin/audit" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
-            <DashboardLayout>
-              <AuditLog />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
+      <Route path="/admin/audit" element={<Navigate to="/dashboard" replace />} />
       <Route path="/admin/performance" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>

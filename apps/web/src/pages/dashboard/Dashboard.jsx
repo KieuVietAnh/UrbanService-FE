@@ -2329,12 +2329,6 @@ export const Dashboard = () => {
         to: '/management/categories',
         icon: Lucide.Tags,
       },
-      {
-        title: 'Nhật ký hệ thống',
-        description: 'Theo dõi thao tác quản trị và các sự kiện quan trọng.',
-        to: '/admin/audit',
-        icon: Lucide.FileClock,
-      },
     ];
 
     const healthItems = [
