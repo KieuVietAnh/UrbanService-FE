@@ -308,7 +308,6 @@ export const Header = ({ onMenuToggle }) => {
       feedbacks: 'Quản lý phản ánh',
       categories: 'Danh mục phản ánh',
       sla: 'Chính sách SLA',
-      integrations: 'Cấu hình tích hợp',
       analytics: 'Báo cáo phân tích',
       sentiment: 'Cảm xúc người dân',
       heatmap: 'Bản đồ nhiệt',

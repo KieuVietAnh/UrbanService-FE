@@ -6,7 +6,6 @@ export default [
   { name: 'Quản lý phản ánh', path: '/management/feedbacks', icon: 'MessageSquare' },
   { name: 'Danh mục phản ánh', path: '/management/categories', icon: 'FolderKanban' },
   { name: 'Chính sách SLA', path: '/management/sla', icon: 'Clock' },
-  { name: 'Cấu hình tích hợp', path: '/management/integrations', icon: 'Link2' },
   { name: 'Nhật ký hệ thống', path: '/admin/audit', icon: 'FileClock' },
   { name: 'Hiệu năng & nhật ký', path: '/admin/performance', icon: 'Activity' },
   { name: 'Cài đặt', path: '/settings', icon: 'Settings' },

@@ -2340,14 +2340,8 @@ export const Dashboard = () => {
     const healthItems = [
       { label: 'Feedback đã xử lý', value: resolvedFeedbackCount, helper: 'Bao gồm đã đóng và đã giải quyết', icon: Lucide.CheckCircle2 },
       { label: 'Truy cập tài khoản', value: 'Kiểm soát', helper: 'Đổi vai trò và khóa/mở tài khoản trong Quản lý người dùng', icon: Lucide.UserCog },
-      { label: 'Tích hợp', value: 'Ổn định', helper: 'Các kênh tiếp nhận đang hoạt động', icon: Lucide.Radio },
     ];
 
-    const integrations = [
-      { name: 'Zalo Mini App API', status: 'Đã kết nối', icon: Lucide.Radio },
-      { name: 'Messenger Webhook', status: 'Đã kết nối', icon: Lucide.CheckCircle2 },
-      { name: 'Tổng đài hotline', status: 'Đang bật', icon: Lucide.PhoneCall },
-    ];
 
     const categoryDistribution = Array.isArray(stats.categoryDistribution)
       ? stats.categoryDistribution.map((item, index) => ({
@@ -2521,45 +2515,6 @@ export const Dashboard = () => {
               </div>
             </div>
 
-            <div className="admin-panel p-5">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="admin-section-title">Tích hợp đa kênh</h3>
-                  <p className="mt-1 admin-section-description">Các kênh tiếp nhận phản ánh đang hoạt động.</p>
-                </div>
-                <div className="rounded-2xl bg-blue-50 p-2 text-blue-600">
-                  <Lucide.Network size={18} />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {integrations.map((integration) => {
-                  const Icon = integration.icon;
-
-                  return (
-                    <div key={integration.name} className="admin-inset-panel flex items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="admin-mini-icon">
-                          <Icon size={16} />
-                        </div>
-                        <span className="truncate text-xs font-semibold text-slate-700">{integration.name}</span>
-                      </div>
-                      <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
-                        {integration.status}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <Link
-                to="/management/integrations"
-                className="admin-secondary-link mt-4 flex items-center justify-center gap-2 px-4 py-3 text-xs font-semibold transition-all"
-              >
-                Quản lý tích hợp
-                <Lucide.ArrowRight size={14} />
-              </Link>
-            </div>
           </div>
         </section>
 
