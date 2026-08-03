@@ -2262,7 +2262,6 @@ export const Dashboard = () => {
   // 5. ADMINISTRATOR DASHBOARD (administrator)
   // ----------------------------------------------------
   if (currentRole === 'administrator') {
-    const storageUsageValue = stats.storageUsage?.split(' ')[0] || '0';
     const adminTickets = Array.isArray(tickets) ? tickets : [];
     const recentTickets = adminTickets.slice(0, 5);
     const openFeedbackCount = adminTickets.filter((ticket) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
@@ -2293,14 +2292,6 @@ export const Dashboard = () => {
         icon: Lucide.RefreshCw,
         tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
         to: '/management/feedbacks',
-      },
-      {
-        label: 'Dung lượng DB',
-        value: `${storageUsageValue} KB`,
-        helper: 'Theo thống kê hệ thống',
-        icon: Lucide.Database,
-        tone: 'bg-cyan-50 text-cyan-700 border-cyan-100',
-        to: '/admin/performance',
       },
     ];
 
