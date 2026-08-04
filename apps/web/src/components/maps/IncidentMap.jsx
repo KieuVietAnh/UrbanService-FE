@@ -138,22 +138,38 @@ function FocusIncident({ feedbackId, latitude, longitude }) {
   useEffect(() => {
     const lat = Number(latitude);
     const lng = Number(longitude);
-    if (!feedbackId || !isValidLocation(lat, lng)) return;
+    if (!feedbackId || !isValidLocation(lat, lng)) return undefined;
 
-    const timer = window.setTimeout(() => {
-      map.flyTo([lat, lng], 17, {
+    const target = [lat, lng];
+    let timerId;
+
+    const finishFocus = () => {
+      map.fire('focusedincidentready', { feedbackId: String(feedbackId) });
+    };
+
+    map.stop();
+    map.setView(target, 13, { animate: false });
+
+    timerId = window.setTimeout(() => {
+      map.once('moveend', finishFocus);
+      map.flyTo(target, 17, {
         animate: true,
-        duration: 0.65,
+        duration: 0.8,
+        easeLinearity: 0.25,
       });
-    }, 220);
+    }, 250);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timerId);
+      map.off('moveend', finishFocus);
+    };
   }, [feedbackId, latitude, longitude, map]);
 
   return null;
 }
 
 const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail }) => {
+  const map = useMap();
   const markerRef = useRef(null);
   const containsFocusedFeedback = marker.tickets.some((ticket) => (
     String(ticket.feedbackId) === String(focusFeedbackId)
@@ -162,12 +178,14 @@ const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail }) => {
   useEffect(() => {
     if (!containsFocusedFeedback || !markerRef.current) return undefined;
 
-    const timer = window.setTimeout(() => {
+    const openFocusedPopup = (event) => {
+      if (String(event?.feedbackId) !== String(focusFeedbackId)) return;
       markerRef.current?.openPopup();
-    }, 900);
+    };
 
-    return () => window.clearTimeout(timer);
-  }, [containsFocusedFeedback, focusFeedbackId]);
+    map.on('focusedincidentready', openFocusedPopup);
+    return () => map.off('focusedincidentready', openFocusedPopup);
+  }, [containsFocusedFeedback, focusFeedbackId, map]);
 
   return (
     <Marker
@@ -202,7 +220,7 @@ const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail }) => {
           )}
         </div>
       </Tooltip>
-      <Popup>
+      <Popup autoPan={false}>
         <div className="space-y-3 text-xs">
           <div className="font-bold text-slate-900">
             {marker.tickets.length === 1
@@ -376,7 +394,15 @@ const IncidentMapThemeStyles = () => (
   `}</style>
 );
 
-export const IncidentMap = ({ incidents, fitRequestKey = 0, focusFeedbackId = null, focusLatitude = null, focusLongitude = null }) => {
+export const IncidentMap = ({
+  incidents,
+  fitRequestKey = 0,
+  focusFeedbackId = null,
+  focusLatitude = null,
+  focusLongitude = null,
+  detailPathBuilder = null,
+  returnPath = '/community/map',
+}) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -387,22 +413,23 @@ export const IncidentMap = ({ incidents, fitRequestKey = 0, focusFeedbackId = nu
       currentUserId != null &&
       ticket?.reporterUserId != null &&
       String(ticket.reporterUserId) === String(currentUserId);
-
-    navigate(
-      isOwnFeedback
+    const detailPath = detailPathBuilder
+      ? detailPathBuilder(ticket)
+      : isOwnFeedback
         ? `/tickets/${ticket.feedbackId}`
-        : `/community/feed/${ticket.feedbackId}`,
-      {
-        state: {
-          from: '/community/map',
-          mapState: {
-            focusFeedbackId: ticket.feedbackId,
-            focusLatitude: ticket.latitude,
-            focusLongitude: ticket.longitude,
-          },
+        : `/community/feed/${ticket.feedbackId}`;
+
+    navigate(detailPath, {
+      state: {
+        from: returnPath,
+        mapState: {
+          focusMap: true,
+          focusFeedbackId: ticket.feedbackId,
+          focusLatitude: ticket.latitude,
+          focusLongitude: ticket.longitude,
         },
-      }
-    );
+      },
+    });
   };
 
   const markers = useMemo(() => {
@@ -447,15 +474,18 @@ export const IncidentMap = ({ incidents, fitRequestKey = 0, focusFeedbackId = nu
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <AutoFitBounds
-            incidents={focusFeedbackId ? [] : markers}
-            fitRequestKey={fitRequestKey}
-          />
-          <FocusIncident
-            feedbackId={focusFeedbackId}
-            latitude={focusLatitude}
-            longitude={focusLongitude}
-          />
+          {focusFeedbackId ? (
+            <FocusIncident
+              feedbackId={focusFeedbackId}
+              latitude={focusLatitude}
+              longitude={focusLongitude}
+            />
+          ) : (
+            <AutoFitBounds
+              incidents={markers}
+              fitRequestKey={fitRequestKey}
+            />
+          )}
           {markers.map((marker) => (
             <IncidentMarker
               key={`${marker.latitude}-${marker.longitude}`}
