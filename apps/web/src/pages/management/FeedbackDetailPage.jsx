@@ -241,7 +241,22 @@ export const FeedbackDetailPage = () => {
     };
   }, [previewIndex, attachments.length]);
 
+  const returnPath = location.state?.from;
+  const returnMapState = location.state?.mapState;
+
   const goBack = () => {
+    if (returnPath === '/management/map') {
+      navigate('/management/map', {
+        state: { mapState: returnMapState },
+      });
+      return;
+    }
+
+    if (returnPath === '/dashboard') {
+      navigate('/dashboard');
+      return;
+    }
+
     navigate('/management/feedbacks', {
       state: {
         restoreFeedbackId: feedbackId,
@@ -297,7 +312,7 @@ export const FeedbackDetailPage = () => {
               <Lucide.RefreshCw size={16} />
               Thử tải lại
             </button>
-            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">Quay lại danh sách</button>
+            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{returnPath === '/management/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}</button>
           </div>
         </div>
       </div>
@@ -311,7 +326,7 @@ export const FeedbackDetailPage = () => {
     <div className="admin-page-shell space-y-5 pb-4">
       <button type="button" onClick={goBack} className="admin-secondary-link inline-flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition">
         <Lucide.ArrowLeft size={16} />
-        Quay lại danh sách
+        {returnPath === '/management/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}
       </button>
 
       {error ? (
@@ -343,8 +358,10 @@ export const FeedbackDetailPage = () => {
         <div className="min-w-0 space-y-5">
           <section className="admin-panel overflow-hidden">
             <SectionHeading icon={Lucide.FileText} title="Nội dung phản ánh" description="Thông tin do người dân cung cấp" />
-            <div className="px-5 py-5 sm:px-6">
-              <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-700 dark:text-slate-200">{description}</p>
+            <div className="px-5 py-5 sm:px-6 sm:py-6">
+              <div className="rounded-xl bg-slate-50/80 px-4 py-4 ring-1 ring-inset ring-slate-200/70 dark:bg-white/[0.025] dark:ring-white/10 sm:px-5">
+                <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-700 dark:text-slate-200">{description}</p>
+              </div>
             </div>
           </section>
 
@@ -451,7 +468,7 @@ export const FeedbackDetailPage = () => {
               <button
                 type="button"
                 disabled={!hasCoordinates}
-                onClick={() => navigate('/community/map', { state: { focusFeedbackId: feedbackId, focusLatitude: Number(latitude), focusLongitude: Number(longitude) } })}
+                onClick={() => navigate('/management/map', { state: { mapState: { focusFeedbackId: feedbackId, focusLatitude: Number(latitude), focusLongitude: Number(longitude) } } })}
                 className="btn admin-primary-action h-11 w-full rounded-xl text-sm font-semibold normal-case disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Lucide.MapPinned size={17} />
@@ -459,7 +476,7 @@ export const FeedbackDetailPage = () => {
               </button>
               <button type="button" onClick={goBack} className="btn admin-secondary-action h-11 w-full rounded-xl text-sm font-semibold normal-case">
                 <Lucide.List size={17} />
-                Về danh sách phản ánh
+                {returnPath === '/management/map' ? 'Về bản đồ phản ánh' : returnPath === '/dashboard' ? 'Về tổng quan hệ thống' : 'Về danh sách phản ánh'}
               </button>
               {!hasCoordinates ? <p className="pt-1 text-center text-xs leading-5 text-slate-400">Phản ánh chưa có tọa độ bản đồ.</p> : null}
             </div>

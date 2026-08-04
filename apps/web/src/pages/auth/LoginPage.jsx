@@ -102,7 +102,7 @@ const TEST_ROLE_ACCOUNTS = [
 
 // Keep this switch while the team is validating role-specific UI.
 // Set to true whenever quick role access is needed during testing.
-const SHOW_TEST_ROLE_ACCOUNTS = false;
+const SHOW_TEST_ROLE_ACCOUNTS = true;
 
 const GoogleLogo = () => (
   <svg aria-label="Google" width="17" height="17" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">

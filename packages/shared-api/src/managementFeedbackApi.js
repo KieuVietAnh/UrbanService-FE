@@ -322,6 +322,49 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  async getFeedbackSummary() {
+    const response = await axiosClient.get('/api/management/feedbacks', {
+      params: normalizeFeedbackListParams({ PageNumber: 1, PageSize: 1000 }),
+    });
+    const payload = response?.data ?? response ?? {};
+    const items = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload?.data?.items)
+          ? payload.data.items
+          : [];
+    const total = Number(
+      payload?.totalItems ??
+      payload?.totalCount ??
+      payload?.data?.totalItems ??
+      payload?.data?.totalCount ??
+      items.length
+    );
+
+    const normalizeStatus = (value) => String(value ?? '')
+      .replace(/[-_\s]/g, '')
+      .toLowerCase();
+    const pendingStatuses = new Set(['submitted', 'aireviewed', 'verified']);
+    const inProgressStatuses = new Set(['assigned', 'inprogress', 'submittedforapproval', 'needrework']);
+    const completedStatuses = new Set(['resolved', 'approved', 'rejected', 'closed', 'cancelled']);
+    const summary = {
+      total: Number.isFinite(total) ? total : items.length,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+    };
+
+    items.forEach((feedback) => {
+      const status = normalizeStatus(feedback?.status);
+      if (pendingStatuses.has(status)) summary.pending += 1;
+      else if (inProgressStatuses.has(status)) summary.inProgress += 1;
+      else if (completedStatuses.has(status)) summary.completed += 1;
+    });
+
+    return { items, ...summary };
+  },
+
   // Get specific feedback by ID
   async getFeedbackById(feedbackId) {
     const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}`);

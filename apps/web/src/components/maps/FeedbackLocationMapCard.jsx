@@ -5,6 +5,7 @@ import L from 'leaflet';
 import * as Lucide from 'lucide-react';
 import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
 import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
+import 'leaflet/dist/leaflet.css';
 
 const markerIcon = new L.Icon({
   iconUrl: markerIconUrl,
@@ -29,21 +30,36 @@ const ResizeMap = () => {
 
   useEffect(() => {
     const container = map.getContainer();
-    let frameId = window.requestAnimationFrame(() => map.invalidateSize(false));
-    const timeoutId = window.setTimeout(() => map.invalidateSize(false), 180);
+    const parent = container.parentElement;
+    const timeoutIds = [];
+    let frameId = 0;
+
+    const refreshSize = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => map.invalidateSize(false));
+      });
+    };
+
+    refreshSize();
+    timeoutIds.push(window.setTimeout(refreshSize, 120));
+    timeoutIds.push(window.setTimeout(refreshSize, 320));
+
     const observer = typeof ResizeObserver === 'undefined'
       ? null
-      : new ResizeObserver(() => {
-          window.cancelAnimationFrame(frameId);
-          frameId = window.requestAnimationFrame(() => map.invalidateSize(false));
-        });
+      : new ResizeObserver(refreshSize);
 
     observer?.observe(container);
+    if (parent) observer?.observe(parent);
+    window.addEventListener('resize', refreshSize);
+    parent?.addEventListener('transitionend', refreshSize);
 
     return () => {
       window.cancelAnimationFrame(frameId);
-      window.clearTimeout(timeoutId);
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
       observer?.disconnect();
+      window.removeEventListener('resize', refreshSize);
+      parent?.removeEventListener('transitionend', refreshSize);
     };
   }, [map]);
 
@@ -65,7 +81,22 @@ export const FeedbackLocationMapCard = ({
   const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
   const position = useMemo(() => [lat, lng], [lat, lng]);
 
-  const openCommunityMap = () => {
+  const isAdmin = variant === 'admin';
+
+  const openFullMap = () => {
+    if (isAdmin) {
+      navigate('/management/map', {
+        state: {
+          mapState: {
+            focusFeedbackId: feedbackId,
+            focusLatitude: lat,
+            focusLongitude: lng,
+          },
+        },
+      });
+      return;
+    }
+
     navigate('/community/map', {
       state: {
         focusFeedbackId: feedbackId,
@@ -74,8 +105,6 @@ export const FeedbackLocationMapCard = ({
       },
     });
   };
-
-  const isAdmin = variant === 'admin';
 
   return (
     <section className={`${isAdmin ? 'admin-panel' : 'rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]'} overflow-hidden ${className}`} aria-labelledby={`feedback-location-${feedbackId}`}>
@@ -94,7 +123,7 @@ export const FeedbackLocationMapCard = ({
       </header>
 
       {hasCoordinates ? (
-        <button type="button" onClick={openCommunityMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label="Xem vị trí phản ánh trên bản đồ sự cố">
+        <button type="button" onClick={openFullMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label="Xem vị trí phản ánh trên bản đồ sự cố">
           <MapContainer center={position} zoom={16} dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false} boxZoom={false} keyboard={false} zoomControl={false} attributionControl={false} className="pointer-events-none h-full w-full">
             <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <SyncView position={position} />

@@ -65,11 +65,18 @@ export const DashboardLayout = ({ children }) => {
 
     // Trang danh sách sẽ tự khôi phục đúng card khi quay lại từ chi tiết.
     // Không reset vùng cuộn dùng chung trong trường hợp này để tránh ghi đè vị trí.
-    if (
+    const preserveScrollOnEnter = (
       location.state?.restoreFeedbackId ||
       location.state?.restoreTicketId ||
-      location.state?.restoreCoordinatorList
-    ) return undefined;
+      location.state?.restoreCoordinatorList ||
+      location.state?.focusMap ||
+      location.state?.focusFeedbackId ||
+      location.state?.mapState?.focusMap ||
+      location.state?.mapState?.focusFeedbackId ||
+      location.state?.preserveScroll
+    );
+
+    if (preserveScrollOnEnter) return undefined;
 
     const rawHash = String(location.hash || '').replace(/^#/, '');
     let targetId = '';
@@ -134,6 +141,11 @@ export const DashboardLayout = ({ children }) => {
     location.state?.restoreFeedbackId,
     location.state?.restoreTicketId,
     location.state?.restoreCoordinatorList,
+    location.state?.focusMap,
+    location.state?.focusFeedbackId,
+    location.state?.mapState?.focusMap,
+    location.state?.mapState?.focusFeedbackId,
+    location.state?.preserveScroll,
   ]);
 
   const getAiDockTop = (dock) => {

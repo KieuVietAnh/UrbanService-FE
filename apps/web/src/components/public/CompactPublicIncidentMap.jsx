@@ -64,21 +64,44 @@ const getFeedbackId = (item) => (
   item?.feedbackId || item?.id || item?.ticketId || ''
 );
 
-const getCoordinate = (item, keys) => {
-  for (const key of keys) {
-    const value = Number(item?.[key]);
-    if (Number.isFinite(value)) return value;
+const parseCoordinatesFromLocationText = (locationText) => {
+  if (!locationText || typeof locationText !== 'string') {
+    return { latitude: Number.NaN, longitude: Number.NaN };
   }
 
-  return Number.NaN;
+  const match = locationText.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!match) return { latitude: Number.NaN, longitude: Number.NaN };
+
+  return {
+    latitude: Number(match[1]),
+    longitude: Number(match[2]),
+  };
 };
 
-const normalizeMapItem = (item) => ({
-  ...item,
-  feedbackId: getFeedbackId(item),
-  latitude: getCoordinate(item, ['latitude', 'lat']),
-  longitude: getCoordinate(item, ['longitude', 'lng']),
-});
+const normalizeMapItem = (item) => {
+  const parsedLocation = parseCoordinatesFromLocationText(item?.locationText);
+
+  return {
+    ...item,
+    feedbackId: getFeedbackId(item),
+    latitude: Number(
+      item?.latitude ??
+      item?.lat ??
+      item?.location?.latitude ??
+      item?.location?.lat ??
+      parsedLocation.latitude
+    ),
+    longitude: Number(
+      item?.longitude ??
+      item?.lng ??
+      item?.lon ??
+      item?.location?.longitude ??
+      item?.location?.lng ??
+      item?.location?.lon ??
+      parsedLocation.longitude
+    ),
+  };
+};
 
 function FitCompactBounds({ incidents }) {
   const map = useMap();
@@ -174,6 +197,10 @@ const CompactPublicIncidentMap = ({
   items = [],
   loading = false,
   error = '',
+  fullMapPath = '/community/map#incident-map',
+  detailPathBuilder = (feedbackId) => `/community/feed/${feedbackId}`,
+  detailStateBuilder = () => undefined,
+  mapLabel = 'Bản đồ sự cố',
 }) => {
   const { theme } = useTheme();
 
@@ -243,7 +270,8 @@ const CompactPublicIncidentMap = ({
                   </p>
                   {incident.feedbackId ? (
                     <Link
-                      to={`/community/feed/${incident.feedbackId}`}
+                      to={detailPathBuilder(incident.feedbackId)}
+                      state={detailStateBuilder(incident)}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600"
                     >
                       Xem chi tiết
@@ -257,7 +285,7 @@ const CompactPublicIncidentMap = ({
         </MapContainer>
 
         <Link
-          to="/community/map#incident-map"
+          to={fullMapPath}
           state={{ focusMap: true }}
           className="absolute bottom-4 left-4 z-[500] flex w-[min(250px,calc(100%-2rem))] items-center gap-3 rounded-2xl border border-white/75 bg-white/94 p-3.5 text-left shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur transition hover:-translate-y-0.5 hover:border-blue-300 dark:border-white/10 dark:bg-slate-950/90 dark:hover:border-blue-400/35"
           aria-label="Mở bản đồ sự cố đầy đủ"
@@ -267,7 +295,7 @@ const CompactPublicIncidentMap = ({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
-              Bản đồ sự cố
+              {mapLabel}
             </span>
             <strong className="mt-1 block truncate text-sm font-semibold text-slate-950 dark:text-white">
               {statusText}

@@ -1,17 +1,23 @@
 // src/pages/management/FeedbackManagement.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi, toolsApi } from '@urbanmind/shared-api';
 import { managementTypes } from '@urbanmind/shared-types';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import {
+  ADMIN_FEEDBACK_METRICS,
+  calculateAdminFeedbackSummary,
+  filterAdminFeedbacksByMetric,
+  normalizeAdminFeedbackMetric,
+} from '../../utils/adminFeedbackMetrics';
 import { peekAdminFeedbackDetail, prefetchAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 
 
 const ADMIN_FEEDBACK_SNAPSHOT_KEY = 'adminFeedbackListSnapshot';
 const ADMIN_FEEDBACK_RETURN_STORAGE_KEY = 'urbanmind-admin-feedback-return';
 const ADMIN_FEEDBACK_SNAPSHOT_TTL = 5 * 60 * 1000;
-let feedbackRequestInFlight = null;
+const ADMIN_FEEDBACK_PAGE_SIZE = 10;
 
 const readFeedbackSnapshot = () => {
   try {
@@ -62,17 +68,6 @@ const writeFeedbackSnapshot = (snapshot) => {
   }
 };
 
-const requestFeedbacks = () => {
-  if (!feedbackRequestInFlight) {
-    feedbackRequestInFlight = managementFeedbackApi
-      .getFeedbacks()
-      .finally(() => {
-        feedbackRequestInFlight = null;
-      });
-  }
-  return feedbackRequestInFlight;
-};
-
 const STATUS_META = {
   [managementTypes.feedbackStatus.SUBMITTED]: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
   [managementTypes.feedbackStatus.AI_REVIEWED]: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
@@ -88,30 +83,6 @@ const PRIORITY_META = {
   High: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
   Medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
   Low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
-};
-
-const normalizeFeedbackResponse = (response) => {
-  if (Array.isArray(response)) return response;
-
-  const candidates = [
-    response?.items,
-    response?.data,
-    response?.content,
-    response?.result,
-    response?.records,
-    response?.feedbacks,
-    response?.data?.items,
-    response?.data?.content,
-    response?.data?.result,
-    response?.data?.records,
-    response?.data?.feedbacks,
-    response?.result?.items,
-    response?.result?.content,
-    response?.result?.records,
-  ];
-
-  const matchedArray = candidates.find(Array.isArray);
-  return matchedArray || [];
 };
 
 const getCategoryName = (feedback, categories = []) => {
@@ -182,6 +153,41 @@ const getFeedbackAuthorText = (feedback) => {
 };
 
 
+const normalizeSearchText = (value) => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd')
+  .replace(/Đ/g, 'D')
+  .toLowerCase()
+  .trim();
+
+const metricForStatus = (status) => {
+  const candidate = { status };
+  if (filterAdminFeedbacksByMetric([candidate], 'pending').length) return 'pending';
+  if (filterAdminFeedbacksByMetric([candidate], 'inProgress').length) return 'inProgress';
+  if (filterAdminFeedbacksByMetric([candidate], 'completed').length) return 'completed';
+  return 'total';
+};
+
+const feedbackMatchesSearch = (feedback, searchTerm, categories = []) => {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  if (!normalizedSearch) return true;
+
+  return [
+    feedback?.feedbackId,
+    feedback?.id,
+    feedback?.title,
+    feedback?.description,
+    feedback?.locationText,
+    getLocationText(feedback),
+    getCategoryName(feedback, categories),
+    getFeedbackAuthorText(feedback),
+    getStatusLabel(feedback?.status),
+    getPriorityLabel(feedback?.priority),
+  ].some((value) => normalizeSearchText(value).includes(normalizedSearch));
+};
+
+
 
 const StatusBadge = ({ status }) => {
   const meta = STATUS_META[status] || { label: getStatusLabel(status), className: 'bg-slate-100 text-slate-600 ring-slate-200' };
@@ -225,7 +231,7 @@ const FeedbackTableSkeleton = () => (
   </div>
 );
 
-const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
+const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue', active = false, onClick }) => {
   const toneClass = {
     blue: 'bg-blue-50 text-blue-700 ring-blue-100',
     amber: 'bg-amber-50 text-amber-700 ring-amber-100',
@@ -234,24 +240,34 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
   }[tone];
 
   return (
-    <div className="admin-stat-card p-5 transition-all hover:-translate-y-0.5">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`admin-stat-card group min-h-[164px] w-full p-5 text-left transition-[border-color,background-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+        active ? 'border-blue-400 bg-blue-50/40 ring-1 ring-blue-200' : ''
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
           <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
           <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>
         </div>
-        <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ${toneClass}`}>
-          <Icon size={20} />
-        </span>
+        <div className="flex items-start">
+          <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ${toneClass}`}>
+            <Icon size={20} />
+          </span>
+        </div>
       </div>
-    </div>
+    </button>
   );
 };
 
 export const FeedbackManagement = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [initialSnapshot] = useState(readFeedbackSnapshot);
   const [restoredContext] = useState(() => {
     const stored = readAdminFeedbackReturnContext();
@@ -259,25 +275,47 @@ export const FeedbackManagement = () => {
       ? { ...stored, feedbackId: location.state.restoreFeedbackId }
       : stored;
   });
+
+  const parseUrlFilters = useCallback((params) => ({
+    group: normalizeAdminFeedbackMetric(params.get('metric')),
+    status: params.get('status') || 'all',
+    search: params.get('search') || '',
+    page: Math.max(1, Number(params.get('page')) || 1),
+  }), []);
+
+  const initialUrlFilters = parseUrlFilters(searchParams);
+  const initialFilters = {
+    group: normalizeAdminFeedbackMetric(
+      restoredContext?.metricFilter ?? initialSnapshot?.metricFilter ?? initialUrlFilters.group
+    ),
+    status: restoredContext?.statusFilter ?? initialSnapshot?.statusFilter ?? initialUrlFilters.status,
+    search: restoredContext?.searchTerm ?? initialSnapshot?.searchTerm ?? initialUrlFilters.search,
+    page: Math.max(1, Number(
+      restoredContext?.pageNumber ?? initialSnapshot?.pageNumber ?? initialUrlFilters.page
+    ) || 1),
+  };
+
   const restoreContextRef = useRef(restoredContext);
   const highlightTimerRef = useRef(null);
-  const shouldDeferBackgroundRefreshRef = useRef(
-    Boolean(initialSnapshot?.feedbacks?.length && restoredContext)
-  );
-  const [restoreComplete, setRestoreComplete] = useState(
-    () => !restoredContext
-  );
-  const [feedbacks, setFeedbacks] = useState(() => initialSnapshot?.feedbacks || []);
+  const lastWrittenQueryRef = useRef('');
+  const [filters, setFilters] = useState(initialFilters);
+  const [allFeedbacks, setAllFeedbacks] = useState(() => (
+    Array.isArray(initialSnapshot?.allFeedbacks)
+      ? initialSnapshot.allFeedbacks
+      : Array.isArray(initialSnapshot?.feedbacks)
+        ? initialSnapshot.feedbacks
+        : []
+  ));
   const [categories, setCategories] = useState(() => initialSnapshot?.categories || []);
-  const [loading, setLoading] = useState(() => !initialSnapshot);
+  const [feedbackSummary, setFeedbackSummary] = useState(() => (
+    initialSnapshot?.feedbackSummary || calculateAdminFeedbackSummary(
+      initialSnapshot?.allFeedbacks || initialSnapshot?.feedbacks || [],
+      initialSnapshot?.totalItems
+    )
+  ));
+  const [loading, setLoading] = useState(() => allFeedbacks.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState(
-    () => restoredContext?.searchTerm ?? initialSnapshot?.searchTerm ?? ''
-  );
-  const [statusFilter, setStatusFilter] = useState(
-    () => restoredContext?.statusFilter ?? initialSnapshot?.statusFilter ?? 'all'
-  );
   const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(
     restoredContext?.feedbackId || ''
   );
@@ -286,82 +324,163 @@ export const FeedbackManagement = () => {
     if (background) setRefreshing(true);
     else setLoading(true);
     setError('');
+
     try {
-      const response = await requestFeedbacks();
-      const nextFeedbacks = normalizeFeedbackResponse(response);
-      setFeedbacks(nextFeedbacks);
-      writeFeedbackSnapshot({
-        feedbacks: nextFeedbacks,
-        categories,
-        searchTerm,
-        statusFilter,
-      });
+      const summaryResponse = await managementFeedbackApi.getFeedbackSummary();
+      const nextAllFeedbacks = Array.isArray(summaryResponse?.items)
+        ? summaryResponse.items
+        : [];
+      const fallbackSummary = calculateAdminFeedbackSummary(
+        nextAllFeedbacks,
+        summaryResponse?.total
+      );
+      const nextSummary = {
+        total: Number(summaryResponse?.total ?? fallbackSummary.total) || 0,
+        pending: Number(summaryResponse?.pending ?? fallbackSummary.pending) || 0,
+        inProgress: Number(summaryResponse?.inProgress ?? fallbackSummary.inProgress) || 0,
+        completed: Number(summaryResponse?.completed ?? fallbackSummary.completed) || 0,
+      };
+
+      setAllFeedbacks(nextAllFeedbacks);
+      setFeedbackSummary(nextSummary);
     } catch (err) {
       console.error(err);
-      if (!background && feedbacks.length === 0) {
-        setFeedbacks([]);
+      if (!background || allFeedbacks.length === 0) {
         setError(err?.message || 'Không thể tải danh sách phản ánh.');
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [categories, feedbacks.length, searchTerm, statusFilter]);
+  }, [allFeedbacks.length]);
 
   useEffect(() => {
     let cancelled = false;
-
-    if (!shouldDeferBackgroundRefreshRef.current) {
-      fetchFeedbacks({ background: Boolean(initialSnapshot) });
-    }
-
-    const loadCategories = async () => {
-      try {
-        const fetchedCategories = await toolsApi.getCategories();
-        if (cancelled) return;
-        const nextCategories = Array.isArray(fetchedCategories) ? fetchedCategories : [];
-        setCategories(nextCategories);
-        writeFeedbackSnapshot({
-          feedbacks: initialSnapshot?.feedbacks || feedbacks,
-          categories: nextCategories,
-          searchTerm,
-          statusFilter,
-        });
-      } catch (err) {
-        console.warn('Failed to load categories for feedback management', err);
-        if (!initialSnapshot && !cancelled) setCategories([]);
-      }
-    };
-
-    loadCategories();
-    return () => {
-      cancelled = true;
-    };
-    // Chỉ chạy lúc mount; requestFeedbacks đã chống gọi trùng trong Strict Mode.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    toolsApi.getCategories()
+      .then((fetchedCategories) => {
+        if (!cancelled) setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
+      })
+      .catch((err) => console.warn('Failed to load categories for feedback management', err));
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (!restoreComplete || !shouldDeferBackgroundRefreshRef.current) return;
+    fetchFeedbacks({ background: allFeedbacks.length > 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    shouldDeferBackgroundRefreshRef.current = false;
-    fetchFeedbacks({ background: true });
-  }, [fetchFeedbacks, restoreComplete]);
+  const matchingFeedbacks = useMemo(() => {
+    const source = Array.isArray(allFeedbacks) ? allFeedbacks : [];
+    return source.filter((feedback) => {
+      if (filters.status !== 'all' && String(feedback?.status) !== String(filters.status)) return false;
+      if (filters.status === 'all' && !filterAdminFeedbacksByMetric([feedback], filters.group).length) return false;
+      return feedbackMatchesSearch(feedback, filters.search, categories);
+    });
+  }, [allFeedbacks, categories, filters.group, filters.search, filters.status]);
+
+  const pagination = useMemo(() => {
+    const totalItems = matchingFeedbacks.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / ADMIN_FEEDBACK_PAGE_SIZE));
+    const pageNumber = Math.min(Math.max(1, filters.page), totalPages);
+    return {
+      pageNumber,
+      pageSize: ADMIN_FEEDBACK_PAGE_SIZE,
+      totalItems,
+      totalPages,
+      hasPreviousPage: pageNumber > 1,
+      hasNextPage: pageNumber < totalPages,
+    };
+  }, [filters.page, matchingFeedbacks.length]);
+
+  const feedbacks = useMemo(() => {
+    const startIndex = (pagination.pageNumber - 1) * ADMIN_FEEDBACK_PAGE_SIZE;
+    return matchingFeedbacks.slice(startIndex, startIndex + ADMIN_FEEDBACK_PAGE_SIZE);
+  }, [matchingFeedbacks, pagination.pageNumber]);
+
+  const filteredFeedbacks = feedbacks;
+  const searchTerm = filters.search;
+  const statusFilter = filters.status;
+  const metricFilter = filters.group;
+  const pageNumber = pagination.pageNumber;
+  const stats = feedbackSummary;
+
+  useEffect(() => {
+    if (filters.page !== pagination.pageNumber) {
+      setFilters((current) => ({ ...current, page: pagination.pageNumber }));
+    }
+  }, [filters.page, pagination.pageNumber]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+    if (filters.status !== 'all') nextParams.set('status', filters.status);
+    else if (filters.group !== 'total') nextParams.set('metric', filters.group);
+    if (filters.search.trim()) nextParams.set('search', filters.search.trim());
+    if (filters.page > 1) nextParams.set('page', String(filters.page));
+
+    const nextQuery = nextParams.toString();
+    if (nextQuery === searchParams.toString()) return;
+    lastWrittenQueryRef.current = nextQuery;
+    setSearchParams(nextParams, {
+      replace: true,
+      state: { ...location.state, preserveScroll: true },
+    });
+  }, [filters, location.state, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const currentQuery = searchParams.toString();
+    if (currentQuery === lastWrittenQueryRef.current) {
+      lastWrittenQueryRef.current = '';
+      return;
+    }
+    const urlFilters = parseUrlFilters(searchParams);
+    setFilters((current) => (
+      current.group === urlFilters.group &&
+      current.status === urlFilters.status &&
+      current.search === urlFilters.search &&
+      current.page === urlFilters.page
+        ? current
+        : urlFilters
+    ));
+  }, [parseUrlFilters, searchParams]);
+
+  useEffect(() => {
+    writeFeedbackSnapshot({
+      feedbacks,
+      allFeedbacks,
+      categories,
+      searchTerm,
+      statusFilter,
+      metricFilter,
+      feedbackSummary,
+      ...pagination,
+    });
+  }, [allFeedbacks, categories, feedbackSummary, feedbacks, metricFilter, pagination, searchTerm, statusFilter]);
+
+  const updateFilters = useCallback((patch) => {
+    setFilters((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const handleMetricFilterChange = useCallback((nextMetric) => {
+    updateFilters({
+      group: normalizeAdminFeedbackMetric(nextMetric),
+      status: 'all',
+      page: 1,
+    });
+  }, [updateFilters]);
+
+  const handleStatusFilterChange = useCallback((nextStatus) => {
+    restoreContextRef.current = null;
+    updateFilters({
+      status: nextStatus,
+      group: nextStatus === 'all' ? 'total' : metricForStatus(nextStatus),
+      page: 1,
+    });
+  }, [updateFilters]);
 
   const handleOpenFeedbackDetail = useCallback((feedback) => {
     const feedbackId = feedback?.feedbackId || feedback?.id;
     if (!feedbackId) return;
-
-    const scrollY = document.querySelector(
-      '[data-dashboard-scroll-container]'
-    )?.scrollTop || 0;
-
-    writeFeedbackSnapshot({
-      feedbacks,
-      categories,
-      searchTerm,
-      statusFilter,
-    });
+    const scrollY = document.querySelector('[data-dashboard-scroll-container]')?.scrollTop || 0;
 
     try {
       window.sessionStorage.setItem(
@@ -370,6 +489,8 @@ export const FeedbackManagement = () => {
           feedbackId: String(feedbackId),
           searchTerm,
           statusFilter,
+          metricFilter,
+          pageNumber,
           scrollY,
         })
       );
@@ -378,7 +499,6 @@ export const FeedbackManagement = () => {
     }
 
     const prefetchedDetail = peekAdminFeedbackDetail(feedbackId);
-
     navigate(`/management/feedbacks/${feedbackId}`, {
       state: {
         feedback: prefetchedDetail
@@ -387,97 +507,35 @@ export const FeedbackManagement = () => {
         from: '/management/feedbacks',
       },
     });
-  }, [categories, feedbacks, navigate, searchTerm, statusFilter]);
-
-  useEffect(() => {
-    writeFeedbackSnapshot({ feedbacks, categories, searchTerm, statusFilter });
-  }, [categories, feedbacks, searchTerm, statusFilter]);
+  }, [metricFilter, navigate, pageNumber, searchTerm, statusFilter]);
 
   useEffect(() => () => {
-    if (highlightTimerRef.current) {
-      window.clearTimeout(highlightTimerRef.current);
-    }
+    if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
   }, []);
-
-
-  const stats = useMemo(() => {
-    const total = feedbacks.length;
-    const open = feedbacks.filter((item) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(item.status)).length;
-    const assigned = feedbacks.filter((item) => [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(item.status)).length;
-    const completed = feedbacks.filter((item) => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(item.status)).length;
-
-    return { total, open, assigned, completed };
-  }, [feedbacks]);
-
-  const filteredFeedbacks = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-
-    return feedbacks.filter((item) => {
-      const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-      const searchable = [
-        item.feedbackId,
-        formatFeedbackId(item.feedbackId || item.id),
-        item.title,
-        item.description,
-        item.content,
-        item.locationText,
-        item.address,
-        getLocationText(item),
-        getCategoryName(item, categories),
-        item.status,
-        getStatusLabel(item.status),
-        item.priority,
-        getPriorityLabel(item.priority),
-        getFeedbackAuthorText(item),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return matchesStatus && (!keyword || searchable.includes(keyword));
-    });
-  }, [feedbacks, categories, searchTerm, statusFilter]);
 
   useEffect(() => {
     const savedContext = restoreContextRef.current;
-    if (!savedContext || loading || filteredFeedbacks.length === 0) {
-      return undefined;
-    }
+    if (!savedContext || loading || filteredFeedbacks.length === 0) return undefined;
 
     let cancelled = false;
     let retryCount = 0;
     let retryTimer;
 
     const consumeReturnContext = () => {
-      try {
-        window.sessionStorage.removeItem(
-          ADMIN_FEEDBACK_RETURN_STORAGE_KEY
-        );
-      } catch {
-        // Session storage có thể không khả dụng ở chế độ riêng tư.
-      }
-
+      try { window.sessionStorage.removeItem(ADMIN_FEEDBACK_RETURN_STORAGE_KEY); } catch { /* noop */ }
       restoreContextRef.current = null;
-      setRestoreComplete(true);
     };
 
     const restorePosition = () => {
       if (cancelled) return;
-
       const feedbackId = String(savedContext.feedbackId || '');
-      const escapedFeedbackId = (
-        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-          ? CSS.escape(feedbackId)
-          : feedbackId.replace(/["\\]/g, '\\$&')
-      );
+      const escapedFeedbackId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(feedbackId)
+        : feedbackId.replace(/["\\]/g, '\\$&');
       const targetRow = escapedFeedbackId
-        ? document.querySelector(
-          `[data-admin-feedback-id="${escapedFeedbackId}"]`
-        )
+        ? document.querySelector(`[data-admin-feedback-id="${escapedFeedbackId}"]`)
         : null;
-      const scrollContainer = document.querySelector(
-        '[data-dashboard-scroll-container]'
-      );
+      const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
 
       if (!targetRow || !scrollContainer) {
         retryCount += 1;
@@ -485,41 +543,20 @@ export const FeedbackManagement = () => {
           retryTimer = window.setTimeout(restorePosition, 100);
           return;
         }
-
-        scrollContainer?.scrollTo({
-          top: Number(savedContext.scrollY) || 0,
-          left: 0,
-          behavior: 'auto',
-        });
+        scrollContainer?.scrollTo({ top: Number(savedContext.scrollY) || 0, left: 0, behavior: 'auto' });
         consumeReturnContext();
         return;
       }
 
       window.requestAnimationFrame(() => {
         if (cancelled) return;
-
         const containerRect = scrollContainer.getBoundingClientRect();
         const rowRect = targetRow.getBoundingClientRect();
-        const rowTopInContainer = (
-          scrollContainer.scrollTop + rowRect.top - containerRect.top
-        );
-        const centeredTop = Math.max(
-          0,
-          rowTopInContainer - Math.max(
-            24,
-            (scrollContainer.clientHeight - targetRow.offsetHeight) / 2
-          )
-        );
-
-        scrollContainer.scrollTo({
-          top: centeredTop,
-          left: 0,
-          behavior: 'auto',
-        });
+        const rowTopInContainer = scrollContainer.scrollTop + rowRect.top - containerRect.top;
+        const centeredTop = Math.max(0, rowTopInContainer - Math.max(24, (scrollContainer.clientHeight - targetRow.offsetHeight) / 2));
+        scrollContainer.scrollTo({ top: centeredTop, left: 0, behavior: 'auto' });
         setHighlightedFeedbackId(feedbackId);
-        if (highlightTimerRef.current) {
-          window.clearTimeout(highlightTimerRef.current);
-        }
+        if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
         highlightTimerRef.current = window.setTimeout(() => {
           setHighlightedFeedbackId('');
           highlightTimerRef.current = null;
@@ -529,14 +566,11 @@ export const FeedbackManagement = () => {
     };
 
     restorePosition();
-
     return () => {
       cancelled = true;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
   }, [filteredFeedbacks, loading]);
-
-
 
 
   return (
@@ -570,7 +604,7 @@ export const FeedbackManagement = () => {
               Làm mới
             </button>
             <Link
-              to="/community/map"
+              to="/management/map"
               className="btn h-11 rounded-xl border-0 bg-blue-600 px-4 text-sm font-medium text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"
             >
               <Lucide.Map size={16} />
@@ -581,10 +615,21 @@ export const FeedbackManagement = () => {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Lucide.Inbox} label="Tổng phản ánh" value={stats.total} helper="Tất cả phản ánh" tone="blue" />
-        <StatCard icon={Lucide.AlertCircle} label="Đang mở" value={stats.open} helper="Cần theo dõi" tone="amber" />
-        <StatCard icon={Lucide.Wrench} label="Đang xử lý" value={stats.assigned} helper="Đã điều phối" tone="slate" />
-        <StatCard icon={Lucide.CheckCircle2} label="Hoàn tất" value={stats.completed} helper="Đã nghiệm thu/đóng" tone="emerald" />
+        {ADMIN_FEEDBACK_METRICS.map((metric) => {
+          const Icon = Lucide[metric.icon] || Lucide.Circle;
+          return (
+            <StatCard
+              key={metric.key}
+              icon={Icon}
+              label={metric.label}
+              value={stats[metric.key] ?? 0}
+              helper={metric.helper}
+              tone={metric.tone}
+              active={(statusFilter === 'all' ? metricFilter : metricForStatus(statusFilter)) === metric.key}
+              onClick={() => handleMetricFilterChange(metric.key)}
+            />
+          );
+        })}
       </section>
 
       <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
@@ -593,15 +638,9 @@ export const FeedbackManagement = () => {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách phản ánh</h2>
-                {refreshing && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
-                    <span className="loading loading-spinner loading-xs" />
-                    Đang cập nhật
-                  </span>
-                )}
               </div>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Hiển thị {filteredFeedbacks.length} trên tổng số {feedbacks.length} phản ánh
+                Hiển thị {filteredFeedbacks.length} trên tổng số {pagination.totalItems} phản ánh
               </p>
             </div>
 
@@ -611,14 +650,14 @@ export const FeedbackManagement = () => {
                 <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onChange={(event) => updateFilters({ search: event.target.value, page: 1 })}
                   className="input h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   placeholder="Tìm theo mã, nội dung, vị trí..."
                 />
                 {searchTerm && (
                   <button
                     type="button"
-                    onClick={() => setSearchTerm('')}
+                    onClick={() => updateFilters({ search: '', page: 1 })}
                     className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                     aria-label="Xóa từ khóa tìm kiếm"
                   >
@@ -632,7 +671,7 @@ export const FeedbackManagement = () => {
                 <Lucide.Filter className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value)}
+                  onChange={(event) => handleStatusFilterChange(event.target.value)}
                   className="select h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-700 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="all">Tất cả trạng thái</option>
@@ -666,17 +705,14 @@ export const FeedbackManagement = () => {
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không tìm thấy phản ánh phù hợp</h3>
             <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-              {searchTerm || statusFilter !== 'all'
-                ? 'Thử xóa từ khóa hoặc chọn trạng thái khác.'
+              {searchTerm || statusFilter !== 'all' || metricFilter !== 'total'
+                ? 'Thử xóa từ khóa hoặc chọn nhóm trạng thái khác.'
                 : 'Danh sách chưa có dữ liệu để hiển thị.'}
             </p>
-            {(searchTerm || statusFilter !== 'all') && (
+            {(searchTerm || statusFilter !== 'all' || metricFilter !== 'total') && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearchTerm('');
-                  setStatusFilter('all');
-                }}
+                onClick={() => updateFilters({ search: '', status: 'all', group: 'total', page: 1 })}
                 className="btn btn-outline mt-5 h-10 rounded-xl border-slate-300 px-4 text-sm dark:border-slate-700"
               >
                 <Lucide.RotateCcw size={15} />
@@ -741,6 +777,67 @@ export const FeedbackManagement = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && !error && pagination.totalItems > 0 && (
+          <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Trang <span className="font-semibold text-slate-700 dark:text-slate-200">{pagination.pageNumber}</span> / {pagination.totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={!pagination.hasPreviousPage || refreshing}
+                onClick={() => updateFilters({ page: Math.max(1, pageNumber - 1) })}
+                className="btn btn-outline h-10 min-h-0 rounded-xl border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+              >
+                <Lucide.ChevronLeft size={16} />
+                Trước
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: pagination.totalPages }, (_, index) => index + 1)
+                  .filter((page) => (
+                    page === 1 ||
+                    page === pagination.totalPages ||
+                    Math.abs(page - pagination.pageNumber) <= 1
+                  ))
+                  .map((page, index, pages) => {
+                    const previousPage = pages[index - 1];
+                    return (
+                      <div key={page} className="flex items-center gap-1">
+                        {previousPage && page - previousPage > 1 && (
+                          <span className="px-1 text-sm text-slate-400">…</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => updateFilters({ page })}
+                          disabled={refreshing}
+                          aria-current={page === pagination.pageNumber ? 'page' : undefined}
+                          className={`flex h-10 min-w-10 items-center justify-center rounded-xl px-3 text-sm font-semibold transition ${
+                            page === pagination.pageNumber
+                              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+                              : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                disabled={!pagination.hasNextPage || refreshing}
+                onClick={() => updateFilters({ page: Math.min(pagination.totalPages, pageNumber + 1) })}
+                className="btn btn-outline h-10 min-h-0 rounded-xl border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+              >
+                Sau
+                <Lucide.ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         )}
       </section>
