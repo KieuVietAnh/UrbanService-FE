@@ -296,6 +296,7 @@ export const FeedbackManagement = () => {
   };
 
   const restoreContextRef = useRef(restoredContext);
+  const feedbackRequestIdRef = useRef(0);
   const highlightTimerRef = useRef(null);
   const lastWrittenQueryRef = useRef('');
   const [filters, setFilters] = useState(initialFilters);
@@ -321,12 +322,16 @@ export const FeedbackManagement = () => {
   );
 
   const fetchFeedbacks = useCallback(async ({ background = false } = {}) => {
+    const requestId = ++feedbackRequestIdRef.current;
+
     if (background) setRefreshing(true);
     else setLoading(true);
     setError('');
 
     try {
       const summaryResponse = await managementFeedbackApi.getFeedbackSummary();
+      if (requestId !== feedbackRequestIdRef.current) return;
+
       const nextAllFeedbacks = Array.isArray(summaryResponse?.items)
         ? summaryResponse.items
         : [];
@@ -344,13 +349,17 @@ export const FeedbackManagement = () => {
       setAllFeedbacks(nextAllFeedbacks);
       setFeedbackSummary(nextSummary);
     } catch (err) {
+      if (requestId !== feedbackRequestIdRef.current) return;
+
       console.error(err);
       if (!background || allFeedbacks.length === 0) {
         setError(err?.message || 'Không thể tải danh sách phản ánh.');
       }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === feedbackRequestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [allFeedbacks.length]);
 
@@ -366,6 +375,10 @@ export const FeedbackManagement = () => {
 
   useEffect(() => {
     fetchFeedbacks({ background: allFeedbacks.length > 0 });
+
+    return () => {
+      feedbackRequestIdRef.current += 1;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
