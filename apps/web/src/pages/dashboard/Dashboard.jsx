@@ -618,6 +618,7 @@ export const Dashboard = () => {
   ] = useState(false);
   const [showStaffFilter, setShowStaffFilter] = useState(false);
   const [staffFilter, setStaffFilter] = useState('all');
+  const dashboardRequestIdRef = useRef(0);
 
   const fetchScopedTickets = useCallback(async () => {
     if (!user) return { items: [], totalItems: 0 };
@@ -668,6 +669,7 @@ export const Dashboard = () => {
     if (!user) return;
 
     const loadDashboardContent = async () => {
+      const requestId = ++dashboardRequestIdRef.current;
       const hasCachedContent = Boolean(cachedDashboard);
 
       if (hasCachedContent) {
@@ -714,6 +716,8 @@ export const Dashboard = () => {
           }
           : null;
 
+        if (requestId !== dashboardRequestIdRef.current) return;
+
         setStats(nextStats);
         setCategories(nextCategories);
         setAreas(nextAreas);
@@ -741,6 +745,8 @@ export const Dashboard = () => {
           });
         }
       } catch (err) {
+        if (requestId !== dashboardRequestIdRef.current) return;
+
         console.error(err);
 
         if (!hasCachedContent) {
@@ -751,12 +757,18 @@ export const Dashboard = () => {
           setTicketTotal(0);
         }
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestId === dashboardRequestIdRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
 
     loadDashboardContent();
+
+    return () => {
+      dashboardRequestIdRef.current += 1;
+    };
   }, [
     user,
     currentRole,
@@ -770,6 +782,8 @@ export const Dashboard = () => {
     signalrService.start();
 
     const reload = async () => {
+      const requestId = ++dashboardRequestIdRef.current;
+
       try {
         const [resStats, fetchedCategories, ticketPage] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
@@ -794,6 +808,8 @@ export const Dashboard = () => {
           }
           : null;
 
+        if (requestId !== dashboardRequestIdRef.current) return;
+
         const nextStats = normalizeDashboardStats(resStats);
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
@@ -814,7 +830,13 @@ export const Dashboard = () => {
           });
         }
       } catch (e) {
+        if (requestId !== dashboardRequestIdRef.current) return;
         console.warn('Dashboard realtime reload failed', e);
+      } finally {
+        if (requestId === dashboardRequestIdRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
 
@@ -837,6 +859,7 @@ export const Dashboard = () => {
       relevantEvents.forEach((eventName) => (
         signalrService.off(eventName, reload)
       ));
+      dashboardRequestIdRef.current += 1;
     };
   }, [user, currentRole, fetchScopedTickets]);
 
