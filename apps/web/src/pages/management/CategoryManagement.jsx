@@ -236,13 +236,19 @@ export const CategoryManagement = () => {
         ? unwrapList(coordinatorResult.value)
         : [];
 
-      const coverageResults = await Promise.allSettled(
-        nextCoordinators.map(async (coordinator) => {
-          const coordinatorId = getCoordinatorId(coordinator);
-          if (coordinatorId === null || coordinatorId === undefined || coordinatorId === '') {
-            return [String(coordinatorId), []];
-          }
+      const coordinatorsWithCoverage = nextCoordinators.filter((coordinator) => {
+        const coordinatorId = getCoordinatorId(coordinator);
+        if (coordinatorId === null || coordinatorId === undefined || coordinatorId === '') {
+          return false;
+        }
 
+        const coverageCount = Number(coordinator?.coverageCount);
+        return !Number.isFinite(coverageCount) || coverageCount > 0;
+      });
+
+      const coverageResults = await Promise.allSettled(
+        coordinatorsWithCoverage.map(async (coordinator) => {
+          const coordinatorId = getCoordinatorId(coordinator);
           const coverages = await managementFeedbackApi.getCoordinatorCoverages(coordinatorId);
           return [String(coordinatorId), unwrapList(coverages)];
         })
