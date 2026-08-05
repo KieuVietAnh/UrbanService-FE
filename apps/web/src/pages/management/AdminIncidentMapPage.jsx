@@ -128,12 +128,16 @@ export const AdminIncidentMapPage = () => {
   const [fitRequestKey, setFitRequestKey] = useState(0);
   const mapSectionRef = useRef(null);
   const handledFocusRef = useRef('');
+  const incidentRequestIdRef = useRef(0);
   const focusState = location.state?.mapState || location.state || {};
 
   const loadIncidents = useCallback(async ({ background = false } = {}) => {
+    const requestId = ++incidentRequestIdRef.current;
+
     if (background) setRefreshing(true);
     else setLoading(true);
     setError('');
+
     try {
       const response = await managementFeedbackApi.getFeedbacks({
         PageNumber: 1,
@@ -141,19 +145,28 @@ export const AdminIncidentMapPage = () => {
         pageNumber: 1,
         pageSize: 1000,
       });
+      if (requestId !== incidentRequestIdRef.current) return;
+
       const nextIncidents = normalizeResponse(response).map(normalizeIncident);
       setIncidents(nextIncidents);
       writeAdminDashboardCache({ tickets: nextIncidents, ticketTotal: nextIncidents.length });
     } catch (err) {
+      if (requestId !== incidentRequestIdRef.current) return;
       setError(err?.message || 'Không thể tải dữ liệu bản đồ phản ánh.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === incidentRequestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void loadIncidents({ background: cachedIncidents.length > 0 });
+
+    return () => {
+      incidentRequestIdRef.current += 1;
+    };
   }, [cachedIncidents.length, loadIncidents]);
 
   useEffect(() => {
