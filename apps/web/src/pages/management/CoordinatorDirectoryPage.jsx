@@ -42,6 +42,7 @@ export default function CoordinatorDirectoryPage() {
   const highlightTimerRef = useRef(null);
   const shouldDeferBackgroundRefreshRef = useRef(Boolean(restoredContext));
   const hasLoadedRef = useRef(initialCache.hasLoaded);
+  const coordinatorRequestIdRef = useRef(0);
   const { user } = useAuth();
   const role = normalizeRole(user?.role);
   const canManage = role === APP_ROLES.ADMINISTRATOR || role === APP_ROLES.INTERACTION_MANAGER;
@@ -67,6 +68,7 @@ export default function CoordinatorDirectoryPage() {
   }, []);
 
   const fetchCoordinators = useCallback(async ({ keepCurrent = false } = {}) => {
+    const requestId = ++coordinatorRequestIdRef.current;
     const shouldKeepCurrent = keepCurrent || hasLoadedRef.current;
     if (shouldKeepCurrent) setRefreshing(true);
     else setLoading(true);
@@ -78,6 +80,8 @@ export default function CoordinatorDirectoryPage() {
         categoryId: categoryId || undefined,
         includeInactive: includeInactive || undefined,
       });
+      if (requestId !== coordinatorRequestIdRef.current) return;
+
       const nextItems = unwrapList(response);
       setItems(nextItems);
       hasLoadedRef.current = true;
@@ -91,11 +95,15 @@ export default function CoordinatorDirectoryPage() {
         updatedAt: Date.now(),
       });
     } catch (err) {
+      if (requestId !== coordinatorRequestIdRef.current) return;
+
       setError(getErrorMessage(err, 'Không thể tải danh sách điều phối viên.'));
       if (!shouldKeepCurrent) setItems([]);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === coordinatorRequestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [search, areaId, categoryId, includeInactive]);
 
@@ -121,6 +129,7 @@ export default function CoordinatorDirectoryPage() {
   }, [search, areaId, categoryId, includeInactive]);
 
   useEffect(() => () => {
+    coordinatorRequestIdRef.current += 1;
     if (highlightTimerRef.current) {
       window.clearTimeout(highlightTimerRef.current);
     }
