@@ -269,11 +269,15 @@ export const FeedbackManagement = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialSnapshot] = useState(readFeedbackSnapshot);
+  const shouldRestoreListContext = Boolean(location.state?.restoreFeedbackId);
   const [restoredContext] = useState(() => {
+    if (!shouldRestoreListContext) return null;
+
     const stored = readAdminFeedbackReturnContext();
-    return location.state?.restoreFeedbackId
-      ? { ...stored, feedbackId: location.state.restoreFeedbackId }
-      : stored;
+    return {
+      ...(stored || {}),
+      feedbackId: location.state.restoreFeedbackId,
+    };
   });
 
   const parseUrlFilters = useCallback((params) => ({
@@ -284,16 +288,19 @@ export const FeedbackManagement = () => {
   }), []);
 
   const initialUrlFilters = parseUrlFilters(searchParams);
-  const initialFilters = {
-    group: normalizeAdminFeedbackMetric(
-      restoredContext?.metricFilter ?? initialSnapshot?.metricFilter ?? initialUrlFilters.group
-    ),
-    status: restoredContext?.statusFilter ?? initialSnapshot?.statusFilter ?? initialUrlFilters.status,
-    search: restoredContext?.searchTerm ?? initialSnapshot?.searchTerm ?? initialUrlFilters.search,
-    page: Math.max(1, Number(
-      restoredContext?.pageNumber ?? initialSnapshot?.pageNumber ?? initialUrlFilters.page
-    ) || 1),
-  };
+  const initialFilters = restoredContext
+    ? {
+        group: normalizeAdminFeedbackMetric(
+          restoredContext.metricFilter ?? initialUrlFilters.group
+        ),
+        status: restoredContext.statusFilter ?? initialUrlFilters.status,
+        search: restoredContext.searchTerm ?? initialUrlFilters.search,
+        page: Math.max(
+          1,
+          Number(restoredContext.pageNumber ?? initialUrlFilters.page) || 1
+        ),
+      }
+    : initialUrlFilters;
 
   const restoreContextRef = useRef(restoredContext);
   const feedbackRequestIdRef = useRef(0);
@@ -382,6 +389,16 @@ export const FeedbackManagement = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (shouldRestoreListContext) return;
+
+    try {
+      window.sessionStorage.removeItem(ADMIN_FEEDBACK_RETURN_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures; URL filters remain the source of truth.
+    }
+  }, [shouldRestoreListContext]);
+
   const matchingFeedbacks = useMemo(() => {
     const source = Array.isArray(allFeedbacks) ? allFeedbacks : [];
     return source.filter((feedback) => {
@@ -418,10 +435,9 @@ export const FeedbackManagement = () => {
   const stats = feedbackSummary;
 
   useEffect(() => {
-    if (filters.page !== pagination.pageNumber) {
-      setFilters((current) => ({ ...current, page: pagination.pageNumber }));
-    }
-  }, [filters.page, pagination.pageNumber]);
+    if (loading || filters.page === pagination.pageNumber) return;
+    setFilters((current) => ({ ...current, page: pagination.pageNumber }));
+  }, [filters.page, loading, pagination.pageNumber]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams();
@@ -433,11 +449,8 @@ export const FeedbackManagement = () => {
     const nextQuery = nextParams.toString();
     if (nextQuery === searchParams.toString()) return;
     lastWrittenQueryRef.current = nextQuery;
-    setSearchParams(nextParams, {
-      replace: true,
-      state: { ...location.state, preserveScroll: true },
-    });
-  }, [filters, location.state, searchParams, setSearchParams]);
+    setSearchParams(nextParams, { replace: true });
+  }, [filters, searchParams, setSearchParams]);
 
   useEffect(() => {
     const currentQuery = searchParams.toString();
