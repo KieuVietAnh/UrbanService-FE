@@ -1,5 +1,5 @@
 // src/pages/management/CategoryManagement.jsx
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -209,8 +209,11 @@ export const CategoryManagement = () => {
   const [createLoading, setCreateLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const categoryRequestIdRef = useRef(0);
 
   const fetchCats = useCallback(async ({ keepCurrent = false } = {}) => {
+    const requestId = ++categoryRequestIdRef.current;
+
     if (keepCurrent) {
       setRefreshing(true);
     } else {
@@ -252,10 +255,14 @@ export const CategoryManagement = () => {
         nextCoveragesByCoordinator.set(coordinatorId, coverages);
       });
 
+      if (requestId !== categoryRequestIdRef.current) return;
+
       setCategories(nextCategories);
       setCoordinators(nextCoordinators);
       setCoveragesByCoordinator(nextCoveragesByCoordinator);
     } catch (err) {
+      if (requestId !== categoryRequestIdRef.current) return;
+
       console.error(err);
       setLoadError(err?.message || 'Không thể tải danh mục phản ánh.');
       if (!keepCurrent) {
@@ -264,13 +271,19 @@ export const CategoryManagement = () => {
         setCoveragesByCoordinator(new Map());
       }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === categoryRequestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     fetchCats();
+
+    return () => {
+      categoryRequestIdRef.current += 1;
+    };
   }, [fetchCats]);
 
   const categoryContactMap = useMemo(
