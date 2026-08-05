@@ -620,56 +620,48 @@ export const Dashboard = () => {
   const [staffFilter, setStaffFilter] = useState('all');
 
   const fetchScopedTickets = useCallback(async () => {
-    try {
-      if (!user) return { items: [], totalItems: 0 };
+    if (!user) return { items: [], totalItems: 0 };
 
-      if (currentRole === APP_ROLES.SERVICE_USER) {
-        const response = await axiosClient.get('/api/user/feedbacks', {
-          params: {
-            PageNumber: 1,
-            PageSize: 1000,
-          },
-        });
-        return normalizeTicketPage(response);
-      }
+    if (currentRole === APP_ROLES.SERVICE_USER) {
+      const response = await axiosClient.get('/api/user/feedbacks', {
+        params: {
+          PageNumber: 1,
+          PageSize: 1000,
+        },
+      });
+      return normalizeTicketPage(response);
+    }
 
-      if (currentRole === APP_ROLES.SERVICE_PROVIDER) {
-        const response = await ticketApi.getTickets(
-          { operatorId: user.operatorId },
-          { role: currentRole }
-        );
-        return normalizeTicketPage(response);
-      }
-
-      if (currentRole === APP_ROLES.SYSTEM_STAFF) {
-        const response = await managementFeedbackApi.getFeedbacks({
-          pageIndex: 0,
-          pageSize: 10,
-        });
-        return normalizeTicketPage(response);
-      }
-
-      if (currentRole === APP_ROLES.ADMINISTRATOR) {
-        const summary = await managementFeedbackApi.getFeedbackSummary();
-        return {
-          items: Array.isArray(summary?.items) ? summary.items : [],
-          totalItems: Number(summary?.total) || 0,
-          feedbackSummary: summary,
-        };
-      }
-
+    if (currentRole === APP_ROLES.SERVICE_PROVIDER) {
       const response = await ticketApi.getTickets(
-        {},
+        { operatorId: user.operatorId },
         { role: currentRole }
       );
       return normalizeTicketPage(response);
-    } catch (err) {
-      console.warn(
-        'Dashboard ticket loading failed, using empty list',
-        err
-      );
-      return { items: [], totalItems: 0 };
     }
+
+    if (currentRole === APP_ROLES.SYSTEM_STAFF) {
+      const response = await managementFeedbackApi.getFeedbacks({
+        pageIndex: 0,
+        pageSize: 10,
+      });
+      return normalizeTicketPage(response);
+    }
+
+    if (currentRole === APP_ROLES.ADMINISTRATOR) {
+      const summary = await managementFeedbackApi.getFeedbackSummary();
+      return {
+        items: Array.isArray(summary?.items) ? summary.items : [],
+        totalItems: Number(summary?.total) || 0,
+        feedbackSummary: summary,
+      };
+    }
+
+    const response = await ticketApi.getTickets(
+      {},
+      { role: currentRole }
+    );
+    return normalizeTicketPage(response);
   }, [currentRole, user]);
 
   useEffect(() => {
