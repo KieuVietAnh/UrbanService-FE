@@ -3,6 +3,7 @@ export { authApi } from './authApi.js';
 export { ticketApi } from './ticketApi.js';
 export { chatbotApi } from './chatbotApi.js';
 export { analyticsApi } from './analyticsApi.js';
+export { feedbackDashboardApi } from './feedbackDashboardApi.js';
 export { assignmentApi } from './assignmentApi.js';
 export { notificationApi } from './notificationApi.js';
 export { userApi } from './userApi.js';
