@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContext';
+import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { managementTypes } from '@urbanmind/shared-types';

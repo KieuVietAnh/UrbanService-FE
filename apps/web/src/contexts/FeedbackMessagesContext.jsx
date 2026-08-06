@@ -1,7 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { managementFeedbackApi } from '../services/api/managementFeedbackApi';
-
-const FeedbackMessagesContext = createContext(null);
+import { FeedbackMessagesContext } from './FeedbackMessagesContextBase';
 
 const normalizeMessages = (messages = []) => {
   return Array.isArray(messages)
@@ -51,7 +50,7 @@ export const FeedbackMessagesProvider = ({ feedbackId, children }) => {
         setMessagesLoading(false);
       }
     },
-    [feedbackId]
+    [feedbackId, includeInternal]
   );
 
   const sendMessage = useCallback(
@@ -116,10 +115,3 @@ export const FeedbackMessagesProvider = ({ feedbackId, children }) => {
   return <FeedbackMessagesContext.Provider value={value}>{children}</FeedbackMessagesContext.Provider>;
 };
 
-export const useFeedbackMessages = () => {
-  const context = useContext(FeedbackMessagesContext);
-  if (!context) {
-    throw new Error('useFeedbackMessages must be used within a FeedbackMessagesProvider');
-  }
-  return context;
-};

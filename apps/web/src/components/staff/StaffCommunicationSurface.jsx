@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Lucide from 'lucide-react';
-import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContext';
+import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import DelightToast from '../delight/DelightToast';
 
 const formatMessageTime = (value) => {
