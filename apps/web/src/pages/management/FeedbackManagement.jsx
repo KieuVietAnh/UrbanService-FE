@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi, toolsApi } from '@urbanmind/shared-api';
-import { managementTypes } from '@urbanmind/shared-types';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import {
   ADMIN_FEEDBACK_METRICS,
@@ -68,22 +67,36 @@ const writeFeedbackSnapshot = (snapshot) => {
   }
 };
 
+const normalizeFeedbackEnum = (value) => String(value ?? '')
+  .replace(/[-_\s]/g, '')
+  .toLowerCase();
+
 const STATUS_META = {
-  [managementTypes.feedbackStatus.SUBMITTED]: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
-  [managementTypes.feedbackStatus.AI_REVIEWED]: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
-  [managementTypes.feedbackStatus.VERIFIED]: { label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
-  [managementTypes.feedbackStatus.ASSIGNED]: { label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  [managementTypes.feedbackStatus.IN_PROGRESS]: { label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
-  [managementTypes.feedbackStatus.RESOLVED]: { label: 'Chờ nghiệm thu', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  [managementTypes.feedbackStatus.CLOSED]: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  submitted: { value: 'Submitted', label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
+  aireviewed: { value: 'AiReviewed', label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
+  verified: { value: 'Verified', label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
+  assigned: { value: 'Assigned', label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  inprogress: { value: 'InProgress', label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
+  resolved: { value: 'Resolved', label: 'Chờ nghiệm thu', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  submittedforapproval: { value: 'SubmittedForApproval', label: 'Chờ phê duyệt', className: 'bg-indigo-50 text-indigo-700 ring-indigo-100' },
+  approved: { value: 'Approved', label: 'Đã phê duyệt', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  rejected: { value: 'Rejected', label: 'Đã từ chối', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  needrework: { value: 'NeedRework', label: 'Cần xử lý lại', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  closed: { value: 'Closed', label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  cancelled: { value: 'Cancelled', label: 'Đã hủy', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
 };
 
 const PRIORITY_META = {
-  Critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
-  High: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
-  Medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  Low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  urgent: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  high: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
+  medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
 };
+
+const getStatusMeta = (status) => STATUS_META[normalizeFeedbackEnum(status)];
+const getPriorityMeta = (priority) => PRIORITY_META[normalizeFeedbackEnum(priority)];
+
 
 const getCategoryName = (feedback, categories = []) => {
   const safeCategories = Array.isArray(categories) ? categories : [];
@@ -130,11 +143,11 @@ const getLocationText = (feedback) => {
 };
 
 const getStatusLabel = (status) => {
-  return STATUS_META[status]?.label || status || 'Chưa rõ';
+  return getStatusMeta(status)?.label || status || 'Chưa rõ';
 };
 
 const getPriorityLabel = (priority) => {
-  return PRIORITY_META[priority]?.label || priority || 'Trung bình';
+  return getPriorityMeta(priority)?.label || priority || 'Trung bình';
 };
 
 const getFeedbackAuthorText = (feedback) => {
@@ -190,12 +203,12 @@ const feedbackMatchesSearch = (feedback, searchTerm, categories = []) => {
 
 
 const StatusBadge = ({ status }) => {
-  const meta = STATUS_META[status] || { label: getStatusLabel(status), className: 'bg-slate-100 text-slate-600 ring-slate-200' };
+  const meta = getStatusMeta(status) || { label: getStatusLabel(status), className: 'bg-slate-100 text-slate-600 ring-slate-200' };
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
 };
 
 const PriorityBadge = ({ priority }) => {
-  const meta = PRIORITY_META[priority] || { ...PRIORITY_META.Medium, label: getPriorityLabel(priority) };
+  const meta = getPriorityMeta(priority) || { ...PRIORITY_META.medium, label: getPriorityLabel(priority) };
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
 };
 
@@ -703,8 +716,8 @@ export const FeedbackManagement = () => {
                   className="select h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-700 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
                   <option value="all">Tất cả trạng thái</option>
-                  {Object.entries(STATUS_META).map(([value, meta]) => (
-                    <option key={value} value={value}>{meta.label}</option>
+                  {Object.values(STATUS_META).map((meta) => (
+                    <option key={meta.value} value={meta.value}>{meta.label}</option>
                   ))}
                 </select>
               </label>
