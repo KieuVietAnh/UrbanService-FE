@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
-import { axiosClient, toolsApi, managementFeedbackApi } from '@urbanmind/shared-api';
+import { axiosClient, toolsApi, managementFeedbackApi, feedbackDashboardApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 import { normalizeRole } from '../../utils/roleMap';
@@ -126,6 +126,31 @@ const buildTicketListUrl = ({
 
   const queryString = params.toString();
   return queryString ? `/tickets?${queryString}` : '/tickets';
+};
+
+
+const toDashboardCount = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
+const mapFeedbackDashboardOverview = (overview, fallbackSummary) => {
+  if (!overview || typeof overview !== 'object') return fallbackSummary;
+
+  const total = toDashboardCount(overview.totalFeedback);
+  const assigned = toDashboardCount(overview.assigned);
+  const inProgress = toDashboardCount(overview.inProgress);
+  const pendingApproval = toDashboardCount(overview.pendingApproval);
+  const completed = toDashboardCount(overview.completed);
+  const cancelled = toDashboardCount(overview.cancelled);
+  const groupedTotal = assigned + inProgress + pendingApproval + completed + cancelled;
+
+  return {
+    total,
+    pending: Math.max(0, total - groupedTotal),
+    inProgress: assigned + inProgress + pendingApproval,
+    completed: completed + cancelled,
+  };
 };
 
 const SAFE_DASHBOARD_STATS = {
@@ -649,14 +674,6 @@ export const Dashboard = () => {
       return normalizeTicketPage(response);
     }
 
-    if (currentRole === APP_ROLES.ADMINISTRATOR) {
-      const summary = await managementFeedbackApi.getFeedbackSummary();
-      return {
-        items: Array.isArray(summary?.items) ? summary.items : [],
-        totalItems: Number(summary?.total) || 0,
-        feedbackSummary: summary,
-      };
-    }
 
     const response = await ticketApi.getTickets(
       {},
@@ -664,6 +681,20 @@ export const Dashboard = () => {
     );
     return normalizeTicketPage(response);
   }, [currentRole, user]);
+
+  const fetchAdminDashboardContent = useCallback(async () => {
+    const [overviewResult, categoryResult, recentResult] = await Promise.allSettled([
+      feedbackDashboardApi.getOverview(),
+      feedbackDashboardApi.getCategoryDistribution(),
+      feedbackDashboardApi.getRecent(10),
+    ]);
+
+    return {
+      overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
+      categoryDistribution: categoryResult.status === 'fulfilled' ? categoryResult.value : null,
+      recentTickets: recentResult.status === 'fulfilled' ? recentResult.value : null,
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -679,11 +710,13 @@ export const Dashboard = () => {
       }
 
       try {
+        const isAdmin = currentRole === APP_ROLES.ADMINISTRATOR;
         const [
           resStats,
           fetchedCategories,
           fetchedAreas,
           ticketPage,
+          adminDashboard,
         ] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
@@ -692,29 +725,41 @@ export const Dashboard = () => {
           currentRole === APP_ROLES.SERVICE_USER
             ? toolsApi.getAreas().catch(() => [])
             : Promise.resolve([]),
-          fetchScopedTickets(),
+          isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
+          isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
         ]);
-        const nextStats = normalizeDashboardStats(resStats);
+        const baseStats = normalizeDashboardStats(resStats);
+        const nextStats = isAdmin && Array.isArray(adminDashboard?.categoryDistribution)
+          ? {
+            ...baseStats,
+            categoryDistribution: adminDashboard.categoryDistribution,
+          }
+          : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
           : [];
         const nextAreas = Array.isArray(fetchedAreas)
           ? fetchedAreas
           : [];
-        const nextTickets = Array.isArray(ticketPage?.items)
-          ? ticketPage.items
-          : [];
-        const nextTicketTotal = Number.isFinite(
-          Number(ticketPage?.totalItems)
-        )
-          ? Number(ticketPage.totalItems)
-          : nextTickets.length;
-        const nextFeedbackSummary = currentRole === APP_ROLES.ADMINISTRATOR
-          ? {
-            ...calculateAdminFeedbackSummary(nextTickets, nextTicketTotal),
-            ...(ticketPage?.feedbackSummary || {}),
-          }
+        const nextTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.recentTickets)
+            ? adminDashboard.recentTickets
+            : (Array.isArray(cachedDashboard?.tickets) ? cachedDashboard.tickets : []))
+          : (Array.isArray(ticketPage?.items) ? ticketPage.items : []);
+        const nextFeedbackSummary = isAdmin
+          ? mapFeedbackDashboardOverview(
+            adminDashboard?.overview,
+            cachedDashboard?.feedbackSummary || calculateAdminFeedbackSummary(
+              nextTickets,
+              cachedDashboard?.ticketTotal
+            )
+          )
           : null;
+        const nextTicketTotal = isAdmin
+          ? nextFeedbackSummary.total
+          : (Number.isFinite(Number(ticketPage?.totalItems))
+            ? Number(ticketPage.totalItems)
+            : nextTickets.length);
 
         if (requestId !== dashboardRequestIdRef.current) return;
 
@@ -773,6 +818,7 @@ export const Dashboard = () => {
     user,
     currentRole,
     fetchScopedTickets,
+    fetchAdminDashboardContent,
     cachedDashboard,
   ]);
 
@@ -785,32 +831,45 @@ export const Dashboard = () => {
       const requestId = ++dashboardRequestIdRef.current;
 
       try {
-        const [resStats, fetchedCategories, ticketPage] = await Promise.all([
+        const isAdmin = currentRole === APP_ROLES.ADMINISTRATOR;
+        const realtimeCache = isAdmin ? readAdminDashboardCache() : null;
+        const [resStats, fetchedCategories, ticketPage, adminDashboard] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
             : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
-          fetchScopedTickets(),
+          isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
+          isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
         ]);
-        const nextTickets = Array.isArray(ticketPage?.items)
-          ? ticketPage.items
-          : [];
-        const nextTicketTotal = Number.isFinite(
-          Number(ticketPage?.totalItems)
-        )
-          ? Number(ticketPage.totalItems)
-          : nextTickets.length;
-
-        const nextFeedbackSummary = currentRole === APP_ROLES.ADMINISTRATOR
-          ? {
-            ...calculateAdminFeedbackSummary(nextTickets, nextTicketTotal),
-            ...(ticketPage?.feedbackSummary || {}),
-          }
+        const nextTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.recentTickets)
+            ? adminDashboard.recentTickets
+            : (Array.isArray(realtimeCache?.tickets) ? realtimeCache.tickets : []))
+          : (Array.isArray(ticketPage?.items) ? ticketPage.items : []);
+        const nextFeedbackSummary = isAdmin
+          ? mapFeedbackDashboardOverview(
+            adminDashboard?.overview,
+            realtimeCache?.feedbackSummary || calculateAdminFeedbackSummary(
+              realtimeCache?.tickets || [],
+              realtimeCache?.ticketTotal
+            )
+          )
           : null;
+        const nextTicketTotal = isAdmin
+          ? nextFeedbackSummary.total
+          : (Number.isFinite(Number(ticketPage?.totalItems))
+            ? Number(ticketPage.totalItems)
+            : nextTickets.length);
 
         if (requestId !== dashboardRequestIdRef.current) return;
 
-        const nextStats = normalizeDashboardStats(resStats);
+        const baseStats = normalizeDashboardStats(resStats);
+        const nextStats = isAdmin && Array.isArray(adminDashboard?.categoryDistribution)
+          ? {
+            ...baseStats,
+            categoryDistribution: adminDashboard.categoryDistribution,
+          }
+          : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
           : [];
@@ -861,7 +920,7 @@ export const Dashboard = () => {
       ));
       dashboardRequestIdRef.current += 1;
     };
-  }, [user, currentRole, fetchScopedTickets]);
+  }, [user, currentRole, fetchScopedTickets, fetchAdminDashboardContent]);
 
   useEffect(() => {
     if (
@@ -2357,7 +2416,6 @@ export const Dashboard = () => {
       }))
       : [];
     const totalCategoryTickets = categoryDistribution.reduce((sum, item) => sum + item.count, 0);
-    const maxCategoryCount = Math.max(...categoryDistribution.map(item => item.count), 1);
     const hasLowCategoryData = totalCategoryTickets > 0 && totalCategoryTickets <= 5;
 
     return (
@@ -2439,80 +2497,92 @@ export const Dashboard = () => {
           </div>
         </section>
 
-        <section>
-          <div className="admin-panel p-5">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="admin-section-title">Phân bổ phản ánh theo danh mục</h3>
-                <p className="admin-section-description">Tổng hợp khối lượng phản ánh để Admin kiểm tra danh mục phản ánh.</p>
+        <section className="admin-panel overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="admin-section-title">Phân bổ phản ánh theo danh mục</h3>
+              <p className="admin-section-description">So sánh số lượng và tỷ trọng phản ánh giữa các danh mục.</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tổng phản ánh</p>
+                <p className="mt-0.5 text-lg font-semibold text-slate-950">{categoryDistribution.length > 0 ? totalCategoryTickets : '—'}</p>
               </div>
               <Link to="/management/categories" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
                 Danh mục phản ánh
                 <Lucide.ArrowRight size={14} />
               </Link>
             </div>
-            <div className="admin-inset-panel p-4">
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Tổng phản ánh</p>
-                  <p className="mt-1 text-2xl font-semibold text-slate-950">{categoryDistribution.length > 0 ? totalCategoryTickets : '—'}</p>
-                </div>
-                <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${categoryDistribution.length === 0 ? 'border-slate-200 bg-slate-50 text-slate-500' : hasLowCategoryData ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
-                  <span className="h-2 w-2 rounded-full bg-current" />
-                  {categoryDistribution.length === 0 ? 'Chờ dữ liệu thống kê' : hasLowCategoryData ? 'Dữ liệu còn ít' : 'Dữ liệu trực tiếp'}
-                </span>
-              </div>
-
-              {categoryDistribution.length === 0 ? (
-                <div className="admin-empty-panel flex min-h-[220px] flex-col items-center justify-center text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                    <Lucide.BarChart3 size={22} />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-slate-700">Chưa có dữ liệu thống kê theo danh mục</p>
-                  <p className="mt-1 max-w-md text-xs leading-5 text-slate-400">
-                    Khu vực này đã sẵn sàng nhận dữ liệu từ API thống kê. Khi backend trả về categoryId, categoryName và count, danh sách sẽ hiển thị tự động.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {categoryDistribution.map((category) => {
-                    const percent = Math.round((category.count / maxCategoryCount) * 100);
-                    const barWidth = category.count === 0 ? '0%' : `${Math.max(percent, 12)}%`;
-
-                    return (
-                      <div key={`${category.id}-${category.name}`} className="rounded-2xl border border-slate-200 bg-white p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50">
-                              {renderCategoryIcon(category.id)}
-                            </div>
-                            <span className="truncate text-xs font-semibold text-slate-800">{category.name}</span>
-                          </div>
-                          <span className="shrink-0 text-sm font-semibold text-slate-950">
-                            {category.count}
-                            <span className="ml-1 text-[10px] font-medium text-slate-400">phiếu</span>
-                          </span>
-                        </div>
-                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${category.count === 0 ? 'bg-transparent' : 'bg-gradient-to-r from-blue-600 to-violet-600'}`}
-                            style={{ width: barWidth }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {hasLowCategoryData && (
-                <div className="admin-warning-note mt-4 p-3 text-[11px] leading-5">
-                  Dữ liệu hiện còn ít nên hệ thống ưu tiên hiển thị dạng danh sách để tránh biểu đồ bị phóng đại.
-                </div>
-              )}
-            </div>
           </div>
 
+          {categoryDistribution.length === 0 ? (
+            <div className="admin-empty-panel m-5 flex min-h-[180px] flex-col items-center justify-center text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                <Lucide.BarChart3 size={20} />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-700">Chưa có dữ liệu theo danh mục</p>
+              <p className="mt-1 text-xs text-slate-400">Dữ liệu sẽ hiển thị khi API thống kê trả kết quả.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              <div className="hidden grid-cols-[42px_minmax(180px,1fr)_110px_minmax(180px,0.9fr)] gap-4 bg-slate-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 md:grid">
+                <span>STT</span>
+                <span>Danh mục</span>
+                <span className="text-right">Số lượng</span>
+                <span>Tỷ trọng</span>
+              </div>
+
+              {categoryDistribution.map((category, index) => {
+                const percent = totalCategoryTickets > 0
+                  ? (category.count / totalCategoryTickets) * 100
+                  : 0;
+
+                return (
+                  <div
+                    key={`${category.id}-${category.name}`}
+                    className="grid gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50 md:grid-cols-[42px_minmax(180px,1fr)_110px_minmax(180px,0.9fr)] md:items-center md:gap-4"
+                  >
+                    <span className="hidden text-xs font-semibold text-slate-400 md:block">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                        {renderCategoryIcon(category.id)}
+                      </div>
+                      <span className="truncate text-sm font-medium text-slate-800">{category.name}</span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between gap-3 md:justify-end">
+                      <span className="text-xs text-slate-400 md:hidden">Số lượng</span>
+                      <span className="text-sm font-semibold tabular-nums text-slate-950">
+                        {category.count}
+                        <span className="ml-1 text-[10px] font-medium text-slate-400">phiếu</span>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-blue-600"
+                          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                        />
+                      </div>
+                      <span className="w-12 text-right text-xs font-medium tabular-nums text-slate-500">
+                        {percent.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {hasLowCategoryData ? (
+            <p className="border-t border-slate-100 px-5 py-3 text-[11px] text-slate-400">
+              Dữ liệu hiện còn ít; tỷ trọng có thể thay đổi đáng kể khi có thêm phản ánh.
+            </p>
+          ) : null}
         </section>
 
         <section>
