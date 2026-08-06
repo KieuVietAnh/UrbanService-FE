@@ -9,7 +9,6 @@ import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
-import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
 
@@ -144,13 +143,68 @@ export default function ManagementFeedbackListPage() {
   const startIdx = (currentPage - 1) * pageSize + 1;
   const endIdx = Math.min(currentPage * pageSize, totalCount);
 
-  const getStatusBadgeIntent = (s) => getBadgeIntent(normalizeStatusValue(s), 'status');
-  const getPriorityBadgeIntent = (p) => getBadgeIntent(p, 'priority');
+  const getStatusClass = (s) => {
+    if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
+    const key = String(s).trim().toLowerCase();
+    switch (key) {
+      case managementTypes.feedbackStatus.AI_REVIEWED.toLowerCase():
+      case 'aireviewed':
+      case 'ai reviewed':
+      case 'ai_reviewed':
+        return 'border-violet-200 bg-violet-50 text-violet-700';
+      case 'submitted':
+        return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+      case managementTypes.feedbackStatus.VERIFIED.toLowerCase():
+      case 'verified':
+        return 'border-sky-200 bg-sky-50 text-sky-700';
+      case managementTypes.feedbackStatus.ASSIGNED.toLowerCase():
+      case 'assigned':
+        return 'border-cyan-200 bg-cyan-50 text-cyan-700';
+      case 'inprogress':
+      case 'in progress':
+      case managementTypes.feedbackStatus.IN_PROGRESS.toLowerCase():
+        return 'border-purple-200 bg-purple-50 text-purple-700';
+      case 'waitingcitizen':
+      case 'waiting citizen':
+      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL.toLowerCase():
+      case 'submittedforapproval':
+        return 'border-amber-200 bg-amber-50 text-amber-700';
+      case managementTypes.feedbackStatus.NEED_REWORK.toLowerCase():
+      case 'needrework':
+        return 'border-orange-200 bg-orange-50 text-orange-700';
+      case managementTypes.feedbackStatus.APPROVED.toLowerCase():
+      case 'approved':
+        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      case 'resolved':
+        return 'border-teal-200 bg-teal-50 text-teal-700';
+      case 'closed':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      case 'rejected':
+        return 'border-rose-200 bg-rose-50 text-rose-700';
+      case 'duplicate':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      default:
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+    }
+  };
+
+  const getPriorityClass = (p) => {
+    if (!p) return 'badge-priority-low';
+    const key = String(p).trim().toLowerCase();
+    switch (key) {
+      case 'critical': return 'badge-priority-critical';
+      case 'high': return 'badge-priority-high';
+      case 'medium': return 'badge-priority-medium';
+      case 'low': return 'badge-priority-low';
+      default: return 'badge-priority-low';
+    }
+  };
 
   const getStatusLabel = (s) => {
     const normalizedStatus = normalizeStatusValue(s);
     const labels = {
       [managementTypes.feedbackStatus.SUBMITTED]: 'Đã gửi',
+      [managementTypes.feedbackStatus.AI_REVIEWED]: 'AI đã xem xét',
       [managementTypes.feedbackStatus.VERIFIED]: 'Đã xác minh',
       [managementTypes.feedbackStatus.ASSIGNED]: 'Đã giao',
       [managementTypes.feedbackStatus.IN_PROGRESS]: 'Đang xử lý',
@@ -175,13 +229,48 @@ export default function ManagementFeedbackListPage() {
     return labels[p] || p;
   };
 
-  const formatDate = (date) => {
-    if (!date) return '';
-    return new Date(date).toLocaleDateString('vi-VN', {
+  const formatDateTime = (date) => {
+    if (!date) return 'Chưa có ngày';
+    return new Date(date).toLocaleString('vi-VN', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
     });
+  };
+
+  const getAssignedUnitName = (item) => {
+    const assignedName = item?.assignment?.operatorName
+      || item?.assignment?.providerName
+      || item?.assignment?.coordinatorName
+      || item?.assignment?.assignedTo
+      || item?.assignment?.assignedToName
+      || item?.assignment?.assignee
+      || item?.assignment?.assigneeName
+      || item?.operatorName
+      || item?.assignedOperatorName
+      || item?.providerName
+      || item?.coordinatorName
+      || item?.assigneeName
+      || item?.assignedToName
+      || item?.assignedTo
+      || '';
+
+    if (assignedName) return assignedName;
+
+    const assignedStatuses = new Set([
+      managementTypes.feedbackStatus.ASSIGNED,
+      managementTypes.feedbackStatus.IN_PROGRESS,
+      managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+      managementTypes.feedbackStatus.APPROVED,
+      managementTypes.feedbackStatus.RESOLVED,
+      managementTypes.feedbackStatus.CLOSED,
+    ]);
+
+    return assignedStatuses.has(normalizeStatusValue(item?.status))
+      ? 'Đã phân công'
+      : 'Chưa phân công';
   };
 
   const openProviderReport = async (feedbackId) => {
@@ -323,58 +412,63 @@ export default function ManagementFeedbackListPage() {
                   tabIndex={0}
                   onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)}
                   onKeyDown={handleCardKeyDown}
-                  className="admin-panel flex w-full cursor-pointer flex-col gap-4 p-4 text-left transition hover:-translate-y-0.5"
+                  className="admin-panel overflow-hidden rounded-[1.5rem] border border-slate-200/80 bg-white/95 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
                 >
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {isConfirmedDuplicate ? (
-                        <Badge intent="neutral" className="gap-1 border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold text-violet-700">
-                          <Lucide.GitMerge size={13} aria-hidden="true" />
-                          Phản ánh trùng
-                        </Badge>
-                      ) : null}
-                      <Badge intent={getStatusBadgeIntent(item.status)} className="px-3 py-1 text-[11px] font-semibold">
-                        {getStatusLabel(item.status)}
-                      </Badge>
-                      <Badge intent={getPriorityBadgeIntent(item.priority)} className="px-3 py-1 text-[11px] font-semibold">
-                        {getPriorityLabel(item.priority)}
-                      </Badge>
+                  <div className="grid gap-4 lg:grid-cols-[1.65fr_300px] lg:items-start">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isConfirmedDuplicate ? (
+                          <Badge intent="neutral" className="gap-1 rounded-full px-3 py-1 text-[11px] font-semibold">
+                            <Lucide.GitMerge size={13} aria-hidden="true" />
+                            Phản ánh trùng
+                          </Badge>
+                        ) : null}
+                        <span className={`${getStatusClass(item.status)} inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold`}>{getStatusLabel(item.status)}</span>
+                        <span className={`${getPriorityClass(item.priority)} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold`}>{getPriorityLabel(item.priority)}</span>
+                      </div>
+
+                      <div>
+                        <h2 className="text-lg font-semibold text-slate-900">{item.title || 'Không có tiêu đề'}</h2>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{item.description || 'Không có mô tả.'}</p>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <span className={`${getStatusClass(item.status)} inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold`}>
+                          <Lucide.Tag size={14} />
+                          {getCategoryLabel(item.categoryName || item.category?.name || item.categoryType || item.type, 'Không rõ danh mục')}
+                        </span>
+                        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
+                          <Lucide.CalendarDays size={14} />
+                          {formatDateTime(item.createdAt)}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-slate-900">{item.title || 'Không có tiêu đề'}</h2>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">{item.description || 'Không có mô tả.'}</p>
-                    </div>
-                  </div>
-                  <div className="text-sm text-slate-500">
-                      <div className="font-semibold text-slate-700">{getCategoryLabel(item.categoryName || item.category?.name || item.categoryType || item.type, '—')}</div>
-                      <div className="mt-1">{formatDate(item.createdAt)}</div>
+
+                    <div className="flex flex-col items-stretch justify-between gap-4">
+                      <div className="grid gap-2">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-900 shadow-sm">
+                          <Lucide.User size={14} />
+                          {getAssignedUnitName(item)}
+                        </span>
+                        <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600 shadow-sm">
+                          <Lucide.MapPin size={14} />
+                          {item.locationText || 'Không có vị trí'}
+                        </span>
+                      </div>
                       { !isConfirmedDuplicate && (item.status === managementTypes.feedbackStatus.ASSIGNED || item.status === managementTypes.feedbackStatus.IN_PROGRESS) && (
-                        <div className="mt-2">
-                          <Button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); openProviderReport(item.feedbackId || item.id); }}
-                            variant="outline"
-                            size="sm"
-                            className="rounded-full"
-                          >
-                            Mở Báo Cáo Xử Lý
-                          </Button>
-                        </div>
+                        <Button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openProviderReport(item.feedbackId || item.id); }}
+                          variant="outline"
+                          size="sm"
+                          className="whitespace-nowrap rounded-full"
+                        >
+                          Mở Báo Cáo Xử Lý
+                        </Button>
                       )}
                     </div>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
-                    <Lucide.User size={14} />
-                    {item.assignment?.operatorName || item.operatorName || 'Chưa phân công'}
-                  </span>
-                  <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1">
-                    <Lucide.MapPin size={14} />
-                    {item.locationText || 'Không có vị trí'}
-                  </span>
-                </div>
-              </div>
               );
             })
           )}

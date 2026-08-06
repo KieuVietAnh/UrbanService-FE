@@ -43,6 +43,7 @@ export const AssignmentHistoryPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const hasFeedbackId = Boolean(feedbackId);
 
   useEffect(() => {
     const loadFeedback = async () => {
@@ -59,12 +60,18 @@ export const AssignmentHistoryPage = () => {
       }
     };
 
-    if (feedbackId) {
+    if (hasFeedbackId) {
       loadFeedback();
+    } else {
+      setLoading(false);
     }
-  }, [feedbackId]);
+  }, [feedbackId, hasFeedbackId]);
 
   const assignmentEvents = useMemo(() => {
+    if (!hasFeedbackId) {
+      return [];
+    }
+
     const sourceList = Array.isArray(feedback?.assignmentHistory)
       ? feedback.assignmentHistory
       : Array.isArray(feedback?.assignmentHistories)
@@ -103,7 +110,7 @@ export const AssignmentHistoryPage = () => {
         note: feedback?.assignment?.note || 'Phản ánh đã được đưa vào quy trình xử lý hiện tại.',
       },
     ];
-  }, [feedback, feedbackId]);
+  }, [feedback, feedbackId, hasFeedbackId]);
 
   const visibleEvents = useMemo(() => {
     if (activeFilter === 'all') return assignmentEvents;
@@ -118,6 +125,35 @@ export const AssignmentHistoryPage = () => {
             <div className="h-5 w-40 rounded-full bg-slate-100" />
             <div className="mt-4 h-8 w-2/3 rounded-2xl bg-slate-100" />
             <div className="mt-3 h-4 w-1/2 rounded-full bg-slate-100" />
+          </div>
+        </div>
+      </PageTransition>
+    );
+  }
+
+  if (!hasFeedbackId) {
+    return (
+      <PageTransition>
+        <div className="page-container py-4">
+          <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
+            <div className="admin-page-hero p-5 sm:p-7">
+              <div className="space-y-2">
+                <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
+                  <Lucide.History size={14} />
+                  Lịch sử phân công
+                </Badge>
+                <div>
+                  <h1 className="admin-hero-title">Tổng quan lịch sử phân công</h1>
+                  <p className="admin-hero-description mt-2 max-w-2xl">Chọn một phản ánh để xem lịch sử phân công chi tiết, hoặc mở phản ánh từ danh sách phản ánh.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="admin-panel p-5 sm:p-6">
+              <div className="text-sm leading-6 text-slate-600">
+                Trang này hiển thị lịch sử phân công khi bạn truy cập từ chi tiết phản ánh. Vui lòng chọn phản ánh cụ thể để xem các sự kiện phân công, chuyển giao và leo thang.
+              </div>
+            </div>
           </div>
         </div>
       </PageTransition>

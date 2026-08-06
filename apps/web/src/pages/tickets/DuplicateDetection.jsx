@@ -2,7 +2,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { duplicateManagementApi } from '@urbanmind/shared-api';
+import { getStatusIntent } from '@urbanmind/shared-types';
 import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
+import Badge from '../../components/design-system/Badge';
 import * as Lucide from 'lucide-react';
 import { normalizeDuplicateCandidatePayload, extractImageUrls } from './duplicateDetailUtils';
 
@@ -45,25 +47,12 @@ const getStatusLabel = (status) => {
   }
 };
 
-const getStatusTone = (status) => {
-  switch (status) {
-    case 'Pending':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'Confirmed':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'Rejected':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
-    default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
-  }
-};
-
 const getRecommendationText = (confidenceScore) => {
   if (confidenceScore === null) {
     return {
       label: 'Cần phân tích thêm',
       description: 'Đợi AI xử lý để đưa ra đề xuất.',
-      tone: 'border-slate-200 bg-slate-50 text-slate-700',
+      intent: 'neutral',
     };
   }
 
@@ -71,7 +60,7 @@ const getRecommendationText = (confidenceScore) => {
     return {
       label: 'Nhiều khả năng trùng',
       description: 'AI đánh giá khả năng trùng rất cao.',
-      tone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      intent: 'success',
     };
   }
 
@@ -79,14 +68,14 @@ const getRecommendationText = (confidenceScore) => {
     return {
       label: 'Có thể trùng',
       description: 'AI gợi ý khả năng trùng; xem xét thêm.',
-      tone: 'border-blue-200 bg-blue-50 text-blue-700',
+      intent: 'info',
     };
   }
 
   return {
     label: 'Cần kiểm tra cẩn thận',
     description: 'AI cảnh báo chưa đủ bằng chứng trùng lặp.',
-    tone: 'border-amber-200 bg-amber-50 text-amber-700',
+    intent: 'warning',
   };
 };
 
@@ -95,6 +84,13 @@ const getConfidenceValue = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   return parsed > 1 ? parsed : parsed * 100;
+};
+
+const getConfidenceIntent = (confidenceScore) => {
+  if (confidenceScore === null) return 'neutral';
+  if (confidenceScore >= 90) return 'success';
+  if (confidenceScore >= 75) return 'info';
+  return 'warning';
 };
 
 const formatConfidence = (value) => {
@@ -110,6 +106,21 @@ const getValue = (value, fallback = '—') => {
     return trimmed || fallback;
   }
   return value;
+};
+
+const getStatusClass = (s) => {
+  if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
+  const key = String(s).trim().toLowerCase();
+  switch (key) {
+    case 'pending':
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+    case 'confirmed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'rejected':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+  }
 };
 
 // const getNestedValue = (source, path, fallback = '—') => {
@@ -264,7 +275,6 @@ export const DuplicateDetection = () => {
 
   const confidenceScore = getConfidenceValue(selectedCandidate?.confidenceScore ?? selectedCandidate?.confidence);
   const confidenceLevel = confidenceScore === null ? 'Đang chờ phân tích' : confidenceScore >= 90 ? 'Độ tin cậy cao' : confidenceScore >= 75 ? 'Độ tin cậy tốt' : 'Cần kiểm tra thêm';
-  const confidenceTone = confidenceScore === null ? 'border-slate-200 bg-slate-50 text-slate-700' : confidenceScore >= 90 ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : confidenceScore >= 75 ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-700';
   const recommendation = getRecommendationText(confidenceScore);
   const matchingSignals = [
     {
@@ -298,10 +308,10 @@ export const DuplicateDetection = () => {
       <section className="admin-panel overflow-hidden rounded-[28px] p-6 sm:p-8">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-2xl space-y-3">
-            <div className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-700">
+            <Badge intent="info" className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
               <Lucide.ScanSearch size={14} className="mr-2" />
               Hệ thống đánh giá trùng lặp
-            </div>
+            </Badge>
             <div>
               <h2 className="admin-section-title text-3xl sm:text-[2rem]">Xử lý trùng lặp</h2>
               <p className="admin-section-description mt-2 max-w-xl text-base">
@@ -359,24 +369,25 @@ export const DuplicateDetection = () => {
                 const isSelected = itemId === selectedCandidateId;
                 const confidence = getConfidenceValue(item.confidenceScore ?? item.confidence);
                 const isHighConfidence = confidence !== null && confidence >= 90;
-                const status = getStatusLabel(item.status || 'Pending');
-                const statusTone = getStatusTone(item.status || 'Pending');
+                const statusKey = item.status || 'Pending';
+                const status = getStatusLabel(statusKey);
+                const statusIntent = getStatusIntent(statusKey);
 
                 return (
                   <button
                     key={itemId}
                     type="button"
                     onClick={() => setSelectedCandidateId(itemId)}
-                    className={`group flex h-full w-full flex-col rounded-[20px] border p-4 text-left transition-all ${isSelected ? 'border-blue-300 bg-blue-50/70 shadow-[0_18px_50px_-18px_rgba(37,99,235,0.4)]' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+                    className={`group flex h-full w-full flex-col rounded-[20px] border p-4 text-left transition-all ${isSelected ? 'border-slate-300 bg-slate-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold text-slate-900">{itemId || '—'}</div>
                         <div className="mt-1 text-xs text-slate-500 whitespace-nowrap">{status}</div>
                       </div>
-                      <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] whitespace-nowrap ${statusTone}`}>
+                      <Badge intent={statusIntent} className={`${getStatusClass(statusKey)} rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] whitespace-nowrap`}>
                         {status}
-                      </div>
+                      </Badge>
                     </div>
 
                     <div className="mt-4 space-y-2 text-sm text-slate-600">
@@ -385,9 +396,13 @@ export const DuplicateDetection = () => {
                           <Lucide.BarChart3 size={14} />
                           Điểm tương đồng
                         </span>
-                        <span className={`font-semibold ${isHighConfidence ? 'text-emerald-700' : 'text-slate-800'} whitespace-nowrap`}>
-                          {formatConfidence(item.confidenceScore ?? item.confidence)}
-                        </span>
+                        {isHighConfidence ? (
+                          <Badge intent="success" className="font-semibold whitespace-nowrap">
+                            {formatConfidence(item.confidenceScore ?? item.confidence)}
+                          </Badge>
+                        ) : (
+                          <span className="font-semibold text-slate-800 whitespace-nowrap">{formatConfidence(item.confidenceScore ?? item.confidence)}</span>
+                        )}
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap text-slate-500">
@@ -413,10 +428,10 @@ export const DuplicateDetection = () => {
                     </div>
 
                     {isHighConfidence && (
-                      <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                      <Badge intent="success" className="mt-4 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] whitespace-nowrap">
                         <Lucide.Sparkles size={12} />
                         Độ tin cậy cao
-                      </div>
+                      </Badge>
                     )}
                   </button>
                 );
@@ -439,12 +454,12 @@ export const DuplicateDetection = () => {
                       <div className="mt-2 text-[3rem] font-black leading-none text-slate-900">{formatConfidence(selectedCandidate?.confidenceScore ?? selectedCandidate?.confidence)}</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 max-w-full">
-                      <div className={`max-w-[240px] truncate rounded-full border px-4 py-2 text-sm font-semibold whitespace-nowrap ${recommendation.tone}`}>
+                      <Badge intent={recommendation.intent} className="max-w-[240px] truncate rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap">
                         {recommendation.label}
-                      </div>
-                      <div className={`max-w-[220px] truncate rounded-full border px-4 py-2 text-sm font-semibold whitespace-nowrap ${confidenceTone}`}>
+                      </Badge>
+                      <Badge intent={getConfidenceIntent(confidenceScore)} className="max-w-[220px] truncate rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap">
                         {confidenceLevel}
-                      </div>
+                      </Badge>
                     </div>
                   </div>
 
@@ -453,8 +468,10 @@ export const DuplicateDetection = () => {
                         <div className="text-[10px] uppercase tracking-[0.24em] text-slate-500">Phản ánh A</div>
                       <div className="mt-3 text-sm font-semibold text-slate-900 line-clamp-2 leading-6">{selectedMeta.titleA}</div>
                     </div>
-                    <div className="rounded-[20px] border border-blue-200 bg-blue-50 p-4 min-h-[96px]">
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-blue-700 whitespace-nowrap">Đề xuất AI</div>
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 min-h-[96px]">
+                        <Badge intent="info" className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
+                          Đề xuất AI
+                        </Badge>
                       <div className="mt-3 text-sm font-semibold text-slate-900 line-clamp-2 overflow-hidden leading-6">{recommendation.description}</div>
                     </div>
                     <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4 min-h-[96px]">
@@ -471,10 +488,10 @@ export const DuplicateDetection = () => {
                 <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Trạng thái</div>
                       <div className="mt-2 text-lg font-semibold text-slate-900 truncate">{selectedMeta.status}</div>
                     </div>
-                    <div className={`rounded-full border px-3 py-1.5 text-sm font-semibold whitespace-nowrap ${getStatusTone(selectedCandidate?.status || 'Pending')}`}>
-                    {getStatusLabel(selectedCandidate?.status || 'Pending')}
+                    <Badge intent={getStatusIntent(selectedCandidate?.status || 'Pending')} className={`${getStatusClass(selectedCandidate?.status || 'Pending')} px-3 py-1.5 text-sm font-semibold whitespace-nowrap`}>
+                      {getStatusLabel(selectedCandidate?.status || 'Pending')}
+                    </Badge>
                   </div>
-                </div>
                 <div className="mt-6 space-y-3 text-sm text-slate-600">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Danh mục</div>
@@ -578,7 +595,9 @@ export const DuplicateDetection = () => {
                 <h3 className="mt-2 text-xl font-semibold text-slate-900">Tại sao AI cho rằng hai phản ánh trùng nhau</h3>
                 <p className="mt-3 text-sm leading-6 text-slate-600">AI đánh giá dựa trên sự tương đồng về nội dung, vị trí và thời gian. Hãy dùng những chỉ số sau để xác nhận quyết định.</p>
               </div>
-              <div className={`rounded-full border px-4 py-2 text-sm font-semibold whitespace-nowrap ${confidenceTone}`}>{confidenceLevel}</div>
+              <Badge intent={getConfidenceIntent(confidenceScore)} className="rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap">
+                {confidenceLevel}
+              </Badge>
             </div>
 
             <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -589,9 +608,9 @@ export const DuplicateDetection = () => {
                     {matchingSignals.map((signal) => (
                       <div key={signal.label} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                         <div className="min-w-0 text-sm font-medium text-slate-900 truncate">{signal.label}</div>
-                        <div className={`max-w-[88px] truncate rounded-full border px-3 py-1 text-xs font-semibold ${signal.active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                        <Badge intent={signal.active ? 'success' : 'neutral'} className="max-w-[88px] truncate rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap">
                           {signal.active ? 'Trùng' : 'Kiểm tra'}
-                        </div>
+                        </Badge>
                       </div>
                     ))}
                   </div>
@@ -607,15 +626,24 @@ export const DuplicateDetection = () => {
               </div>
 
               <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Rủi ro tiềm ẩn</div>
-                    <h4 className="mt-2 text-base font-semibold text-slate-900">Nếu ghép nhầm</h4>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Rủi ro tiềm ẩn</div>
+                      <h4 className="mt-2 text-base font-semibold text-slate-900">Nếu ghép nhầm</h4>
+                    </div>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-2xl status-warning">
+                      <Lucide.AlertTriangle size={16} />
+                    </div>
                   </div>
-                  <Lucide.AlertTriangle size={20} className="text-amber-500" />
-                </div>
                 <ul className="mt-4 space-y-3 text-sm text-slate-700">
-                  <li className="rounded-2xl border border-amber-200 bg-amber-50 p-3">Thông tin khác nhau có thể khiến phản ánh bị mất dấu vấn đề riêng.</li>
+                  <li className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-slate-700">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-2xl status-warning">
+                        <Lucide.AlertTriangle size={14} />
+                      </div>
+                      <span>Thông tin khác nhau có thể khiến phản ánh bị mất dấu vấn đề riêng.</span>
+                    </div>
+                  </li>
                   <li className="rounded-2xl border border-rose-200 bg-rose-50 p-3">Nếu không giống, sẽ gây nhầm lẫn khi theo dõi giải quyết sự cố.</li>
                 </ul>
               </div>

@@ -6,6 +6,8 @@ import { LoadingSpinner, CompletionDocumentsCard, ConfirmationModal } from '@urb
 import { canTransitionProviderReportStatus, normalizeProviderReportStatus } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
+import Badge from '../../components/design-system/Badge';
+import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 import Button from '../../components/design-system/Button';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -62,14 +64,6 @@ const STEPS = [
   { id: 'resolution',           label: 'Kết quả xử lý',        icon: Lucide.CheckSquare,     description: 'Gửi kết quả xử lý chờ phê duyệt',  requiresInProgress: true },
   { id: 'submitted',            label: 'Chờ phê duyệt',        icon: Lucide.Send,            description: 'Đã gửi — chờ quản lý phê duyệt',    terminal: true },
 ];
-
-/* ─── Status chip colours ────────────────────────────────────────────────── */
-
-const statusChip = () => ({
-  backgroundColor: '#f8fafc',
-  color: '#475569',
-  border: '1px solid #e2e8f0',
-});
 
 /* ─── Design tokens (inline so only this file changes) ───────────────────── */
 
@@ -907,9 +901,9 @@ export const ProviderReportWorkspacePage = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
-            <span style={{ ...statusChip(currentStatus), padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.8 }}>
+            <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
               {currentStatus || 'Không rõ'}
-            </span>
+            </Badge>
             {feedbackId && (
               <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
                 <Lucide.ExternalLink size={13} /> Mở phản ánh
@@ -1032,9 +1026,9 @@ export const ProviderReportWorkspacePage = () => {
                 title="Tổng quan & Cập nhật trạng thái"
                 sub="Xem lại thông tin nhà thầu và cập nhật trạng thái báo cáo trước khi tiếp tục."
                 action={
-                  <span style={{ ...statusChip(currentStatus), padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.8 }}>
+                  <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
                     {currentStatus || 'Không rõ'}
-                  </span>
+                  </Badge>
                 }
               />
 
@@ -1202,9 +1196,9 @@ export const ProviderReportWorkspacePage = () => {
                 title="Tài liệu hoàn thành"
                 sub={canUploadCompletionDocuments ? 'Tải lên bằng chứng hoàn thành từ nhà thầu trước khi tiếp tục.' : 'Bước này có thể xem lại nội dung tài liệu đã tải lên sau khi báo cáo được hoàn tất.'}
                 action={canUploadCompletionDocuments ? null : (
-                  <span style={{ ...statusChip(currentStatus), padding: '0.2rem 0.65rem', borderRadius: '9999px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.8 }}>
+                  <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
                     {currentStatus === 'Done' ? 'Đã gửi kết quả' : 'Xem lại'}
-                  </span>
+                  </Badge>
                 )}
               />
 

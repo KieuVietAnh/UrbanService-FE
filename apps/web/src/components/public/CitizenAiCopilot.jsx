@@ -394,6 +394,10 @@ const selectConversation = async (conversationId) => {
         />
       </button>
 
+      {chatOpen ? (
+        <div className="fixed inset-0 z-[2198]" onClick={() => setChatOpen(false)} />
+      ) : null}
+
       <div
         className={`fixed inset-y-0 right-0 z-[2200] w-[min(24rem,calc(100vw-1rem))] transform border-l border-base-300 bg-base-100 shadow-2xl transition-transform duration-300 ${
           chatOpen ? 'translate-x-0' : 'translate-x-full'

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
+import Badge from '../../components/design-system/Badge';
+import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 import * as Lucide from 'lucide-react';
 
 const formatDate = (value) => {
@@ -23,6 +25,44 @@ export default function ConversationQueuePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const getStatusClass = (s) => {
+    if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
+    const key = String(s).trim().toLowerCase();
+    switch (key) {
+      case 'aireviewed':
+      case 'ai reviewed':
+      case 'ai_reviewed':
+        return 'border-violet-200 bg-violet-50 text-violet-700';
+      case 'submitted':
+        return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+      case 'verified':
+        return 'border-sky-200 bg-sky-50 text-sky-700';
+      case 'assigned':
+        return 'border-cyan-200 bg-cyan-50 text-cyan-700';
+      case 'inprogress':
+      case 'in progress':
+        return 'border-purple-200 bg-purple-50 text-purple-700';
+      case 'waitingcitizen':
+      case 'waiting citizen':
+      case 'submittedforapproval':
+        return 'border-amber-200 bg-amber-50 text-amber-700';
+      case 'needrework':
+        return 'border-orange-200 bg-orange-50 text-orange-700';
+      case 'resolved':
+        return 'border-teal-200 bg-teal-50 text-teal-700';
+      case 'approved':
+        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      case 'closed':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      case 'rejected':
+        return 'border-rose-200 bg-rose-50 text-rose-700';
+      case 'duplicate':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      default:
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+    }
+  };
+
   useEffect(() => {
     let active = true;
 
@@ -32,14 +72,39 @@ export default function ConversationQueuePage() {
       try {
         const response = await managementFeedbackApi.getFeedbacks({ pageIndex: 0, pageSize: 50 });
         const feedbacks = Array.isArray(response?.items) ? response.items : [];
-        if (!active) return;
-        setItems(feedbacks.map((item) => ({
+        const initialItems = feedbacks.map((item) => ({
           feedbackId: item?.feedbackId || item?.id,
           title: item?.title || 'Không có tiêu đề',
           citizenName: item?.userName || item?.reporterName || 'Không rõ',
-          messageCount: item?.messageCount ?? item?.interactionMessageCount ?? 0,
+          messageCount: Number(item?.commentCount ?? item?.messageCount ?? item?.interactionMessageCount ?? 0),
           lastActivity: item?.updatedAt || item?.createdAt || null,
           status: item?.status || '',
+        }));
+        if (!active) return;
+
+        setItems(initialItems);
+
+        const resolvedCounts = await Promise.allSettled(initialItems.map(async (item) => {
+          if (Number(item.messageCount) > 0) {
+            return item.messageCount;
+          }
+          try {
+            const messages = await managementFeedbackApi.getFeedbackMessages(item.feedbackId, { includeInternal: true });
+            return Array.isArray(messages) ? messages.length : 0;
+          } catch {
+            return item.messageCount ?? 0;
+          }
+        }));
+
+        if (!active) return;
+
+        setItems(initialItems.map((item, index) => ({
+          ...item,
+          messageCount: Number(
+            resolvedCounts[index]?.status === 'fulfilled'
+              ? resolvedCounts[index].value
+              : item.messageCount
+          ),
         })));
       } catch (err) {
         if (!active) return;
@@ -116,13 +181,13 @@ export default function ConversationQueuePage() {
                       <div className="font-semibold text-slate-900">{item.title}</div>
                     </td>
                     <td className="px-4 py-4 text-slate-600">{item.citizenName}</td>
-                    <td className="px-4 py-4 text-slate-600">{item.messageCount}</td>
+                    <td className="px-4 py-4 text-slate-600">{item.messageCount ?? 0}</td>
                     <td className="px-4 py-4 text-slate-600">{formatDate(item.lastActivity)}</td>
                     <td className="px-4 py-4">
-                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-600">
+                      <Badge intent={getBadgeIntent(item.status, 'status')} className={`${getStatusClass(item.status)} inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]`}>
                         <Lucide.MessageSquareText size={12} />
                         {item.status || '—'}
-                      </span>
+                      </Badge>
                     </td>
                   </tr>
                 ))}

@@ -14,10 +14,11 @@ test('feedback module stays active on nested feedback and report routes', () => 
   assert.equal(isSystemStaffMenuItemActive(feedbackItem, '/staff/assignment-history/10'), true);
 });
 
-test('conversation management is not exposed as a standalone sidebar item', () => {
-  const item = sidebarMenu.find((entry) => entry.name === 'Quản Lý Hội Thoại');
+test('conversation management is exposed as a standalone sidebar item', () => {
+  const item = sidebarMenu.find((entry) => entry.name === 'Quản lý Conversation');
 
-  assert.equal(item, undefined);
+  assert.equal(item?.path, '/staff/conversations');
+  assert.equal(isSystemStaffMenuItemActive(item, '/staff/conversations'), true);
 });
 
 test('system staff sidebar exposes grouped sections without changing route matching', () => {

@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
-import { managementTypes } from '@urbanmind/shared-types';
+import { managementTypes, getPriorityIntent, getStatusIntent } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { LoadingSpinner, EmptyState, ConfirmationModal } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
@@ -15,7 +15,6 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
-import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 
 const CITIZEN_NOTIFICATION_TEMPLATES = [
   {
@@ -100,6 +99,63 @@ export const ManagementFeedbackDetailPage = () => {
 
   const getFeedbackCategoryId = (currentFeedback) => {
     return currentFeedback?.categoryId ?? currentFeedback?.category?.categoryId ?? '';
+  };
+
+  const getStatusClass = (s) => {
+    if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
+    const key = String(s).trim().toLowerCase();
+    switch (key) {
+      case managementTypes.feedbackStatus.AI_REVIEWED.toLowerCase():
+      case 'aireviewed':
+      case 'ai reviewed':
+      case 'ai_reviewed':
+        return 'border-violet-200 bg-violet-50 text-violet-700';
+      case 'submitted':
+        return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+      case managementTypes.feedbackStatus.VERIFIED.toLowerCase():
+      case 'verified':
+        return 'border-sky-200 bg-sky-50 text-sky-700';
+      case managementTypes.feedbackStatus.ASSIGNED.toLowerCase():
+      case 'assigned':
+        return 'border-cyan-200 bg-cyan-50 text-cyan-700';
+      case 'inprogress':
+      case 'in progress':
+      case managementTypes.feedbackStatus.IN_PROGRESS.toLowerCase():
+        return 'border-purple-200 bg-purple-50 text-purple-700';
+      case 'waitingcitizen':
+      case 'waiting citizen':
+      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL.toLowerCase():
+      case 'submittedforapproval':
+        return 'border-amber-200 bg-amber-50 text-amber-700';
+      case managementTypes.feedbackStatus.NEED_REWORK.toLowerCase():
+      case 'needrework':
+        return 'border-orange-200 bg-orange-50 text-orange-700';
+      case managementTypes.feedbackStatus.APPROVED.toLowerCase():
+      case 'approved':
+        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      case 'resolved':
+        return 'border-teal-200 bg-teal-50 text-teal-700';
+      case 'closed':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      case 'rejected':
+        return 'border-rose-200 bg-rose-50 text-rose-700';
+      case 'duplicate':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      default:
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+    }
+  };
+
+  const getPriorityClass = (p) => {
+    if (!p) return 'badge-priority-low';
+    const key = String(p).trim().toLowerCase();
+    switch (key) {
+      case 'critical': return 'badge-priority-critical';
+      case 'high': return 'badge-priority-high';
+      case 'medium': return 'badge-priority-medium';
+      case 'low': return 'badge-priority-low';
+      default: return 'badge-priority-low';
+    }
   };
 
   // Edit mode
@@ -765,7 +821,7 @@ export const ManagementFeedbackDetailPage = () => {
       [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: {
         title: 'Đã nộp duyệt',
         subtitle: 'Kết quả sẵn sàng chờ phê duyệt',
-        accent: 'teal',
+        accent: 'amber',
         icon: 'FileCheck2',
       },
       [managementTypes.feedbackStatus.APPROVED]: {
@@ -1119,15 +1175,15 @@ export const ManagementFeedbackDetailPage = () => {
                 <h1 className="admin-hero-title">{feedback.title}</h1>
                 <div className="flex items-center gap-2 mt-2">
                   {isConfirmedDuplicate ? (
-                    <Badge intent="neutral" className="gap-1 border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                    <Badge intent="neutral" className="gap-1 px-2 py-1 text-[10px] font-bold">
                       <Lucide.GitMerge size={12} aria-hidden="true" />
                       Phản ánh trùng
                     </Badge>
                   ) : null}
-                  <Badge intent={getBadgeIntent(feedback.status, 'status')} className="px-2 py-1 text-[10px] font-bold">
+                  <Badge intent={getStatusIntent(feedback.status)} className={`${getStatusClass(feedback.status)} px-2 py-1 text-[10px] font-bold`}>
                     {getStatusLabel(feedback.status)}
                   </Badge>
-                  <Badge intent={getBadgeIntent(feedback.priority, 'priority')} className="px-2 py-1 text-[10px] font-bold">
+                  <Badge intent={getPriorityIntent(feedback.priority)} className={`${getPriorityClass(feedback.priority)} px-2 py-1 text-[10px] font-bold`}>
                     {getPriorityLabel(feedback.priority)}
                   </Badge>
                 </div>
@@ -1712,7 +1768,7 @@ export const ManagementFeedbackDetailPage = () => {
                   <div className="text-sm font-semibold text-slate-900">{feedback ? getStatusLabel(feedback.status) : 'Đang tải...'}</div>
                   <div className="mt-1 text-sm text-slate-500">Thông báo đề xuất sẽ được đánh dấu phù hợp với trạng thái hiện tại.</div>
                 </div>
-                <Badge intent={feedback?.status ? getBadgeIntent(feedback.status, 'status') : 'neutral'} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
+                <Badge intent={feedback?.status ? getStatusIntent(feedback.status) : 'neutral'} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
                   {feedback ? getStatusLabel(feedback.status) : 'Đang tải'}
                 </Badge>
               </div>
@@ -2264,7 +2320,7 @@ export const ManagementFeedbackDetailPage = () => {
                     {nextStatusOptions.map((nextStatus) => (
                       <Badge
                         key={nextStatus}
-                        intent={getBadgeIntent(nextStatus, 'status')}
+                        intent={getStatusIntent(nextStatus)}
                         className="px-3 py-1 text-[11px] font-semibold"
                       >
                         {getStatusLabel(nextStatus)}

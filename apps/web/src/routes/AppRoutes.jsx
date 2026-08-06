@@ -325,6 +325,15 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/staff/assignment-history" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <AssignmentHistoryPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/staff/conversations" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>

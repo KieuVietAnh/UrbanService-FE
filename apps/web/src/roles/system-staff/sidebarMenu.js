@@ -21,9 +21,14 @@ const menuItems = [
       '/staff/provider-reports',
       '/staff/review',
       '/staff/completed-review',
-      '/staff/request-info',
-      '/staff/assignment-history'
+      '/staff/request-info'
     ]
+  },
+  {
+    name: 'Quản lý Conversation',
+    path: '/staff/conversations',
+    icon: 'MessageSquare',
+    activePatterns: ['/staff/conversations']
   },
   {
     name: 'Quản Lý Cảnh Báo Khu Vực',
@@ -72,8 +77,8 @@ export const systemStaffSidebarSections = [
   },
   {
     id: 'coordination',
-    title: 'Điều Phối & Giám Sát',
-    items: menuItems.filter((item) => ['Quản Lý Cảnh Báo Khu Vực',   'Danh bạ Điều phối viên', 'Xử Lý Trùng Lặp'].includes(item.name))
+    title: 'Điều phối & Giám Sát',
+    items: menuItems.filter((item) => ['Quản lý Conversation', 'Quản Lý Cảnh Báo Khu Vực', 'Danh bạ Điều phối viên', 'Xử Lý Trùng Lặp'].includes(item.name))
   },
   {
     id: 'system',
