@@ -95,8 +95,8 @@ export default function StaffCommunicationSurface({ feedbackTitle }) {
       </div>
 
       {panel ? (
-        <div className="fixed inset-0 z-[2600] flex justify-end bg-primary/15 backdrop-blur-[2px]">
-          <div className="flex h-screen w-full max-w-[32rem] flex-col border-l border-primary/20 bg-white shadow-[0_24px_80px_rgba(11,86,217,0.24)]">
+        <div className="fixed inset-0 z-[2600] flex justify-end bg-primary/15 backdrop-blur-[2px]" onClick={() => setPanel(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="flex h-screen w-full max-w-[32rem] flex-col border-l border-primary/20 bg-white shadow-[0_24px_80px_rgba(11,86,217,0.24)]">
             <div className="flex items-center justify-between border-b border-primary/20 bg-primary/5 px-5 py-4">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">
@@ -147,7 +147,7 @@ export default function StaffCommunicationSurface({ feedbackTitle }) {
                                 Internal
                               </span>
                             ) : null}
-                            <span className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${isInternal ? 'text-amber-700' : isStaff ? 'text-slate-200' : 'text-slate-400'}`}>
+                            <span className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${isInternal ? 'text-amber-700' : isStaff ? 'text-violet-700' : 'text-slate-400'}`}>
                               {message?.userFullName || 'Không rõ'}
                             </span>
                           </div>

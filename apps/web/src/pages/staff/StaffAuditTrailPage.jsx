@@ -21,21 +21,29 @@ const formatDateTime = (value) => {
   }
 };
 
+const ACTION_ICON_CLASSES = {
+  danger: 'status-danger',
+  success: 'status-success',
+  warning: 'status-warning',
+  info: 'status-info',
+  neutral: 'status-neutral',
+};
+
 const getActionMeta = (action = '') => {
   const normalized = `${action}`.toLowerCase();
   if (normalized.includes('delete') || normalized.includes('remove')) {
-    return { label: 'Xóa', icon: Lucide.Trash2, tone: 'border-rose-200 bg-rose-50 text-rose-700', dot: 'bg-rose-500' };
+    return { label: 'Xóa', icon: Lucide.Trash2, intent: 'danger' };
   }
   if (normalized.includes('create') || normalized.includes('add')) {
-    return { label: 'Tạo', icon: Lucide.PlusCircle, tone: 'border-emerald-200 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' };
+    return { label: 'Tạo', icon: Lucide.PlusCircle, intent: 'success' };
   }
   if (normalized.includes('update') || normalized.includes('change') || normalized.includes('edit')) {
-    return { label: 'Cập nhật', icon: Lucide.PencilLine, tone: 'border-amber-200 bg-amber-50 text-amber-700', dot: 'bg-amber-500' };
+    return { label: 'Cập nhật', icon: Lucide.PencilLine, intent: 'warning' };
   }
   if (normalized.includes('login') || normalized.includes('auth')) {
-    return { label: 'Truy cập', icon: Lucide.LogIn, tone: 'border-sky-200 bg-sky-50 text-sky-700', dot: 'bg-sky-500' };
+    return { label: 'Truy cập', icon: Lucide.LogIn, intent: 'info' };
   }
-  return { label: 'Theo dõi', icon: Lucide.Activity, tone: 'border-slate-200 bg-slate-50 text-slate-700', dot: 'bg-slate-500' };
+  return { label: 'Theo dõi', icon: Lucide.Activity, intent: 'neutral' };
 };
 
 const readValue = (value) => {
@@ -181,7 +189,7 @@ export const StaffAuditTrailPage = () => {
                 <article key={log.auditId} className="admin-panel p-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 flex-1 gap-3">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${actionMeta.tone}`}>
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${ACTION_ICON_CLASSES[actionMeta.intent] || ACTION_ICON_CLASSES.neutral}`}>
                         <ActionIcon size={18} />
                       </div>
                       <div className="min-w-0 flex-1">

@@ -2,6 +2,8 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { duplicateManagementApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
+import Badge from '../../components/design-system/Badge';
+import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 import * as Lucide from 'lucide-react';
 import { normalizeDuplicateCandidatePayload, extractImageUrls } from './duplicateDetailUtils';
 
@@ -65,6 +67,21 @@ const getDistanceKm = (coordsA, coordsB) => {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+};
+
+const getStatusClass = (s) => {
+  if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
+  const key = String(s).trim().toLowerCase();
+  switch (key) {
+    case 'pending':
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+    case 'confirmed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'rejected':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+  }
 };
 
 const getNormalizedConfidence = (value) => {
@@ -425,16 +442,22 @@ export const DuplicateDetailPage = () => {
             </div>
             <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Trạng thái</div>
-              <div className="mt-3 text-3xl font-black text-slate-900">{statusLabel}</div>
+              <div className="mt-3">
+                <Badge intent={getBadgeIntent(candidate?.status)} className={`${getStatusClass(candidate?.status)} px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]`}>
+                  {statusLabel}
+                </Badge>
+              </div>
             </div>
           </div>
 
           {!parentIsEligibleMaster && candidateIsPending && (
-            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              <Lucide.AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <div className="flex h-8 w-8 items-center justify-center rounded-2xl status-warning">
+                <Lucide.AlertTriangle size={16} />
+              </div>
               <div>
                 <div className="font-semibold">Chưa thể xác nhận phản ánh trùng</div>
-                <p className="mt-1 text-amber-800">{confirmBlockedMessage}</p>
+                <p className="mt-1 text-slate-700">{confirmBlockedMessage}</p>
               </div>
             </div>
           )}
@@ -447,7 +470,9 @@ export const DuplicateDetailPage = () => {
                   <div className="mt-2 text-lg font-semibold text-slate-900">{getTextValue(primaryFeedback?.title, '—')}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">A</div>
+                  <Badge intent="neutral" className="rounded-full px-3 py-1 text-[11px] font-semibold">
+                    A
+                  </Badge>
                 </div>
               </div>
 
@@ -480,9 +505,12 @@ export const DuplicateDetailPage = () => {
                     <div key={`A-${row.label}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-semibold text-slate-900">{row.label}</div>
-                        <div className={`rounded-full px-2 py-1 text-[11px] font-semibold ${row.match === 'same' ? 'bg-emerald-100 text-emerald-700' : row.match === 'similar' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>
+                        <Badge
+                          intent={row.match === 'same' ? 'success' : row.match === 'similar' ? 'info' : 'neutral'}
+                          className="rounded-full px-2 py-1 text-[11px] font-semibold whitespace-nowrap"
+                        >
                           {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
-                        </div>
+                        </Badge>
                       </div>
                       <div className="mt-2 text-sm text-slate-700">{row.a}</div>
                     </div>
@@ -498,7 +526,9 @@ export const DuplicateDetailPage = () => {
                   <div className="mt-2 text-lg font-semibold text-slate-900">{getTextValue(duplicateFeedback?.title, '—')}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">B</div>
+                  <Badge intent="neutral" className="rounded-full px-3 py-1 text-[11px] font-semibold">
+                    B
+                  </Badge>
                 </div>
               </div>
 
@@ -531,9 +561,12 @@ export const DuplicateDetailPage = () => {
                     <div key={`B-${row.label}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm font-semibold text-slate-900">{row.label}</div>
-                        <div className={`rounded-full px-2 py-1 text-[11px] font-semibold ${row.match === 'same' ? 'bg-emerald-100 text-emerald-700' : row.match === 'similar' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>
+                        <Badge
+                          intent={row.match === 'same' ? 'success' : row.match === 'similar' ? 'info' : 'neutral'}
+                          className="rounded-full px-2 py-1 text-[11px] font-semibold whitespace-nowrap"
+                        >
                           {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
-                        </div>
+                        </Badge>
                       </div>
                       <div className="mt-2 text-sm text-slate-700">{row.b}</div>
                     </div>
@@ -556,7 +589,7 @@ export const DuplicateDetailPage = () => {
               {evidenceItems.slice(0, 4).map((item) => (
                 <div key={item.title} className="rounded-3xl border border-slate-200 bg-white p-4">
                   <div className="flex items-center gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-2xl ${item.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-2xl ${item.active ? 'status-success' : 'status-neutral'}`}>
                       <Lucide.CheckCircle2 size={18} />
                     </div>
                     <div>
@@ -575,8 +608,8 @@ export const DuplicateDetailPage = () => {
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-amber-50 p-2 text-amber-700">
-                <Lucide.AlertTriangle size={18} />
+              <div className="flex h-8 w-8 items-center justify-center rounded-2xl status-warning">
+                <Lucide.AlertTriangle size={16} />
               </div>
               <div className="space-y-2">
                 <h3 className="text-lg font-black text-slate-900">Xác nhận phản ánh trùng lặp?</h3>
