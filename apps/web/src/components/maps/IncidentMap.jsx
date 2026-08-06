@@ -432,10 +432,34 @@ export const IncidentMap = ({
     });
   };
 
-  const markers = useMemo(() => {
-    if (!Array.isArray(incidents)) return [];
+  const incidentsWithFocusedMarker = useMemo(() => {
+    const source = Array.isArray(incidents) ? incidents : [];
+    const focusLat = Number(focusLatitude);
+    const focusLng = Number(focusLongitude);
+    const hasFocusedTicket = source.some((incident) => (
+      String(incident?.feedbackId) === String(focusFeedbackId)
+    ));
 
-    const validIncidents = incidents.filter((incident) => isValidLocation(incident.latitude, incident.longitude));
+    if (!focusFeedbackId || !isValidLocation(focusLat, focusLng) || hasFocusedTicket) {
+      return source;
+    }
+
+    return [
+      ...source,
+      {
+        feedbackId: focusFeedbackId,
+        latitude: focusLat,
+        longitude: focusLng,
+        title: 'Phản ánh đang xem',
+        categoryName: 'Chưa có thông tin',
+        status: '',
+        priority: '',
+      },
+    ];
+  }, [focusFeedbackId, focusLatitude, focusLongitude, incidents]);
+
+  const markers = useMemo(() => {
+    const validIncidents = incidentsWithFocusedMarker.filter((incident) => isValidLocation(incident.latitude, incident.longitude));
     const groups = [];
     const threshold = 40; // khoảng cách gần nhau (m)
 
@@ -456,7 +480,7 @@ export const IncidentMap = ({
     });
 
     return groups;
-  }, [incidents]);
+  }, [incidentsWithFocusedMarker]);
 
   return (
     <>

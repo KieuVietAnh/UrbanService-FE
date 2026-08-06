@@ -28,6 +28,26 @@ const normalizeStatus = (value) => String(value || '')
   .replace(/[^a-zA-Z0-9]/g, '')
   .toLocaleLowerCase('en-US');
 
+const readTotalCount = (response, fallback = 0) => {
+  const candidates = [
+    response?.totalCount,
+    response?.totalItems,
+    response?.totalRecords,
+    response?.data?.totalCount,
+    response?.data?.totalItems,
+    response?.data?.totalRecords,
+    response?.result?.totalCount,
+    response?.result?.totalItems,
+    response?.result?.totalRecords,
+  ];
+
+  const total = candidates
+    .map(Number)
+    .find((value) => Number.isFinite(value) && value >= 0);
+
+  return total ?? fallback;
+};
+
 const normalizeResponse = (response) => {
   if (Array.isArray(response)) return response;
 
@@ -119,6 +139,11 @@ export const AdminIncidentMapPage = () => {
     ? cachedDashboard.tickets.map(normalizeIncident)
     : [];
   const [incidents, setIncidents] = useState(cachedIncidents);
+  const [totalFeedbackCount, setTotalFeedbackCount] = useState(() => (
+    Number.isFinite(Number(cachedDashboard?.ticketTotal))
+      ? Number(cachedDashboard.ticketTotal)
+      : cachedIncidents.length
+  ));
   const [loading, setLoading] = useState(cachedIncidents.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -148,8 +173,13 @@ export const AdminIncidentMapPage = () => {
       if (requestId !== incidentRequestIdRef.current) return;
 
       const nextIncidents = normalizeResponse(response).map(normalizeIncident);
+      const nextTotalFeedbackCount = readTotalCount(response, nextIncidents.length);
       setIncidents(nextIncidents);
-      writeAdminDashboardCache({ tickets: nextIncidents, ticketTotal: nextIncidents.length });
+      setTotalFeedbackCount(nextTotalFeedbackCount);
+      writeAdminDashboardCache({
+        tickets: nextIncidents,
+        ticketTotal: nextTotalFeedbackCount,
+      });
     } catch (err) {
       if (requestId !== incidentRequestIdRef.current) return;
       setError(err?.message || 'Không thể tải dữ liệu bản đồ phản ánh.');
@@ -325,7 +355,7 @@ export const AdminIncidentMapPage = () => {
   };
 
   const filters = [
-    { key: MAP_FILTERS.ALL, label: 'Tất cả', value: validIncidents.length, icon: Lucide.MapPinned },
+    { key: MAP_FILTERS.ALL, label: 'Tổng phản ánh', value: totalFeedbackCount, icon: Lucide.MapPinned },
     { key: MAP_FILTERS.PROCESSING, label: 'Đang xử lý', value: processingIncidents.length, icon: Lucide.RefreshCw },
     { key: MAP_FILTERS.ENDED, label: 'Đã kết thúc', value: endedIncidents.length, icon: Lucide.CheckCircle2 },
     { key: MAP_FILTERS.COORDINATES, label: 'Có tọa độ', value: validIncidents.length, icon: Lucide.Navigation },
@@ -338,8 +368,7 @@ export const AdminIncidentMapPage = () => {
           <div className="flex min-w-0 items-start gap-4">
             <div className="admin-hero-icon"><Lucide.MapPinned size={22} /></div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">Điều hành không gian</p>
-              <h1 className="admin-hero-title mt-1">Bản đồ phản ánh</h1>
+              <h1 className="admin-hero-title">Bản đồ phản ánh</h1>
               <p className="admin-hero-description">Theo dõi vị trí sự cố, lọc nhanh theo trạng thái và mở chi tiết phản ánh trong giao diện quản trị.</p>
             </div>
           </div>
@@ -377,8 +406,8 @@ export const AdminIncidentMapPage = () => {
       <section ref={mapSectionRef} id="admin-incident-map" className="admin-panel overflow-hidden p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="admin-section-title">{visibleIncidents.length} vị trí đang hiển thị</h2>
-            <p className="admin-section-description">Bấm marker để xem thông tin và mở chi tiết phản ánh.</p>
+            <h2 className="admin-section-title">{visibleIncidents.length} phản ánh có tọa độ đang hiển thị</h2>
+            <p className="admin-section-description">Bản đồ chỉ hiển thị phản ánh có tọa độ hợp lệ. Bấm marker để xem thông tin và mở chi tiết.</p>
           </div>
           <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
             <span className="h-2 w-2 rounded-full bg-current" /> Dữ liệu quản trị
