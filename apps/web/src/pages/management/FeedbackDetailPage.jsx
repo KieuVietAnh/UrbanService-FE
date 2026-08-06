@@ -6,6 +6,37 @@ import { managementTypes } from '@urbanmind/shared-types';
 import { getAdminFeedbackCategories, loadAdminFeedbackDetail, peekAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
 
+const ADMIN_FEEDBACK_RETURN_STORAGE_KEY = 'urbanmind-admin-feedback-return';
+
+const getFeedbackListReturnUrl = () => {
+  if (typeof window === 'undefined') return '/management/feedbacks';
+
+  try {
+    const raw = window.sessionStorage.getItem(ADMIN_FEEDBACK_RETURN_STORAGE_KEY);
+    if (!raw) return '/management/feedbacks';
+
+    const context = JSON.parse(raw);
+    const params = new URLSearchParams();
+
+    if (context?.statusFilter && context.statusFilter !== 'all') {
+      params.set('status', context.statusFilter);
+    } else if (context?.metricFilter && context.metricFilter !== 'total') {
+      params.set('metric', context.metricFilter);
+    }
+    if (String(context?.searchTerm || '').trim()) {
+      params.set('search', String(context.searchTerm).trim());
+    }
+    if (Number(context?.pageNumber) > 1) {
+      params.set('page', String(context.pageNumber));
+    }
+
+    const query = params.toString();
+    return query ? `/management/feedbacks?${query}` : '/management/feedbacks';
+  } catch {
+    return '/management/feedbacks';
+  }
+};
+
 const STATUS_META = {
   [managementTypes.feedbackStatus.SUBMITTED]: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/20' },
   [managementTypes.feedbackStatus.AI_REVIEWED]: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/20' },
@@ -261,7 +292,7 @@ export const FeedbackDetailPage = () => {
       return;
     }
 
-    navigate('/management/feedbacks', {
+    navigate(getFeedbackListReturnUrl(), {
       state: {
         restoreFeedbackId: feedbackId,
         preserveScrollOnEnter: true,

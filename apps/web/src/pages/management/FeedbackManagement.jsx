@@ -269,7 +269,7 @@ export const FeedbackManagement = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialSnapshot] = useState(readFeedbackSnapshot);
-  const shouldRestoreListContext = Boolean(location.state?.restoreFeedbackId);
+  const [shouldRestoreListContext] = useState(() => Boolean(location.state?.restoreFeedbackId));
   const [restoredContext] = useState(() => {
     if (!shouldRestoreListContext) return null;
 
@@ -544,8 +544,8 @@ export const FeedbackManagement = () => {
     if (!savedContext || loading || filteredFeedbacks.length === 0) return undefined;
 
     let cancelled = false;
-    let retryCount = 0;
-    let retryTimer;
+    let animationFrameId;
+    let frameCount = 0;
 
     const consumeReturnContext = () => {
       try { window.sessionStorage.removeItem(ADMIN_FEEDBACK_RETURN_STORAGE_KEY); } catch { /* noop */ }
@@ -554,6 +554,7 @@ export const FeedbackManagement = () => {
 
     const restorePosition = () => {
       if (cancelled) return;
+
       const feedbackId = String(savedContext.feedbackId || '');
       const escapedFeedbackId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
         ? CSS.escape(feedbackId)
@@ -561,40 +562,41 @@ export const FeedbackManagement = () => {
       const targetRow = escapedFeedbackId
         ? document.querySelector(`[data-admin-feedback-id="${escapedFeedbackId}"]`)
         : null;
-      const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
 
-      if (!targetRow || !scrollContainer) {
-        retryCount += 1;
-        if (retryCount < 30) {
-          retryTimer = window.setTimeout(restorePosition, 100);
+      if (!targetRow) {
+        frameCount += 1;
+        if (frameCount < 20) {
+          animationFrameId = window.requestAnimationFrame(restorePosition);
           return;
         }
-        scrollContainer?.scrollTo({ top: Number(savedContext.scrollY) || 0, left: 0, behavior: 'auto' });
+
+        const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+        scrollContainer?.scrollTo({
+          top: Number(savedContext.scrollY) || 0,
+          left: 0,
+          behavior: 'auto',
+        });
         consumeReturnContext();
         return;
       }
 
-      window.requestAnimationFrame(() => {
-        if (cancelled) return;
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const rowRect = targetRow.getBoundingClientRect();
-        const rowTopInContainer = scrollContainer.scrollTop + rowRect.top - containerRect.top;
-        const centeredTop = Math.max(0, rowTopInContainer - Math.max(24, (scrollContainer.clientHeight - targetRow.offsetHeight) / 2));
-        scrollContainer.scrollTo({ top: centeredTop, left: 0, behavior: 'auto' });
-        setHighlightedFeedbackId(feedbackId);
-        if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
-        highlightTimerRef.current = window.setTimeout(() => {
-          setHighlightedFeedbackId('');
-          highlightTimerRef.current = null;
-        }, 2500);
-        consumeReturnContext();
-      });
+      targetRow.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      setHighlightedFeedbackId(feedbackId);
+
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setHighlightedFeedbackId('');
+        highlightTimerRef.current = null;
+      }, 2500);
+
+      consumeReturnContext();
     };
 
-    restorePosition();
+    animationFrameId = window.requestAnimationFrame(restorePosition);
+
     return () => {
       cancelled = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
     };
   }, [filteredFeedbacks, loading]);
 
