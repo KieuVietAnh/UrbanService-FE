@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
@@ -154,9 +154,13 @@ export const FeedbackDetailPage = () => {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [failedMedia, setFailedMedia] = useState(() => new Set());
   const [reloadNonce, setReloadNonce] = useState(0);
+  const detailRequestIdRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
+    const requestId = ++detailRequestIdRef.current;
+
+    const isLatestRequest = () => mounted && requestId === detailRequestIdRef.current;
 
     const loadDetail = async () => {
       setLoading(true);
@@ -165,17 +169,17 @@ export const FeedbackDetailPage = () => {
         const detailResponse = await loadAdminFeedbackDetail(feedbackId, {
           force: reloadNonce > 0,
         });
-        if (!mounted) return;
+        if (!isLatestRequest()) return;
         setFeedback((current) => ({
           ...(current || {}),
           ...(normalizeResponse(detailResponse) || {}),
         }));
         setDetailResolved(true);
       } catch (err) {
-        if (!mounted) return;
+        if (!isLatestRequest()) return;
         setError(err?.message || 'Không thể tải chi tiết phản ánh.');
       } finally {
-        if (mounted) setLoading(false);
+        if (isLatestRequest()) setLoading(false);
       }
     };
 
