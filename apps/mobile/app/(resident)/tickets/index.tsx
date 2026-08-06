@@ -1,582 +1,286 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  ActivityIndicator,
+  View,
   FlatList,
   Pressable,
+  TextInput,
   RefreshControl,
   StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
 } from 'react-native';
-import { AppScreen } from '@/components/ui/AppScreen';
-import { colors } from '@/constants/theme';
 import { useRouter } from 'expo-router';
-import { ticketApi } from '@urbanmind/shared-api';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
+import { Text } from '@/components/ui/Text';
+import { AppCard } from '@/components/ui/AppCard';
+import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
+import { SkeletonCard } from '@/components/ui/AppSkeleton';
+import { feedbackApi } from '@/services/api/feedbackApi';
+import { colors } from '@/constants/theme';
 
-type RawFeedback = {
-  feedbackId?: string;
-  id?: string;
-  userId?: string;
-  userName?: string;
-  categoryId?: string;
-  categoryName?: string;
-  category?: string;
-  title?: string;
-  description?: string;
-  locationText?: string;
-  location?: string;
-  priority?: string;
-  status?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  attachmentCount?: number;
-  commentCount?: number;
-  supportCount?: number;
-};
+const FILTERS = [
+  { key: '', label: 'Tất cả' },
+  { key: 'PENDING', label: 'Chờ xử lý' },
+  { key: 'PROCESSING', label: 'Đang xử lý' },
+  { key: 'AWAITING_REVIEW', label: 'Đang xem xét' },
+  { key: 'RESOLVED', label: 'Đã xử lý' },
+  { key: 'CLOSED', label: 'Đã đóng' },
+];
 
-type TicketItem = {
-  id: string;
-  title: string;
-  category: string;
-  location: string;
-  status: string;
-  createdAt: string;
-  attachmentCount: number;
-  commentCount: number;
-  supportCount: number;
-};
+function TicketCard({ ticket, onPress }: { ticket: any; onPress: () => void }) {
+  const createdAt = ticket.createdAt
+    ? new Date(ticket.createdAt).toLocaleDateString('vi-VN')
+    : '';
 
-type StatusMeta = {
-  label: string;
-  color: string;
-  background: string;
-};
+  return (
+    <Pressable onPress={onPress} className="mb-3 mx-5">
+      <AppCard shadow="sm" pressable>
+        <View className="p-4">
+          {/* Top row */}
+          <View className="flex-row items-center justify-between mb-2">
+            <Text className="text-xs font-sans-medium text-text-muted">
+              #{ticket.code ?? ticket.feedbackCode ?? '—'}
+            </Text>
+            <TicketStatusBadge status={ticket.status ?? 'PENDING'} size="sm" />
+          </View>
 
-const getStatusMeta = (status?: string): StatusMeta => {
-  const normalized = (status ?? '').toLowerCase();
+          {/* Title */}
+          <Text className="text-sm font-sans-bold text-text mb-1.5" numberOfLines={2}>
+            {ticket.title ?? 'Chưa có tiêu đề'}
+          </Text>
 
-  if (normalized === 'verified' || normalized === 'in_progress') {
-    return {
-      label: 'Đang xử lý',
-      color: '#7C3AED',
-      background: '#EDE9FE',
-    };
-  }
+          {/* Category */}
+          {ticket.categoryName && (
+            <View className="flex-row items-center gap-1.5 mb-1.5">
+              <Icon name="tag" size={12} color={colors.muted} />
+              <Text className="text-xs text-text-muted">{ticket.categoryName}</Text>
+            </View>
+          )}
 
-  if (
-    normalized === 'resolved' ||
-    normalized === 'completed' ||
-    normalized === 'closed' ||
-    normalized === 'complete'
-  ) {
-    return {
-      label: 'Đã xử lý',
-      color: '#047857',
-      background: '#D1FAE5',
-    };
-  }
+          {/* Location */}
+          <View className="flex-row items-center gap-1.5 mb-3">
+            <Icon name="map-pin" size={12} color={colors.muted} />
+            <Text className="text-xs text-text-muted flex-1" numberOfLines={1}>
+              {ticket.locationText ?? 'Không có địa chỉ'}
+            </Text>
+          </View>
 
-  return {
-    label: 'Chờ tiếp nhận',
-    color: '#B45309',
-    background: '#FEF3C7',
-  };
-};
+          {/* Footer */}
+          <View style={styles.cardFooter}>
+            <View className="flex-row items-center gap-1">
+              <Icon name="calendar" size={11} color={colors.lightMuted} />
+              <Text className="text-2xs text-text-light">{createdAt}</Text>
+            </View>
+            <View className="flex-row items-center gap-1">
+              <Icon name="chevron-right" size={14} color={colors.primary} />
+            </View>
+          </View>
+        </View>
+      </AppCard>
+    </Pressable>
+  );
+}
 
-const formatDate = (value?: string) => {
-  if (!value) return 'Chưa có ngày';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-};
-
-const normalizeTicket = (raw: RawFeedback): TicketItem => {
-  const id = String(raw.feedbackId ?? raw.id ?? '');
-
-  return {
-    id,
-    title: raw.title || raw.description || 'Phản ánh chưa có tiêu đề',
-    category: raw.categoryName || raw.category || 'Chưa phân loại',
-    location: raw.locationText || raw.location || 'Chưa có vị trí',
-    status: raw.status || 'Submitted',
-    createdAt: raw.createdAt || '',
-    attachmentCount: raw.attachmentCount ?? 0,
-    commentCount: raw.commentCount ?? 0,
-    supportCount: raw.supportCount ?? 0,
-  };
-};
-
-export default function TicketsListScreen() {
+export default function TicketsScreen() {
   const router = useRouter();
-  const [tickets, setTickets] = useState<TicketItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  const sortedTickets = useMemo(() => {
-    return [...tickets].sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
+  const searchTimer = React.useRef<any>(null);
 
-      return dateB - dateA;
-    });
-  }, [tickets]);
-
-  const fetchTickets = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    setError(null);
-
-    try {
-      const rawFeedbacks = await ticketApi.getTickets({}, { role: 'service-user' });
-      const normalized = (rawFeedbacks ?? [])
-        .map((item: RawFeedback) => normalizeTicket(item))
-        .filter((item: TicketItem) => item.id);
-
-      setTickets(normalized);
-    } catch (err: any) {
-      setError(err?.message || 'Không thể tải danh sách phản ánh.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  const handleSearchChange = (text: string) => {
+    setSearch(text);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(text), 400);
   };
 
-  useEffect(() => {
-    fetchTickets();
-  }, []);
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['feedbacks', 'list', activeFilter, debouncedSearch],
+    queryFn: () =>
+      feedbackApi.list({
+        pageSize: 20,
+        status: activeFilter || undefined,
+        search: debouncedSearch || undefined,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      }),
+  });
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchTickets(false);
-  };
+  const tickets = data?.items ?? [];
 
-  const handleOpenTicket = (id: string) => {
-    router.push({
-      pathname: '/(resident)/tickets/[id]',
-      params: { id },
-    });
-  };
-
-  const renderTicketCard = ({ item }: { item: TicketItem }) => {
-    const statusMeta = getStatusMeta(item.status);
-
-    return (
-      <Pressable
-        style={styles.ticketCard}
-        onPress={() => handleOpenTicket(item.id)}
-      >
-        <View style={styles.cardTopRow}>
-          <View style={styles.categoryPill}>
-            <Text style={styles.categoryText} numberOfLines={1}>
-              {item.category}
-            </Text>
-          </View>
-
-          <View style={[styles.statusPill, { backgroundColor: statusMeta.background }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
-            <Text style={[styles.statusText, { color: statusMeta.color }]}>
-              {statusMeta.label}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={styles.ticketTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-
-        <View style={styles.infoRow}>
-          <Icon name="map-pin" size={15} color={colors.primary} />
-          <Text style={styles.infoText} numberOfLines={1}>
-            {item.location}
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Header */}
+      <View className="flex-row items-center justify-between px-5 pt-3 pb-3 bg-surface border-b border-border-light">
+        <Text className="text-xl font-sans-bold text-text">Phản ánh của tôi</Text>
+        <View className="flex-row items-center gap-2">
+          <Text className="text-sm font-sans-semibold text-primary bg-primary-soft px-2.5 py-1 rounded-full">
+            {data?.totalItems ?? 0}
           </Text>
         </View>
+      </View>
 
-        <View style={styles.infoRow}>
-          <Icon name="calendar" size={15} color="#64748B" />
-          <Text style={styles.infoText}>{formatDate(item.createdAt)}</Text>
+      {/* Search bar */}
+      <View className="px-5 pt-3 pb-2 bg-surface">
+        <View style={styles.searchBar}>
+          <Icon name="search" size={16} color={colors.muted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Tìm kiếm phản ánh..."
+            placeholderTextColor={colors.lightMuted}
+            value={search}
+            onChangeText={handleSearchChange}
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => { setSearch(''); setDebouncedSearch(''); }} hitSlop={8}>
+              <Icon name="x" size={14} color={colors.muted} />
+            </Pressable>
+          )}
         </View>
+      </View>
 
-        <View style={styles.cardFooter}>
-          <View style={styles.countGroup}>
-            <View style={styles.countItem}>
-              <Icon name="thumbs-up" size={15} color={colors.primary} />
-              <Text style={styles.countText}>{item.supportCount}</Text>
-            </View>
+      {/* Filter chips */}
+      <View className="bg-surface pb-3">
+        <FlatList
+          horizontal
+          data={FILTERS}
+          keyExtractor={(f) => f.key}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterList}
+          renderItem={({ item: f }) => {
+            const active = activeFilter === f.key;
+            return (
+              <Pressable
+                onPress={() => setActiveFilter(f.key)}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    active && styles.filterChipTextActive,
+                  ]}
+                >
+                  {f.label}
+                </Text>
+              </Pressable>
+            );
+          }}
+        />
+      </View>
 
-            <View style={styles.countItem}>
-              <Icon name="message-circle" size={15} color={colors.primary} />
-              <Text style={styles.countText}>{item.commentCount}</Text>
-            </View>
-
-            <View style={styles.countItem}>
-              <Icon name="paperclip" size={15} color={colors.primary} />
-              <Text style={styles.countText}>{item.attachmentCount}</Text>
-            </View>
-          </View>
-
-          <View style={styles.detailButton}>
-            <Text style={styles.detailText}>Chi tiết</Text>
-            <Icon name="chevron-right" size={16} color={colors.primary} />
-          </View>
-        </View>
-      </Pressable>
-    );
-  };
-
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <View style={styles.centerState}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.stateTitle}>Đang tải phản ánh...</Text>
-          <Text style={styles.stateDescription}>
-            Vui lòng chờ trong giây lát.
-          </Text>
-        </View>
-      );
-    }
-
-    if (error) {
-      return (
-        <View style={styles.centerState}>
-          <View style={styles.stateIcon}>
-            <Icon name="alert-circle" size={30} color="#DC2626" />
-          </View>
-
-          <Text style={styles.stateTitle}>Không thể tải dữ liệu</Text>
-          <Text style={styles.stateDescription}>{error}</Text>
-
-          <TouchableOpacity
-            activeOpacity={0.82}
-            style={styles.primaryButton}
-            onPress={() => fetchTickets()}
-          >
-            <Text style={styles.primaryButtonText}>Thử lại</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (sortedTickets.length === 0) {
-      return (
-        <View style={styles.centerState}>
-          <View style={styles.stateIcon}>
-            <Icon name="file-text" size={30} color={colors.primary} />
-          </View>
-
-          <Text style={styles.stateTitle}>Chưa có phản ánh nào</Text>
-          <Text style={styles.stateDescription}>
-            Bạn chưa gửi phản ánh nào. Hãy tạo phản ánh mới để góp phần cải thiện khu vực sống.
-          </Text>
-
-          <TouchableOpacity
-            activeOpacity={0.82}
-            style={styles.primaryButton}
-            onPress={() => router.push('/(resident)/create-feedback')}
-          >
-            <Icon name="plus-circle" size={17} color={colors.surface} />
-            <Text style={styles.primaryButtonText}>Gửi phản ánh mới</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    return (
+      {/* List */}
       <FlatList
-        data={sortedTickets}
-        keyExtractor={(item) => item.id}
-        renderItem={renderTicketCard}
+        data={isLoading ? Array(4).fill(null) : tickets}
+        keyExtractor={(item, i) =>
+          item ? String(item.feedbackId ?? item.id ?? i) : String(i)
+        }
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
+            refreshing={isRefetching}
+            onRefresh={refetch}
             tintColor={colors.primary}
           />
         }
+        ListEmptyComponent={
+          !isLoading ? (
+            <View className="items-center px-10 pt-16">
+              <Icon name="inbox" size={48} color="#CBD5E1" />
+              <Text className="text-base font-sans-semibold text-text-muted mt-4 text-center">
+                Không có phản ánh nào
+              </Text>
+              <Text className="text-sm text-text-light text-center mt-2">
+                {debouncedSearch
+                  ? `Không tìm thấy kết quả cho "${debouncedSearch}"`
+                  : 'Hãy gửi phản ánh đầu tiên của bạn!'}
+              </Text>
+              <Pressable
+                onPress={() => router.push('/(resident)/create-feedback' as any)}
+                className="mt-5 bg-primary px-5 py-3 rounded-xl"
+              >
+                <Text className="text-sm font-sans-semibold text-white">
+                  Gửi phản ánh ngay
+                </Text>
+              </Pressable>
+            </View>
+          ) : null
+        }
+        renderItem={({ item }) =>
+          !item ? (
+            <View className="mx-5 mb-3">
+              <SkeletonCard />
+            </View>
+          ) : (
+            <TicketCard
+              ticket={item}
+              onPress={() =>
+                router.push(
+                  `/(resident)/tickets/${item.feedbackId ?? item.id}` as any
+                )
+              }
+            />
+          )
+        }
       />
-    );
-  };
-
-  return (
-    <AppScreen>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerEyebrow}>UrbanMind</Text>
-            <Text style={styles.headerTitle}>Phản ánh đã gửi</Text>
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={0.78}
-            style={styles.headerButton}
-            onPress={() => router.push('/(resident)/create-feedback')}
-          >
-            <Icon name="plus" size={21} color={colors.surface} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryIcon}>
-            <Icon name="clipboard" size={20} color={colors.primary} />
-          </View>
-
-          <View style={styles.summaryTextBox}>
-            <Text style={styles.summaryTitle}>
-              {tickets.length} phản ánh
-            </Text>
-            <Text style={styles.summaryDescription}>
-              Theo dõi trạng thái các phản ánh bạn đã gửi.
-            </Text>
-          </View>
-        </View>
-
-        {renderContent()}
-      </View>
-    </AppScreen>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingTop: 48,
-  },
-  header: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerEyebrow: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-    color: colors.primary,
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontSize: 24,
-    lineHeight: 31,
-    fontWeight: '900',
-    color: colors.text,
-  },
-  headerButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  summaryCard: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    borderRadius: 20,
-    backgroundColor: colors.primarySoft,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  summaryIcon: {
-    width: 42,
-    height: 42,
+    gap: 10,
+    backgroundColor: '#F1F5F9',
     borderRadius: 14,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
-  summaryTextBox: {
+  searchInput: {
     flex: 1,
+    fontFamily: 'Geist-Regular',
+    fontSize: 14,
+    color: '#0F172A',
+    padding: 0,
   },
-  summaryTitle: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '900',
-    color: colors.primary,
-  },
-  summaryDescription: {
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: colors.muted,
-    marginTop: 2,
-  },
-  listContent: {
+  filterList: {
     paddingHorizontal: 20,
-    paddingBottom: 112,
-    gap: 12,
-  },
-  ticketCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 11,
     gap: 8,
   },
-  categoryPill: {
-    flex: 1,
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 999,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  filterChipActive: {
     backgroundColor: colors.primarySoft,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
+    borderColor: colors.primary,
   },
-  categoryText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '900',
+  filterChipText: {
+    fontFamily: 'Geist-Medium',
+    fontSize: 13,
+    color: '#64748B',
+  },
+  filterChipTextActive: {
     color: colors.primary,
+    fontFamily: 'Geist-SemiBold',
   },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 11.5,
-    lineHeight: 15,
-    fontWeight: '900',
-  },
-  ticketTitle: {
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: '900',
-    color: colors.text,
-    marginBottom: 11,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 7,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 13.5,
-    lineHeight: 19,
-    color: '#334155',
+  listContent: {
+    paddingTop: 12,
+    paddingBottom: 120,
   },
   cardFooter: {
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  countGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
-  },
-  countItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  countText: {
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  detailButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  detailText: {
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '900',
-    color: colors.primary,
-  },
-  centerState: {
-    flex: 1,
-    marginHorizontal: 20,
-    marginBottom: 112,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    borderRadius: 24,
-    backgroundColor: colors.surface,
-  },
-  stateIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-  },
-  stateTitle: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontWeight: '900',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  stateDescription: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.muted,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  primaryButton: {
-    minHeight: 48,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  primaryButtonText: {
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '900',
-    color: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 10,
   },
 });

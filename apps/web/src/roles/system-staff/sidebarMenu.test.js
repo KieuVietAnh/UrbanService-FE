@@ -14,6 +14,12 @@ test('feedback module stays active on nested feedback and report routes', () => 
   assert.equal(isSystemStaffMenuItemActive(feedbackItem, '/staff/assignment-history/10'), true);
 });
 
+test('conversation management is not exposed as a standalone sidebar item', () => {
+  const item = sidebarMenu.find((entry) => entry.name === 'Quản Lý Hội Thoại');
+
+  assert.equal(item, undefined);
+});
+
 test('system staff sidebar exposes grouped sections without changing route matching', () => {
   assert.equal(systemStaffSidebarSections.length, 3);
 
@@ -23,8 +29,7 @@ test('system staff sidebar exposes grouped sections without changing route match
   assert.deepEqual(workspaceSection.items.map((item) => item.name), [
     'Không Gian Làm Việc',
     'Hàng Chờ Kiểm Duyệt AI',
-    'Quản Lý Phản Ánh',
-    'Quản Lý Cảnh Báo Khu Vực'
+    'Quản Lý Phản Ánh'
   ]);
 
   assert.equal(coordinationSection.title, 'Điều phối & Kiểm soát');
@@ -46,9 +51,8 @@ test('other modules activate on their child routes', () => {
   assert.equal(isSystemStaffMenuItemActive(workspaceItem, '/staff/workspace/123'), true);
   assert.equal(isSystemStaffMenuItemActive(queueItem, '/staff/ai-review/1'), true);
   assert.equal(isSystemStaffMenuItemActive(feedbackItem, '/staff/feedbacks/123'), true);
-  assert.equal(areaAlertItem != null, true);
-  assert.equal(isSystemStaffMenuItemActive(areaAlertItem, '/staff/area-alerts'), true);
-  assert.equal(criticalFeedbackItem, undefined);
+  assert.equal(isSystemStaffMenuItemActive(areaAlertItem, '/staff/area-alerts/123'), true);
+  assert.equal(isSystemStaffMenuItemActive(criticalFeedbackItem, '/staff/critical-feedbacks/123'), true);
   assert.equal(isSystemStaffMenuItemActive(coordinatorItem, '/staff/service-providers/2'), true);
   assert.equal(isSystemStaffMenuItemActive(providerItem, '/staff/provider-check/3'), true);
   assert.equal(isSystemStaffMenuItemActive(duplicateItem, '/staff/linked-feedbacks/4'), true);

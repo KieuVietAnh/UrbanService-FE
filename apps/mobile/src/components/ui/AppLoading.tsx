@@ -1,6 +1,6 @@
-import { ActivityIndicator, StyleSheet, StyleProp, Text, View, ViewStyle } from 'react-native';
-import { ReactNode } from 'react';
-import { colors, spacing, typography } from '@/constants/theme';
+import { ActivityIndicator, StyleSheet, StyleProp, View, ViewStyle } from 'react-native';
+import { Text } from './Text';
+import { colors } from '@/constants/theme';
 
 interface AppLoadingProps {
   size?: 'sm' | 'md' | 'lg';
@@ -9,6 +9,8 @@ interface AppLoadingProps {
   visible?: boolean;
   message?: string;
 }
+
+const SIZE_MAP = { sm: 20, md: 30, lg: 40 };
 
 export const AppLoading = ({
   size = 'md',
@@ -19,26 +21,11 @@ export const AppLoading = ({
 }: AppLoadingProps) => {
   if (!visible) return null;
 
-  const getSize = () => {
-    switch (size) {
-      case 'sm':
-        return 20;
-      case 'md':
-        return 30;
-      case 'lg':
-        return 40;
-      default:
-        return 30;
-    }
-  };
-
   return (
     <View style={[styles.container, style]}>
-      <ActivityIndicator size={getSize()} color={color ?? colors.primary} />
+      <ActivityIndicator size={SIZE_MAP[size]} color={color ?? colors.primary} />
       {message && (
-        <Text style={{ marginTop: spacing.sm, fontSize: typography.md, color: colors.text }}>
-          {message}
-        </Text>
+        <Text style={styles.message}>{message}</Text>
       )}
     </View>
   );
@@ -47,6 +34,12 @@ export const AppLoading = ({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    margin: spacing.md,
+    margin: 16,
+  },
+  message: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#334155',
+    fontFamily: 'Geist-Regular',
   },
 });

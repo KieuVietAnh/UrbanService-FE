@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
-import { ReactNode } from 'react';
-import { colors, spacing, typography } from '@/constants/theme';
+import { View, StyleSheet, StyleProp, ViewStyle, TextStyle, Pressable } from 'react-native';
+import { Text } from './Text';
+import { colors } from '@/constants/theme';
 
 interface AppErrorStateProps {
   children: React.ReactNode;
@@ -9,23 +9,14 @@ interface AppErrorStateProps {
   onRetry?: () => void;
 }
 
-export const AppErrorState = ({
-  children,
-  style,
-  textStyle,
-  onRetry,
-}: AppErrorStateProps) => {
+export const AppErrorState = ({ children, style, textStyle, onRetry }: AppErrorStateProps) => {
   return (
     <View style={[styles.container, style]}>
       <Text style={[styles.text, textStyle]}>{children}</Text>
       {onRetry && (
-        <View style={styles.buttonContainer}>
-          {/* We'll use a button here, but for simplicity, we'll just add a placeholder */}
-          {/* In practice, you'd use AppButton */}
-          <Text style={styles.buttonText} onPress={onRetry}>
-            Try Again
-          </Text>
-        </View>
+        <Pressable style={styles.retryBtn} onPress={onRetry}>
+          <Text style={styles.retryText}>Thử lại</Text>
+        </Pressable>
       )}
     </View>
   );
@@ -36,20 +27,27 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: 32,
   },
   text: {
     textAlign: 'center',
-    fontSize: typography.lg,
+    fontSize: 15,
     color: colors.red,
-    marginBottom: spacing.md,
+    fontFamily: 'Geist-Regular',
+    marginBottom: 16,
+    lineHeight: 22,
   },
-  buttonContainer: {
-    marginTop: spacing.md,
+  retryBtn: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
-  buttonText: {
+  retryText: {
     color: colors.primary,
-    fontSize: typography.md,
-    fontWeight: typography.semibold as any,
+    fontSize: 14,
+    fontFamily: 'Geist-SemiBold',
   },
 });

@@ -1,6 +1,21 @@
-import { Stack, usePathname, useRouter, type Href } from 'expo-router';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { Stack, Tabs, usePathname, useRouter, type Href } from 'expo-router';
+import {
+  View,
+  Pressable,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
+import { Text } from '@/components/ui/Text';
 import { colors } from '@/constants/theme';
 
 type NavItem = {
@@ -8,61 +23,121 @@ type NavItem = {
   icon: keyof typeof Icon.glyphMap;
   href?: Href;
   match?: string[];
+  isFab?: boolean;
 };
+
+const NAV_ITEMS: NavItem[] = [
+  {
+    label: 'Trang chủ',
+    icon: 'home',
+    href: '/(resident)',
+    match: ['/', '/(resident)', '/index'],
+  },
+  {
+    label: 'Phản ánh',
+    icon: 'list',
+    href: '/(resident)/tickets',
+    match: ['/tickets'],
+  },
+  {
+    label: 'Gửi phản ánh',
+    icon: 'plus',
+    href: '/(resident)/create-feedback',
+    match: ['/create-feedback'],
+    isFab: true,
+  },
+  {
+    label: 'Gần đây',
+    icon: 'map-pin',
+    href: '/(resident)/community',
+    match: ['/community'],
+  },
+  {
+    label: 'Tài khoản',
+    icon: 'user',
+    href: '/(resident)/profile',
+    match: ['/profile'],
+  },
+];
+
+function TabItem({
+  item,
+  active,
+  onPress,
+}: {
+  item: NavItem;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePress = () => {
+    scale.value = withSpring(0.88, { damping: 12, stiffness: 400 }, () => {
+      scale.value = withSpring(1, { damping: 12, stiffness: 400 });
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress();
+  };
+
+  if (item.isFab) {
+    return (
+      <Pressable onPress={handlePress} style={styles.fabWrap}>
+        <Animated.View style={[styles.fab, animStyle]}>
+          <Icon name="plus" size={26} color="#FFFFFF" />
+        </Animated.View>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable onPress={handlePress} style={styles.tabItem}>
+      <Animated.View style={animStyle}>
+        <View style={[styles.tabIconWrap, active && styles.tabIconActive]}>
+          <Icon
+            name={item.icon}
+            size={20}
+            color={active ? colors.primary : '#94A3B8'}
+            strokeWidth={active ? 2.5 : 1.8}
+          />
+        </View>
+        <Text
+          style={[
+            styles.tabLabel,
+            active ? styles.tabLabelActive : styles.tabLabelInactive,
+          ]}
+        >
+          {item.label}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 export default function ResidentLayout() {
   const router = useRouter();
   const pathname = usePathname() ?? '/';
+  const insets = useSafeAreaInsets();
 
-  const navItems: NavItem[] = [
-    {
-      label: 'Trang chủ',
-      icon: 'home',
-      href: '/(resident)',
-      match: ['/', '/(resident)'],
-    },
-    {
-      label: 'Gửi phản ánh',
-      icon: 'plus-circle',
-      href: '/(resident)/create-feedback',
-      match: ['/create-feedback'],
-    },
-    {
-      label: 'Phản ánh',
-      icon: 'list',
-      href: '/(resident)/tickets',
-      match: ['/tickets'],
-    },
-    {
-      label: 'Gần đây',
-      icon: 'clock',
-      match: [],
-    },
-    {
-      label: 'Tài khoản',
-      icon: 'user',
-      href: '/(resident)/profile',
-      match: ['/profile'],
-    },
-  ];
-
-  const isActiveTab = (item: NavItem) => {
+  const isActive = (item: NavItem) => {
     const matches = item.match ?? [];
-
-    return matches.some((match) => {
-      if (match === '/') {
-        return pathname === '/';
+    return matches.some((m) => {
+      if (m === '/' || m === '/(resident)' || m === '/index') {
+        return pathname === '/' || pathname === '/(resident)';
       }
-
-      return pathname === match || pathname.startsWith(`${match}/`);
+      return pathname === m || pathname.startsWith(`${m}/`);
     });
   };
 
   const handleTabPress = (item: NavItem) => {
     if (!item.href) return;
-
     router.replace(item.href);
   };
+
+  const tabBarHeight = 64 + insets.bottom;
 
   return (
     <View style={styles.screen}>
@@ -71,39 +146,29 @@ export default function ResidentLayout() {
           screenOptions={{
             headerShown: false,
             animation: 'fade',
-            contentStyle: {
-              backgroundColor: colors.background,
-            },
+            contentStyle: { backgroundColor: colors.background },
           }}
         />
       </View>
 
-      <View style={styles.bottomNav}>
-        {navItems.map((item) => {
-          const active = isActiveTab(item);
-          const disabled = !item.href;
+      {/* Custom tab bar */}
+      <View style={[styles.tabBarContainer, { paddingBottom: insets.bottom }]}>
+        {Platform.OS === 'ios' ? (
+          <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFillObject} />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#FFFFFF' }]} />
+        )}
 
-          return (
-            <TouchableOpacity
+        <View style={styles.tabBar}>
+          {NAV_ITEMS.map((item) => (
+            <TabItem
               key={item.label}
-              activeOpacity={disabled ? 1 : 0.78}
+              item={item}
+              active={isActive(item)}
               onPress={() => handleTabPress(item)}
-              style={styles.navItem}
-            >
-              <View style={[styles.navIconWrap, active && styles.navIconWrapActive]}>
-                <Icon
-                  name={item.icon}
-                  size={20}
-                  color={active ? colors.surface : '#4B5563'}
-                />
-              </View>
-
-              <Text style={[styles.navLabel, active && styles.navLabelActive]}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+            />
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -117,52 +182,69 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  bottomNav: {
+  tabBarContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    minHeight: 78,
-    paddingTop: 8,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
-    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 8,
+    borderTopColor: 'rgba(226,232,240,0.8)',
+    overflow: 'hidden',
   },
-  navItem: {
+  tabBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 6,
+    paddingHorizontal: 4,
+    height: 64,
+  },
+  tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 4,
   },
-  navIconWrap: {
-    width: 46,
-    height: 32,
-    borderRadius: 999,
+  tabIconWrap: {
+    width: 44,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 3,
-    overflow: 'hidden',
+    marginBottom: 2,
   },
-  navIconWrapActive: {
-    backgroundColor: colors.primary,
-    borderRadius: 999,
+  tabIconActive: {
+    backgroundColor: colors.primarySoft,
   },
-  navLabel: {
-    fontSize: 10.5,
-    lineHeight: 13,
-    color: '#4B5563',
+  tabLabel: {
+    fontSize: 10,
     textAlign: 'center',
+    fontFamily: 'Geist-Medium',
   },
-  navLabelActive: {
+  tabLabelActive: {
     color: colors.primary,
-    fontWeight: '700',
+    fontFamily: 'Geist-SemiBold',
+  },
+  tabLabelInactive: {
+    color: '#94A3B8',
+  },
+  fabWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 10,
+  },
+  fab: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+    marginBottom: 6,
   },
 });

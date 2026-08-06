@@ -1,29 +1,27 @@
 import { View, Text, StyleSheet } from 'react-native';
-import { AppButton } from '@/components/ui/AppButton';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/features/auth/auth.store';
 
+// Staff home — Phase 2. Currently shows a placeholder.
 export default function StaffHomeScreen() {
-  const { user, logout } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const router = useRouter();
-  const isResident = user?.role === 'service-user';
-  const isStaff = user?.role === 'system-staff';
 
-  const handleLogout = () => {
-    logout();
-    router.replace('(auth)/login');
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/(auth)/login');
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Staff Home</Text>
+      <Text style={styles.title}>Staff — Phase 2</Text>
       {user && (
         <Text style={styles.subtitle}>
-          Welcome, {user.email}!{'\n'}
-          Role: {isResident ? 'Resident' : isStaff ? 'Staff' : 'Unknown'}
+          {user.email}{'\n'}Role: {user.role}
         </Text>
       )}
-      <AppButton onPress={handleLogout}>Logout</AppButton>
+      <Text style={styles.link} onPress={handleLogout}>Đăng xuất</Text>
     </View>
   );
 }
@@ -34,16 +32,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
+    backgroundColor: '#F8FAFC',
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontFamily: 'Geist-Bold',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+    color: '#0F172A',
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    fontFamily: 'Geist-Regular',
+    color: '#64748B',
     textAlign: 'center',
+    marginBottom: 20,
+  },
+  link: {
+    fontSize: 15,
+    fontFamily: 'Geist-SemiBold',
+    color: '#0052CC',
+    marginTop: 8,
   },
 });
