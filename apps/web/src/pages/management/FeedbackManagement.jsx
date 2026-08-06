@@ -748,16 +748,25 @@ export const FeedbackManagement = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="table w-full min-w-[1040px] text-sm">
+            <table className="table w-full min-w-[1040px] table-fixed text-sm">
+              <colgroup>
+                <col className="w-[128px]" />
+                <col />
+                <col className="w-[180px]" />
+                <col className="w-[112px]" />
+                <col className="w-[148px]" />
+                <col className="w-[108px]" />
+                <col className="w-[92px]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-xs font-semibold uppercase tracking-[0.04em] text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
-                  <th className="px-6 py-4">Mã</th>
+                  <th className="whitespace-nowrap px-6 py-4">Mã</th>
                   <th className="px-6 py-4">Nội dung</th>
                   <th className="px-6 py-4">Danh mục</th>
-                  <th className="px-6 py-4">Ưu tiên</th>
-                  <th className="px-6 py-4">Trạng thái</th>
-                  <th className="px-6 py-4">Ngày tạo</th>
-                  <th className="px-6 py-4 text-right">Thao tác</th>
+                  <th className="whitespace-nowrap px-6 py-4">Ưu tiên</th>
+                  <th className="whitespace-nowrap px-6 py-4">Trạng thái</th>
+                  <th className="whitespace-nowrap px-6 py-4">Ngày tạo</th>
+                  <th className="whitespace-nowrap px-6 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -777,15 +786,15 @@ export const FeedbackManagement = () => {
                       onFocus={() => prefetchAdminFeedbackDetail(feedbackId)}
                       onPointerDown={() => prefetchAdminFeedbackDetail(feedbackId)}
                     >
-                      <td className="px-6 py-4 text-sm font-semibold text-blue-700 dark:text-blue-300">{formatFeedbackId(feedbackId)}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-blue-700 dark:text-blue-300">{formatFeedbackId(feedbackId)}</td>
                       <td className="max-w-[320px] px-6 py-4">
                         <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{feedback.title || 'Không có tiêu đề'}</p>
                         <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{getLocationText(feedback)}</p>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">{getCategoryName(feedback, categories)}</td>
-                      <td className="px-6 py-4"><PriorityBadge priority={feedback.priority} /></td>
-                      <td className="px-6 py-4"><StatusBadge status={feedback.status} /></td>
-                      <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">{formatDate(feedback.createdAt)}</td>
+                      <td className="whitespace-nowrap px-6 py-4"><PriorityBadge priority={feedback.priority} /></td>
+                      <td className="whitespace-nowrap px-6 py-4"><StatusBadge status={feedback.status} /></td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500 dark:text-slate-400">{formatDate(feedback.createdAt)}</td>
                       <td className="px-6 py-4 text-right">
                         <button
                           type="button"
@@ -793,7 +802,7 @@ export const FeedbackManagement = () => {
                             event.stopPropagation();
                             handleOpenFeedbackDetail(feedback);
                           }}
-                          className="btn btn-ghost h-9 min-h-0 rounded-xl px-3 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                          className="btn btn-ghost h-9 min-h-0 whitespace-nowrap rounded-xl px-3 text-sm font-medium text-blue-700 hover:bg-blue-50"
                         >
                           Chi tiết
                         </button>
