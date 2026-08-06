@@ -315,6 +315,20 @@ const normalizeResolutionItems = (payload = {}) => {
   return [];
 };
 
+const normalizeInteractionMessagesPayload = (payload = {}) => {
+  const candidates = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+      ? payload.items
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.messages)
+          ? payload.messages
+          : [];
+
+  return candidates.filter(Boolean);
+};
+
 export const managementFeedbackApi = {
   // Get all feedbacks with pagination and filters
   async getFeedbacks(params = {}) {
@@ -329,6 +343,27 @@ export const managementFeedbackApi = {
     const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}`);
     const payload = response?.data ?? response?.item ?? response?.result ?? response;
     return normalizeTicketsResponse([payload])[0] || payload;
+  },
+
+  async getFeedbackMessages(feedbackId, options = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) return [];
+
+    const response = await axiosClient.get(`/api/feedbacks/${normalizedFeedbackId}/messages`, {
+      params: {
+        includeInternal: options?.includeInternal ?? true,
+      },
+    });
+
+    return normalizeInteractionMessagesPayload(response?.data ?? response?.result ?? response);
+  },
+
+  async createFeedbackMessage(feedbackId, payload = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) return null;
+
+    const response = await axiosClient.post(`/api/feedbacks/${normalizedFeedbackId}/messages`, payload);
+    return response?.data ?? response?.result ?? response;
   },
 
   // Step 19: get the resolution history submitted for this feedback.

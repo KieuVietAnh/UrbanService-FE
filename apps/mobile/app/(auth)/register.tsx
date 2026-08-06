@@ -1,435 +1,170 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
-import { AppScreen } from '@/components/ui/AppScreen';
+import React, { useState } from 'react';
+import {
+  View,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { useAuthStore } from '@/features/auth/auth.store';
-import { useState } from 'react';
-import { colors } from '@/constants/theme';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/Feather';
+import { Text } from '@/components/ui/Text';
+import { AppButton } from '@/components/ui/AppButton';
+import { AppInput } from '@/components/ui/AppInput';
+import { useAuthStore } from '@/features/auth/auth.store';
+import { useToast } from '@/components/ui/Toast';
+import { colors } from '@/constants/theme';
 
-const getRegisterErrorMessage = (message?: string | null) => {
-  if (!message) return null;
-
-  const normalized = message.toLowerCase();
-
-  if (
-    normalized.includes('invalid credentials') ||
-    normalized.includes('unauthorized') ||
-    normalized.includes('401')
-  ) {
-    return 'Thông tin đăng ký chưa hợp lệ. Vui lòng thử lại.';
-  }
-
-  if (normalized.includes('network') || normalized.includes('failed to fetch')) {
-    return 'Không thể kết nối máy chủ. Vui lòng thử lại sau.';
-  }
-
-  return message;
-};
+interface Errors {
+  fullName?: string;
+  phone?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+}
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const login = useAuthStore((state) => state.login);
+  const toast = useToast();
+  const register = useAuthStore((s) => s.register);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [passwordVisible, setPasswordVisible] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    fullName: '',
+    phone: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+  const [agreed, setAgreed] = useState(false);
+  const [errors, setErrors] = useState<Errors>({});
+
+  const set = (field: keyof typeof form) => (v: string) =>
+    setForm((f) => ({ ...f, [field]: v }));
+
+  const validate = (): boolean => {
+    const e: Errors = {};
+    if (!form.fullName.trim()) e.fullName = 'Vui lòng nhập họ và tên';
+    if (!form.phone.trim()) e.phone = 'Vui lòng nhập số điện thoại';
+    else if (!/^0\d{9}$/.test(form.phone)) e.phone = 'Số điện thoại không hợp lệ';
+    if (!form.email.trim()) e.email = 'Vui lòng nhập email';
+    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Email không hợp lệ';
+    if (!form.password) e.password = 'Vui lòng nhập mật khẩu';
+    else if (form.password.length < 6) e.password = 'Mật khẩu ít nhất 6 ký tự';
+    if (form.password !== form.confirmPassword) e.confirmPassword = 'Mật khẩu xác nhận không khớp';
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const handleRegister = async () => {
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
-
-    setError(null);
-
-    if (!trimmedName || !trimmedEmail || !password.trim()) {
-      setError('Vui lòng nhập đầy đủ họ tên, email và mật khẩu.');
+    if (!validate()) return;
+    if (!agreed) {
+      toast.error('Vui lòng đồng ý với điều khoản sử dụng');
       return;
     }
-
     try {
-      // Mock registration: currently reuse login flow.
-      await login(trimmedEmail, password);
-      const currentUser = useAuthStore.getState().user;
-      const currentError = useAuthStore.getState().error;
-
-      if (!currentUser) {
-        setError(
-          getRegisterErrorMessage(currentError) ||
-            'Thông tin đăng ký chưa hợp lệ. Vui lòng thử lại.'
-        );
-        return;
-      }
-
-      router.replace('/');
-    } catch (err: any) {
-      setError(
-        getRegisterErrorMessage(err?.message) ||
-          'Đăng ký thất bại. Vui lòng thử lại.'
-      );
+      await register({
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        password: form.password,
+      });
+      // Navigate to OTP
+      router.push({ pathname: '/(auth)/otp', params: { phone: form.phone } });
+    } catch {
+      toast.error('Đăng ký thất bại. Vui lòng thử lại.');
     }
   };
 
   return (
-    <AppScreen>
-      <View style={styles.container}>
-        <View style={styles.blobTopLeft} />
-        <View style={styles.blobBottomRight} />
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
+            <Icon name="arrow-left" size={20} color={colors.primary} />
+          </Pressable>
 
-        <View style={styles.content}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandIcon}>
-              <Icon name="grid" size={18} color={colors.surface} />
+          <View className="items-center mb-7 mt-2">
+            <View style={styles.logoWrap}>
+              <Icon name="grid" size={22} color="#FFFFFF" />
             </View>
-            <Text style={styles.brandText}>UrbanMind</Text>
+            <Text className="text-xl font-sans-bold text-primary mt-3">UrbanMind</Text>
           </View>
-
-          <Text style={styles.title}>Đăng ký</Text>
-          <Text style={styles.subtitle}>
-            Tạo tài khoản để gửi phản ánh và theo dõi cập nhật khu vực của bạn
-          </Text>
 
           <View style={styles.card}>
-            <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Họ và tên</Text>
-              <View style={styles.inputContainer}>
-                <View style={styles.inputIconWrapper}>
-                  <Icon name="user" size={18} color={colors.muted} />
-                </View>
-                <TextInput
-                  placeholder="Nhập họ và tên"
-                  placeholderTextColor={colors.muted}
-                  value={name}
-                  onChangeText={(value) => {
-                    setName(value);
-                    if (error) setError(null);
-                  }}
-                  style={styles.input}
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Địa chỉ email</Text>
-              <View style={styles.inputContainer}>
-                <View style={styles.inputIconWrapper}>
-                  <Icon name="mail" size={18} color={colors.muted} />
-                </View>
-                <TextInput
-                  placeholder="username@email.com"
-                  placeholderTextColor={colors.muted}
-                  value={email}
-                  onChangeText={(value) => {
-                    setEmail(value);
-                    if (error) setError(null);
-                  }}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  style={styles.input}
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Mật khẩu</Text>
-              <View style={styles.inputContainer}>
-                <View style={styles.inputIconWrapper}>
-                  <Icon name="lock" size={18} color={colors.muted} />
-                </View>
-                <TextInput
-                  placeholder="••••••"
-                  placeholderTextColor={colors.muted}
-                  value={password}
-                  onChangeText={(value) => {
-                    setPassword(value);
-                    if (error) setError(null);
-                  }}
-                  secureTextEntry={!passwordVisible}
-                  style={styles.passwordInput}
-                />
-                <TouchableOpacity
-                  style={styles.passwordToggle}
-                  onPress={() => setPasswordVisible((prev) => !prev)}
-                  activeOpacity={0.7}
-                >
-                  <Icon
-                    name={passwordVisible ? 'eye-off' : 'eye'}
-                    size={18}
-                    color={colors.muted}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {error && (
-              <View style={styles.errorBox}>
-                <Icon name="alert-circle" size={16} color={colors.red} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={styles.primaryButton}
-              activeOpacity={0.85}
-              onPress={handleRegister}
-            >
-              <View style={styles.primaryButtonContent}>
-                <Text style={styles.primaryButtonText}>Đăng ký</Text>
-                <Icon
-                  name="arrow-right"
-                  size={18}
-                  color={colors.surface}
-                  style={styles.primaryButtonIcon}
-                />
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.dividerContainer}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>HOẶC</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              activeOpacity={0.85}
-              onPress={() => router.push('/(auth)/login')}
-            >
-              <Text style={styles.secondaryButtonText}>Đăng nhập ngay</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.termsContainer}>
-            <Text style={styles.termsText}>Bằng cách đăng ký, bạn đồng ý với</Text>
-            <Text style={styles.termsLine}>
-              <Text style={styles.termsHighlight}>Điều khoản sử dụng</Text>
-              <Text style={styles.termsText}> và </Text>
-              <Text style={styles.termsHighlight}>Chính sách bảo mật</Text>
+            <Text className="text-2xl font-sans-bold text-text text-center mb-1" style={{ letterSpacing: -0.4 }}>
+              Tạo tài khoản
             </Text>
-            <Text style={styles.termsText}>của UrbanMind.</Text>
+            <Text className="text-sm text-text-muted text-center mb-6">
+              Đăng ký để gửi phản ánh và theo dõi tiến độ xử lý
+            </Text>
+
+            <AppInput label="Họ và tên" leftIcon="user" value={form.fullName} onChangeText={set('fullName')} autoCapitalize="words" error={errors.fullName} />
+            <AppInput label="Số điện thoại" leftIcon="phone" value={form.phone} onChangeText={set('phone')} keyboardType="phone-pad" error={errors.phone} />
+            <AppInput label="Email" leftIcon="mail" value={form.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
+            <AppInput label="Mật khẩu" leftIcon="lock" value={form.password} onChangeText={set('password')} isPassword error={errors.password} />
+            <AppInput label="Nhập lại mật khẩu" leftIcon="lock" value={form.confirmPassword} onChangeText={set('confirmPassword')} isPassword error={errors.confirmPassword} />
+
+            {/* Terms */}
+            <Pressable
+              onPress={() => setAgreed((v) => !v)}
+              style={styles.termsRow}
+            >
+              <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                {agreed && <Icon name="check" size={12} color="#FFFFFF" />}
+              </View>
+              <Text className="text-sm text-text flex-1 leading-snug">
+                Tôi đồng ý với{' '}
+                <Text className="text-primary font-sans-semibold">điều khoản sử dụng</Text>
+                {' '}của UrbanMind
+              </Text>
+            </Pressable>
+
+            <AppButton onPress={handleRegister} loading={isLoading} fullWidth size="lg" className="mt-4">
+              Đăng ký
+            </AppButton>
+
+            <Pressable onPress={() => router.replace('/(auth)/login')} className="mt-4 self-center">
+              <Text className="text-sm text-text-muted">
+                Đã có tài khoản?{' '}
+                <Text className="text-primary font-sans-semibold">Đăng nhập</Text>
+              </Text>
+            </Pressable>
           </View>
-        </View>
-      </View>
-    </AppScreen>
+
+          {/* Bottom promo */}
+          <View style={styles.promoBanner}>
+            <Text className="text-xs font-sans-semibold text-primary uppercase tracking-wider mb-1">
+              CÙNG NHAU XÂY DỰNG
+            </Text>
+            <Text className="text-sm text-text-muted text-center">
+              Mỗi phản ánh của bạn góp phần làm thành phố văn minh hơn.
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    position: 'relative',
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 40 },
+  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  logoWrap: {
+    width: 52, height: 52, borderRadius: 16, backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6,
   },
-  blobTopLeft: {
-    position: 'absolute',
-    top: -90,
-    left: -90,
-    width: 220,
-    height: 220,
-    backgroundColor: colors.primarySoft,
-    borderRadius: 110,
-  },
-  blobBottomRight: {
-    position: 'absolute',
-    bottom: -80,
-    right: -80,
-    width: 170,
-    height: 170,
-    backgroundColor: '#D1FAE5',
-    borderRadius: 100,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  brandIcon: {
-    width: 36,
-    height: 36,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  brandText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.muted,
-    marginBottom: 20,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 3,
-  },
-  inputRow: {
-    marginBottom: 14,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.muted,
-    marginBottom: 6,
-  },
-  inputContainer: {
-    height: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-  },
-  inputIconWrapper: {
-    width: 44,
-    height: 54,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRightWidth: 1,
-    borderRightColor: colors.border,
-  },
-  input: {
-    flex: 1,
-    height: 54,
-    paddingHorizontal: 12,
-    fontSize: 15,
-    color: colors.text,
-  },
-  passwordInput: {
-    flex: 1,
-    height: 54,
-    paddingHorizontal: 12,
-    fontSize: 15,
-    color: colors.text,
-  },
-  passwordToggle: {
-    width: 44,
-    height: 54,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 14,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.red,
-    fontWeight: '500',
-  },
-  primaryButton: {
-    height: 54,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    justifyContent: 'center',
-    marginTop: 2,
-    marginBottom: 18,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  primaryButtonContent: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.surface,
-  },
-  primaryButtonIcon: {
-    marginLeft: 8,
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.muted,
-    paddingHorizontal: 14,
-    letterSpacing: 0.6,
-  },
-  secondaryButton: {
-    height: 54,
-    borderWidth: 1.4,
-    borderColor: colors.primary,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-  },
-  secondaryButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.primary,
-    textAlign: 'center',
-  },
-  termsContainer: {
-    alignItems: 'center',
-    marginTop: 18,
-    paddingHorizontal: 16,
-  },
-  termsText: {
-    fontSize: 11,
-    lineHeight: 17,
-    color: colors.muted,
-    textAlign: 'center',
-  },
-  termsLine: {
-    fontSize: 11,
-    lineHeight: 17,
-    textAlign: 'center',
-  },
-  termsHighlight: {
-    fontSize: 11,
-    lineHeight: 17,
-    color: colors.primary,
-    fontWeight: '700',
-  },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4 },
+  termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 4 },
+  checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  promoBanner: { backgroundColor: '#EFF6FF', borderRadius: 20, padding: 20, marginTop: 20, alignItems: 'center' },
 });

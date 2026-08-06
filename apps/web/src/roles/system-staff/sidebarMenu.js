@@ -31,7 +31,7 @@ const menuItems = [
     icon: 'AlertTriangle',
     activePatterns: ['/staff/area-alerts', '/staff/alerts', '/staff/area-alerts-management']
   },
-  
+ 
   {
     name: 'Danh bạ Điều phối viên',
     path: '/staff/coordinators',
@@ -73,7 +73,7 @@ export const systemStaffSidebarSections = [
   {
     id: 'coordination',
     title: 'Điều Phối & Giám Sát',
-    items: menuItems.filter((item) => ['Quản Lý Cảnh Báo Khu Vực', 'Phản Ánh Khẩn Cấp', 'Danh bạ Điều phối viên', 'Xử Lý Trùng Lặp'].includes(item.name))
+    items: menuItems.filter((item) => ['Quản Lý Cảnh Báo Khu Vực',   'Danh bạ Điều phối viên', 'Xử Lý Trùng Lặp'].includes(item.name))
   },
   {
     id: 'system',

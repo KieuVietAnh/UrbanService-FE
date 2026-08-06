@@ -10,10 +10,10 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noErrorTruncation": true,
-    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "types": ["nativewind/types"]
   }
 }
