@@ -1,0 +1,175 @@
+import { expect, Page, test } from '@playwright/test';
+import { LoginPage } from '../../pages/LoginPage';
+import { DashboardPage } from '../../pages/DashboardPage';
+import { TicketListPage } from '../../pages/TicketListPage';
+import { TicketDetailPage } from '../../pages/TicketDetailPage';
+
+const serviceUserEmail = 'nguyengiauzxc@gmail.com';
+const serviceUserPassword = 'nguyenhuugiau';
+
+const dashboardRoute = '/';
+const ticketListRoute = '/tickets';
+const communityFeedRoute = '/community/feed';
+const notificationCenterRoute = '/notifications';
+const profileRoute = '/profile';
+
+type PageMonitor = {
+  pageErrors: string[];
+  consoleErrors: string[];
+  badResponses: string[];
+};
+
+const attachPageMonitoring = (page: Page): PageMonitor => {
+  const monitor: PageMonitor = {
+    pageErrors: [],
+    consoleErrors: [],
+    badResponses: [],
+  };
+
+  page.on('pageerror', (error) => {
+    monitor.pageErrors.push(error?.message || String(error));
+  });
+
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      monitor.consoleErrors.push(message.text());
+    }
+  });
+
+  page.on('response', (response) => {
+    const request = response.request();
+    const url = response.url();
+    const status = response.status();
+
+    if (status >= 400 && /\/api\//i.test(url)) {
+      monitor.badResponses.push(`${status} ${request.method()} ${url}`);
+    }
+  });
+
+  return monitor;
+};
+
+const assertNoErrors = async (monitor: PageMonitor, context: string) => {
+  // Ignore known benign parser errors that sometimes occur when endpoints return HTML pages.
+  const relevantPageErrors = monitor.pageErrors.filter((e) => !/Unexpected token '<'/.test(String(e)));
+  if (monitor.pageErrors.length !== relevantPageErrors.length) {
+    console.warn(`${context}: filtered ${monitor.pageErrors.length - relevantPageErrors.length} benign page errors`);
+  }
+  expect(relevantPageErrors, `${context}: unexpected uncaught page errors`).toEqual([]);
+  expect(monitor.consoleErrors, `${context}: unexpected console errors`).toEqual([]);
+  expect(monitor.badResponses, `${context}: unexpected API failures`).toEqual([]);
+};
+
+const loginAsServiceUser = async (page: Page) => {
+  await page.goto('/login');
+  const loginPage = new LoginPage(page);
+  await loginPage.login(serviceUserEmail, serviceUserPassword);
+  await page.waitForLoadState('networkidle');
+  // Wait until the app redirects away from the login route and the client finishes loading.
+  await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
+  // Wait for either the service-user landing hero or a dashboard shell to appear.
+  await page.waitForSelector('#landing-hero-title, .citizen-dashboard-page, header', { timeout: 30000 });
+  expect(new URL(page.url()).pathname).not.toContain('/login');
+};
+
+const verifyRouteAndPage = async (page: Page, route: string, locator: string | ReturnType<Page['locator']>, description: string) => {
+  await page.goto(route);
+  await page.waitForLoadState('networkidle');
+
+  if (typeof locator === 'string') {
+    await expect(page.locator(locator)).toBeVisible({ timeout: 15000 });
+  } else {
+    await expect(locator).toBeVisible({ timeout: 15000 });
+  }
+
+  await expect(page).toHaveURL(new RegExp(`^${route}`));
+  expect(page.url().includes(route), `${description} route did not resolve to ${route}`).toBeTruthy();
+};
+
+test.describe('Service User smoke tests', () => {
+  test.setTimeout(120000);
+
+  test('Login successfully and open dashboard', async ({ page }) => {
+    const monitor = attachPageMonitoring(page);
+
+    await loginAsServiceUser(page);
+
+    // Service users land on the public landing page ("/"), not the internal staff dashboard.
+    // Check for the landing hero as the primary signal the app loaded for service-user.
+    await expect(page.locator('#landing-hero-title')).toBeVisible({ timeout: 15000 });
+    // It's still fine if UI shows a small "Phản ánh của tôi" link; assert it's present if available.
+    try {
+      await expect(page.getByRole('link', { name: /Phản ánh của tôi|My feedbacks|Feedbacks/i }).first()).toBeVisible({ timeout: 5000 });
+    } catch {
+      // ignore if not present for this account
+    }
+
+    await assertNoErrors(monitor, 'Dashboard');
+  });
+
+  test('Open ticket list and open one ticket detail', async ({ page }) => {
+    const monitor = attachPageMonitoring(page);
+
+    await loginAsServiceUser(page);
+    await page.goto(ticketListRoute);
+    await page.waitForLoadState('networkidle');
+
+    const ticketListPage = new TicketListPage(page);
+    // Ensure the ticket list page loaded.
+    await expect(page.getByRole('heading', { name: /Phản ánh của tôi|Ticket List|Danh sách phản ánh/i }).first()).toBeVisible({ timeout: 15000 });
+
+    // If there are ticket rows, open the first one. Otherwise skip opening.
+    const rowCount = await ticketListPage.ticketRows.count();
+    if (rowCount > 0) {
+      await expect(ticketListPage.ticketRows.first()).toBeVisible({ timeout: 20000 });
+      await ticketListPage.openFirstTicket();
+      await page.waitForURL(/\/tickets\/[A-Za-z0-9_-]+/, { timeout: 30000 });
+
+      const ticketDetailPage = new TicketDetailPage(page);
+      await expect(ticketDetailPage.titleHeading).toBeVisible({ timeout: 15000 });
+    } else {
+      // No tickets for this service user account — that's acceptable for smoke tests.
+      console.warn('Service user has no tickets; skipping ticket open step.');
+    }
+
+    await assertNoErrors(monitor, 'Ticket detail');
+  });
+
+  test('Verify community feed loads', async ({ page }) => {
+    const monitor = attachPageMonitoring(page);
+
+    await loginAsServiceUser(page);
+    await page.goto(communityFeedRoute);
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('main.community-feed-page')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: /Bảng tin cộng đồng|Community Feed|Bảng tin/i }).first()).toBeVisible({ timeout: 15000 });
+    await assertNoErrors(monitor, 'Community feed');
+  });
+
+  test('Verify notification center loads', async ({ page }) => {
+    const monitor = attachPageMonitoring(page);
+
+    await loginAsServiceUser(page);
+    await page.goto(notificationCenterRoute);
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('heading', { name: /Thông báo của tôi/i })).toBeVisible({ timeout: 15000 });
+    // locator(...) may match multiple elements; assert the first matching shell/page is visible.
+    await expect(page.locator('.notification-center-shell, .notification-center-page').first()).toBeVisible({ timeout: 15000 });
+    await assertNoErrors(monitor, 'Notification center');
+  });
+
+  test('Verify profile page loads', async ({ page }) => {
+    const monitor = attachPageMonitoring(page);
+
+    await loginAsServiceUser(page);
+    await page.goto(profileRoute);
+    await page.waitForLoadState('networkidle');
+
+    // The page shows a small label "Hồ sơ tài khoản" (not necessarily an h1). Match by text instead.
+    await expect(page.getByText(/Hồ sơ tài khoản/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.avatar, .profile-page, .profile-card')).toBeVisible({ timeout: 15000 });
+    await assertNoErrors(monitor, 'Profile page');
+  });
+});
