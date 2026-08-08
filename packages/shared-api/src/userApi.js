@@ -35,11 +35,20 @@ export const userApi = {
     }
   },
 
-  async updateUserStatus(userId, isActive, updatedBy) {
+  async updateUser(userId, data) {
     try {
-      const response = await axiosClient.patch(`/api/admin/users/${userId}/status`, {
+      const response = await axiosClient.put(`/api/admin/users/${userId}`, data);
+      return response?.data || response || null;
+    } catch (error) {
+      console.warn('userApi.updateUser failed', error);
+      throw error;
+    }
+  },
+
+  async updateUserStatus(userId, isActive) {
+    try {
+      const response = await axiosClient.patch(`/api/admin/users/${userId}/active`, {
         isActive,
-        updatedBy,
       });
       return response?.data || response || null;
     } catch (error) {
@@ -48,11 +57,10 @@ export const userApi = {
     }
   },
 
-  async createUser(data, createdBy) {
+  async createUser(data) {
     try {
-      const payload = { ...data, createdBy };
-      const response = await axiosClient.post('/api/admin/users', payload);
-      return response?.data || response || payload;
+      const response = await axiosClient.post('/api/admin/users', data);
+      return response?.data || response || data;
     } catch (error) {
       console.warn('userApi.createUser failed', error);
       throw error;
@@ -61,12 +69,16 @@ export const userApi = {
 
   async getUserRoles() {
     try {
-      const response = await axiosClient.get('/api/admin/users', { params: { pageSize: 1000 } });
-      const items = Array.isArray(response?.items) ? response.items : Array.isArray(response) ? response : [];
-      return items.map((u) => ({ userId: u.userId, role: u.role }));
+      const response = await axiosClient.get('/api/admin/users/roles');
+      const roles = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+        ? response
+        : [];
+      return roles;
     } catch (error) {
       console.warn('userApi.getUserRoles failed', error);
-      return [];
+      throw error;
     }
   }
 };

@@ -608,6 +608,11 @@ export const Dashboard = () => {
       ? cachedDashboard.tickets
       : []
   );
+  const [adminMapTickets, setAdminMapTickets] = useState(
+    () => Array.isArray(cachedDashboard?.mapTickets)
+      ? cachedDashboard.mapTickets
+      : []
+  );
   const [ticketTotal, setTicketTotal] = useState(() => {
     const cachedTotal = Number(cachedDashboard?.ticketTotal);
     if (Number.isFinite(cachedTotal)) return cachedTotal;
@@ -683,16 +688,23 @@ export const Dashboard = () => {
   }, [currentRole, user]);
 
   const fetchAdminDashboardContent = useCallback(async () => {
-    const [overviewResult, categoryResult, recentResult] = await Promise.allSettled([
+    const [overviewResult, categoryResult, recentResult, mapResult] = await Promise.allSettled([
       feedbackDashboardApi.getOverview(),
       feedbackDashboardApi.getCategoryDistribution(),
       feedbackDashboardApi.getRecent(10),
+      managementFeedbackApi.getFeedbacks({
+        pageIndex: 0,
+        pageSize: 1000,
+      }),
     ]);
 
     return {
       overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
       categoryDistribution: categoryResult.status === 'fulfilled' ? categoryResult.value : null,
       recentTickets: recentResult.status === 'fulfilled' ? recentResult.value : null,
+      mapTickets: mapResult.status === 'fulfilled'
+        ? normalizeTicketPage(mapResult.value).items
+        : null,
     };
   }, []);
 
@@ -746,6 +758,11 @@ export const Dashboard = () => {
             ? adminDashboard.recentTickets
             : (Array.isArray(cachedDashboard?.tickets) ? cachedDashboard.tickets : []))
           : (Array.isArray(ticketPage?.items) ? ticketPage.items : []);
+        const nextAdminMapTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.mapTickets)
+            ? adminDashboard.mapTickets
+            : (Array.isArray(cachedDashboard?.mapTickets) ? cachedDashboard.mapTickets : []))
+          : [];
         const nextFeedbackSummary = isAdmin
           ? mapFeedbackDashboardOverview(
             adminDashboard?.overview,
@@ -767,6 +784,7 @@ export const Dashboard = () => {
         setCategories(nextCategories);
         setAreas(nextAreas);
         setTickets(nextTickets);
+        setAdminMapTickets(nextAdminMapTickets);
         setTicketTotal(nextTicketTotal);
         if (currentRole === APP_ROLES.ADMINISTRATOR) {
           setFeedbackSummary(nextFeedbackSummary);
@@ -785,6 +803,7 @@ export const Dashboard = () => {
             stats: nextStats,
             categories: nextCategories,
             tickets: nextTickets,
+            mapTickets: nextAdminMapTickets,
             ticketTotal: nextTicketTotal,
             feedbackSummary: nextFeedbackSummary,
           });
@@ -846,6 +865,11 @@ export const Dashboard = () => {
             ? adminDashboard.recentTickets
             : (Array.isArray(realtimeCache?.tickets) ? realtimeCache.tickets : []))
           : (Array.isArray(ticketPage?.items) ? ticketPage.items : []);
+        const nextAdminMapTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.mapTickets)
+            ? adminDashboard.mapTickets
+            : (Array.isArray(realtimeCache?.mapTickets) ? realtimeCache.mapTickets : []))
+          : [];
         const nextFeedbackSummary = isAdmin
           ? mapFeedbackDashboardOverview(
             adminDashboard?.overview,
@@ -877,6 +901,7 @@ export const Dashboard = () => {
         setStats(nextStats);
         setCategories(nextCategories);
         setTickets(nextTickets);
+        setAdminMapTickets(nextAdminMapTickets);
         setTicketTotal(nextTicketTotal);
         if (currentRole === APP_ROLES.ADMINISTRATOR) {
           setFeedbackSummary(nextFeedbackSummary);
@@ -884,6 +909,7 @@ export const Dashboard = () => {
             stats: nextStats,
             categories: nextCategories,
             tickets: nextTickets,
+            mapTickets: nextAdminMapTickets,
             ticketTotal: nextTicketTotal,
             feedbackSummary: nextFeedbackSummary,
           });
@@ -2393,6 +2419,7 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   if (currentRole === 'administrator') {
     const adminTickets = Array.isArray(tickets) ? tickets : [];
+    const mapTickets = Array.isArray(adminMapTickets) ? adminMapTickets : [];
     const recentTickets = adminTickets.slice(0, 5);
     const adminMetrics = ADMIN_FEEDBACK_METRICS.map((metric) => ({
       ...metric,
@@ -2487,7 +2514,7 @@ export const Dashboard = () => {
           </div>
           <div className="h-[360px]">
             <CompactPublicIncidentMap
-              items={adminTickets}
+              items={mapTickets}
               loading={loading}
               fullMapPath="/management/map#admin-incident-map"
               detailPathBuilder={(feedbackId) => `/management/feedbacks/${feedbackId}`}

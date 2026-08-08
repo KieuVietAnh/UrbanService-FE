@@ -257,21 +257,20 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue', active = fa
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`admin-stat-card group min-h-[164px] w-full p-5 text-left transition-[border-color,background-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_14px_32px_rgba(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-        active ? 'border-blue-400 bg-blue-50/40 ring-1 ring-blue-200' : ''
+      className={`group w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)] ${active
+        ? 'border-blue-400 ring-2 ring-blue-100 shadow-[0_16px_42px_rgba(37,99,235,0.10)]'
+        : 'border-slate-200'
       }`}
     >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
           <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
-          <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>
+          {helper && <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>}
         </div>
-        <div className="flex items-start">
-          <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ${toneClass}`}>
-            <Icon size={20} />
-          </span>
-        </div>
+        <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ${toneClass}`}>
+          <Icon size={20} />
+        </span>
       </div>
     </button>
   );
