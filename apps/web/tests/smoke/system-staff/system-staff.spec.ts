@@ -1,7 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
 import { LoginPage } from '../../pages/LoginPage';
-import { DashboardPage } from '../../pages/DashboardPage';
-import ManagementFeedbackListPage from '../../../src/pages/staff/ManagementFeedbackListPage';
 
 const staffEmail = 'kvietanh123@gmail.com';
 const staffPassword = '123456789';
