@@ -56,7 +56,9 @@ export default function CoordinatorDirectoryPage() {
   const [search, setSearch] = useState(initialCache.search);
   const [areaId, setAreaId] = useState(initialCache.areaId);
   const [categoryId, setCategoryId] = useState(initialCache.categoryId);
-  const [includeInactive, setIncludeInactive] = useState(initialCache.includeInactive);
+  const [statusFilter, setStatusFilter] = useState(
+    initialCache.statusFilter || (initialCache.includeInactive ? 'all' : 'active')
+  );
   const [restoreComplete, setRestoreComplete] = useState(() => !restoredContext);
   const [highlightedCoordinatorId, setHighlightedCoordinatorId] = useState('');
 
@@ -78,7 +80,7 @@ export default function CoordinatorDirectoryPage() {
         search: search.trim() || undefined,
         areaId: areaId || undefined,
         categoryId: categoryId || undefined,
-        includeInactive: includeInactive || undefined,
+        includeInactive: true,
       });
       if (requestId !== coordinatorRequestIdRef.current) return;
 
@@ -90,7 +92,7 @@ export default function CoordinatorDirectoryPage() {
         search,
         areaId,
         categoryId,
-        includeInactive,
+        includeInactive: true,
         hasLoaded: true,
         updatedAt: Date.now(),
       });
@@ -105,7 +107,7 @@ export default function CoordinatorDirectoryPage() {
         setRefreshing(false);
       }
     }
-  }, [search, areaId, categoryId, includeInactive]);
+  }, [search, areaId, categoryId]);
 
   useEffect(() => {
     if (shouldDeferBackgroundRefreshRef.current) return undefined;
@@ -125,8 +127,14 @@ export default function CoordinatorDirectoryPage() {
   }, [fetchCoordinators, restoreComplete]);
 
   useEffect(() => {
-    setCoordinatorDirectoryCache({ search, areaId, categoryId, includeInactive });
-  }, [search, areaId, categoryId, includeInactive]);
+    setCoordinatorDirectoryCache({
+      search,
+      areaId,
+      categoryId,
+      includeInactive: true,
+      statusFilter,
+    });
+  }, [search, areaId, categoryId, statusFilter]);
 
   useEffect(() => () => {
     coordinatorRequestIdRef.current += 1;
@@ -232,7 +240,8 @@ export default function CoordinatorDirectoryPage() {
       search,
       areaId,
       categoryId,
-      includeInactive,
+      includeInactive: true,
+      statusFilter,
       scrollY: getScrollContainer()?.scrollTop || 0,
       selectedCoordinatorId: String(id),
       pendingRestore: true,
@@ -257,6 +266,43 @@ export default function CoordinatorDirectoryPage() {
     inactive: items.filter((item) => !item.isActive).length,
     coverages: items.reduce((sum, item) => sum + Number(item.coverageCount || 0), 0),
   }), [items]);
+
+  const filteredItems = useMemo(() => {
+    if (statusFilter === 'active') return items.filter((item) => item.isActive);
+    if (statusFilter === 'inactive') return items.filter((item) => !item.isActive);
+    return items;
+  }, [items, statusFilter]);
+
+  const summaryCards = [
+    {
+      label: 'Tổng điều phối viên',
+      value: stats.total,
+      icon: Lucide.Users,
+      helper: 'Tất cả đơn vị',
+      filter: 'all',
+    },
+    {
+      label: 'Đang hoạt động',
+      value: stats.active,
+      icon: Lucide.CircleCheck,
+      helper: 'Có thể nhận phân công',
+      filter: 'active',
+    },
+    {
+      label: 'Đã vô hiệu hóa',
+      value: stats.inactive,
+      icon: Lucide.CircleOff,
+      helper: 'Tạm ngừng hoạt động',
+      filter: 'inactive',
+    },
+    {
+      label: 'Phạm vi phụ trách',
+      value: stats.coverages,
+      icon: Lucide.MapPinned,
+      helper: 'Tổng khu vực – danh mục',
+      filter: null,
+    },
+  ];
 
   return (
     <div className="admin-page-shell space-y-6">
@@ -302,23 +348,42 @@ export default function CoordinatorDirectoryPage() {
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['Tổng điều phối viên', stats.total, Lucide.Users, 'Tất cả đơn vị'],
-          ['Đang hoạt động', stats.active, Lucide.CircleCheck, 'Có thể nhận phân công'],
-          ['Đã vô hiệu hóa', stats.inactive, Lucide.CircleOff, 'Tạm ngừng hoạt động'],
-          ['Phạm vi phụ trách', stats.coverages, Lucide.MapPinned, 'Tổng khu vực – danh mục'],
-        ].map(([label, value, Icon, helper]) => (
-          <div key={label} className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-950/70">
-            <div className="flex items-start justify-between gap-3">
-              <div><p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p><p className="mt-2 text-3xl font-semibold tracking-[-0.02em] text-slate-950 dark:text-white">{value}</p><p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{helper}</p></div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"><Icon size={18} /></div>
+        {summaryCards.map(({ label, value, icon: Icon, helper, filter }) => {
+          const selectable = Boolean(filter);
+          const selected = selectable && statusFilter === filter;
+          return (
+            <div
+              key={label}
+              role={selectable ? 'button' : undefined}
+              tabIndex={selectable ? 0 : undefined}
+              onClick={selectable ? () => setStatusFilter(filter) : undefined}
+              onKeyDown={selectable ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setStatusFilter(filter);
+                }
+              } : undefined}
+              className={`rounded-[20px] border bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition-all dark:bg-slate-950/70 ${
+                selectable
+                  ? `cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:hover:border-blue-500/50 ${
+                    selected
+                      ? 'border-blue-400 ring-2 ring-blue-100 dark:border-blue-400/70 dark:ring-blue-500/15'
+                      : 'border-slate-200 dark:border-slate-700'
+                  }`
+                  : 'border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div><p className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</p><p className="mt-2 text-3xl font-semibold tracking-[-0.02em] text-slate-950 dark:text-white">{value}</p><p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{helper}</p></div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"><Icon size={18} /></div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </section>
 
       <section className="admin-panel overflow-hidden p-5 dark:border-slate-700 dark:bg-slate-950/70">
-        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px_auto]">
+        <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px_180px]">
           <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 dark:border-slate-700 dark:bg-slate-950/70">
             <Lucide.Search size={17} className="text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-normal text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500" placeholder="Tìm đơn vị, người phụ trách, email, số điện thoại" />
@@ -331,9 +396,11 @@ export default function CoordinatorDirectoryPage() {
             <option value="">Tất cả danh mục</option>
             {categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{getCategoryLabel(category.categoryName ?? category.name)}</option>)}
           </select>
-          <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300">
-            <input type="checkbox" checked={includeInactive} onChange={(event) => setIncludeInactive(event.target.checked)} className="checkbox checkbox-sm" /> Đã vô hiệu hóa
-          </label>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="active">Đang hoạt động</option>
+            <option value="inactive">Đã vô hiệu hóa</option>
+          </select>
         </div>
 
         {error && <div className="mt-4"><ErrorAlert title="Không tải được dữ liệu" message={error} /></div>}
@@ -343,16 +410,24 @@ export default function CoordinatorDirectoryPage() {
         </div>
 
         <div className="mt-2 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
-          <table className="table w-full text-sm text-slate-700 dark:text-slate-200">
+          <table className="table table-fixed w-full text-sm text-slate-700 dark:text-slate-200">
+            <colgroup>
+              <col className="w-[23%]" />
+              <col className="w-[16%]" />
+              <col className="w-[22%]" />
+              <col className="w-[15%]" />
+              <col className="w-[19%]" />
+              <col className="w-[5%]" />
+            </colgroup>
             <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
               <tr><th>Đơn vị cung cấp</th><th>Người phụ trách</th><th>Liên hệ</th><th>Phạm vi phụ trách</th><th>Trạng thái</th><th /></tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan="6" className="py-12 text-center"><div className="inline-flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400"><span className="loading loading-spinner loading-md text-blue-600" /> Đang tải danh sách điều phối viên...</div></td></tr>
-              ) : items.length === 0 ? (
+              ) : filteredItems.length === 0 ? (
                 <tr><td colSpan="6" className="py-12 text-center text-slate-500">Không có điều phối viên phù hợp với bộ lọc.</td></tr>
-              ) : items.map((item) => {
+              ) : filteredItems.map((item) => {
                 const id = item.coordinatorId ?? item.id;
                 return (
                   <tr
@@ -365,9 +440,9 @@ export default function CoordinatorDirectoryPage() {
                     }`}
                     onClick={() => openCoordinator(id)}
                   >
-                    <td><div className="font-semibold text-slate-950 dark:text-slate-100">{item.providerName || '—'}</div><div className="mt-1 text-xs text-slate-400 dark:text-slate-500">Mã: {id}</div></td>
-                    <td className="font-medium text-slate-700 dark:text-slate-300">{item.coordinatorName || item.name || '—'}</td>
-                    <td><div>{item.phoneNumber || '—'}</div><div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{item.email || '—'}</div></td>
+                    <td className="min-w-0"><div className="break-words font-semibold text-slate-950 dark:text-slate-100">{item.providerName || '—'}</div><div className="mt-1 text-xs text-slate-400 dark:text-slate-500">Mã: {id}</div></td>
+                    <td className="break-words font-medium text-slate-700 dark:text-slate-300">{item.coordinatorName || item.name || '—'}</td>
+                    <td className="min-w-0"><div>{item.phoneNumber || '—'}</div><div className="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">{item.email || '—'}</div></td>
                     <td><span className="inline-flex rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">{item.coverageCount ?? 0}</span></td>
                     <td><span className={`badge border-0 font-semibold ${item.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{item.isActive ? 'Hoạt động' : 'Đã vô hiệu hóa'}</span></td>
                     <td><Lucide.ChevronRight size={18} className="text-slate-400" /></td>
