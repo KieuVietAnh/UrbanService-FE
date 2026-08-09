@@ -57,6 +57,40 @@ export const slaApi = {
     return unwrapApiData(response);
   },
 
+  async getDashboardOverview() {
+    const response = await axiosClient.get('/api/slas/dashboard/overview');
+    return unwrapApiData(response);
+  },
+
+  async getDashboardCompliance() {
+    const response = await axiosClient.get('/api/slas/dashboard/compliance');
+    return unwrapApiData(response);
+  },
+
+  async getDashboardPerformance() {
+    const response = await axiosClient.get('/api/slas/dashboard/performance');
+    return unwrapApiData(response);
+  },
+
+  async getDashboardViolationsChart() {
+    const response = await axiosClient.get('/api/slas/dashboard/violations/chart');
+    return unwrapApiData(response);
+  },
+
+  async getDashboardNearingBreach(limit = 10) {
+    const response = await axiosClient.get('/api/slas/dashboard/nearing-breach', {
+      params: toQueryParams({ limit }),
+    });
+    return unwrapApiData(response);
+  },
+
+  async getDashboardRecentBreach(limit = 10) {
+    const response = await axiosClient.get('/api/slas/dashboard/recent-breach', {
+      params: toQueryParams({ limit }),
+    });
+    return unwrapApiData(response);
+  },
+
   async getAreas() {
     return toolsApi.getAreas({ includeInactive: false });
   },
