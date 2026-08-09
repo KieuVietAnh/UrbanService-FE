@@ -387,9 +387,22 @@ export const AdminIncidentMapPage = () => {
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {filters.map(({ key, label, value, icon: Icon }) => (
-          <button key={key} type="button" onClick={() => selectFilter(key)} className={`admin-stat-card p-4 text-left transition ${activeFilter === key ? 'ring-2 ring-blue-500/30' : 'hover:-translate-y-0.5'}`}>
+          <button
+            key={key}
+            type="button"
+            onClick={() => selectFilter(key)}
+            aria-pressed={activeFilter === key}
+            className={`group w-full rounded-2xl border bg-white p-4 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)] dark:bg-slate-950/70 ${
+              activeFilter === key
+                ? 'border-blue-400 ring-2 ring-blue-100 shadow-[0_16px_42px_rgba(37,99,235,0.10)] dark:border-blue-400 dark:ring-blue-500/20'
+                : 'border-slate-200 dark:border-slate-700'
+            }`}
+          >
             <div className="flex items-center justify-between gap-3">
-              <div><p className="text-xs font-medium text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">{value}</p></div>
+              <div>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">{value}</p>
+              </div>
               <span className="admin-mini-icon"><Icon size={17} /></span>
             </div>
           </button>

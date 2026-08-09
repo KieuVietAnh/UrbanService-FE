@@ -279,8 +279,7 @@ export const DashboardLayout = ({ children }) => {
           <main
             ref={mainScrollRef}
             data-dashboard-scroll-container
-            style={{ scrollbarGutter: 'stable' }}
-            className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
+            className={`min-h-0 flex-1 overflow-y-scroll overflow-x-hidden ${
               isCitizen ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
             }`}
           >

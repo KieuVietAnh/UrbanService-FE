@@ -324,6 +324,7 @@ export const Header = ({ onMenuToggle }) => {
       map: 'Bản đồ sự cố',
       profile: 'Hồ sơ',
       settings: 'Cài đặt',
+      new: 'Thêm điều phối viên',
     };
 
     if (location.pathname === '/dashboard') {

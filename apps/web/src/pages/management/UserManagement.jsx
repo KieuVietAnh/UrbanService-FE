@@ -807,6 +807,8 @@ export const UserManagement = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [roleId, setRoleId] = useState('');
   const [availableRoles, setAvailableRoles] = useState([]);
   const [rolesLoading, setRolesLoading] = useState(false);
@@ -959,6 +961,8 @@ export const UserManagement = () => {
     setPhone('');
     setPassword('');
     setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setRoleId('');
     setCreateFormError('');
   };
@@ -1749,36 +1753,58 @@ export const UserManagement = () => {
                   <label className="label">
                     <span className="label-text text-sm font-medium text-slate-700">Mật khẩu *</span>
                   </label>
-                  <input
-                    type="password"
-                    placeholder="Ít nhất 6 ký tự"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      setCreateFormError('');
-                    }}
-                    autoComplete="new-password"
-                    className="input input-bordered h-11 w-full rounded-xl text-sm"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Ít nhất 6 ký tự"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setCreateFormError('');
+                      }}
+                      autoComplete="new-password"
+                      className="input input-bordered h-11 w-full rounded-xl pr-11 text-sm"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((current) => !current)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:text-slate-700"
+                      aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showPassword ? <Lucide.EyeOff size={18} aria-hidden="true" /> : <Lucide.Eye size={18} aria-hidden="true" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="form-control">
                   <label className="label">
                     <span className="label-text text-sm font-medium text-slate-700">Xác nhận mật khẩu *</span>
                   </label>
-                  <input
-                    type="password"
-                    placeholder="Nhập lại mật khẩu"
-                    value={confirmPassword}
-                    onChange={(e) => {
-                      setConfirmPassword(e.target.value);
-                      setCreateFormError('');
-                    }}
-                    autoComplete="new-password"
-                    className="input input-bordered h-11 w-full rounded-xl text-sm"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      placeholder="Nhập lại mật khẩu"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        setCreateFormError('');
+                      }}
+                      autoComplete="new-password"
+                      className="input input-bordered h-11 w-full rounded-xl pr-11 text-sm"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((current) => !current)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:text-slate-700"
+                      aria-label={showConfirmPassword ? 'Ẩn xác nhận mật khẩu' : 'Hiện xác nhận mật khẩu'}
+                      title={showConfirmPassword ? 'Ẩn xác nhận mật khẩu' : 'Hiện xác nhận mật khẩu'}
+                    >
+                      {showConfirmPassword ? <Lucide.EyeOff size={18} aria-hidden="true" /> : <Lucide.Eye size={18} aria-hidden="true" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="form-control sm:col-span-2">
