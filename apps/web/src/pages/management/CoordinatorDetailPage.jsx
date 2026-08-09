@@ -146,6 +146,15 @@ export default function CoordinatorDetailPage() {
   }, [areas.length, canManage, categories.length, coordinatorCreated, loading, setupCoverage]);
 
   const activeCoverages = useMemo(() => coverages.filter((coverage) => coverage.isActive).length, [coverages]);
+  const managedCategoryId = managedCategory?.categoryId ? String(managedCategory.categoryId) : '';
+  const visibleCoverages = useMemo(() => {
+    if (!managedCategoryId) return coverages;
+
+    return coverages.filter((coverage) => {
+      const categoryId = coverage.categoryId ?? coverage.category?.categoryId;
+      return String(categoryId ?? '') === managedCategoryId;
+    });
+  }, [coverages, managedCategoryId]);
   const isCategoryPreset = Boolean(setupCoverage && !editingCoverageId);
   const presetCategoryLabel = getCategoryLabel(
     setupCoverage?.categoryName ||
@@ -236,7 +245,11 @@ export default function CoordinatorDetailPage() {
     setEditingCoverageId(null);
     setCoverageForm({
       ...EMPTY_COVERAGE,
-      categoryId: setupCoverage ? String(setupCoverage.categoryId || '') : '',
+      categoryId: setupCoverage
+        ? String(setupCoverage.categoryId || '')
+        : managedCategory
+          ? String(managedCategory.categoryId || '')
+          : '',
       isPrimary: Boolean(setupCoverage),
     });
     setShowCoverageModal(true);
@@ -362,7 +375,7 @@ export default function CoordinatorDetailPage() {
             <table className="table w-full text-sm text-slate-700 dark:text-slate-200">
               <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/80 dark:text-slate-400"><tr><th>Khu vực</th><th>Danh mục</th><th>Ưu tiên</th><th>Trạng thái</th>{canManage && <th />}</tr></thead>
               <tbody>
-                {coverages.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500">Chưa có phạm vi phụ trách. Điều phối viên này chưa thể được đề xuất theo khu vực và danh mục.</td></tr> : coverages.map((coverage) => {
+                {visibleCoverages.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500">{managedCategory ? `Chưa có phạm vi phụ trách cho ${managedCategory.categoryName}.` : 'Chưa có phạm vi phụ trách. Điều phối viên này chưa thể được đề xuất theo khu vực và danh mục.'}</td></tr> : visibleCoverages.map((coverage) => {
                   const id = coverage.coverageId ?? coverage.id;
                   return <tr key={id}><td><div className="font-semibold text-slate-900 dark:text-slate-100">{coverage.areaName ?? coverage.area?.name ?? '—'}</div><div className="text-xs text-slate-400 dark:text-slate-500">ID {coverage.areaId ?? coverage.area?.areaId ?? '—'}</div></td><td><div className="font-medium text-slate-800 dark:text-slate-200">{getCategoryLabel(coverage.categoryName ?? coverage.category?.name, '—')}</div><div className="text-xs text-slate-400 dark:text-slate-500">ID {coverage.categoryId ?? coverage.category?.categoryId ?? '—'}</div></td><td><div className="flex items-center gap-2"><span className="font-semibold text-slate-900 dark:text-slate-100">{coverage.priorityOrder ?? coverage.priority ?? '—'}</span>{coverage.isPrimary && <span className="badge border-0 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chính</span>}</div></td><td><span className={`badge border-0 font-semibold ${coverage.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{coverage.isActive ? 'Hoạt động' : 'Đã tắt'}</span></td>{canManage && <td><button type="button" onClick={() => openEditCoverage(coverage)} className="btn btn-square btn-ghost btn-sm" aria-label="Sửa phạm vi phụ trách"><Lucide.Pencil size={16} /></button></td>}</tr>;
                 })}
