@@ -84,6 +84,7 @@ const PolicySkeleton = () => (
 
 export const SLAConfiguration = () => {
   const [policies, setPolicies] = useState([]);
+  const [dashboardOverview, setDashboardOverview] = useState(null);
   const [areas, setAreas] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -146,7 +147,18 @@ export const SLAConfiguration = () => {
     }
   }, [debouncedSearch, filters, page]);
 
+
+  const loadDashboardOverview = useCallback(async () => {
+    try {
+      const response = await slaApi.getDashboardOverview();
+      setDashboardOverview(response || null);
+    } catch {
+      setDashboardOverview(null);
+    }
+  }, []);
+
   useEffect(() => { loadLookups().catch(() => {}); }, [loadLookups]);
+  useEffect(() => { loadDashboardOverview(); }, [loadDashboardOverview]);
   useEffect(() => { loadPolicies({ keepCurrent: policies.length > 0 }); }, [loadPolicies]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -184,6 +196,7 @@ export const SLAConfiguration = () => {
     if (modalOpen && isDirty && !window.confirm('Làm mới sẽ bỏ các thay đổi chưa lưu. Bạn vẫn muốn tiếp tục?')) return;
     if (modalOpen) setModalOpen(false);
     loadPolicies({ keepCurrent: policies.length > 0 });
+    loadDashboardOverview();
   };
 
   const validateForm = () => {
@@ -230,12 +243,6 @@ export const SLAConfiguration = () => {
     } catch (err) { setMessage({ type: 'error', text: getErrorMessage(err, 'Không thể xóa chính sách SLA.') }); }
   };
 
-  const stats = useMemo(() => ({
-    total: pagination.totalItems,
-    active: policies.filter((item) => item.isActive).length,
-    effective: policies.filter((item) => item.isCurrentlyEffective).length,
-  }), [pagination.totalItems, policies]);
-
   return (
     <div className="admin-page-shell space-y-6">
       {message.type === 'success' && <SuccessAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />}
@@ -258,7 +265,15 @@ export const SLAConfiguration = () => {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-3">
-        {[['Tổng chính sách', stats.total, Lucide.ListChecks], ['Đang bật trên trang', stats.active, Lucide.ToggleRight], ['Đang có hiệu lực', stats.effective, Lucide.BadgeCheck]].map(([label, value, Icon]) => (
+        {[
+          ['Tổng SLA', dashboardOverview?.totalSla ?? '—', Lucide.ListChecks],
+          ['Đang chạy', dashboardOverview?.runningSla ?? '—', Lucide.Activity],
+          [
+            'Tỷ lệ thành công',
+            dashboardOverview?.successRate != null ? `${dashboardOverview.successRate}%` : '—',
+            Lucide.BadgeCheck,
+          ],
+        ].map(([label, value, Icon]) => (
           <div key={label} className="admin-stat-card p-5"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-950 dark:text-slate-100">{value}</p></div><div className="admin-mini-icon"><Icon size={19} /></div></div></div>
         ))}
       </section>
