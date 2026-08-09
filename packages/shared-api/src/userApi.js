@@ -30,8 +30,8 @@ export const userApi = {
         ? response
         : response?.data || [];
     } catch (error) {
-      console.warn('userApi.getUsers failed, returning empty list', error);
-      return [];
+      console.error('userApi.getUsers failed', error);
+      throw error;
     }
   },
 

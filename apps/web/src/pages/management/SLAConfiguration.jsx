@@ -223,7 +223,10 @@ export const SLAConfiguration = () => {
       else await slaApi.createPolicy(payload);
       setModalOpen(false);
       setMessage({ type: 'success', text: editingPolicy ? 'Đã cập nhật chính sách SLA.' : 'Đã tạo chính sách SLA.' });
-      await loadPolicies({ keepCurrent: true });
+      await Promise.all([
+        loadPolicies({ keepCurrent: true }),
+        loadDashboardOverview(),
+      ]);
     } catch (err) {
       setFormError(getErrorMessage(err, 'Không thể lưu chính sách SLA.'));
     } finally { setSaving(false); }
@@ -233,7 +236,10 @@ export const SLAConfiguration = () => {
     try {
       await slaApi.setPolicyActive(policy.slaPolicyId, !policy.isActive);
       setMessage({ type: 'success', text: policy.isActive ? 'Đã ngừng kích hoạt chính sách.' : 'Đã kích hoạt chính sách.' });
-      loadPolicies({ keepCurrent: true });
+      await Promise.all([
+        loadPolicies({ keepCurrent: true }),
+        loadDashboardOverview(),
+      ]);
     } catch (err) { setMessage({ type: 'error', text: getErrorMessage(err, 'Không thể đổi trạng thái chính sách.') }); }
   };
 
@@ -242,7 +248,10 @@ export const SLAConfiguration = () => {
     try {
       await slaApi.deletePolicy(policy.slaPolicyId);
       setMessage({ type: 'success', text: 'Đã xóa chính sách SLA.' });
-      loadPolicies({ keepCurrent: true });
+      await Promise.all([
+        loadPolicies({ keepCurrent: true }),
+        loadDashboardOverview(),
+      ]);
     } catch (err) { setMessage({ type: 'error', text: getErrorMessage(err, 'Không thể xóa chính sách SLA.') }); }
   };
 
