@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
+import { slaApi } from '../../services/api/slaApi';
 import { axiosClient, toolsApi, managementFeedbackApi, feedbackDashboardApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
@@ -626,6 +627,7 @@ export const Dashboard = () => {
       cachedDashboard?.ticketTotal
     )
   ));
+  const [slaOverview, setSlaOverview] = useState(null);
   const [categories, setCategories] = useState(
     () => Array.isArray(cachedDashboard?.categories)
       ? cachedDashboard.categories
@@ -688,7 +690,7 @@ export const Dashboard = () => {
   }, [currentRole, user]);
 
   const fetchAdminDashboardContent = useCallback(async () => {
-    const [overviewResult, categoryResult, recentResult, mapResult] = await Promise.allSettled([
+    const [overviewResult, categoryResult, recentResult, mapResult, slaOverviewResult] = await Promise.allSettled([
       feedbackDashboardApi.getOverview(),
       feedbackDashboardApi.getCategoryDistribution(),
       feedbackDashboardApi.getRecent(10),
@@ -696,6 +698,7 @@ export const Dashboard = () => {
         pageIndex: 0,
         pageSize: 1000,
       }),
+      slaApi.getDashboardOverview(),
     ]);
 
     return {
@@ -705,6 +708,7 @@ export const Dashboard = () => {
       mapTickets: mapResult.status === 'fulfilled'
         ? normalizeTicketPage(mapResult.value).items
         : null,
+      slaOverview: slaOverviewResult.status === 'fulfilled' ? slaOverviewResult.value : null,
     };
   }, []);
 
@@ -788,6 +792,7 @@ export const Dashboard = () => {
         setTicketTotal(nextTicketTotal);
         if (currentRole === APP_ROLES.ADMINISTRATOR) {
           setFeedbackSummary(nextFeedbackSummary);
+          setSlaOverview(adminDashboard?.slaOverview || null);
         }
 
         if (currentRole === APP_ROLES.SERVICE_USER) {
@@ -819,6 +824,9 @@ export const Dashboard = () => {
           setAreas([]);
           setTickets([]);
           setTicketTotal(0);
+          if (currentRole === APP_ROLES.ADMINISTRATOR) {
+            setSlaOverview(null);
+          }
         }
       } finally {
         if (requestId === dashboardRequestIdRef.current) {
@@ -905,6 +913,7 @@ export const Dashboard = () => {
         setTicketTotal(nextTicketTotal);
         if (currentRole === APP_ROLES.ADMINISTRATOR) {
           setFeedbackSummary(nextFeedbackSummary);
+          setSlaOverview(adminDashboard?.slaOverview || null);
           writeAdminDashboardCache({
             stats: nextStats,
             categories: nextCategories,
@@ -2484,17 +2493,25 @@ export const Dashboard = () => {
             const Icon = metric.icon;
 
             return (
-              <Link key={metric.label} to={metric.to} className="admin-stat-card group p-5 transition-all hover:-translate-y-0.5">
-                <div className="flex items-start justify-between gap-3">
+              <Link
+                key={metric.label}
+                to={metric.to}
+                className="admin-stat-card group flex min-h-[132px] items-center justify-between gap-4 p-5 transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-500">{metric.label}</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{metric.value}</p>
+                  <p className="mt-1 min-h-10 line-clamp-2 text-xs leading-5 text-slate-400">{metric.helper}</p>
+                </div>
+
+                <div className="flex shrink-0 flex-col items-end justify-between self-stretch">
+                  <Lucide.ArrowUpRight
+                    size={15}
+                    className="text-slate-300 transition group-hover:text-blue-600"
+                  />
                   <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${metric.tone}`}>
                     <Icon size={20} />
                   </div>
-                  <Lucide.ArrowUpRight size={16} className="text-slate-300 transition group-hover:text-blue-600" />
-                </div>
-                <div className="mt-5 space-y-1">
-                  <p className="text-xs font-medium text-slate-500">{metric.label}</p>
-                  <p className="text-2xl font-semibold text-slate-950">{metric.value}</p>
-                  <p className="text-xs text-slate-400">{metric.helper}</p>
                 </div>
               </Link>
             );
@@ -2527,16 +2544,22 @@ export const Dashboard = () => {
         <section className="admin-panel overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="admin-section-title">Phân bổ phản ánh theo danh mục</h3>
-              <p className="admin-section-description">So sánh số lượng và tỷ trọng phản ánh giữa các danh mục.</p>
+              <h3 className="admin-section-title">Thống kê phản ánh theo danh mục</h3>
+              <p className="admin-section-description">So sánh số lượng và tỷ trọng phản ánh giữa các danh mục đang cấu hình.</p>
             </div>
+
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tổng phản ánh</p>
-                <p className="mt-0.5 text-lg font-semibold text-slate-950">{categoryDistribution.length > 0 ? totalCategoryTickets : '—'}</p>
+                <p className="mt-0.5 text-lg font-semibold text-slate-950">
+                  {categoryDistribution.length > 0 ? totalCategoryTickets : '—'}
+                </p>
               </div>
-              <Link to="/management/categories" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
-                Danh mục phản ánh
+              <Link
+                to="/management/categories"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+              >
+                Quản lý danh mục
                 <Lucide.ArrowRight size={14} />
               </Link>
             </div>
@@ -2551,51 +2574,42 @@ export const Dashboard = () => {
               <p className="mt-1 text-xs text-slate-400">Dữ liệu sẽ hiển thị khi API thống kê trả kết quả.</p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              <div className="hidden grid-cols-[42px_minmax(180px,1fr)_110px_minmax(180px,0.9fr)] gap-4 bg-slate-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 md:grid">
-                <span>STT</span>
-                <span>Danh mục</span>
-                <span className="text-right">Số lượng</span>
-                <span>Tỷ trọng</span>
-              </div>
-
-              {categoryDistribution.map((category, index) => {
+            <div className="space-y-2 p-5">
+              {categoryDistribution.map((category) => {
                 const percent = totalCategoryTickets > 0
                   ? (category.count / totalCategoryTickets) * 100
                   : 0;
+                const maxCount = Math.max(...categoryDistribution.map((item) => Number(item.count) || 0), 1);
+                const barWidth = (category.count / maxCount) * 100;
 
                 return (
                   <div
                     key={`${category.id}-${category.name}`}
-                    className="grid gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50 md:grid-cols-[42px_minmax(180px,1fr)_110px_minmax(180px,0.9fr)] md:items-center md:gap-4"
+                    className="group grid gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-slate-50 md:grid-cols-[46px_minmax(210px,0.95fr)_minmax(260px,1.5fr)_130px] md:items-center"
                   >
-                    <span className="hidden text-xs font-semibold text-slate-400 md:block">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                      {renderCategoryIcon(category.id)}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{category.name}</p>
+                    </div>
 
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                        {renderCategoryIcon(category.id)}
-                      </div>
-                      <span className="truncate text-sm font-medium text-slate-800">{category.name}</span>
-                    </div>
-
-                    <div className="flex items-baseline justify-between gap-3 md:justify-end">
-                      <span className="text-xs text-slate-400 md:hidden">Số lượng</span>
-                      <span className="text-sm font-semibold tabular-nums text-slate-950">
-                        {category.count}
-                        <span className="ml-1 text-[10px] font-medium text-slate-400">phiếu</span>
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
                         <div
-                          className="h-full rounded-full bg-blue-600"
-                          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                          className="h-full rounded-full bg-blue-600 transition-all duration-300 group-hover:bg-blue-700"
+                          style={{ width: `${Math.min(100, Math.max(4, barWidth))}%` }}
                         />
                       </div>
-                      <span className="w-12 text-right text-xs font-medium tabular-nums text-slate-500">
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 md:justify-end">
+                      <span className="text-sm font-semibold tabular-nums text-slate-950">
+                        {category.count}
+                        <span className="ml-1 text-[10px] font-medium text-slate-400">phản ánh</span>
+                      </span>
+                      <span className="w-12 text-right text-xs font-semibold tabular-nums text-slate-500">
                         {percent.toFixed(1)}%
                       </span>
                     </div>
@@ -2610,6 +2624,85 @@ export const Dashboard = () => {
               Dữ liệu hiện còn ít; tỷ trọng có thể thay đổi đáng kể khi có thêm phản ánh.
             </p>
           ) : null}
+        </section>
+
+        <section className="admin-panel overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="admin-section-title">Tổng quan SLA</h3>
+              <p className="admin-section-description">Theo dõi nhanh tình trạng tuân thủ thời hạn xử lý phản ánh.</p>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tổng SLA</p>
+                <p className="mt-0.5 text-lg font-semibold text-slate-950">
+                  {slaOverview?.totalSla ?? '—'}
+                </p>
+              </div>
+              <Link
+                to="/management/sla"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+              >
+                Quản lý SLA
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+
+          <Link
+            to="/management/sla"
+            className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4"
+          >
+            {[
+              {
+                label: 'Đang chạy',
+                value: slaOverview?.runningSla ?? '—',
+                helper: 'SLA đang được theo dõi',
+                icon: Lucide.Activity,
+                tone: 'bg-blue-50 text-blue-700',
+              },
+              {
+                label: 'Cảnh báo',
+                value: slaOverview?.warningSla ?? '—',
+                helper: 'Đang gần tới hạn',
+                icon: Lucide.ClockAlert,
+                tone: 'bg-amber-50 text-amber-700',
+              },
+              {
+                label: 'Vi phạm',
+                value: slaOverview?.breachedSla ?? '—',
+                helper: 'Đã vượt thời hạn',
+                icon: Lucide.TriangleAlert,
+                tone: 'bg-rose-50 text-rose-700',
+              },
+              {
+                label: 'Tỷ lệ thành công',
+                value: slaOverview?.successRate != null ? `${slaOverview.successRate}%` : '—',
+                helper: 'Hoàn thành đúng SLA',
+                icon: Lucide.BadgeCheck,
+                tone: 'bg-emerald-50 text-emerald-700',
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <div
+                  key={item.label}
+                  className="group flex min-h-[118px] items-center justify-between gap-4 bg-white px-5 py-4 transition-colors hover:bg-blue-50/40"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-500">{item.label}</p>
+                    <p className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">{item.value}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">{item.helper}</p>
+                  </div>
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                    <Icon size={18} />
+                  </div>
+                </div>
+              );
+            })}
+          </Link>
         </section>
 
         <section>
