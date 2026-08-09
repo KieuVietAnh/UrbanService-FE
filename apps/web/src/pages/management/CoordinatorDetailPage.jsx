@@ -53,6 +53,7 @@ export default function CoordinatorDetailPage() {
   const location = useLocation();
   const setupCoverage = location.state?.setupCoverage || null;
   const managedCategory = location.state?.managedCategory || null;
+  const coordinatorCreated = Boolean(location.state?.coordinatorCreated);
   const setupCoverageOpenedRef = useRef(false);
   const { user } = useAuth();
   const role = normalizeRole(user?.role);
@@ -124,7 +125,7 @@ export default function CoordinatorDetailPage() {
 
   useEffect(() => {
     if (
-      !setupCoverage ||
+      (!setupCoverage && !coordinatorCreated) ||
       !canManage ||
       loading ||
       setupCoverageOpenedRef.current ||
@@ -138,11 +139,11 @@ export default function CoordinatorDetailPage() {
     setEditingCoverageId(null);
     setCoverageForm({
       ...EMPTY_COVERAGE,
-      categoryId: String(setupCoverage.categoryId || ''),
-      isPrimary: true,
+      categoryId: String(setupCoverage?.categoryId || ''),
+      isPrimary: Boolean(setupCoverage),
     });
     setShowCoverageModal(true);
-  }, [areas.length, canManage, categories.length, loading, setupCoverage]);
+  }, [areas.length, canManage, categories.length, coordinatorCreated, loading, setupCoverage]);
 
   const activeCoverages = useMemo(() => coverages.filter((coverage) => coverage.isActive).length, [coverages]);
   const isCategoryPreset = Boolean(setupCoverage && !editingCoverageId);

@@ -86,7 +86,15 @@ const buildCategoryContactMap = (coordinators, coveragesByCoordinator) => {
   return map;
 };
 
-const StatCard = ({ label, value, description, icon: Icon, tone = 'primary' }) => {
+const StatCard = ({
+  label,
+  value,
+  description,
+  icon: Icon,
+  tone = 'primary',
+  active = false,
+  onClick,
+}) => {
   const toneClass = {
     primary: 'bg-blue-50 text-blue-700',
     success: 'bg-emerald-50 text-emerald-700',
@@ -95,18 +103,27 @@ const StatCard = ({ label, value, description, icon: Icon, tone = 'primary' }) =
   }[tone];
 
   return (
-    <div className="admin-stat-card p-5">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md dark:bg-slate-950/70 ${
+        active
+          ? 'border-blue-400 ring-2 ring-blue-100 dark:border-blue-500 dark:ring-blue-500/20'
+          : 'border-slate-200 dark:border-slate-700'
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold text-slate-400">{label}</p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">{value}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{description}</p>
         </div>
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneClass}`}>
           <Icon size={19} />
         </div>
       </div>
-    </div>
+    </button>
   );
 };
 
@@ -302,13 +319,18 @@ export const CategoryManagement = () => {
     const active = categories.filter((cat) => cat.isActive).length;
     const inactive = total - active;
     const assigned = categories.filter((cat) => categoryContactMap.has(String(cat.categoryId))).length;
+    const unassigned = Math.max(total - assigned, 0);
+    const review = categories.filter(
+      (cat) => !cat.isActive || !categoryContactMap.has(String(cat.categoryId))
+    ).length;
 
     return {
       total,
       active,
       inactive,
       assigned,
-      unassigned: Math.max(total - assigned, 0),
+      unassigned,
+      review,
     };
   }, [categories, categoryContactMap]);
 
@@ -338,7 +360,8 @@ export const CategoryManagement = () => {
         (statusFilter === 'active' && cat.isActive) ||
         (statusFilter === 'inactive' && !cat.isActive) ||
         (statusFilter === 'assigned' && contact) ||
-        (statusFilter === 'unassigned' && !contact);
+        (statusFilter === 'unassigned' && !contact) ||
+        (statusFilter === 'review' && (!cat.isActive || !contact));
 
       return matchesSearch && matchesStatus;
     });
@@ -406,10 +429,41 @@ export const CategoryManagement = () => {
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Tổng danh mục" value={categoryStats.total} description="Nhóm phản ánh đang cấu hình." icon={Lucide.Layers3} />
-        <StatCard label="Đang hoạt động" value={categoryStats.active} description="Có thể tiếp nhận phản ánh mới." icon={Lucide.CheckCircle2} tone="success" />
-        <StatCard label="Đã gắn đầu mối" value={categoryStats.assigned} description="Có đầu mối xử lý mặc định." icon={Lucide.Network} tone="info" />
-        <StatCard label="Cần rà soát" value={categoryStats.unassigned + categoryStats.inactive} description="Chưa gắn đầu mối hoặc đang khóa." icon={Lucide.AlertTriangle} tone="warning" />
+        <StatCard
+          label="Tổng danh mục"
+          value={categoryStats.total}
+          description="Nhóm phản ánh đang cấu hình."
+          icon={Lucide.Layers3}
+          active={statusFilter === 'all'}
+          onClick={() => setStatusFilter('all')}
+        />
+        <StatCard
+          label="Đang hoạt động"
+          value={categoryStats.active}
+          description="Có thể tiếp nhận phản ánh mới."
+          icon={Lucide.CheckCircle2}
+          tone="success"
+          active={statusFilter === 'active'}
+          onClick={() => setStatusFilter('active')}
+        />
+        <StatCard
+          label="Đã gắn đầu mối"
+          value={categoryStats.assigned}
+          description="Có đầu mối xử lý mặc định."
+          icon={Lucide.Network}
+          tone="info"
+          active={statusFilter === 'assigned'}
+          onClick={() => setStatusFilter('assigned')}
+        />
+        <StatCard
+          label="Cần rà soát"
+          value={categoryStats.review}
+          description="Chưa gắn đầu mối hoặc đang khóa."
+          icon={Lucide.AlertTriangle}
+          tone="warning"
+          active={statusFilter === 'review'}
+          onClick={() => setStatusFilter('review')}
+        />
       </section>
 
       {loadError && categories.length > 0 ? (
@@ -453,6 +507,7 @@ export const CategoryManagement = () => {
               <option value="inactive">Tạm khóa</option>
               <option value="assigned">Đã gắn đầu mối</option>
               <option value="unassigned">Chưa gắn đầu mối</option>
+              <option value="review">Cần rà soát</option>
             </select>
           </div>
         </div>
