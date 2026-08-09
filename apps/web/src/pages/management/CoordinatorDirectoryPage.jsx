@@ -318,7 +318,15 @@ export default function CoordinatorDirectoryPage() {
             </div>
           </div>
           {canManage && (
-            <button type="button" onClick={() => navigate('/management/coordinators/new')} className="btn h-11 rounded-xl border-0 bg-blue-600 px-4 text-sm font-medium text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">
+            <button
+              type="button"
+              onClick={() =>
+                navigate('/management/coordinators/new', {
+                  state: setupCoverage ? { setupCoverage } : undefined,
+                })
+              }
+              className="btn h-11 rounded-xl border-0 bg-blue-600 px-4 text-sm font-medium text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"
+            >
               <Lucide.Plus size={18} /> Thêm điều phối viên
             </button>
           )}

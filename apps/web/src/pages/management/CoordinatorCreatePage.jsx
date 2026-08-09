@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { clearCoordinatorDirectoryCache } from '../../services/cache/adminCoordinatorDirectoryCache';
@@ -52,6 +52,8 @@ function FieldHint({ message }) {
 
 export default function CoordinatorCreatePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const setupCoverage = location.state?.setupCoverage || null;
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -91,7 +93,9 @@ export default function CoordinatorCreatePage() {
   };
 
   const leavePage = () => {
-    navigate('/management/coordinators', { state: { restoreCoordinatorList: true } });
+    navigate('/management/coordinators', {
+      state: setupCoverage ? { setupCoverage } : { restoreCoordinatorList: true },
+    });
   };
 
   const goBack = () => {
@@ -132,7 +136,10 @@ export default function CoordinatorCreatePage() {
       if (coordinatorId) {
         navigate(`/management/coordinators/${coordinatorId}`, {
           replace: true,
-          state: { coordinatorCreated: true },
+          state: {
+            coordinatorCreated: true,
+            ...(setupCoverage ? { setupCoverage } : {}),
+          },
         });
         return;
       }
