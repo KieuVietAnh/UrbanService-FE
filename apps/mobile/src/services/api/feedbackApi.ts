@@ -7,6 +7,7 @@ export interface FeedbackFilters {
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  areaId?: string;
 }
 
 export interface CreateFeedbackPayload {
@@ -18,6 +19,8 @@ export interface CreateFeedbackPayload {
   longitude?: number;
   locationAccuracyMeters?: number;
   geoSource?: string;
+  areaId?: string;
+  priority?: string;
   attachments?: Array<{ uri: string; name: string; type: string }>;
 }
 
@@ -68,6 +71,8 @@ export const feedbackApi = {
         longitude: payload.longitude,
         locationAccuracyMeters: payload.locationAccuracyMeters,
         geoSource: payload.geoSource ?? 'GPS',
+        areaId: payload.areaId,
+        priority: payload.priority,
         attachments,
       },
       CITIZEN_OPTS

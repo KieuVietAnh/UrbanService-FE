@@ -17,14 +17,18 @@ import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
 import { SkeletonCard } from '@/components/ui/AppSkeleton';
 import { feedbackApi } from '@/services/api/feedbackApi';
 import { colors } from '@/constants/theme';
+import { managementTypes } from '@urbanmind/shared-types';
 
 const FILTERS = [
   { key: '', label: 'Tất cả' },
-  { key: 'PENDING', label: 'Chờ xử lý' },
-  { key: 'PROCESSING', label: 'Đang xử lý' },
-  { key: 'AWAITING_REVIEW', label: 'Đang xem xét' },
-  { key: 'RESOLVED', label: 'Đã xử lý' },
-  { key: 'CLOSED', label: 'Đã đóng' },
+  { key: managementTypes.feedbackStatus.SUBMITTED, label: 'Đã gửi' },
+  { key: managementTypes.feedbackStatus.ASSIGNED, label: 'Đã phân công' },
+  { key: managementTypes.feedbackStatus.IN_PROGRESS, label: 'Đang xử lý' },
+  { key: managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL, label: 'Chờ nghiệm thu' },
+  { key: managementTypes.feedbackStatus.RESOLVED, label: 'Đã xử lý' },
+  { key: managementTypes.feedbackStatus.APPROVED, label: 'Đã duyệt' },
+  { key: managementTypes.feedbackStatus.CLOSED, label: 'Đã đóng' },
+  { key: managementTypes.feedbackStatus.REJECTED, label: 'Bị từ chối' },
 ];
 
 function TicketCard({ ticket, onPress }: { ticket: any; onPress: () => void }) {
@@ -32,46 +36,57 @@ function TicketCard({ ticket, onPress }: { ticket: any; onPress: () => void }) {
     ? new Date(ticket.createdAt).toLocaleDateString('vi-VN')
     : '';
 
+  const priority = String(ticket.priority ?? 'Medium').toLowerCase();
+  const priorityMap: Record<string, { label: string; color: string; bg: string }> = {
+    urgent: { label: 'Khẩn cấp', color: '#DC2626', bg: '#FEE2E2' },
+    high: { label: 'Cao', color: '#EA580C', bg: '#FED7AA' },
+    medium: { label: 'Trung bình', color: '#B45309', bg: '#FDE68A' },
+    low: { label: 'Thấp', color: '#047857', bg: '#A7F3D0' },
+  };
+  const priorityInfo = priorityMap[priority] ?? { label: 'Trung bình', color: '#B45309', bg: '#FDE68A' };
+
   return (
-    <Pressable onPress={onPress} className="mb-3 mx-5">
-      <AppCard shadow="sm" pressable>
-        <View className="p-4">
-          {/* Top row */}
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xs font-sans-medium text-text-muted">
-              #{ticket.code ?? ticket.feedbackCode ?? '—'}
-            </Text>
+    <Pressable onPress={onPress} style={styles.ticketListItem}>
+      <AppCard shadow="sm">
+        <View style={styles.ticketCardContent}>
+          <View style={styles.ticketTopRow}>
+            <View style={styles.ticketCodeWrap}>
+              <Icon name="hash" size={12} color={colors.lightMuted} />
+              <Text style={styles.ticketCodeText}>
+                #{ticket.code ?? ticket.feedbackCode ?? '—'}
+              </Text>
+            </View>
             <TicketStatusBadge status={ticket.status ?? 'PENDING'} size="sm" />
           </View>
 
-          {/* Title */}
-          <Text className="text-sm font-sans-bold text-text mb-1.5" numberOfLines={2}>
+          <Text style={styles.ticketTitle} numberOfLines={2}>
             {ticket.title ?? 'Chưa có tiêu đề'}
           </Text>
 
-          {/* Category */}
           {ticket.categoryName && (
-            <View className="flex-row items-center gap-1.5 mb-1.5">
+            <View style={styles.categoryRow}>
               <Icon name="tag" size={12} color={colors.muted} />
-              <Text className="text-xs text-text-muted">{ticket.categoryName}</Text>
+              <Text style={styles.categoryText}>{ticket.categoryName}</Text>
             </View>
           )}
 
-          {/* Location */}
-          <View className="flex-row items-center gap-1.5 mb-3">
+          <View style={styles.locationRow}>
             <Icon name="map-pin" size={12} color={colors.muted} />
-            <Text className="text-xs text-text-muted flex-1" numberOfLines={1}>
+            <Text style={styles.locationText} numberOfLines={1}>
               {ticket.locationText ?? 'Không có địa chỉ'}
             </Text>
           </View>
 
-          {/* Footer */}
           <View style={styles.cardFooter}>
-            <View className="flex-row items-center gap-1">
+            <View style={styles.dateRow}>
               <Icon name="calendar" size={11} color={colors.lightMuted} />
-              <Text className="text-2xs text-text-light">{createdAt}</Text>
+              <Text style={styles.dateText}>{createdAt}</Text>
             </View>
-            <View className="flex-row items-center gap-1">
+            <View style={styles.priorityRow}>
+              <View style={[styles.priorityDot, { backgroundColor: priorityInfo.color }]} />
+              <View style={[styles.priorityPill, { backgroundColor: priorityInfo.bg }]}>
+                <Text style={[styles.priorityText, { color: priorityInfo.color }]}>{priorityInfo.label}</Text>
+              </View>
               <Icon name="chevron-right" size={14} color={colors.primary} />
             </View>
           </View>
@@ -107,22 +122,27 @@ export default function TicketsScreen() {
       }),
   });
 
-  const tickets = data?.items ?? [];
+  const tickets = Array.isArray(data)
+    ? data
+    : data?.items ?? [];
+
+  const totalCount = Array.isArray(data)
+    ? data.length
+    : data?.totalItems ?? data?.totalCount ?? 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-5 pt-3 pb-3 bg-surface border-b border-border-light">
-        <Text className="text-xl font-sans-bold text-text">Phản ánh của tôi</Text>
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm font-sans-semibold text-primary bg-primary-soft px-2.5 py-1 rounded-full">
-            {data?.totalItems ?? 0}
-          </Text>
+      <View style={styles.headerBar}>
+        <View>
+          <Text style={styles.headerEyebrow}>UrbanMind</Text>
+          <Text style={styles.headerTitle}>Phản ánh của tôi</Text>
+        </View>
+        <View style={styles.headerCountPill}>
+          <Text style={styles.headerCountText}>{totalCount}</Text>
         </View>
       </View>
 
-      {/* Search bar */}
-      <View className="px-5 pt-3 pb-2 bg-surface">
+      <View style={styles.searchSection}>
         <View style={styles.searchBar}>
           <Icon name="search" size={16} color={colors.muted} />
           <TextInput
@@ -140,8 +160,7 @@ export default function TicketsScreen() {
         </View>
       </View>
 
-      {/* Filter chips */}
-      <View className="bg-surface pb-3">
+      <View style={styles.filterSection}>
         <FlatList
           horizontal
           data={FILTERS}
@@ -169,7 +188,6 @@ export default function TicketsScreen() {
         />
       </View>
 
-      {/* List */}
       <FlatList
         data={isLoading ? Array(4).fill(null) : tickets}
         keyExtractor={(item, i) =>
@@ -186,30 +204,28 @@ export default function TicketsScreen() {
         }
         ListEmptyComponent={
           !isLoading ? (
-            <View className="items-center px-10 pt-16">
-              <Icon name="inbox" size={48} color="#CBD5E1" />
-              <Text className="text-base font-sans-semibold text-text-muted mt-4 text-center">
-                Không có phản ánh nào
-              </Text>
-              <Text className="text-sm text-text-light text-center mt-2">
+            <View style={styles.emptyWrap}>
+              <View style={styles.emptyIconCircle}>
+                <Icon name="inbox" size={40} color={colors.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>Không có phản ánh nào</Text>
+              <Text style={styles.emptySubtitle}>
                 {debouncedSearch
                   ? `Không tìm thấy kết quả cho "${debouncedSearch}"`
                   : 'Hãy gửi phản ánh đầu tiên của bạn!'}
               </Text>
               <Pressable
                 onPress={() => router.push('/(resident)/create-feedback' as any)}
-                className="mt-5 bg-primary px-5 py-3 rounded-xl"
+                style={styles.emptyButton}
               >
-                <Text className="text-sm font-sans-semibold text-white">
-                  Gửi phản ánh ngay
-                </Text>
+                <Text style={styles.emptyButtonText}>Gửi phản ánh ngay</Text>
               </Pressable>
             </View>
           ) : null
         }
         renderItem={({ item }) =>
           !item ? (
-            <View className="mx-5 mb-3">
+            <View style={styles.skeletonWrap}>
               <SkeletonCard />
             </View>
           ) : (
@@ -217,7 +233,7 @@ export default function TicketsScreen() {
               ticket={item}
               onPress={() =>
                 router.push(
-                  `/(resident)/tickets/${item.feedbackId ?? item.id}` as any
+                  `/(resident)/tickets/${item.feedbackId ?? item.id ?? item.ticketId}` as any
                 )
               }
             />
@@ -230,14 +246,60 @@ export default function TicketsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  headerEyebrow: {
+    fontFamily: 'Geist-Medium',
+    fontSize: 11,
+    color: colors.lightMuted,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  headerTitle: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 24,
+    color: colors.text,
+    letterSpacing: -0.4,
+    marginTop: 4,
+  },
+  headerCountPill: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  headerCountText: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 12,
+    color: colors.primary,
+  },
+  searchSection: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   searchInput: {
     flex: 1,
@@ -245,6 +307,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#0F172A',
     padding: 0,
+  },
+  filterSection: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 10,
   },
   filterList: {
     paddingHorizontal: 20,
@@ -254,9 +320,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#CBD5E1',
   },
   filterChipActive: {
     backgroundColor: colors.primarySoft,
@@ -275,6 +341,59 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 120,
   },
+  ticketListItem: {
+    marginBottom: 12,
+    marginHorizontal: 20,
+  },
+  ticketCardContent: {
+    padding: 14,
+  },
+  ticketTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  ticketCodeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ticketCodeText: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 11,
+    color: colors.lightMuted,
+  },
+  ticketTitle: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 9,
+  },
+  categoryText: {
+    fontFamily: 'Geist-Medium',
+    fontSize: 11,
+    color: colors.muted,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  locationText: {
+    fontFamily: 'Geist-Regular',
+    fontSize: 11,
+    color: colors.muted,
+    flex: 1,
+  },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -282,5 +401,79 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
     paddingTop: 10,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dateText: {
+    fontFamily: 'Geist-Medium',
+    fontSize: 10,
+    color: colors.lightMuted,
+  },
+  priorityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+  },
+  priorityPill: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  priorityText: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 10,
+  },
+  skeletonWrap: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
+  emptyWrap: {
+    alignItems: 'center',
+    paddingHorizontal: 36,
+    paddingTop: 60,
+  },
+  emptyIconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#E0F2FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  emptyTitle: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 16,
+    color: colors.text,
+    marginTop: 14,
+  },
+  emptySubtitle: {
+    fontFamily: 'Geist-Regular',
+    fontSize: 12,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  emptyButton: {
+    marginTop: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+  },
+  emptyButtonText: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 13,
+    color: '#FFFFFF',
   },
 });

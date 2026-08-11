@@ -2,12 +2,15 @@ import { axiosClient } from './axiosClient.js';
 
 export const authApi = {
   login(email, password) {
-    return axiosClient.post('/api/auth/login', { email, password });
+    return axiosClient.post('/api/auth/login', {
+      email,
+      password,
+    });
   },
 
   register(fullName, email, password, phone) {
     return axiosClient.post('/api/auth/register', {
-      fullName,
+      fullname: fullName,
       email,
       password,
       phone,

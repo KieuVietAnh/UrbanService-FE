@@ -157,7 +157,12 @@ pnpm dev:web
 
 ```bash
 pnpm dev:mobile
-# Khởi chạy Expo cho mobile
+# Khởi chạy Expo trong terminal, mở QR code và dashboard Expo
+```
+
+```bash
+pnpm dev:mobile:android
+# Khởi chạy Expo và tự động mở app trên Android emulator nếu đã cài đặt và cấu hình
 ```
 
 ### Build web

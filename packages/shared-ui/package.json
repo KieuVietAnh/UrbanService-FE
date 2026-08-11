@@ -3,9 +3,15 @@
   "version": "0.1.0",
   "main": "src/index.js",
   "dependencies": {
-    "lucide-react": "^1.17.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "lucide-react": "^1.17.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "license": "MIT",
   "private": true

@@ -1,6 +1,5 @@
-export const USER_ROLES = {
-  RESIDENT: 'service-user',
-  STAFF: 'system-staff',
-} as const;
+import { APP_ROLES } from '@urbanmind/shared-types';
 
-export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
+export const USER_ROLES = APP_ROLES;
+
+export type UserRole = (typeof APP_ROLES)[keyof typeof APP_ROLES];

@@ -1,7 +1,7 @@
 export interface User {
   id: string;
   email: string;
-  role: 'service-user' | 'system-staff';
+  role: string;
   token: string;
   fullName?: string;
   phone?: string;

@@ -1,22 +1,25 @@
+import React from 'react';
 import { View, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
 import { Text } from './Text';
-import { colors } from '@/constants/theme';
+import { semantics } from '@/theme/semantics';
 
-interface AppEmptyStateProps {
+export interface AppEmptyStateProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   icon?: React.ReactNode;
+  action?: React.ReactNode;
 }
 
-export const AppEmptyState = ({ children, style, textStyle, icon }: AppEmptyStateProps) => {
+export function AppEmptyState({ children, style, textStyle, icon, action }: AppEmptyStateProps) {
   return (
     <View style={[styles.container, style]}>
       {icon && <View style={styles.iconWrap}>{icon}</View>}
       <Text style={[styles.text, textStyle]}>{children}</Text>
+      {action && <View style={styles.actionWrap}>{action}</View>}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -27,12 +30,25 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     marginBottom: 16,
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: semantics.border.publicBorder,
+    backgroundColor: semantics.bg.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   text: {
     textAlign: 'center',
     fontSize: 15,
-    color: colors.muted,
+    color: semantics.text.muted,
     fontFamily: 'Geist-Regular',
     lineHeight: 22,
   },
+  actionWrap: {
+    marginTop: 16,
+  },
 });
+
+export default AppEmptyState;

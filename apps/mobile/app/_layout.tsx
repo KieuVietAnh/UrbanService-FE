@@ -18,10 +18,14 @@ import {
 } from '@expo-google-fonts/geist';
 import { initApi } from '@/config/api';
 import { ToastProvider } from '@/components/ui/Toast';
+import { useAuthGuard } from '@/features/auth/useAuthGuard';
 
 import '../global.css';
 
 SplashScreen.preventAutoHideAsync();
+
+// Ensure API is configured before any child component or data fetch runs.
+initApi();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,6 +35,12 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+function RootNavigation() {
+  useAuthGuard();
+
+  return <Stack screenOptions={{ headerShown: false }} />;
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -62,7 +72,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <ToastProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <RootNavigation />
           </ToastProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
