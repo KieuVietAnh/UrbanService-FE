@@ -11,7 +11,8 @@ interface AppStepBarProps {
 }
 
 export function AppStepBar({ currentStep, totalSteps, label, labels }: AppStepBarProps) {
-  const progress = (currentStep - 1) / (totalSteps - 1);
+  const safeStep = Math.min(Math.max(currentStep, 1), totalSteps || 1);
+  const progress = totalSteps > 1 ? safeStep / totalSteps : 1;
 
   return (
     <View className="px-5 pt-3 pb-4">

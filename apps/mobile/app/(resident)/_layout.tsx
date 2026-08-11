@@ -123,15 +123,17 @@ function TabItem({
 export default function ResidentLayout() {
   const router = useRouter();
   const pathname = usePathname() ?? '/';
+  const normalizedPath = pathname.startsWith('/(resident)') ? pathname.replace('/(resident)', '') : pathname;
   const insets = useSafeAreaInsets();
 
   const isActive = (item: NavItem) => {
     const matches = item.match ?? [];
     return matches.some((m) => {
-      if (m === '/' || m === '/(resident)' || m === '/index') {
-        return pathname === '/' || pathname === '/(resident)';
+      const normalizedMatch = m.startsWith('/(resident)') ? m.replace('/(resident)', '') : m;
+      if (normalizedMatch === '/' || normalizedMatch === '' || normalizedMatch === '/index') {
+        return normalizedPath === '/' || normalizedPath === '' || normalizedPath === '/index';
       }
-      return pathname === m || pathname.startsWith(`${m}/`);
+      return normalizedPath === normalizedMatch || normalizedPath.startsWith(`${normalizedMatch}/`);
     });
   };
 
@@ -140,7 +142,8 @@ export default function ResidentLayout() {
     router.replace(item.href);
   };
 
-  const isHomePath = pathname === '/' || pathname === '/(resident)' || pathname === '/index';
+  const isHomePath = normalizedPath === '/' || normalizedPath === '' || normalizedPath === '/index';
+  const hideBottomNav = normalizedPath === '/create-feedback' || normalizedPath === '/create-feedback-wizard' || normalizedPath.startsWith('/create-feedback');
   const tabBarHeight = 64 + insets.bottom;
 
   const toast = useToast();
@@ -169,27 +172,29 @@ export default function ResidentLayout() {
         />
       </View>
 
-      {isHomePath ? <FloatingChatMenu bottomOffset={Math.max(86, insets.bottom + 72)} onSelectOption={handleFloatingSelect} /> : null}
+      {isHomePath && !hideBottomNav ? <FloatingChatMenu bottomOffset={Math.max(86, insets.bottom + 72)} onSelectOption={handleFloatingSelect} /> : null}
 
       {/* Custom tab bar */}
-      <View style={[styles.tabBarContainer, { paddingBottom: insets.bottom }]}>
-        {Platform.OS === 'ios' ? (
-          <BlurView intensity={86} tint="light" style={StyleSheet.absoluteFillObject} />
-        ) : (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#FFFFFF' }]} />
-        )}
+      {!hideBottomNav ? (
+        <View style={[styles.tabBarContainer, { paddingBottom: insets.bottom }]}>
+          {Platform.OS === 'ios' ? (
+            <BlurView intensity={86} tint="light" style={StyleSheet.absoluteFillObject} />
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#FFFFFF' }]} />
+          )}
 
-        <View style={styles.tabBar}>
-          {NAV_ITEMS.map((item) => (
-            <TabItem
-              key={item.label}
-              item={item}
-              active={isActive(item)}
-              onPress={() => handleTabPress(item)}
-            />
-          ))}
+          <View style={styles.tabBar}>
+            {NAV_ITEMS.map((item) => (
+              <TabItem
+                key={item.label}
+                item={item}
+                active={isActive(item)}
+                onPress={() => handleTabPress(item)}
+              />
+            ))}
+          </View>
         </View>
-      </View>
+      ) : null}
     </View>
   );
 }

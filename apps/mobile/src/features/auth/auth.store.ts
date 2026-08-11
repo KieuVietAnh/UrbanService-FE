@@ -16,6 +16,7 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   error: string | null;
+  hasHydrated: boolean;
   // Actions
   login: (email: string, password: string) => Promise<User>;
   register: (data: RegisterData) => Promise<User>;
@@ -60,6 +61,7 @@ export const useAuthStore = create<AuthState>()(
         user: null,
         isLoading: false,
         error: null,
+        hasHydrated: false,
 
         login: async (email: string, password: string) => {
           console.log('[Auth login] start', { email });
@@ -155,6 +157,11 @@ export const useAuthStore = create<AuthState>()(
           removeItem: (key) => AsyncStorageService.removeItem(key),
         },
         partialize: (state) => ({ user: state.user }) as AuthState,
+        onRehydrateStorage: () => (state) => {
+          if (state) {
+            state.hasHydrated = true;
+          }
+        },
       }
     )
   )

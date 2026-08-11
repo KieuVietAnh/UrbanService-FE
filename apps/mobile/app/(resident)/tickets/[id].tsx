@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
+import MapView, { Marker } from 'react-native-maps';
 import { Text } from '@/components/ui/Text';
 import { AppCard } from '@/components/ui/AppCard';
 import { AppHeader } from '@/components/ui/AppHeader';
@@ -228,6 +229,24 @@ export default function TicketDetailScreen() {
   const createdAt = ticket?.createdAt
     ? new Date(ticket.createdAt).toLocaleString('vi-VN')
     : '';
+
+  const latitude = Number(ticket?.latitude ?? ticket?.location?.latitude ?? ticket?.locationLatitude ?? ticket?.coordinates?.latitude ?? ticket?.geo?.latitude ?? 0);
+  const longitude = Number(ticket?.longitude ?? ticket?.location?.longitude ?? ticket?.locationLongitude ?? ticket?.coordinates?.longitude ?? ticket?.geo?.longitude ?? 0);
+  const hasLocationCoords = Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0;
+  const miniMapRegion = hasLocationCoords
+    ? {
+        latitude,
+        longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }
+    : {
+        latitude: 21.0278,
+        longitude: 105.8342,
+        latitudeDelta: 0.15,
+        longitudeDelta: 0.15,
+      };
+
   const attachmentUrls = getTicketAttachmentCandidates(ticket)
     .map(getAttachmentUrl)
     .filter((uri): uri is string => Boolean(uri));
@@ -289,20 +308,26 @@ export default function TicketDetailScreen() {
         <View style={styles.heroSection}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroTitleBlock}>
-              <Text style={styles.codeText}>#{ticket?.code ?? ticket?.feedbackCode ?? feedbackId}</Text>
+              {ticket?.categoryName && (
+                <View style={styles.categoryBadge}>
+                  <Icon name="tag" size={12} color={semantics.text.brand} />
+                  <Text style={styles.categoryBadgeText}>{ticket.categoryName}</Text>
+                </View>
+              )}
               <Text style={styles.titleText}>{ticket?.title ?? '—'}</Text>
             </View>
             <View style={styles.heroBadgeStack}>
               <AppBadge status={status} size="md" />
-              {ticket?.priority && (
-                <View style={styles.priorityBadgeWrap}>
-                  <AppBadge priority={ticket.priority} variant="outline" size="sm" />
-                </View>
-              )}
             </View>
           </View>
 
           <View style={styles.metaRows}>
+            {ticket?.priority && (
+              <View style={styles.metaRow}>
+                <Icon name="zap" size={13} color={semantics.text.muted} />
+                <Text style={styles.metaText}>Mức độ: {ticket.priority === 'Urgent' ? 'Khẩn cấp' : ticket.priority === 'High' ? 'Cao' : ticket.priority === 'Low' ? 'Thấp' : 'Trung bình'}</Text>
+              </View>
+            )}
             <View style={styles.metaRow}>
               <Icon name="map-pin" size={13} color={semantics.text.muted} />
               <Text style={styles.metaText}>{ticket?.locationText ?? 'Không rõ vị trí'}</Text>
@@ -358,6 +383,36 @@ export default function TicketDetailScreen() {
             </View>
           </AppCard>
 
+          {ticket?.assignment?.operatorName && (
+            <AppCard shadow="sm">
+              <View style={styles.cardContent}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardHeaderTitle}>Đơn vị xử lý</Text>
+                  <View style={styles.trustBadge}>
+                    <Icon name="check-circle" size={12} color="#10B981" />
+                    <Text style={styles.trustBadgeText}>Đang xử lý</Text>
+                  </View>
+                </View>
+                <View style={styles.assignedUnitRow}>
+                  <View style={styles.assignedUnitAvatar}>
+                    <Text style={styles.assignedUnitAvatarText}>
+                      {(ticket.assignment.operatorName || 'OP').slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.assignedUnitName}>{ticket.assignment.operatorName}</Text>
+                    {ticket.assignment.staffName && (
+                      <Text style={styles.assignedUnitStaff}>Cán bộ: {ticket.assignment.staffName}</Text>
+                    )}
+                    <Text style={styles.assignedUnitStatus}>
+                      {status === 'IN_PROGRESS' ? '🟢 Đang xử lý' : status === 'ASSIGNED' ? '🟡 Vừa nhận công việc' : '⚪ Chờ xử lý'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </AppCard>
+          )}
+
           <AppCard shadow="sm">
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
@@ -367,15 +422,46 @@ export default function TicketDetailScreen() {
                   <Text style={styles.locationBadgeText}>Bản đồ</Text>
                 </View>
               </View>
-              <View style={styles.locationMapCard}>
-                <View style={styles.locationMapCompact}>
-                  <Icon name="map" size={28} color={semantics.text.brand} />
+
+              {hasLocationCoords ? (
+                <View style={styles.locationMapWrapper}>
+                  <MapView
+                    style={styles.locationMapCompact}
+                    initialRegion={miniMapRegion}
+                    camera={
+                      hasLocationCoords
+                        ? {
+                            center: { latitude, longitude },
+                            pitch: 0,
+                            heading: 0,
+                            altitude: 800,
+                            zoom: 15,
+                          }
+                        : undefined
+                    }
+                    liteMode
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                  >
+                    <Marker coordinate={{ latitude, longitude }} />
+                  </MapView>
+                  <View style={styles.locationMapTextWrap}>
+                    <Text style={styles.locationTitle}>{ticket?.locationText ?? 'Không rõ vị trí'}</Text>
+                    <Text style={styles.locationSubtitle}>Vị trí phản ánh đang được theo dõi</Text>
+                    <Text style={styles.locationCoordsText}>{latitude.toFixed(5)}, {longitude.toFixed(5)}</Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.locationTitle}>{ticket?.locationText ?? 'Không rõ vị trí'}</Text>
-                  <Text style={styles.locationSubtitle}>Vị trí phản ánh đang được theo dõi</Text>
+              ) : (
+                <View style={styles.locationMapCard}>
+                  <View style={styles.locationMapCompactPlaceholder}>
+                    <Icon name="map" size={28} color={semantics.text.brand} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.locationTitle}>{ticket?.locationText ?? 'Không rõ vị trí'}</Text>
+                    <Text style={styles.locationSubtitle}>Vị trí phản ánh đang được theo dõi</Text>
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
           </AppCard>
 
@@ -604,6 +690,21 @@ const styles = StyleSheet.create({
     color: semantics.text.muted,
     marginBottom: 8,
   },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: semantics.bg.surfaceSubtle,
+    marginBottom: 8,
+  },
+  categoryBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.brand,
+  },
   titleText: {
     fontSize: 26,
     fontFamily: 'Geist-Bold',
@@ -807,7 +908,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  locationMapWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   locationMapCompact: {
+    width: 110,
+    height: 110,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#EAF7EE',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  locationMapCompactPlaceholder: {
     width: 80,
     height: 56,
     borderRadius: 12,
@@ -816,6 +931,9 @@ const styles = StyleSheet.create({
     borderColor: '#BBF7D0',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  locationMapTextWrap: {
+    flex: 1,
   },
   locationTitle: {
     fontFamily: 'Geist-SemiBold',
@@ -826,6 +944,61 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist-Regular',
     fontSize: 10,
     color: semantics.text.muted,
+    marginTop: 4,
+  },
+  locationCoordsText: {
+    fontFamily: 'Geist-Medium',
+    fontSize: 10,
+    color: semantics.text.brand,
+    marginTop: 6,
+  },
+  trustBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 99,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  trustBadgeText: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 10,
+    color: '#047857',
+  },
+  assignedUnitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  assignedUnitAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: semantics.text.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignedUnitAvatarText: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  assignedUnitName: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 13,
+    color: semantics.text.primary,
+  },
+  assignedUnitStaff: {
+    fontFamily: 'Geist-Regular',
+    fontSize: 11,
+    color: semantics.text.muted,
+    marginTop: 2,
+  },
+  assignedUnitStatus: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 11,
+    color: semantics.text.primary,
     marginTop: 4,
   },
   communityPreview: {
