@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { StyleSheet, Dimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -10,7 +10,8 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from './Text';
-import { View } from 'react-native';
+import { semantics } from '@/theme/semantics';
+import { shadows } from '@/theme/shadows';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -26,6 +27,7 @@ interface ToastContextValue {
   success: (message: string) => void;
   error: (message: string) => void;
   info: (message: string) => void;
+  warning: (message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue>({
@@ -33,20 +35,22 @@ const ToastContext = createContext<ToastContextValue>({
   success: () => {},
   error: () => {},
   info: () => {},
+  warning: () => {},
 });
 
-const TOAST_CONFIG: Record<ToastType, { icon: any; bg: string; iconColor: string; textColor: string }> = {
-  success: { icon: 'check-circle', bg: '#D1FAE5', iconColor: '#047857', textColor: '#047857' },
-  error: { icon: 'x-circle', bg: '#FEE2E2', iconColor: '#DC2626', textColor: '#991B1B' },
-  info: { icon: 'info', bg: '#EFF6FF', iconColor: '#0052CC', textColor: '#1D4ED8' },
-  warning: { icon: 'alert-triangle', bg: '#FEF3C7', iconColor: '#D97706', textColor: '#92400E' },
+const TOAST_ICON: Record<ToastType, keyof typeof Icon.glyphMap> = {
+  success: 'check-circle',
+  error: 'x-circle',
+  info: 'info',
+  warning: 'alert-triangle',
 };
 
-function ToastItem({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) => void }) {
+function ToastItemComponent({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) => void }) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(-100);
   const opacity = useSharedValue(0);
-  const config = TOAST_CONFIG[item.type];
+  const feedback = semantics.feedback[item.type] ?? semantics.feedback.info;
+  const iconName = TOAST_ICON[item.type];
 
   React.useEffect(() => {
     translateY.value = withSpring(0, { damping: 18, stiffness: 300 });
@@ -62,7 +66,7 @@ function ToastItem({ item, onDismiss }: { item: ToastItem; onDismiss: (id: strin
     return () => clearTimeout(timer);
   }, []);
 
-  const style = useAnimatedStyle(() => ({
+  const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
     opacity: opacity.value,
   }));
@@ -71,12 +75,13 @@ function ToastItem({ item, onDismiss }: { item: ToastItem; onDismiss: (id: strin
     <Animated.View
       style={[
         styles.toast,
-        { backgroundColor: config.bg, top: insets.top + 12 },
-        style,
+        { backgroundColor: feedback.bg, borderColor: feedback.border, top: insets.top + 12 },
+        shadows.md,
+        animatedStyle,
       ]}
     >
-      <Icon name={config.icon} size={18} color={config.iconColor} />
-      <Text style={[styles.toastText, { color: config.textColor }]}>
+      <Icon name={iconName} size={18} color={feedback.icon} />
+      <Text style={[styles.toastText, { color: feedback.text }]}>
         {item.message}
       </Text>
     </Animated.View>
@@ -101,6 +106,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     success: (msg) => show(msg, 'success'),
     error: (msg) => show(msg, 'error'),
     info: (msg) => show(msg, 'info'),
+    warning: (msg) => show(msg, 'warning'),
   };
 
   return (
@@ -108,7 +114,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
         {toasts.map((t) => (
-          <ToastItem key={t.id} item={t} onDismiss={dismiss} />
+          <ToastItemComponent key={t.id} item={t} onDismiss={dismiss} />
         ))}
       </View>
     </ToastContext.Provider>
@@ -130,6 +136,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderRadius: 16,
+    borderWidth: 1,
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,

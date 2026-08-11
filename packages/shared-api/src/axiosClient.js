@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-let apiBaseUrl = '';
+const DEFAULT_API_BASE_URL = 'https://api.urbanservice.me';
+
+let apiBaseUrl = DEFAULT_API_BASE_URL;
 let unauthorizedHandler = null;
 let refreshPromise = null;
 let unauthorizedPromise = null;
@@ -18,6 +20,61 @@ const AUTH_REQUEST_PATHS = [
 ];
 
 const getPayload = (value) => value?.data ?? value;
+
+const getErrorContext = (error) => {
+  const response = error?.response || {};
+  const status = response?.status ?? error?.status ?? null;
+  const data = response?.data ?? error?.data ?? null;
+  const requestUrl = response?.config?.url ?? error?.config?.url ?? null;
+  return { status, data, requestUrl };
+};
+
+const sanitizeRequestData = (data) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  if ('password' in data) {
+    return { ...data, password: '[REDACTED]' };
+  }
+  return data;
+};
+
+const logRequestDetails = (config) => {
+  const fullUrl = `${config.baseURL || apiBaseUrl}${config.url || ''}`;
+  const requestData = sanitizeRequestData(config?.data);
+  console.log('[API req]', {
+    method: (config?.method || 'unknown').toUpperCase(),
+    url: fullUrl,
+    timeout: config?.timeout || null,
+    data: requestData,
+  });
+  // Log params separately for easier debugging of list endpoints
+  try {
+    if (config?.params) {
+      console.log('[API req params]', { url: fullUrl, params: sanitizeRequestData(config.params) });
+    }
+  } catch (e) {
+    /* ignore logging errors */
+  }
+};
+
+const logResponseErrorDetails = (error, req = {}) => {
+  const { status, data, requestUrl } = getErrorContext(error);
+  const method = (req?.method || error?.config?.method || 'unknown').toUpperCase();
+  const url = requestUrl || `${req.baseURL || apiBaseUrl}${req.url || ''}`;
+  const requestData = sanitizeRequestData(req?.data || error?.config?.data);
+
+  console.warn('[API resp error]', {
+    method,
+    url,
+    status,
+    code: error?.code || null,
+    message: error?.message || null,
+    statusText: error?.response?.statusText || null,
+    responseData: data,
+    requestData,
+    timeout: req?.timeout || error?.config?.timeout || null,
+    stack: error?.stack || null,
+  });
+};
 
 const extractAccessToken = (value) => {
   const payload = getPayload(value);
@@ -63,16 +120,44 @@ const shouldExpireSession = (error) => {
   );
 };
 
-const createApiError = (error, fallbackMessage) => {
-  const status = error?.response?.status;
-  const data = error?.response?.data;
-  const message =
+export const extractApiErrorMessage = (error, fallbackMessage) => {
+  const { status, data } = getErrorContext(error);
+  const isTimeoutError =
+    error?.code === 'ECONNABORTED' ||
+    error?.code === 'ETIMEDOUT' ||
+    error?.message?.includes('timeout') ||
+    error?.message?.includes('timed out');
+  const isNetworkError =
+    error?.code === 'ERR_NETWORK' ||
+    error?.message?.includes('Network Error') ||
+    error?.message?.includes('Network');
+  const specificNetworkMessage = error?.message?.trim();
+  const timeoutMessage = 'Máy chủ phản hồi quá chậm hoặc không phản hồi. Vui lòng thử lại sau ít phút.';
+  const networkMessage = 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối mạng hoặc thử lại sau.';
+  const detailedNetworkPattern = /(unable to resolve|dns|certificate|econnrefused|econnreset|socket hang up|fetch failed|connection refused|host|timed out|timeout)/i;
+  const serverMessage =
     data?.msg ||
     data?.message ||
     data?.error ||
-    fallbackMessage ||
-    (status === 401 ? 'Phiên đăng nhập đã hết hạn.' : error?.message) ||
-    'Unknown API error';
+    data?.title ||
+    error?.response?.statusText ||
+    null;
+
+  if (serverMessage) return serverMessage;
+  if (isTimeoutError) return timeoutMessage;
+  if (isNetworkError) {
+    if (specificNetworkMessage && detailedNetworkPattern.test(specificNetworkMessage)) {
+      return specificNetworkMessage;
+    }
+    return networkMessage;
+  }
+  if (status === 401) return 'Phiên đăng nhập đã hết hạn.';
+  return fallbackMessage || error?.message || 'Unknown API error';
+};
+
+const createApiError = (error, fallbackMessage) => {
+  const { status } = getErrorContext(error);
+  const message = extractApiErrorMessage(error, fallbackMessage);
 
   const apiError = new Error(message);
   apiError.status = status;
@@ -87,7 +172,8 @@ const createApiError = (error, fallbackMessage) => {
  * Call this once during app initialization with the appropriate environment variable.
  */
 export const setApiBaseUrl = (baseUrl) => {
-  apiBaseUrl = baseUrl || '';
+  const normalizedBaseUrl = String(baseUrl || '').trim();
+  apiBaseUrl = normalizedBaseUrl || DEFAULT_API_BASE_URL;
   axiosClient.defaults.baseURL = apiBaseUrl;
 };
 
@@ -256,6 +342,7 @@ const notifyUnauthorized = async (error) => {
 
 export const axiosClient = axios.create({
   baseURL: apiBaseUrl,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -263,7 +350,18 @@ export const axiosClient = axios.create({
 
 axiosClient.interceptors.request.use(
   async (config) => {
+    try {
+      logRequestDetails(config);
+    } catch (e) {
+      /* ignore logging errors */
+    }
+    console.log('[API req start]', {
+      url: `${config.baseURL || apiBaseUrl}${config.url || ''}`,
+      method: (config?.method || 'unknown').toUpperCase(),
+      timeout: config?.timeout || null,
+    });
     const token = await getToken();
+    console.log('[API req token]', { tokenPresent: Boolean(token) });
     if (config.headers) {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -281,9 +379,33 @@ axiosClient.interceptors.request.use(
 );
 
 axiosClient.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    try {
+      console.log('[API resp success]', {
+        url: response?.config?.url || null,
+        status: response?.status || null,
+      });
+      // Also log the response body for debugging list responses
+      console.log('[API resp body]', { url: response?.config?.url || null, body: response?.data ?? null });
+    } catch (e) {
+      /* ignore logging errors */
+    }
+    return response.data;
+  },
   async (error) => {
-    const status = error?.response?.status;
+    try {
+      const req = error?.config || {};
+      const { status } = getErrorContext(error);
+      // Silence expected 404 responses (resource not found) at warn level
+      if (status === 404) {
+        console.debug('[API resp error]', { url: `${req.baseURL || apiBaseUrl}${req.url || ''}`, status, data: getErrorContext(error).data });
+      } else {
+        logResponseErrorDetails(error, req);
+      }
+    } catch (e) {
+      /* ignore logging errors */
+    }
+    const { status } = getErrorContext(error);
     const originalRequest = error?.config;
     const requestUrl = String(originalRequest?.url || '');
     const isAuthRequest = AUTH_REQUEST_PATHS.some((path) => requestUrl.includes(path));

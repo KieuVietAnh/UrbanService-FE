@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import {
   View,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,9 +13,10 @@ import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui/Text';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppInput } from '@/components/ui/AppInput';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { useAuthStore } from '@/features/auth/auth.store';
 import { useToast } from '@/components/ui/Toast';
-import { colors } from '@/constants/theme';
+import { semantics } from '@/theme/semantics';
 
 interface Errors {
   fullName?: string;
@@ -29,6 +30,7 @@ export default function RegisterScreen() {
   const router = useRouter();
   const toast = useToast();
   const register = useAuthStore((s) => s.register);
+  const sendOtp = useAuthStore((s) => s.sendOtp);
   const isLoading = useAuthStore((s) => s.isLoading);
 
   const [form, setForm] = useState({
@@ -41,29 +43,57 @@ export default function RegisterScreen() {
   const [agreed, setAgreed] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
 
-  const set = (field: keyof typeof form) => (v: string) =>
-    setForm((f) => ({ ...f, [field]: v }));
+  const setField = (field: keyof typeof form) => (value: string) =>
+    setForm((f) => ({ ...f, [field]: value }));
 
   const validate = (): boolean => {
     const e: Errors = {};
-    if (!form.fullName.trim()) e.fullName = 'Vui lòng nhập họ và tên';
-    if (!form.phone.trim()) e.phone = 'Vui lòng nhập số điện thoại';
-    else if (!/^0\d{9}$/.test(form.phone)) e.phone = 'Số điện thoại không hợp lệ';
-    if (!form.email.trim()) e.email = 'Vui lòng nhập email';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Email không hợp lệ';
-    if (!form.password) e.password = 'Vui lòng nhập mật khẩu';
-    else if (form.password.length < 6) e.password = 'Mật khẩu ít nhất 6 ký tự';
-    if (form.password !== form.confirmPassword) e.confirmPassword = 'Mật khẩu xác nhận không khớp';
+    const name = form.fullName.trim();
+    const phone = form.phone.trim();
+    const email = form.email.trim();
+
+    if (!name) {
+      e.fullName = 'Vui lòng nhập họ và tên';
+    } else if (name.length < 2) {
+      e.fullName = 'Họ và tên phải có ít nhất 2 ký tự';
+    }
+
+    if (!phone) {
+      e.phone = 'Vui lòng nhập số điện thoại';
+    } else if (!/^0\d{9}$/.test(phone)) {
+      e.phone = 'Số điện thoại phải có 10 chữ số (bắt đầu bằng số 0)';
+    }
+
+    if (!email) {
+      e.email = 'Vui lòng nhập email';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      e.email = 'Địa chỉ email không hợp lệ';
+    }
+
+    if (!form.password) {
+      e.password = 'Vui lòng nhập mật khẩu';
+    } else if (form.password.length < 8) {
+      e.password = 'Mật khẩu phải có ít nhất 8 ký tự';
+    }
+
+    if (!form.confirmPassword) {
+      e.confirmPassword = 'Vui lòng nhập lại mật khẩu';
+    } else if (form.password !== form.confirmPassword) {
+      e.confirmPassword = 'Mật khẩu xác nhận không khớp';
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handleRegister = async () => {
     if (!validate()) return;
+
     if (!agreed) {
       toast.error('Vui lòng đồng ý với điều khoản sử dụng');
       return;
     }
+
     try {
       await register({
         fullName: form.fullName.trim(),
@@ -71,47 +101,102 @@ export default function RegisterScreen() {
         email: form.email.trim(),
         password: form.password,
       });
-      // Navigate to OTP
-      router.push({ pathname: '/(auth)/otp', params: { phone: form.phone } });
-    } catch {
-      toast.error('Đăng ký thất bại. Vui lòng thử lại.');
+
+      try {
+        await sendOtp();
+      } catch {
+        /* proceed to verify screen where user can retry */
+      }
+
+      router.replace('/(auth)/verify-email');
+    } catch (err: any) {
+      toast.error(err.message || 'Đăng ký thất bại. Vui lòng thử lại.');
     }
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
-            <Icon name="arrow-left" size={20} color={colors.primary} />
-          </Pressable>
+      <KeyboardAvoidingView
+        style={styles.flex1}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+      >
+        <View style={styles.flex1}>
+          <ScrollView
+            style={styles.flex1}
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+            contentInsetAdjustmentBehavior="never"
+          >
+          <View style={styles.headerRow}>
+            <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
+              <Icon name="arrow-left" size={20} color={semantics.text.primary} />
+            </Pressable>
+            <Text style={styles.headerTitle}>Tạo tài khoản mới</Text>
+            <View style={{ width: 38 }} />
+          </View>
 
-          <View className="items-center mb-7 mt-2">
-            <View style={styles.logoWrap}>
-              <Icon name="grid" size={22} color="#FFFFFF" />
+          {/* Hero Panel — Deep Navy Theme */}
+          <View style={styles.heroCard}>
+            <View style={styles.heroIconWrap}>
+              <Icon name="user-plus" size={20} color="#FFFFFF" />
             </View>
-            <Text className="text-xl font-sans-bold text-primary mt-3">UrbanMind</Text>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroTitle}>Đăng ký Cư dân UrbanMind</Text>
+              <Text style={styles.heroSub}>Tạo tài khoản để gửi phản ánh đô thị, nhận thông báo tiến độ và kết nối nhanh với chính quyền.</Text>
+            </View>
           </View>
 
           <View style={styles.card}>
-            <Text className="text-2xl font-sans-bold text-text text-center mb-1" style={{ letterSpacing: -0.4 }}>
-              Tạo tài khoản
-            </Text>
-            <Text className="text-sm text-text-muted text-center mb-6">
-              Đăng ký để gửi phản ánh và theo dõi tiến độ xử lý
+            <Text style={styles.cardSub}>
+              Nhập đầy đủ thông tin bên dưới để khởi tạo hồ sơ cư dân
             </Text>
 
-            <AppInput label="Họ và tên" leftIcon="user" value={form.fullName} onChangeText={set('fullName')} autoCapitalize="words" error={errors.fullName} />
-            <AppInput label="Số điện thoại" leftIcon="phone" value={form.phone} onChangeText={set('phone')} keyboardType="phone-pad" error={errors.phone} />
-            <AppInput label="Email" leftIcon="mail" value={form.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
-            <AppInput label="Mật khẩu" leftIcon="lock" value={form.password} onChangeText={set('password')} isPassword error={errors.password} />
-            <AppInput label="Nhập lại mật khẩu" leftIcon="lock" value={form.confirmPassword} onChangeText={set('confirmPassword')} isPassword error={errors.confirmPassword} />
+            <AppInput
+              label="Họ và tên"
+              leftIcon="user"
+              value={form.fullName}
+              onChangeText={setField('fullName')}
+              autoCapitalize="words"
+              error={errors.fullName}
+            />
 
-            {/* Terms */}
+            <AppInput
+              label="Số điện thoại"
+              leftIcon="phone"
+              value={form.phone}
+              onChangeText={setField('phone')}
+              keyboardType="phone-pad"
+              maxLength={10}
+              error={errors.phone}
+            />
+
+            <AppInput
+              label="Email"
+              leftIcon="mail"
+              value={form.email}
+              onChangeText={setField('email')}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              error={errors.email}
+            />
+
+            <PasswordInput
+              label="Mật khẩu (Tối thiểu 8 ký tự)"
+              value={form.password}
+              onChangeText={setField('password')}
+              error={errors.password}
+            />
+
+            <PasswordInput
+              label="Nhập lại mật khẩu"
+              value={form.confirmPassword}
+              onChangeText={setField('confirmPassword')}
+              error={errors.confirmPassword}
+            />
+
             <Pressable
               onPress={() => setAgreed((v) => !v)}
               style={styles.termsRow}
@@ -119,52 +204,173 @@ export default function RegisterScreen() {
               <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
                 {agreed && <Icon name="check" size={12} color="#FFFFFF" />}
               </View>
-              <Text className="text-sm text-text flex-1 leading-snug">
+              <Text style={styles.termsText}>
                 Tôi đồng ý với{' '}
-                <Text className="text-primary font-sans-semibold">điều khoản sử dụng</Text>
+                <Text style={styles.termsLink}>Điều khoản sử dụng</Text>
+                {' '}và{' '}
+                <Text style={styles.termsLink}>Chính sách bảo mật</Text>
                 {' '}của UrbanMind
               </Text>
             </Pressable>
 
-            <AppButton onPress={handleRegister} loading={isLoading} fullWidth size="lg" className="mt-4">
-              Đăng ký
+            <AppButton
+              onPress={handleRegister}
+              loading={isLoading}
+              fullWidth
+              size="lg"
+              className="mt-4"
+              rightIcon={<Icon name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 4 }} />}
+            >
+              Tiếp tục (Xác thực Email)
             </AppButton>
 
-            <Pressable onPress={() => router.replace('/(auth)/login')} className="mt-4 self-center">
-              <Text className="text-sm text-text-muted">
+            <Pressable onPress={() => router.replace('/(auth)/login')} className="mt-5 self-center">
+              <Text style={styles.loginLink}>
                 Đã có tài khoản?{' '}
-                <Text className="text-primary font-sans-semibold">Đăng nhập</Text>
+                <Text style={styles.loginLinkBold}>Đăng nhập ngay</Text>
               </Text>
             </Pressable>
           </View>
-
-          {/* Bottom promo */}
-          <View style={styles.promoBanner}>
-            <Text className="text-xs font-sans-semibold text-primary uppercase tracking-wider mb-1">
-              CÙNG NHAU XÂY DỰNG
-            </Text>
-            <Text className="text-sm text-text-muted text-center">
-              Mỗi phản ánh của bạn góp phần làm thành phố văn minh hơn.
-            </Text>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8FAFC' },
-  scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 40 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  logoWrap: {
-    width: 52, height: 52, borderRadius: 16, backgroundColor: colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6,
+  safe: {
+    flex: 1,
+    backgroundColor: semantics.bg.app,
   },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4 },
-  termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 4 },
-  checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
-  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
-  promoBanner: { backgroundColor: '#EFF6FF', borderRadius: 20, padding: 20, marginTop: 20, alignItems: 'center' },
+  flex1: {
+    flex: 1,
+  },
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: semantics.bg.surfaceSubtle,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontFamily: 'Geist-Bold',
+    color: semantics.text.primary,
+    letterSpacing: -0.3,
+  },
+  heroCard: {
+    backgroundColor: '#071024',
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.18)',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 5,
+  },
+  heroIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: semantics.bg.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroTextWrap: {
+    flex: 1,
+  },
+  heroTitle: {
+    fontSize: 16,
+    fontFamily: 'Geist-Bold',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  heroSub: {
+    fontSize: 12,
+    fontFamily: 'Geist-Regular',
+    color: 'rgba(255, 255, 255, 0.78)',
+    lineHeight: 18,
+  },
+  card: {
+    backgroundColor: semantics.bg.surface,
+    borderRadius: 26,
+    padding: 24,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: semantics.border.default,
+  },
+  cardSub: {
+    fontSize: 13,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: semantics.border.strong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  checkboxChecked: {
+    backgroundColor: semantics.bg.primary,
+    borderColor: semantics.bg.primary,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.secondary,
+    lineHeight: 18,
+  },
+  termsLink: {
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.brand,
+  },
+  loginLink: {
+    fontSize: 14,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
+  },
+  loginLinkBold: {
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.brand,
+  },
 });

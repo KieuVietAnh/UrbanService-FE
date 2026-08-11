@@ -36,12 +36,15 @@ export const toolsApi = {
       console.warn('toolsApi.init failed', error);
     }
   },
-  async getAreas(params = {}) {
+  async getAreas(params = {}, options = { throwOnError: false }) {
     try {
       const response = await axiosClient.get('/api/areas', { params });
       return normalizeCollection(response);
     } catch (error) {
       console.warn('toolsApi.getAreas failed', error);
+      if (options.throwOnError) {
+        throw error;
+      }
       return [];
     }
   },
@@ -51,7 +54,7 @@ export const toolsApi = {
       return normalizeCollection(response);
     } catch (error) {
       console.warn('toolsApi.getCategories failed', error);
-      return [];
+      throw error;
     }
   },
   async getOperators() { const db = await getMockDb(); return db?.getOperators?.() || []; },

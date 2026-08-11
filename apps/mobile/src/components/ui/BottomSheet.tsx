@@ -77,19 +77,21 @@ export function BottomSheet({
         <Animated.View style={[styles.backdrop, backdropStyle]} />
       </TouchableWithoutFeedback>
 
-      <GestureDetector gesture={panGesture}>
-        <Animated.View
-          style={[
-            styles.sheet,
-            sheetStyle,
-            snapPoint ? { height: snapPoint } : { maxHeight: SCREEN_H * 0.92 },
-            { paddingBottom: insets.bottom + 16 },
-          ]}
-        >
-          {showHandle && <View style={styles.handle} />}
-          {children}
-        </Animated.View>
-      </GestureDetector>
+      <Animated.View
+        style={[
+          styles.sheet,
+          sheetStyle,
+          snapPoint ? { height: snapPoint } : { maxHeight: SCREEN_H * 0.92 },
+          { paddingBottom: insets.bottom + 16 },
+        ]}
+      >
+        {showHandle ? (
+          <GestureDetector gesture={panGesture}>
+            <Animated.View style={styles.handle} />
+          </GestureDetector>
+        ) : null}
+        {children}
+      </Animated.View>
     </View>
   );
 }

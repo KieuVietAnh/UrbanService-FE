@@ -1,26 +1,35 @@
-import { View, StyleSheet, StyleProp, ViewStyle, TextStyle, Pressable } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
 import { Text } from './Text';
-import { colors } from '@/constants/theme';
+import { AppButton } from './AppButton';
+import { semantics } from '@/theme/semantics';
 
-interface AppErrorStateProps {
+export interface AppErrorStateProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   onRetry?: () => void;
+  retryText?: string;
 }
 
-export const AppErrorState = ({ children, style, textStyle, onRetry }: AppErrorStateProps) => {
+export function AppErrorState({
+  children,
+  style,
+  textStyle,
+  onRetry,
+  retryText = 'Thử lại',
+}: AppErrorStateProps) {
   return (
     <View style={[styles.container, style]}>
       <Text style={[styles.text, textStyle]}>{children}</Text>
       {onRetry && (
-        <Pressable style={styles.retryBtn} onPress={onRetry}>
-          <Text style={styles.retryText}>Thử lại</Text>
-        </Pressable>
+        <AppButton variant="outline" size="sm" onPress={onRetry}>
+          {retryText}
+        </AppButton>
       )}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -32,22 +41,11 @@ const styles = StyleSheet.create({
   text: {
     textAlign: 'center',
     fontSize: 15,
-    color: colors.red,
+    color: semantics.text.danger,
     fontFamily: 'Geist-Regular',
     marginBottom: 16,
     lineHeight: 22,
   },
-  retryBtn: {
-    marginTop: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-  },
-  retryText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontFamily: 'Geist-SemiBold',
-  },
 });
+
+export default AppErrorState;

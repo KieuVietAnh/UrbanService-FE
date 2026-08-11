@@ -1,104 +1,99 @@
-import { View, Text, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
-import { ReactNode } from 'react';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import React from 'react';
+import { View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import { getStatusIntent } from '@urbanmind/shared-types';
+import { Text } from '../ui/Text';
+import { semantics } from '@/theme/semantics';
 
-interface TicketTimelineProps {
+export interface TicketTimelineProps {
   events: Array<{
     id: string;
     title: string;
     description?: string;
-    date: string; // ISO date string
-    status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
+    date: string;
+    status: string;
   }>;
   style?: StyleProp<ViewStyle>;
 }
 
-export const TicketTimeline = ({
-  events,
-  style,
-}: TicketTimelineProps) => {
-  // Sort events by date descending (newest first)
+export const TicketTimeline = ({ events, style }: TicketTimelineProps) => {
   const sortedEvents = [...events].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
   return (
     <View style={[styles.container, style]}>
-      {sortedEvents.map((event) => (
-        <View key={event.id} style={styles.eventItem}>
-          <View style={styles.eventDot}>
-            <View style={[
-              styles.eventDotInner,
-              { backgroundColor: getStatusColor(event.status) },
-            ]} />
+      {sortedEvents.map((event, index) => {
+        const intent = getStatusIntent(event.status) as keyof typeof semantics.intent;
+        const token = semantics.intent[intent] ?? semantics.intent.neutral;
+        const isLast = index === sortedEvents.length - 1;
+
+        return (
+          <View key={event.id} style={styles.eventItem}>
+            <View style={styles.leftCol}>
+              <View style={[styles.dot, { backgroundColor: token.dot }]} />
+              {!isLast && <View style={styles.line} />}
+            </View>
+            <View style={styles.contentCol}>
+              <Text style={styles.title}>{event.title}</Text>
+              {event.description ? (
+                <Text style={styles.description}>{event.description}</Text>
+              ) : null}
+              <Text style={styles.date}>{event.date}</Text>
+            </View>
           </View>
-          <View style={styles.eventContent}>
-            <Text style={styles.eventTitle}>{event.title}</Text>
-            {event.description && (
-              <Text style={styles.eventDescription}>{event.description}</Text>
-            )}
-            <Text style={styles.eventDate}>
-              {new Date(event.date).toLocaleString()}
-            </Text>
-          </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 };
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'pending':
-      return colors.amber;
-    case 'in-progress':
-      return colors.primary;
-    case 'completed':
-      return colors.emerald;
-    case 'cancelled':
-      return colors.red;
-    default:
-      return colors.muted;
-  }
-};
-
 const styles = StyleSheet.create({
   container: {
-    marginVertical: spacing.md,
+    paddingVertical: 8,
   },
   eventItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: spacing.lg,
+    marginBottom: 16,
   },
-  eventDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: spacing.sm,
+  leftCol: {
+    alignItems: 'center',
+    width: 24,
+    marginRight: 12,
+    marginTop: 2,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  line: {
+    width: 2,
+    flex: 1,
+    backgroundColor: semantics.border.light,
     marginTop: 4,
+    minHeight: 28,
   },
-  eventDotInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  eventContent: {
+  contentCol: {
     flex: 1,
   },
-  eventTitle: {
-    fontSize: typography.md,
-    fontWeight: typography.semibold as any,
-    color: colors.text,
+  title: {
+    fontSize: 14,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.primary,
   },
-  eventDescription: {
-    fontSize: typography.sm,
-    color: colors.muted,
-    marginTop: spacing.xs,
+  description: {
+    fontSize: 13,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.secondary,
+    marginTop: 2,
   },
-  eventDate: {
-    fontSize: typography.xs,
-    color: colors.lightMuted,
-    marginTop: spacing.xs,
+  date: {
+    fontSize: 11,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.lightMuted,
+    marginTop: 4,
   },
 });
+
+export default TicketTimeline;

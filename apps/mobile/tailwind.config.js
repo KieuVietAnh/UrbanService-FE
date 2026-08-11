@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     './app/**/*.{js,jsx,ts,tsx}',
     './src/**/*.{js,jsx,ts,tsx}',
@@ -8,16 +9,19 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Brand
+        // Brand aligned to web CSS variables
         primary: {
-          DEFAULT: '#0052CC',
-          dark: '#0043A4',
+          DEFAULT: '#0B56D9',
+          dark: '#0846A8',
           soft: '#EFF6FF',
           muted: '#DBEAFE',
         },
-        // Neutrals
+        // Neutrals aligned to web background/surface tokens
         background: '#F8FAFC',
         surface: '#FFFFFF',
+        publicSurface: 'rgba(248, 251, 255, 0.97)',
+        publicSurfaceSoft: 'rgba(232, 239, 248, 0.95)',
+        publicSurfaceStrong: '#F7FAFF',
         text: {
           DEFAULT: '#0F172A',
           secondary: '#334155',

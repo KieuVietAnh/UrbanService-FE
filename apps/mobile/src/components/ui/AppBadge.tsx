@@ -1,65 +1,183 @@
-import { View, Text, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
-import { ReactNode } from 'react';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import {
+  getStatusIntent,
+  getStatusLabel,
+  getPriorityIntent,
+} from '@urbanmind/shared-types';
+import { Text } from './Text';
+import { semantics } from '@/theme/semantics';
 
-interface AppBadgeProps {
-  children: React.ReactNode;
-  variant?: 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'info';
-  style?: StyleProp<ViewStyle>;
+export type BadgeVariant = 'subtle' | 'solid' | 'outline';
+export type BadgeSize = 'sm' | 'md';
+
+export interface AppBadgeProps {
+  status?: string | null;
+  priority?: string | null;
+  severity?: string | null;
+  label?: string;
+  variant?: BadgeVariant;
+  size?: BadgeSize;
+  showDot?: boolean;
+  className?: string;
 }
 
-export const AppBadge = ({
-  children,
-  variant = 'primary',
-  style,
-}: AppBadgeProps) => {
-  const getVariantColors = () => {
+// Severity intent mapping helper
+const resolveSeverityIntent = (value?: string | null): string => {
+  const key = `${value ?? ''}`.trim().toLowerCase();
+  switch (key) {
+    case 'critical':
+    case 'urgent':
+      return 'danger';
+    case 'high':
+    case 'major':
+      return 'warning';
+    case 'medium':
+    case 'normal':
+      return 'info';
+    case 'low':
+    case 'minor':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+};
+
+export function AppBadge({
+  status,
+  priority,
+  severity,
+  label: customLabel,
+  variant = 'subtle',
+  size = 'md',
+  showDot = true,
+  className = '',
+}: AppBadgeProps) {
+  let intent: 'info' | 'warning' | 'success' | 'danger' | 'neutral' = 'neutral';
+  let displayText = customLabel ?? '';
+
+  if (status) {
+    intent = getStatusIntent(status) as any;
+    if (!displayText) {
+      displayText = getStatusLabel(status, status);
+    }
+  } else if (priority) {
+    intent = getPriorityIntent(priority) as any;
+    if (!displayText) {
+      displayText = priority;
+    }
+  } else if (severity) {
+    intent = resolveSeverityIntent(severity) as any;
+    if (!displayText) {
+      displayText = severity;
+    }
+  }
+
+  const token = semantics.intent[intent] ?? semantics.intent.neutral;
+
+  // Variant styling
+  const getVariantStyles = () => {
     switch (variant) {
-      case 'primary':
-        return { bg: colors.primary, text: '#FFFFFF' };
-      case 'secondary':
-        return { bg: colors.muted, text: '#FFFFFF' };
-      case 'success':
-        return { bg: colors.emerald, text: '#FFFFFF' };
-      case 'danger':
-        return { bg: colors.red, text: '#FFFFFF' };
-      case 'warning':
-        return { bg: colors.amber, text: '#FFFFFF' };
-      case 'info':
-        return { bg: colors.purple, text: '#FFFFFF' };
+      case 'solid':
+        return {
+          container: { backgroundColor: token.dot, borderColor: 'transparent', borderWidth: 1 },
+          text: { color: semantics.text.inverse },
+          dot: { backgroundColor: semantics.text.inverse },
+        };
+      case 'outline':
+        return {
+          container: { backgroundColor: semantics.bg.surface, borderColor: token.border, borderWidth: 1 },
+          text: { color: token.text },
+          dot: { backgroundColor: token.dot },
+        };
+      case 'subtle':
       default:
-        return { bg: colors.primary, text: '#FFFFFF' };
+        return {
+          container: { backgroundColor: token.bg, borderColor: token.border, borderWidth: 1 },
+          text: { color: token.text },
+          dot: { backgroundColor: token.dot },
+        };
     }
   };
 
-  const { bg, text } = getVariantColors();
+  const variantStyle = getVariantStyles();
+  const isSmall = size === 'sm';
 
   return (
     <View
       style={[
-        styles.badge,
-        { backgroundColor: bg },
-        style,
+        styles.badgeContainer,
+        variantStyle.container,
+        isSmall ? styles.badgeSm : styles.badgeMd,
       ]}
+      className={className}
     >
-      <Text style={[
-        styles.text,
-        { color: text },
-      ]}>
-        {children}
+      {showDot && (
+        <View
+          style={[
+            styles.dot,
+            variantStyle.dot,
+            isSmall ? styles.dotSm : styles.dotMd,
+          ]}
+        />
+      )}
+      <Text
+        style={[
+          styles.badgeText,
+          variantStyle.text,
+          isSmall ? styles.textSm : styles.textMd,
+        ]}
+      >
+        {displayText}
       </Text>
     </View>
   );
-};
+}
+
+// Re-export TicketStatusBadge helper for seamless compatibility
+export function TicketStatusBadge(props: Omit<AppBadgeProps, 'priority' | 'severity'>) {
+  return <AppBadge {...props} />;
+}
 
 const styles = StyleSheet.create({
-  badge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
+  badgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 9999,
   },
-  text: {
-    fontSize: typography.xs,
-    fontWeight: typography.semibold as any,
+  badgeSm: {
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    gap: 4,
+  },
+  badgeMd: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    gap: 6,
+  },
+  dot: {
+    borderRadius: 9999,
+  },
+  dotSm: {
+    width: 6,
+    height: 6,
+  },
+  dotMd: {
+    width: 7,
+    height: 7,
+  },
+  badgeText: {
+    fontFamily: 'Geist-SemiBold',
+  },
+  textSm: {
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  textMd: {
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
+
+export default AppBadge;

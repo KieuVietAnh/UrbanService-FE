@@ -10,3 +10,7 @@ test('toolsApi returns safe defaults when no mock store is available', async () 
   assert.deepEqual(await toolsApi.getTickets(), []);
   assert.equal(await toolsApi.getAiChatReply('hello'), '');
 });
+
+test('toolsApi throws when getAreas is asked to fail on error', async () => {
+  await assert.rejects(() => toolsApi.getAreas({}, { throwOnError: true }));
+});

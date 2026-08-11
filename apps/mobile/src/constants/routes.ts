@@ -9,6 +9,7 @@ export const ROUTES = {
   RESIDENT_CREATE_FEEDBACK: '(resident)/create-feedback',
   RESIDENT_TICKETS: '(resident)/tickets',
   RESIDENT_COMMUNITY: '(resident)/community',
+  RESIDENT_INBOX: '(resident)/inbox',
   RESIDENT_NOTIFICATIONS: '(resident)/notifications',
   RESIDENT_PROFILE: '(resident)/profile',
 

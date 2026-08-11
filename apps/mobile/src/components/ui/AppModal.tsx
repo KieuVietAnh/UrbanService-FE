@@ -1,4 +1,6 @@
 import { Modal, View, Pressable, StyleSheet } from 'react-native';
+import { radius } from '@/theme/radius';
+import { semantics } from '@/theme/semantics';
 import { ReactNode } from 'react';
 
 interface AppModalProps {
@@ -36,8 +38,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   container: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: semantics.bg.surface,
+    borderRadius: radius['2xl'],
     padding: 24,
     width: '85%',
     maxHeight: '80%',

@@ -7,3 +7,4 @@ export { TICKET_STATUS_STEPS, getStatusStep, getStatusLabel, PRIORITY_BADGE_CLAS
 export { managementTypes } from './managementTypes.js';
 export { getStatusIntent, getStatusSemantic, STATUS_SEMANTICS } from './statusSemantics.js';
 export { getPriorityIntent, getPrioritySemantic, PRIORITY_SEMANTICS } from './prioritySemantics.js';
+export { getSeverityIntent, getSeveritySemantic, SEVERITY_SEMANTICS } from './severitySemantics.js';

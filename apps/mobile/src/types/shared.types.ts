@@ -1,5 +1,4 @@
-// Shared domain types for mobile app — declared locally to avoid missing package issues.
-// The web package @urbanmind/shared-types may not have TypeScript declarations published.
+// Shared domain types and module declarations for mobile app
 
 export interface PaginatedResponse<T> {
   items: T[];

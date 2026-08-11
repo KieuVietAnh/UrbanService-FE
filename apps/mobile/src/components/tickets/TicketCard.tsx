@@ -1,11 +1,13 @@
-import { View, Text, Image, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
-import { ReactNode } from 'react';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import React from 'react';
+import { View, Image, StyleSheet, StyleProp, ViewStyle, Pressable } from 'react-native';
+import { Text } from '../ui/Text';
+import { AppBadge } from '../ui/AppBadge';
+import { semantics } from '@/theme/semantics';
 
 interface TicketCardProps {
   title: string;
   subtitle?: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
+  status: string;
   imageUrl?: string;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
@@ -19,47 +21,29 @@ export const TicketCard = ({
   onPress,
   style,
 }: TicketCardProps) => {
-  const getStatusColor = () => {
-    switch (status) {
-      case 'pending':
-        return colors.amber;
-      case 'in-progress':
-        return colors.primary;
-      case 'completed':
-        return colors.emerald;
-      case 'cancelled':
-        return colors.red;
-      default:
-        return colors.muted;
-    }
-  };
-
   return (
-    <View
-      style={[
-        styles.container,
-        style,
-      ]}
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={[styles.container, style]}
     >
       {imageUrl && (
-        <View style={styles.imageContainer}>
-          <Image source={{ uri: imageUrl }} style={styles.image} />
-        </View>
+        <Image source={{ uri: imageUrl }} style={styles.image} />
       )}
       <View style={styles.content}>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-        <View style={styles.statusContainer}>
-          <View style={[
-            styles.statusDot,
-            { backgroundColor: getStatusColor() },
-          ]} />
-          <Text style={styles.statusText}>
-            {status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' ')}
+        <View style={styles.headerRow}>
+          <Text style={styles.title} numberOfLines={1}>
+            {title}
           </Text>
+          <AppBadge status={status} size="sm" />
         </View>
+        {subtitle && (
+          <Text style={styles.subtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        )}
       </View>
-    </View>
+    </Pressable>
   );
 };
 
@@ -67,51 +51,41 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginVertical: spacing.xs,
+    backgroundColor: semantics.bg.surface,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-  },
-  imageContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    marginRight: spacing.md,
+    borderColor: semantics.border.default,
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    marginRight: 12,
+    backgroundColor: semantics.bg.surfaceSubtle,
   },
   content: {
     flex: 1,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
-    fontSize: typography.lg,
-    fontWeight: typography.semibold as any,
-    color: colors.text,
-    marginBottom: spacing.xs,
+    fontSize: 15,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.primary,
+    flex: 1,
   },
   subtitle: {
-    fontSize: typography.md,
-    color: colors.muted,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.xs,
-  },
-  statusText: {
-    fontSize: typography.sm,
-    fontWeight: typography.medium as any,
-    textTransform: 'capitalize',
+    fontSize: 13,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
+    marginTop: 4,
   },
 });
+
+export default TicketCard;

@@ -23,7 +23,7 @@ export function Skeleton({ width = '100%', height = 16, radius = 8, className = 
     return () => anim.stop();
   }, [shimmer]);
 
-  const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] });
+  const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.52, 1] });
 
   return (
     <Animated.View
@@ -61,10 +61,14 @@ export function SkeletonLine({ width = '100%', height = 14 }: { width?: any; hei
 const styles = StyleSheet.create({
   skeleton: {
     backgroundColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: '#EAF0F6',
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.34)',
     padding: 18,
     marginBottom: 12,
     shadowColor: '#0F172A',

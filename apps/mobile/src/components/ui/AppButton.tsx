@@ -4,7 +4,9 @@ import {
   PressableProps,
   ActivityIndicator,
   StyleSheet,
+  ViewStyle,
 } from 'react-native';
+
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -12,6 +14,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { Text } from './Text';
+import { semantics } from '@/theme/semantics';
+import { shadows } from '@/theme/shadows';
+import { buttonStyles } from '@/theme/buttonStyles';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -27,14 +32,15 @@ interface AppButtonProps extends Omit<PressableProps, 'style'> {
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   className?: string;
+  style?: ViewStyle;
 }
 
 const VARIANT_CLASSES: Record<Variant, string> = {
   primary: 'bg-primary active:bg-primary-dark',
   secondary: 'bg-primary-soft border border-primary',
-  outline: 'bg-transparent border border-border-strong',
+  outline: 'bg-surface border border-border-strong',
   ghost: 'bg-transparent',
-  danger: 'bg-red',
+  danger: 'bg-red active:bg-red-dark',
 };
 
 const TEXT_CLASSES: Record<Variant, string> = {
@@ -46,15 +52,15 @@ const TEXT_CLASSES: Record<Variant, string> = {
 };
 
 const SIZE_CLASSES: Record<Size, string> = {
-  sm: 'h-9 px-4 rounded-lg gap-1.5',
-  md: 'h-12 px-5 rounded-xl gap-2',
-  lg: 'h-14 px-6 rounded-2xl gap-2',
+  sm: 'h-10 px-4 rounded-xl gap-1.5',
+  md: 'h-12 px-5 rounded-2xl gap-2',
+  lg: 'h-14 px-6 rounded-2xl gap-2.5',
 };
 
 const TEXT_SIZE_CLASSES: Record<Size, string> = {
-  sm: 'text-sm',
-  md: 'text-base',
-  lg: 'text-lg',
+  sm: 'text-xs',
+  md: 'text-sm',
+  lg: 'text-base',
 };
 
 export function AppButton({
@@ -68,6 +74,7 @@ export function AppButton({
   disabled,
   onPress,
   className = '',
+  style,
   ...props
 }: AppButtonProps) {
   const scale = useSharedValue(1);
@@ -92,9 +99,29 @@ export function AppButton({
 
   const isDisabled = disabled || loading;
 
+  const shadowStyle: ViewStyle = variant === 'primary' ? {
+    ...shadows.primary,
+  } : variant === 'danger' ? {
+    ...shadows.md,
+  } : variant === 'outline' ? {
+    ...shadows.sm,
+  } : {};
+
+  const resolvedStyle = [
+    animatedStyle,
+    shadowStyle,
+    style,
+    buttonStyles.base,
+    variant === 'primary' && styles.primaryButton,
+    variant === 'secondary' && styles.secondaryButton,
+    variant === 'outline' && styles.outlineButton,
+    variant === 'ghost' && styles.ghostButton,
+    variant === 'danger' && styles.dangerButton,
+  ].filter(Boolean);
+
   return (
     <AnimatedPressable
-      style={animatedStyle}
+      style={resolvedStyle}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={handlePress}
@@ -112,7 +139,7 @@ export function AppButton({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : '#0052CC'}
+          color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : semantics.bg.primary}
         />
       ) : (
         <>
@@ -133,5 +160,26 @@ export function AppButton({
   );
 }
 
-// Keep legacy API compat export
 export default AppButton;
+
+const styles = StyleSheet.create({
+  primaryButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.34)',
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: semantics.border.primary,
+  },
+  outlineButton: {
+    borderWidth: 1,
+    borderColor: semantics.border.default,
+  },
+  ghostButton: {
+    borderWidth: 0,
+  },
+  dangerButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(185,28,28,0.16)',
+  },
+});

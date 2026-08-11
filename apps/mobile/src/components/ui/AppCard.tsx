@@ -5,6 +5,8 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
+import { cardStyles } from '@/theme/cardStyles';
+import { shadows } from '@/theme/shadows';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -15,6 +17,7 @@ interface AppCardProps extends Omit<PressableProps, 'style'> {
   shadow?: Shadow;
   className?: string;
   pressable?: boolean;
+  style?: PressableProps['style'];
 }
 
 export function AppCard({
@@ -23,6 +26,7 @@ export function AppCard({
   className = '',
   pressable = false,
   onPress,
+  style,
   ...props
 }: AppCardProps) {
   const scale = useSharedValue(1);
@@ -44,13 +48,13 @@ export function AppCard({
 
   return (
     <AnimatedPressable
-      style={[animatedStyle, shadowStyles[shadow]]}
+      style={[animatedStyle, shadows[shadow], styles.cardBase, style]}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
       disabled={!isInteractive}
       className={[
-        'bg-surface rounded-2xl overflow-hidden',
+        'overflow-hidden',
         className,
       ].join(' ')}
       {...props}
@@ -60,28 +64,10 @@ export function AppCard({
   );
 }
 
-const shadowStyles = StyleSheet.create({
-  none: {},
-  sm: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  md: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.09,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  lg: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    elevation: 6,
+const styles = StyleSheet.create({
+  cardBase: {
+    ...cardStyles.base,
+    overflow: 'hidden',
   },
 });
 

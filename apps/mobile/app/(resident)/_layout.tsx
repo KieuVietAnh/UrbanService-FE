@@ -1,5 +1,5 @@
 import React from 'react';
-import { Stack, Tabs, usePathname, useRouter, type Href } from 'expo-router';
+import { Stack, usePathname, useRouter, type Href } from 'expo-router';
 import {
   View,
   Pressable,
@@ -16,6 +16,9 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui/Text';
+import { FloatingChatMenu } from '@/components/ui/FloatingChatMenu';
+import { useToast } from '@/components/ui/Toast';
+import { axiosClient } from '@urbanmind/shared-api';
 import { colors } from '@/constants/theme';
 
 type NavItem = {
@@ -34,23 +37,23 @@ const NAV_ITEMS: NavItem[] = [
     match: ['/', '/(resident)', '/index'],
   },
   {
-    label: 'Phản ánh',
-    icon: 'list',
-    href: '/(resident)/tickets',
-    match: ['/tickets'],
+    label: 'Cộng đồng',
+    icon: 'users',
+    href: '/(resident)/community',
+    match: ['/community'],
   },
   {
-    label: 'Gửi phản ánh',
+    label: 'Tạo phản ánh',
     icon: 'plus',
     href: '/(resident)/create-feedback',
     match: ['/create-feedback'],
     isFab: true,
   },
   {
-    label: 'Gần đây',
-    icon: 'map-pin',
-    href: '/(resident)/community',
-    match: ['/community'],
+    label: 'Hộp thư',
+    icon: 'inbox',
+    href: '/(resident)/inbox',
+    match: ['/inbox'],
   },
   {
     label: 'Tài khoản',
@@ -137,7 +140,22 @@ export default function ResidentLayout() {
     router.replace(item.href);
   };
 
+  const isHomePath = pathname === '/' || pathname === '/(resident)' || pathname === '/index';
   const tabBarHeight = 64 + insets.bottom;
+
+  const toast = useToast();
+  const handleFloatingSelect = async (id: 'ai' | 'staff' | 'inbox') => {
+    if (id === 'ai') {
+      router.push('/(resident)/ai');
+      return;
+    }
+    if (id === 'inbox') {
+      router.replace('/(resident)/inbox');
+      return;
+    }
+    // staff: choose feedback before opening staff chat
+    router.push('/(resident)/support/select-feedback');
+  };
 
   return (
     <View style={styles.screen}>
@@ -151,10 +169,12 @@ export default function ResidentLayout() {
         />
       </View>
 
+      {isHomePath ? <FloatingChatMenu bottomOffset={Math.max(86, insets.bottom + 72)} onSelectOption={handleFloatingSelect} /> : null}
+
       {/* Custom tab bar */}
       <View style={[styles.tabBarContainer, { paddingBottom: insets.bottom }]}>
         {Platform.OS === 'ios' ? (
-          <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFillObject} />
+          <BlurView intensity={86} tint="light" style={StyleSheet.absoluteFillObject} />
         ) : (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#FFFFFF' }]} />
         )}
@@ -188,15 +208,16 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(226,232,240,0.8)',
+    borderTopColor: 'rgba(226,232,240,0.82)',
     overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.82)',
   },
   tabBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: 6,
     paddingHorizontal: 4,
-    height: 64,
+    height: 68,
   },
   tabItem: {
     flex: 1,
@@ -240,10 +261,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.34)',
     shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.34,
+    shadowRadius: 14,
     elevation: 8,
     marginBottom: 6,
   },
