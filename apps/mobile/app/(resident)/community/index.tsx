@@ -11,13 +11,18 @@ import { AppEmptyState } from '@/components/ui/AppEmptyState';
 import { CommunityFeedCard } from '@/components/community/CommunityFeedCard';
 import { communityApi } from '@/services/api/communityApi';
 import { colors } from '@/constants/theme';
-import { FloatingChatMenu } from '@/components/ui/FloatingChatMenu';
 
 const FILTERS = [
   { key: 'latest', label: 'Mới nhất' },
   { key: 'resolved', label: 'Đã xử lý' },
   { key: 'trending', label: 'Phổ biến' },
 ];
+
+interface CommunityFeedItem {
+  feedbackId?: string;
+  id?: string;
+  status?: string;
+}
 
 export default function CommunityFeedScreen() {
   const router = useRouter();
@@ -35,21 +40,13 @@ export default function CommunityFeedScreen() {
       }),
   });
 
-  const items = data?.items ?? [];
+  const items = (data?.items ?? []) as CommunityFeedItem[];
 
   const summary = useMemo(() => ({
     total: data?.totalItems ?? items.length,
-    resolved: items.filter((item: any) => String(item?.status || '').toUpperCase() === 'RESOLVED').length,
+    resolved: items.filter((item) => String(item?.status ?? '').toUpperCase() === 'RESOLVED').length,
     active: Math.max(1, items.length),
   }), [data?.totalItems, items]);
-
-  const trendingItems = useMemo(() => {
-    return items.slice(0, 3).map((item: any) => ({
-      title: item?.title ?? 'Phản ánh cộng đồng',
-      count: item?.supportCount ?? 0,
-      tag: item?.locationText ?? 'Địa điểm',
-    }));
-  }, [items]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -58,7 +55,7 @@ export default function CommunityFeedScreen() {
           <Text className="text-xl font-sans-bold text-text">Cộng đồng</Text>
           <Text className="text-sm text-text-muted mt-1">Ghé lại bảng tin, theo dõi phản ánh và trao đổi</Text>
         </View>
-        <Pressable onPress={() => router.push('/(resident)/community/map' as any)} style={styles.mapButton}>
+        <Pressable onPress={() => router.push('/(resident)/community/map')} style={styles.mapButton}>
           <Icon name="map" size={18} color={colors.primary} />
         </Pressable>
       </View>
@@ -126,24 +123,6 @@ export default function CommunityFeedScreen() {
           })}
         </View>
 
-        <AppCard shadow="sm" className="mb-4">
-          <View style={styles.trendingCard}>
-            <View style={styles.trendingHeader}>
-              <Icon name="trending-up" size={16} color={colors.primary} />
-              <Text className="text-sm font-sans-semibold text-text">Trending reports</Text>
-            </View>
-            {trendingItems.map((item, index) => (
-              <View key={`${item.title}-${index}`} style={styles.trendingItem}>
-                <View style={styles.trendingDot} />
-                <View style={{ flex: 1 }}>
-                  <Text className="text-sm font-sans-semibold text-text" numberOfLines={1}>{item.title}</Text>
-                  <Text className="text-xs text-text-muted mt-1">{item.tag} • {item.count} lượt ủng hộ</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </AppCard>
-
         {isLoading ? (
           <View>
             {Array.from({ length: 3 }).map((_, index) => (
@@ -158,11 +137,12 @@ export default function CommunityFeedScreen() {
           </AppEmptyState>
         ) : (
           <View style={styles.feedList}>
-            {items.map((item: any) => (
+            {items.map((item) => (
               <CommunityFeedCard
                 key={item.feedbackId ?? item.id}
                 item={item}
-                onPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}` as any)}
+                onPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}`)}
+                onCommentPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}?autoFocusComment=1`)}
               />
             ))}
           </View>
@@ -222,7 +202,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    padding: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
   },
   heroTextWrap: { flex: 1 },
   heroStatsWrap: {

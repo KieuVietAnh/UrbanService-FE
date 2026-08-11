@@ -1,18 +1,107 @@
-import React from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Image, GestureResponderEvent } from 'react-native';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { AppCard } from '@/components/ui/AppCard';
+import { AppButton } from '@/components/ui/AppButton';
 import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
 import { Text } from '@/components/ui/Text';
+import { feedbackApi } from '@/services/api/feedbackApi';
 import { colors } from '@/constants/theme';
 
-interface CommunityFeedCardProps {
-  item: any;
-  onPress: () => void;
+interface CommunityFeedItem {
+  feedbackId?: string;
+  id?: string;
+  authorName?: string;
+  userName?: string;
+  status?: string;
+  attachments?: Array<{ fileUrl?: string } | null>;
+  imageUrl?: string;
+  title?: string;
+  description?: string;
+  locationText?: string;
+  code?: string;
+  feedbackCode?: string;
+  supportCount?: number;
+  commentCount?: number;
+  isSupported?: boolean;
+  createdAt?: string | null;
 }
 
-export function CommunityFeedCard({ item, onPress }: CommunityFeedCardProps) {
+interface CommunityFeedCardProps {
+  item: CommunityFeedItem;
+  onPress: () => void;
+  onCommentPress: () => void;
+}
+
+export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFeedCardProps) {
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
+  const [isSupported, setIsSupported] = useState(Boolean(item?.isSupported));
+  const [supportCount, setSupportCount] = useState(Number(item?.supportCount ?? 0));
+
+  useEffect(() => {
+    setIsSupported(Boolean(item?.isSupported));
+    setSupportCount(Number(item?.supportCount ?? 0));
+  }, [item?.isSupported, item?.supportCount]);
+
+  const queryClient = useQueryClient();
+  const feedbackId = String(item?.feedbackId ?? item?.id ?? '');
+
+  type CommunityFeedCache = { items?: CommunityFeedItem[] };
+
+  const syncSupportCache = (supported: boolean) => {
+    queryClient.setQueriesData({
+      predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'community-feed-mobile',
+    }, (data) => {
+      if (!data || typeof data !== 'object' || !Array.isArray((data as CommunityFeedCache).items)) {
+        return data;
+      }
+
+      const cache = data as CommunityFeedCache;
+      return {
+        ...cache,
+        items: cache.items?.map((feedItem) => {
+          const itemId = String(feedItem.feedbackId ?? feedItem.id ?? '');
+          if (itemId !== feedbackId) return feedItem;
+          return {
+            ...feedItem,
+            isSupported: supported,
+            supportCount: Math.max(0, Number(feedItem.supportCount ?? 0) + (supported ? 1 : -1)),
+          };
+        }),
+      };
+    });
+
+    queryClient.setQueryData<CommunityFeedItem | null>(['community-detail', feedbackId], (prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        isSupported: supported,
+        supportCount: Math.max(0, Number(prev.supportCount ?? 0) + (supported ? 1 : -1)),
+      };
+    });
+  };
+
+  const supportMutation = useMutation({
+    mutationFn: async () => {
+      if (!feedbackId) throw new Error('Missing feedback id');
+      if (isSupported) {
+        await feedbackApi.unsupport(feedbackId);
+        return false;
+      }
+      await feedbackApi.support(feedbackId);
+      return true;
+    },
+    onSuccess: (supported: boolean) => {
+      setIsSupported(supported);
+      setSupportCount((prev) => Math.max(0, prev + (supported ? 1 : -1)));
+      syncSupportCache(supported);
+    },
+  });
+
+  const handleSupportPress = () => {
+    supportMutation.mutate();
+  };
 
   return (
     <AppCard shadow="sm" pressable onPress={onPress} style={styles.wrapper}>
@@ -59,14 +148,35 @@ export function CommunityFeedCard({ item, onPress }: CommunityFeedCardProps) {
           </View>
 
           <View style={styles.footerRow}>
-            <View style={styles.inlineMeta}>
-              <Icon name="thumbs-up" size={13} color={colors.primary} />
-              <Text className="text-2xs text-text-light">{item?.supportCount ?? 0} ủng hộ</Text>
+            <View style={styles.actionButtons}>
+              <AppButton
+                variant={isSupported ? 'primary' : 'outline'}
+                size="sm"
+                onPress={(event: GestureResponderEvent) => {
+                  event.stopPropagation?.();
+                  handleSupportPress();
+                }}
+                loading={supportMutation.isPending}
+                style={styles.actionButton}
+                leftIcon={<Icon name="thumbs-up" size={14} color={isSupported ? '#FFFFFF' : colors.primary} />}
+              >
+                {supportCount}
+              </AppButton>
+
+              <AppButton
+                variant="outline"
+                size="sm"
+                onPress={(event: GestureResponderEvent) => {
+                  event.stopPropagation?.();
+                  onCommentPress();
+                }}
+                style={styles.actionButton}
+                leftIcon={<Icon name="message-circle" size={14} color={colors.primary} />}
+              >
+                {item?.commentCount ?? 0}
+              </AppButton>
             </View>
-            <View style={styles.inlineMeta}>
-              <Icon name="message-circle" size={13} color={colors.primary} />
-              <Text className="text-2xs text-text-light">{item?.commentCount ?? 0} bình luận</Text>
-            </View>
+
             <View style={styles.inlineMeta}>
               <Icon name="clock" size={13} color={colors.lightMuted} />
               <Text className="text-2xs text-text-light">{createdAt}</Text>
@@ -158,5 +268,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     flexShrink: 1,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  actionButton: {
+    minWidth: 96,
   },
 });
