@@ -220,14 +220,20 @@ const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail }) => {
           )}
         </div>
       </Tooltip>
-      <Popup autoPan={false}>
+      <Popup
+        autoPan={true}
+        keepInView={true}
+        maxWidth={360}
+        minWidth={300}
+        className="incident-map-popup"
+      >
         <div className="space-y-3 text-xs">
           <div className="font-bold text-slate-900">
             {marker.tickets.length === 1
               ? 'Thông tin phản ánh'
               : `${marker.tickets.length} phản ánh tại điểm này`}
           </div>
-          <div className="grid gap-2">
+          <div className="incident-map-popup-list grid gap-2 pr-1">
             {marker.tickets.map((ticket) => (
               <button
                 key={ticket.feedbackId}
@@ -239,8 +245,8 @@ const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail }) => {
                     : 'border-slate-200'
                 }`}
               >
-                <div className="truncate font-bold">{ticket.title}</div>
-                <div className="mt-1 text-[10px] font-normal text-slate-500">
+                <div className="incident-map-ticket-title font-bold">{ticket.title}</div>
+                <div className="incident-map-ticket-meta mt-1 text-[10px] font-normal text-slate-500">
                   {translateCategory(ticket.categoryName)}
                   {' · '}
                   {translateStatus(ticket.status)}
@@ -310,6 +316,42 @@ const IncidentMapThemeStyles = () => (
 
     .incident-map-shell .leaflet-popup-content-wrapper {
       border-radius: 16px;
+    }
+
+    .incident-map-shell .incident-map-popup .leaflet-popup-content {
+      width: min(330px, calc(100vw - 72px)) !important;
+      margin: 14px 16px 16px;
+    }
+
+    .incident-map-shell .incident-map-popup-list {
+      max-height: 250px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+    }
+
+    .incident-map-shell .incident-map-popup-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .incident-map-shell .incident-map-popup-list::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.7);
+    }
+
+    .incident-map-shell .incident-map-ticket-title {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-height: 1.35;
+    }
+
+    .incident-map-shell .incident-map-ticket-meta {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .incident-map-shell .leaflet-popup-close-button {
