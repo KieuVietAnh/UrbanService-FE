@@ -11,13 +11,18 @@ import { AppEmptyState } from '@/components/ui/AppEmptyState';
 import { CommunityFeedCard } from '@/components/community/CommunityFeedCard';
 import { communityApi } from '@/services/api/communityApi';
 import { colors } from '@/constants/theme';
-import { FloatingChatMenu } from '@/components/ui/FloatingChatMenu';
 
 const FILTERS = [
   { key: 'latest', label: 'Mới nhất' },
   { key: 'resolved', label: 'Đã xử lý' },
   { key: 'trending', label: 'Phổ biến' },
 ];
+
+interface CommunityFeedItem {
+  feedbackId?: string;
+  id?: string;
+  status?: string;
+}
 
 export default function CommunityFeedScreen() {
   const router = useRouter();
@@ -35,11 +40,11 @@ export default function CommunityFeedScreen() {
       }),
   });
 
-  const items = data?.items ?? [];
+  const items = (data?.items ?? []) as CommunityFeedItem[];
 
   const summary = useMemo(() => ({
     total: data?.totalItems ?? items.length,
-    resolved: items.filter((item: any) => String(item?.status || '').toUpperCase() === 'RESOLVED').length,
+    resolved: items.filter((item) => String(item?.status ?? '').toUpperCase() === 'RESOLVED').length,
     active: Math.max(1, items.length),
   }), [data?.totalItems, items]);
 
@@ -50,7 +55,7 @@ export default function CommunityFeedScreen() {
           <Text className="text-xl font-sans-bold text-text">Cộng đồng</Text>
           <Text className="text-sm text-text-muted mt-1">Ghé lại bảng tin, theo dõi phản ánh và trao đổi</Text>
         </View>
-        <Pressable onPress={() => router.push('/(resident)/community/map' as any)} style={styles.mapButton}>
+        <Pressable onPress={() => router.push('/(resident)/community/map')} style={styles.mapButton}>
           <Icon name="map" size={18} color={colors.primary} />
         </Pressable>
       </View>
@@ -132,12 +137,12 @@ export default function CommunityFeedScreen() {
           </AppEmptyState>
         ) : (
           <View style={styles.feedList}>
-            {items.map((item: any) => (
+            {items.map((item) => (
               <CommunityFeedCard
                 key={item.feedbackId ?? item.id}
                 item={item}
-                onPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}` as any)}
-                onCommentPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}?focusComment=1` as any)}
+                onPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}`)}
+                onCommentPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}?autoFocusComment=1`)}
               />
             ))}
           </View>

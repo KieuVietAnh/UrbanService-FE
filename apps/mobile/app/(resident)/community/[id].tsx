@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView, Pressable, Image, StyleSheet, TextInput, KeyboardAvoidingView, Platform, RefreshControl, Modal } from 'react-native';
+import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, KeyboardAvoidingView, Platform, RefreshControl, Modal } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -24,20 +24,113 @@ interface CommentItem {
   createdAt: string;
 }
 
+type RawComment = {
+  commentId?: string | number;
+  id?: string | number;
+  authorName?: string;
+  userName?: string;
+  userFullName?: string;
+  content?: string;
+  text?: string;
+  createdAt?: string;
+};
+
+interface CommunityFeedbackDetail {
+  feedbackId?: string;
+  id?: string;
+  authorName?: string;
+  userName?: string;
+  status?: string;
+  categoryName?: string;
+  locationText?: string;
+  title?: string;
+  description?: string;
+  createdAt?: string | null;
+  attachments?: Array<{ fileUrl?: string } | null>;
+  comments?: RawComment[];
+  commentList?: RawComment[];
+  supportCount?: number;
+  commentCount?: number;
+  isSupported?: boolean;
+}
+
+type CommunityFeedCache = {
+  items?: Array<{
+    feedbackId?: string;
+    id?: string;
+    supportCount?: number;
+    isSupported?: boolean;
+  }>;
+};
+
 export default function CommunityDetailScreen() {
-  const { id, focusComment } = useLocalSearchParams<{ id: string; focusComment?: string }>();
+  const { id, focusComment, autoFocusComment } = useLocalSearchParams<{ id: string; focusComment?: string; autoFocusComment?: string }>();
   const toast = useToast();
   const commentInputRef = useRef<TextInput | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const [focusPending, setFocusPending] = useState(false);
+  const [composerLayoutReady, setComposerLayoutReady] = useState(false);
+  const [inputAttached, setInputAttached] = useState(false);
 
-  const shouldFocusComposer = focusComment === '1' || focusComment === 'true';
+  const normalizeFlag = (value?: string) => {
+    if (!value) return false;
+    const normalized = String(value).trim().toLowerCase();
+    return normalized === '1' || normalized === 'true';
+  };
+
+  const shouldFocusComposer = normalizeFlag(focusComment) || normalizeFlag(autoFocusComment);
+
+  const debugLog = (...args: Array<unknown>) => {
+    console.log('[CommunityDetailScreen]', ...args);
+  };
+
+  const focusComposer = () => {
+    const textInput = commentInputRef.current;
+    debugLog('focusComposer() called, has input ref:', Boolean(textInput), textInput, {
+      composerLayoutReady,
+      inputAttached,
+      focusPending,
+    });
+    if (!textInput) {
+      return false;
+    }
+
+    textInput.focus();
+    debugLog('commentInputRef.focus() invoked');
+    setFocusPending(false);
+    return true;
+  };
+
+  useEffect(() => {
+    debugLog('route params', { id, focusComment, autoFocusComment, shouldFocusComposer });
+  }, [id, focusComment, autoFocusComment, shouldFocusComposer]);
 
   useEffect(() => {
     if (!shouldFocusComposer) return;
-    const timer = setTimeout(() => {
-      commentInputRef.current?.focus();
-    }, 200);
-    return () => clearTimeout(timer);
+    debugLog('shouldFocusComposer true; pending focus');
+    setFocusPending(true);
   }, [shouldFocusComposer]);
+
+  useEffect(() => {
+    if (!focusPending || !composerLayoutReady || !inputAttached) return;
+    debugLog('focusPending, composerLayoutReady, and inputAttached; attempting focus', { inputRef: commentInputRef.current });
+
+    const raf = requestAnimationFrame(() => {
+      const task = InteractionManager.runAfterInteractions(() => {
+        debugLog('interaction complete, attempting focus', { inputRef: commentInputRef.current });
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+        if (focusComposer()) {
+          debugLog('focusComposer succeeded from pending flow');
+          setFocusPending(false);
+        } else {
+          debugLog('focusComposer failed from pending flow, will retry on next layout');
+        }
+      });
+      return () => task.cancel();
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [focusPending, composerLayoutReady, inputAttached]);
   const queryClient = useQueryClient();
   const feedbackId = id || '';
 
@@ -50,7 +143,7 @@ export default function CommunityDetailScreen() {
     isError,
     refetch,
     isRefetching,
-  } = useQuery({
+  } = useQuery<CommunityFeedbackDetail | null>({
     queryKey: ['community-detail', feedbackId],
     queryFn: () => communityApi.getFeedDetail(feedbackId),
     enabled: Boolean(feedbackId),
@@ -58,17 +151,17 @@ export default function CommunityDetailScreen() {
 
   const comments = useMemo<CommentItem[]>(() => {
     if (!item) return [];
-    const rawComments = Array.isArray(item?.comments)
+    const rawComments: RawComment[] = Array.isArray(item.comments)
       ? item.comments
-      : Array.isArray(item?.commentList)
+      : Array.isArray(item.commentList)
         ? item.commentList
         : [];
 
-    return rawComments.map((c: any) => ({
+    return rawComments.map((c) => ({
       id: String(c.commentId ?? c.id ?? Math.random()),
-      senderName: c.authorName ?? c.userName ?? c.userFullName ?? 'Cộng đồng',
-      content: c.content ?? c.text ?? '',
-      createdAt: c.createdAt ?? new Date().toISOString(),
+      senderName: String(c.authorName ?? c.userName ?? c.userFullName ?? 'Cộng đồng'),
+      content: String(c.content ?? c.text ?? ''),
+      createdAt: String(c.createdAt ?? new Date().toISOString()),
     }));
   }, [item]);
 
@@ -82,13 +175,13 @@ export default function CommunityDetailScreen() {
       return { supported: true };
     },
     onSuccess: (result) => {
-      queryClient.setQueriesData({
+      queryClient.setQueriesData<CommunityFeedCache>({
         predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'community-feed-mobile',
-      }, (data: any) => {
+      }, (data) => {
         if (!data || !Array.isArray(data.items)) return data;
         return {
           ...data,
-          items: data.items.map((feedItem: any) => {
+          items: data.items.map((feedItem) => {
             const itemId = String(feedItem.feedbackId ?? feedItem.id ?? '');
             if (itemId !== feedbackId) return feedItem;
             return {
@@ -100,7 +193,7 @@ export default function CommunityDetailScreen() {
         };
       });
 
-      queryClient.setQueryData(['community-detail', feedbackId], (prev: any) => {
+      queryClient.setQueryData<CommunityFeedbackDetail | null>(['community-detail', feedbackId], (prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -110,7 +203,7 @@ export default function CommunityDetailScreen() {
       });
       toast.success(result.supported ? 'Đã ủng hộ phản ánh' : 'Đã bỏ ủng hộ');
     },
-    onError: (err: any) => toast.error(err.message || 'Không thể cập nhật hỗ trợ'),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể cập nhật hỗ trợ'),
   });
 
   const addCommentMutation = useMutation({
@@ -123,10 +216,23 @@ export default function CommunityDetailScreen() {
       ]);
       toast.success('Đã gửi bình luận');
     },
-    onError: (err: any) => toast.error(err.message || 'Không thể gửi bình luận'),
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể gửi bình luận'),
   });
 
-  const attachments: any[] = item?.attachments ?? [];
+  const attachments = item?.attachments?.filter((attachment): attachment is { fileUrl: string } => Boolean(attachment?.fileUrl)) ?? [];
+
+  const handleComposerLayout = () => {
+    debugLog('composer layout event', {
+      shouldFocusComposer,
+      focusPending,
+      composerLayoutReady,
+      inputRef: commentInputRef.current,
+    });
+    setComposerLayoutReady(true);
+    if (shouldFocusComposer && !focusPending) {
+      setFocusPending(true);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -151,13 +257,14 @@ export default function CommunityDetailScreen() {
 
   const authorName = item?.authorName || item?.userName || 'Cộng đồng UrbanService';
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : '';
-  const evidenceImages = attachments.filter((attachment) => attachment?.fileUrl).map((attachment) => attachment.fileUrl);
+  const evidenceImages = attachments.map((attachment) => attachment.fileUrl).filter(Boolean) as string[];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader showBack title="Chi tiết cộng đồng" />
 
       <ScrollView
+        ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={semantics.text.brand} />}
@@ -230,7 +337,7 @@ export default function CommunityDetailScreen() {
             <Text className="text-xs font-sans-semibold text-text-muted uppercase tracking-[0.3px] mb-3">Bằng chứng</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
               {evidenceImages.map((uri, index) => (
-                <Pressable key={index} onPress={() => setSelectedImage(uri)} style={styles.galleryCard}>
+                <Pressable key={index} onPress={() => setSelectedImage(uri ?? null)} style={styles.galleryCard}>
                   <Image source={{ uri }} style={styles.galleryImage} />
                 </Pressable>
               ))}
@@ -276,18 +383,25 @@ export default function CommunityDetailScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 84 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={styles.composerHost}
+        onLayout={handleComposerLayout}
       >
         <View style={styles.composer}>
           <TextInput
-            ref={commentInputRef}
+            ref={(node) => {
+              commentInputRef.current = node;
+              setInputAttached(Boolean(node));
+              debugLog('TextInput ref attached', node);
+            }}
             style={styles.input}
             placeholder="Viết bình luận..."
             value={commentInput}
             onChangeText={setCommentInput}
             multiline
             placeholderTextColor={semantics.text.lightMuted}
+            autoFocus={shouldFocusComposer}
+            onLayout={() => debugLog('TextInput onLayout', { inputRef: commentInputRef.current })}
           />
           <Pressable
             onPress={() => commentInput.trim() && addCommentMutation.mutate(commentInput.trim())}
