@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api/userApi';
 import * as Lucide from 'lucide-react';
+import { readAdminUserManagementCache, writeAdminUserManagementCache } from '../../services/cache/adminUserManagementCache';
 
 const ROLE_META = {
   'service-user': {
@@ -11,7 +12,7 @@ const ROLE_META = {
     className: 'um-role-badge-user bg-blue-50 text-blue-700 ring-blue-100',
   },
   'system-staff': {
-    label: 'Cán bộ tiếp nhận',
+    label: 'Nhân viên hệ thống',
     className: 'um-role-badge-staff bg-violet-50 text-violet-700 ring-violet-100',
   },
   'service-provider': {
@@ -30,18 +31,41 @@ const ROLE_META = {
 
 const roleOptions = [
   { value: 'service-user', label: 'Người dân' },
-  { value: 'system-staff', label: 'Cán bộ tiếp nhận' },
+  { value: 'system-staff', label: 'Nhân viên hệ thống' },
   { value: 'service-provider', label: 'Điều phối xử lý' },
   { value: 'interaction-manager', label: 'Quản lý tương tác' },
   { value: 'administrator', label: 'Quản trị viên' },
 ];
 
+const normalizeBackendRoleName = (value = '') => String(value).replace(/[^a-z0-9]/gi, '').toUpperCase();
+
+const ROLE_NAME_TO_SLUG = {
+  SERVICEUSER: 'service-user',
+  SYSTEMSTAFF: 'system-staff',
+  SERVICEPROVIDER: 'service-provider',
+  INTERACTIONMANAGER: 'interaction-manager',
+  SYSTEMADMIN: 'administrator',
+  ADMINISTRATOR: 'administrator',
+};
+
+const getRoleSlugFromApi = (roleName = '') => ROLE_NAME_TO_SLUG[normalizeBackendRoleName(roleName)] || '';
+
+const getRoleLabelFromApi = (roleName = '') => {
+  const slug = getRoleSlugFromApi(roleName);
+  return slug ? getRoleMeta(slug).label : roleName || 'Vai trò';
+};
+
+const normalizeAdminUser = (user = {}) => ({
+  ...user,
+  role: getRoleSlugFromApi(user.roleName) || user.role || '',
+});
+
 const ROLE_DESCRIPTIONS = {
   'service-user': 'Gửi phản ánh, theo dõi trạng thái xử lý và đánh giá kết quả.',
   'system-staff': 'Tiếp nhận, kiểm tra, phân loại và điều phối phản ánh mới.',
   'service-provider': 'Cập nhật tiến độ xử lý từ hiện trường hoặc từ đầu mối bên ngoài.',
-  'interaction-manager': 'Theo dõi tương tác cộng đồng, sentiment và các kênh phản hồi.',
-  administrator: 'Quản trị tài khoản, danh mục, SLA, tích hợp, audit log và vận hành hệ thống.',
+  'interaction-manager': 'Theo dõi tương tác cộng đồng, cảm xúc người dùng và các kênh phản hồi.',
+  administrator: 'Quản trị tài khoản, danh mục, SLA, tích hợp, nhật ký hệ thống và vận hành nền tảng.',
 };
 
 const USERS_PAGE_SIZE = 8;
@@ -52,17 +76,26 @@ const isValidPhoneNumber = (value = '') => /^0\d{9}$/.test(value.trim());
 
 const getApiErrorMessage = (error, fallback) => {
   const status = error?.response?.status || error?.status;
-  const apiMessage = error?.response?.data?.message || error?.response?.data?.error;
+  const responseData = error?.response?.data;
+  const validationErrors = responseData?.errors;
+  const firstValidationMessage = validationErrors && typeof validationErrors === 'object'
+    ? Object.values(validationErrors).flat().find(Boolean)
+    : null;
+  const apiMessage = responseData?.message || responseData?.error || responseData?.title;
 
   if (status === 404) {
-    return 'Không tìm thấy API người dùng. Kiểm tra endpoint quản lý người dùng trên backend.';
+    return 'Không tìm thấy dịch vụ quản lý người dùng trên máy chủ.';
   }
 
   if (error?.code === 'ERR_NETWORK') {
-    return 'Không kết nối được API người dùng. Kiểm tra backend hoặc cấu hình API.';
+    return 'Không thể kết nối đến máy chủ quản lý người dùng. Vui lòng thử lại.';
   }
 
-  return apiMessage || error?.message || fallback;
+  if (firstValidationMessage === 'The Password field is required.') {
+    return 'Mật khẩu là bắt buộc.';
+  }
+
+  return firstValidationMessage || apiMessage || error?.message || fallback;
 };
 
 
@@ -220,7 +253,7 @@ const getInitials = (name = '') => {
   return words.slice(-2).map((word) => word[0]).join('').toUpperCase();
 };
 
-const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate' }) => {
+const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate', active = false, onClick }) => {
   const toneClass = {
     slate: 'bg-slate-100 text-slate-700 ring-slate-200',
     blue: 'bg-blue-50 text-blue-700 ring-blue-100',
@@ -229,7 +262,15 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate' }) => {
   }[tone];
 
   return (
-    <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)]">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`group w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)] ${active
+        ? 'border-blue-400 ring-2 ring-blue-100 shadow-[0_16px_42px_rgba(37,99,235,0.10)]'
+        : 'border-slate-200'
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
@@ -240,7 +281,7 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate' }) => {
           <Icon size={20} />
         </span>
       </div>
-    </div>
+    </button>
   );
 };
 
@@ -440,6 +481,7 @@ const EditAccessModal = ({
   editRole,
   editActive,
   accessLoading,
+  roleOptions: accessRoleOptions,
   onRoleChange,
   onActiveChange,
   onClose,
@@ -490,7 +532,7 @@ const EditAccessModal = ({
               {targetUser.avatarUrl ? (
                 <div className="avatar">
                   <div className="h-12 w-12 rounded-xl ring-1 ring-slate-200">
-                    <img src={targetUser.avatarUrl} alt={targetUser.fullName || 'Avatar'} />
+                    <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
                   </div>
                 </div>
               ) : (
@@ -516,7 +558,7 @@ const EditAccessModal = ({
                   <CustomSelect
                     value={editRole}
                     onChange={onRoleChange}
-                    options={roleOptions}
+                    options={accessRoleOptions}
                     ariaLabel="Chọn vai trò truy cập"
                     getDescription={(item) => ROLE_DESCRIPTIONS[item.value]}
                     menuClassName="max-h-[320px] overflow-y-auto"
@@ -586,7 +628,7 @@ const EditAccessModal = ({
               <div>
                 <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Trạng thái tài khoản</p>
                 <p className="mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Khi khóa tài khoản, người dùng sẽ không thể đăng nhập cho đến khi Admin mở lại.
+                  Khi khóa tài khoản, người dùng sẽ không thể đăng nhập cho đến khi quản trị viên mở lại.
                 </p>
               </div>
               <label className="um-access-status-toggle grid cursor-pointer grid-cols-[104px_44px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/60">
@@ -609,7 +651,7 @@ const EditAccessModal = ({
           }`}>
             <span className="font-semibold">{isAdminRole ? 'Lưu ý:' : 'Ghi chú:'}</span>{' '}
             {isAdminRole
-              ? 'Vai trò Quản trị viên có quyền truy cập cấu hình hệ thống, audit log và quản lý tài khoản. Chỉ cấp cho tài khoản thật sự cần vận hành hệ thống.'
+              ? 'Vai trò Quản trị viên có quyền truy cập cấu hình hệ thống, nhật ký hệ thống và quản lý tài khoản. Chỉ cấp cho tài khoản thật sự cần vận hành hệ thống.'
               : 'Thay đổi vai trò hoặc trạng thái chỉ được áp dụng sau khi bấm Lưu thay đổi.'}
           </div>
 
@@ -643,7 +685,7 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
   const title = nextActive ? 'Mở khóa tài khoản?' : 'Khóa tài khoản?';
   const description = nextActive
     ? 'Tài khoản này sẽ có thể đăng nhập lại sau khi được mở khóa.'
-    : 'Tài khoản này sẽ không thể đăng nhập cho đến khi Admin mở lại.';
+    : 'Tài khoản này sẽ không thể đăng nhập cho đến khi quản trị viên mở lại.';
 
   return createPortal((
     <div
@@ -693,7 +735,7 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
                 {targetUser.avatarUrl ? (
                   <div className="avatar">
                     <div className="h-11 w-11 rounded-2xl ring-1 ring-slate-200 dark:ring-slate-700">
-                      <img src={targetUser.avatarUrl} alt={targetUser.fullName || 'Avatar'} />
+                      <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
                     </div>
                   </div>
                 ) : (
@@ -747,8 +789,11 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
 
 export const UserManagement = () => {
   const { user: currentAdmin } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialCache] = useState(readAdminUserManagementCache);
+  const [users, setUsers] = useState(() => initialCache?.users || []);
+  const [loading, setLoading] = useState(() => !initialCache?.users?.length);
+  const [refreshing, setRefreshing] = useState(false);
+  const usersRef = useRef(initialCache?.users || []);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -760,8 +805,13 @@ export const UserManagement = () => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState('service-user');
-  const [operatorId, setOperatorId] = useState('1');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [roleId, setRoleId] = useState('');
+  const [availableRoles, setAvailableRoles] = useState([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createFormError, setCreateFormError] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -771,25 +821,44 @@ export const UserManagement = () => {
   const [pendingStatusUser, setPendingStatusUser] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
+
+  const fetchUsers = useCallback(async ({ silent = false } = {}) => {
+    const hasCurrentUsers = usersRef.current.length > 0;
+
+    if (silent || hasCurrentUsers) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const res = await userApi.getUsers();
-      setUsers(Array.isArray(res) ? res : []);
+      const nextUsers = (Array.isArray(res) ? res : []).map(normalizeAdminUser);
+      setUsers(nextUsers);
+      writeAdminUserManagementCache(nextUsers);
       setMessage((prev) => (prev.type === 'error' ? { type: '', text: '' } : prev));
+      return nextUsers;
     } catch (err) {
       console.error(err);
-      setUsers([]);
-      setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể tải danh sách người dùng.') });
+      if (!hasCurrentUsers) {
+        setUsers([]);
+        setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể tải danh sách người dùng.') });
+      } else if (!silent) {
+        setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể làm mới danh sách người dùng.') });
+      }
+      return null;
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
+    fetchUsers({ silent: Boolean(initialCache?.users?.length) });
+  }, [fetchUsers, initialCache]);
 
   useEffect(() => {
     if (!message.text) return undefined;
@@ -818,7 +887,9 @@ export const UserManagement = () => {
       const matchesSearch = !keyword || [item.fullName, item.email, item.phoneNumber, roleMeta.label]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(keyword));
-      const matchesRole = roleFilter === 'all' || item.role === roleFilter;
+      const matchesRole = roleFilter === 'all'
+        || (roleFilter === 'internal' && ['system-staff', 'service-provider', 'interaction-manager', 'administrator'].includes(item.role))
+        || item.role === roleFilter;
       const matchesStatus = statusFilter === 'all'
         || (statusFilter === 'active' && item.isActive)
         || (statusFilter === 'locked' && !item.isActive);
@@ -857,6 +928,23 @@ export const UserManagement = () => {
   }, [filteredUsers, safeCurrentPage]);
   const hasActiveFilters = Boolean(searchTerm.trim()) || roleFilter !== 'all' || statusFilter !== 'all';
 
+  const createRoleOptions = useMemo(() => availableRoles.map((item) => ({
+    value: String(item.roleId),
+    label: getRoleLabelFromApi(item.roleName),
+    description: item.description || '',
+  })), [availableRoles]);
+
+  const accessRoleOptions = useMemo(() => {
+    if (availableRoles.length === 0) return roleOptions;
+
+    return availableRoles
+      .map((item) => ({
+        value: getRoleSlugFromApi(item.roleName),
+        label: getRoleLabelFromApi(item.roleName),
+      }))
+      .filter((item) => item.value);
+  }, [availableRoles]);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, roleFilter, statusFilter, sortBy]);
@@ -871,14 +959,29 @@ export const UserManagement = () => {
     setFullName('');
     setEmail('');
     setPhone('');
-    setRole('service-user');
-    setOperatorId('1');
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    setRoleId('');
     setCreateFormError('');
   };
 
-  const openCreateModal = () => {
+  const openCreateModal = async () => {
     setCreateFormError('');
     setShowCreateModal(true);
+
+    if (availableRoles.length > 0 || rolesLoading) return;
+
+    setRolesLoading(true);
+    try {
+      const roles = await userApi.getUserRoles();
+      setAvailableRoles(Array.isArray(roles) ? roles : []);
+    } catch (err) {
+      setCreateFormError(getApiErrorMessage(err, 'Không thể tải danh sách vai trò.'));
+    } finally {
+      setRolesLoading(false);
+    }
   };
 
   const closeCreateModal = () => {
@@ -887,10 +990,22 @@ export const UserManagement = () => {
     setCreateFormError('');
   };
 
-  const openAccessModal = (targetUser) => {
+  const openAccessModal = async (targetUser) => {
     setSelectedUser(targetUser);
-    setEditRole(targetUser.role || 'service-user');
+    setEditRole(targetUser.role || getRoleSlugFromApi(targetUser.roleName) || 'service-user');
     setEditActive(Boolean(targetUser.isActive));
+
+    if (availableRoles.length > 0 || rolesLoading) return;
+
+    setRolesLoading(true);
+    try {
+      const roles = await userApi.getUserRoles();
+      setAvailableRoles(Array.isArray(roles) ? roles : []);
+    } catch (err) {
+      setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể tải danh sách vai trò.') });
+    } finally {
+      setRolesLoading(false);
+    }
   };
 
   const closeAccessModal = () => {
@@ -915,20 +1030,26 @@ export const UserManagement = () => {
     let roleApiMissing = false;
 
     try {
+      let nextRoleRecord = null;
+
       if (roleChanged) {
-        if (typeof userApi.updateUserRole === 'function') {
-          await userApi.updateUserRole(selectedUser.userId, editRole, currentAdmin?.userId);
-        } else if (typeof userApi.updateUser === 'function') {
-          await userApi.updateUser(selectedUser.userId, { role: editRole }, currentAdmin?.userId);
-        } else {
+        nextRoleRecord = availableRoles.find(
+          (item) => getRoleSlugFromApi(item.roleName) === editRole,
+        );
+
+        if (!nextRoleRecord || typeof userApi.updateUser !== 'function') {
           roleApiMissing = true;
+        } else {
+          await userApi.updateUser(selectedUser.userId, {
+            roleId: Number(nextRoleRecord.roleId),
+          });
         }
       }
 
       if (roleApiMissing) {
         setMessage({
           type: 'error',
-          text: 'API đổi vai trò chưa được kết nối. Cần backend bổ sung endpoint trước khi lưu thay đổi vai trò.',
+          text: 'Chức năng đổi vai trò chưa được máy chủ hỗ trợ. Không thể lưu thay đổi vai trò lúc này.',
         });
         return;
       }
@@ -937,7 +1058,20 @@ export const UserManagement = () => {
         await userApi.updateUserStatus(selectedUser.userId, editActive, currentAdmin?.userId);
       }
 
-      await fetchUsers();
+      const updatedUsers = users.map((item) => (
+        item.userId === selectedUser.userId
+          ? {
+              ...item,
+              role: editRole,
+              roleId: nextRoleRecord?.roleId ?? item.roleId,
+              roleName: nextRoleRecord?.roleName ?? item.roleName,
+              isActive: editActive,
+            }
+          : item
+      ));
+      setUsers(updatedUsers);
+      writeAdminUserManagementCache(updatedUsers);
+      void fetchUsers({ silent: true });
       setMessage({ type: 'success', text: 'Đã cập nhật quyền truy cập tài khoản.' });
 
       setSelectedUser(null);
@@ -968,7 +1102,14 @@ export const UserManagement = () => {
 
     try {
       await userApi.updateUserStatus(pendingStatusUser.userId, nextActive, currentAdmin?.userId);
-      await fetchUsers();
+      const updatedUsers = users.map((item) => (
+        item.userId === pendingStatusUser.userId
+          ? { ...item, isActive: nextActive }
+          : item
+      ));
+      setUsers(updatedUsers);
+      writeAdminUserManagementCache(updatedUsers);
+      void fetchUsers({ silent: true });
       setMessage({ type: 'success', text: `${nextActive ? 'Đã mở khóa' : 'Đã khóa'} tài khoản ${targetName}.` });
       setPendingStatusUser(null);
     } catch (err) {
@@ -985,9 +1126,11 @@ export const UserManagement = () => {
     const nextFullName = fullName.trim();
     const nextEmail = email.trim().toLowerCase();
     const nextPhone = normalizePhoneNumber(phone);
+    const nextPassword = password.trim();
+    const selectedRoleId = Number(roleId);
 
-    if (!nextFullName || !nextEmail || !nextPhone) {
-      setCreateFormError('Vui lòng nhập đầy đủ họ tên, email và số điện thoại.');
+    if (!nextFullName || !nextEmail || !nextPhone || !nextPassword || !confirmPassword || !selectedRoleId) {
+      setCreateFormError('Vui lòng nhập đầy đủ họ tên, email, số điện thoại, mật khẩu và vai trò.');
       return;
     }
 
@@ -1001,24 +1144,39 @@ export const UserManagement = () => {
       return;
     }
 
+    if (nextPassword.length < 6) {
+      setCreateFormError('Mật khẩu phải có ít nhất 6 ký tự.');
+      return;
+    }
+
+    if (nextPassword !== confirmPassword) {
+      setCreateFormError('Xác nhận mật khẩu không khớp.');
+      return;
+    }
+
     setCreateFormError('');
     setCreateLoading(true);
 
     try {
       await userApi.createUser({
+        roleId: selectedRoleId,
         fullName: nextFullName,
         email: nextEmail,
+        password: nextPassword,
         phoneNumber: nextPhone,
-        role,
-        operatorId: role === 'service-provider' ? Number(operatorId) : null,
-      }, currentAdmin?.userId);
+        address: null,
+        avatarUrl: null,
+        isActive: true,
+        isVerified: false,
+      });
 
-      setMessage({ type: 'success', text: 'Tạo tài khoản thành công. Mật khẩu mặc định: 123456.' });
+      setMessage({ type: 'success', text: 'Tạo tài khoản thành công.' });
       setShowCreateModal(false);
       resetCreateForm();
-      fetchUsers();
+      void fetchUsers({ silent: true });
     } catch (err) {
-      setMessage({ type: 'error', text: getApiErrorMessage(err, 'Lỗi khi tạo tài khoản.') });
+      const errorMessage = getApiErrorMessage(err, 'Lỗi khi tạo tài khoản.');
+      setCreateFormError(errorMessage);
     } finally {
       setCreateLoading(false);
     }
@@ -1059,9 +1217,9 @@ export const UserManagement = () => {
               type="button"
               onClick={fetchUsers}
               className="btn btn-outline h-11 rounded-xl border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              disabled={loading}
+              disabled={loading || refreshing}
             >
-              <Lucide.RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+              <Lucide.RefreshCcw size={16} className={loading || refreshing ? 'animate-spin' : ''} />
               Làm mới
             </button>
             <button
@@ -1077,10 +1235,42 @@ export const UserManagement = () => {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Lucide.Users} label="Tổng tài khoản" value={stats.total} helper="Tất cả người dùng" tone="blue" />
-        <StatCard icon={Lucide.UserCheck} label="Đang hoạt động" value={stats.active} helper="Có thể đăng nhập" tone="emerald" />
-        <StatCard icon={Lucide.UserX} label="Đã khóa" value={stats.locked} helper="Đang bị vô hiệu hóa" tone="rose" />
-        <StatCard icon={Lucide.UserCog} label="Tài khoản nội bộ" value={stats.operatorCount} helper="Staff, điều phối, quản trị" tone="slate" />
+        <StatCard
+          icon={Lucide.Users}
+          label="Tổng tài khoản"
+          value={stats.total}
+          helper="Tất cả người dùng"
+          tone="blue"
+          active={roleFilter === 'all' && statusFilter === 'all'}
+          onClick={() => { setRoleFilter('all'); setStatusFilter('all'); }}
+        />
+        <StatCard
+          icon={Lucide.UserCheck}
+          label="Đang hoạt động"
+          value={stats.active}
+          helper="Có thể đăng nhập"
+          tone="emerald"
+          active={roleFilter === 'all' && statusFilter === 'active'}
+          onClick={() => { setRoleFilter('all'); setStatusFilter('active'); }}
+        />
+        <StatCard
+          icon={Lucide.UserX}
+          label="Đã khóa"
+          value={stats.locked}
+          helper="Đang bị vô hiệu hóa"
+          tone="rose"
+          active={roleFilter === 'all' && statusFilter === 'locked'}
+          onClick={() => { setRoleFilter('all'); setStatusFilter('locked'); }}
+        />
+        <StatCard
+          icon={Lucide.UserCog}
+          label="Tài khoản nội bộ"
+          value={stats.operatorCount}
+          helper="Nhân viên, điều phối, quản trị"
+          tone="slate"
+          active={roleFilter === 'internal' && statusFilter === 'all'}
+          onClick={() => { setRoleFilter('internal'); setStatusFilter('all'); }}
+        />
       </section>
 
       <section className="um-users-card overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-950/70">
@@ -1088,7 +1278,7 @@ export const UserManagement = () => {
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Danh sách tài khoản</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {loading ? 'Đang tải dữ liệu...' : `${filteredUsers.length}/${stats.total} tài khoản`}
+              {loading ? 'Đang tải dữ liệu...' : refreshing ? 'Đang cập nhật dữ liệu...' : `${filteredUsers.length}/${stats.total} tài khoản`}
             </p>
           </div>
 
@@ -1107,7 +1297,7 @@ export const UserManagement = () => {
             <CustomSelect
               value={roleFilter}
               onChange={setRoleFilter}
-              options={[{ value: 'all', label: 'Tất cả vai trò' }, ...roleOptions]}
+              options={[{ value: 'all', label: 'Tất cả vai trò' }, { value: 'internal', label: 'Tài khoản nội bộ' }, ...roleOptions]}
               ariaLabel="Lọc theo vai trò"
             />
 
@@ -1197,7 +1387,7 @@ export const UserManagement = () => {
                           {u.avatarUrl ? (
                             <div className="avatar shrink-0">
                               <div className="h-12 w-12 rounded-2xl ring-1 ring-slate-200 dark:ring-slate-700">
-                                <img src={u.avatarUrl} alt={u.fullName || 'Avatar'} />
+                                <img src={u.avatarUrl} alt={u.fullName ? `Ảnh đại diện của ${u.fullName}` : 'Ảnh đại diện'} />
                               </div>
                             </div>
                           ) : (
@@ -1319,7 +1509,7 @@ export const UserManagement = () => {
                           {u.avatarUrl ? (
                             <div className="avatar">
                               <div className="h-11 w-11 rounded-xl ring-1 ring-slate-200">
-                                <img src={u.avatarUrl} alt={u.fullName || 'Avatar'} />
+                                <img src={u.avatarUrl} alt={u.fullName ? `Ảnh đại diện của ${u.fullName}` : 'Ảnh đại diện'} />
                               </div>
                             </div>
                           ) : (
@@ -1450,6 +1640,7 @@ export const UserManagement = () => {
         editRole={editRole}
         editActive={editActive}
         accessLoading={accessLoading}
+        roleOptions={accessRoleOptions}
         onRoleChange={setEditRole}
         onActiveChange={setEditActive}
         onClose={closeAccessModal}
@@ -1480,7 +1671,7 @@ export const UserManagement = () => {
                 </span>
                 <div>
                   <h3 id="create-user-title" className="text-xl font-semibold text-slate-950">Tạo tài khoản</h3>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Mật khẩu mặc định: 123456</p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Nhập thông tin và chọn đúng vai trò trước khi tạo.</p>
                 </div>
               </div>
               <button
@@ -1558,41 +1749,81 @@ export const UserManagement = () => {
                   <p className="mt-2 text-xs text-slate-400">Nhập 10 chữ số, bắt đầu bằng 0.</p>
                 </div>
 
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text text-sm font-medium text-slate-700">Mật khẩu *</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Ít nhất 6 ký tự"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setCreateFormError('');
+                      }}
+                      autoComplete="new-password"
+                      className="input input-bordered h-11 w-full rounded-xl pr-11 text-sm"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((current) => !current)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:text-slate-700"
+                      aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showPassword ? <Lucide.EyeOff size={18} aria-hidden="true" /> : <Lucide.Eye size={18} aria-hidden="true" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text text-sm font-medium text-slate-700">Xác nhận mật khẩu *</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      placeholder="Nhập lại mật khẩu"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        setCreateFormError('');
+                      }}
+                      autoComplete="new-password"
+                      className="input input-bordered h-11 w-full rounded-xl pr-11 text-sm"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((current) => !current)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:text-slate-700"
+                      aria-label={showConfirmPassword ? 'Ẩn xác nhận mật khẩu' : 'Hiện xác nhận mật khẩu'}
+                      title={showConfirmPassword ? 'Ẩn xác nhận mật khẩu' : 'Hiện xác nhận mật khẩu'}
+                    >
+                      {showConfirmPassword ? <Lucide.EyeOff size={18} aria-hidden="true" /> : <Lucide.Eye size={18} aria-hidden="true" />}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="form-control sm:col-span-2">
                   <label className="label">
                     <span className="label-text text-sm font-medium text-slate-700">Vai trò *</span>
                   </label>
                   <CustomSelect
-                    value={role}
-                    onChange={(nextRole) => {
-                      setRole(nextRole);
+                    value={roleId}
+                    onChange={(nextRoleId) => {
+                      setRoleId(nextRoleId);
                       setCreateFormError('');
                     }}
-                    options={roleOptions}
+                    options={createRoleOptions}
                     ariaLabel="Chọn vai trò tài khoản"
-                    getDescription={(item) => ROLE_DESCRIPTIONS[item.value]}
+                    placeholder={rolesLoading ? 'Đang tải vai trò...' : 'Chọn vai trò'}
+                    getDescription={(item) => item.description}
                     menuClassName="max-h-[320px] overflow-y-auto"
                   />
                 </div>
-
-                {role === 'service-provider' && (
-                  <div className="form-control sm:col-span-2">
-                    <label className="label">
-                      <span className="label-text text-sm font-medium text-slate-700">Đầu mối phụ trách</span>
-                    </label>
-                    <select
-                      value={operatorId}
-                      onChange={(e) => setOperatorId(e.target.value)}
-                      className="select select-bordered h-11 rounded-xl text-sm"
-                    >
-                      <option value="1">Đầu mối Điện chiếu sáng</option>
-                      <option value="2">Đầu mối Thu gom Rác thải</option>
-                      <option value="3">Tổng công ty Cấp nước SAWACO</option>
-                      <option value="4">Khu quản lý cầu đường bộ số 1</option>
-                      <option value="5">Đầu mối Công viên Cây xanh</option>
-                    </select>
-                  </div>
-                )}
               </div>
 
               <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end dark:border-slate-700">

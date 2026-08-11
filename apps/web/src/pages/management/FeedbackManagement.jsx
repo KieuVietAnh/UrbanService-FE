@@ -1,55 +1,117 @@
 // src/pages/management/FeedbackManagement.jsx
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi, toolsApi } from '@urbanmind/shared-api';
-import { managementTypes } from '@urbanmind/shared-types';
+import { getCategoryLabel } from '../../utils/categoryLabels';
+import {
+  ADMIN_FEEDBACK_METRICS,
+  calculateAdminFeedbackSummary,
+  filterAdminFeedbacksByMetric,
+  normalizeAdminFeedbackMetric,
+} from '../../utils/adminFeedbackMetrics';
+import { peekAdminFeedbackDetail, prefetchAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
+
+
+const ADMIN_FEEDBACK_SNAPSHOT_KEY = 'adminFeedbackListSnapshot';
+const ADMIN_FEEDBACK_RETURN_STORAGE_KEY = 'urbanmind-admin-feedback-return';
+const ADMIN_FEEDBACK_SNAPSHOT_TTL = 5 * 60 * 1000;
+const ADMIN_FEEDBACK_PAGE_SIZE = 10;
+
+const readFeedbackSnapshot = () => {
+  try {
+    const raw = sessionStorage.getItem(ADMIN_FEEDBACK_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const snapshot = JSON.parse(raw);
+    if (!snapshot || !Array.isArray(snapshot.feedbacks)) return null;
+    if (Date.now() - Number(snapshot.savedAt || 0) > ADMIN_FEEDBACK_SNAPSHOT_TTL) {
+      sessionStorage.removeItem(ADMIN_FEEDBACK_SNAPSHOT_KEY);
+      return null;
+    }
+    return snapshot;
+  } catch {
+    sessionStorage.removeItem(ADMIN_FEEDBACK_SNAPSHOT_KEY);
+    return null;
+  }
+};
+
+
+const readAdminFeedbackReturnContext = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(
+      ADMIN_FEEDBACK_RETURN_STORAGE_KEY
+    );
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    console.warn('Không thể đọc vị trí quay lại danh sách phản ánh', error);
+    return null;
+  }
+};
+
+const writeFeedbackSnapshot = (snapshot) => {
+  try {
+    let previous = {};
+    const raw = sessionStorage.getItem(ADMIN_FEEDBACK_SNAPSHOT_KEY);
+    if (raw) previous = JSON.parse(raw) || {};
+    sessionStorage.setItem(
+      ADMIN_FEEDBACK_SNAPSHOT_KEY,
+      JSON.stringify({ ...previous, ...snapshot, savedAt: Date.now() })
+    );
+  } catch (error) {
+    console.warn('Không thể lưu trạng thái danh sách phản ánh', error);
+  }
+};
+
+const normalizeFeedbackEnum = (value) => String(value ?? '')
+  .replace(/[-_\s]/g, '')
+  .toLowerCase();
 
 const STATUS_META = {
-  [managementTypes.feedbackStatus.SUBMITTED]: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
-  [managementTypes.feedbackStatus.AI_REVIEWED]: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
-  [managementTypes.feedbackStatus.VERIFIED]: { label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
-  [managementTypes.feedbackStatus.ASSIGNED]: { label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  [managementTypes.feedbackStatus.IN_PROGRESS]: { label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
-  [managementTypes.feedbackStatus.RESOLVED]: { label: 'Chờ nghiệm thu', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  [managementTypes.feedbackStatus.CLOSED]: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  submitted: { value: 'Submitted', label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
+  aireviewed: { value: 'AiReviewed', label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
+  verified: { value: 'Verified', label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
+  assigned: { value: 'Assigned', label: 'Đã phân công', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  inprogress: { value: 'InProgress', label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
+  resolved: { value: 'Resolved', label: 'Chờ nghiệm thu', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  submittedforapproval: { value: 'SubmittedForApproval', label: 'Chờ phê duyệt', className: 'bg-indigo-50 text-indigo-700 ring-indigo-100' },
+  approved: { value: 'Approved', label: 'Đã phê duyệt', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  rejected: { value: 'Rejected', label: 'Đã từ chối', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  needrework: { value: 'NeedRework', label: 'Cần xử lý lại', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  closed: { value: 'Closed', label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  cancelled: { value: 'Cancelled', label: 'Đã hủy', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
 };
 
 const PRIORITY_META = {
-  Critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
-  High: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
-  Medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
-  Low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  urgent: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  high: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
+  medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
 };
 
-const normalizeFeedbackResponse = (response) => {
-  if (Array.isArray(response)) return response;
+const getStatusMeta = (status) => STATUS_META[normalizeFeedbackEnum(status)];
+const getPriorityMeta = (priority) => PRIORITY_META[normalizeFeedbackEnum(priority)];
 
-  const candidates = [
-    response?.items,
-    response?.data,
-    response?.content,
-    response?.result,
-    response?.records,
-    response?.feedbacks,
-    response?.data?.items,
-    response?.data?.content,
-    response?.data?.result,
-    response?.data?.records,
-    response?.data?.feedbacks,
-    response?.result?.items,
-    response?.result?.content,
-    response?.result?.records,
-  ];
 
-  const matchedArray = candidates.find(Array.isArray);
-  return matchedArray || [];
-};
-
-const getCategoryName = (categoryId, categories = []) => {
+const getCategoryName = (feedback, categories = []) => {
   const safeCategories = Array.isArray(categories) ? categories : [];
-  return safeCategories.find((category) => String(category.categoryId) === String(categoryId))?.categoryName || 'Chưa phân loại';
+  const categoryId = feedback?.categoryId ?? feedback?.category?.categoryId ?? feedback?.category?.id;
+  const matchedCategory = safeCategories.find((category) =>
+    String(category?.categoryId ?? category?.id) === String(categoryId)
+  );
+  const categoryName =
+    feedback?.categoryName ??
+    feedback?.category?.categoryName ??
+    feedback?.category?.name ??
+    matchedCategory?.categoryName ??
+    matchedCategory?.name;
+
+  return getCategoryLabel(categoryName);
 };
 
 const formatFeedbackId = (feedbackId) => {
@@ -67,20 +129,25 @@ const formatDate = (value) => {
 };
 
 const getLocationText = (feedback) => {
-  const lat = feedback?.latitude ?? feedback?.lat ?? feedback?.location?.latitude ?? feedback?.location?.lat;
-  const lng = feedback?.longitude ?? feedback?.lng ?? feedback?.location?.longitude ?? feedback?.location?.lng;
+  const areaName = [
+    feedback?.wardName,
+    feedback?.areaName,
+    feedback?.area?.areaName,
+    feedback?.area?.name,
+    feedback?.ward?.name,
+    feedback?.location?.wardName,
+    feedback?.location?.areaName,
+  ].find((value) => typeof value === 'string' && value.trim());
 
-  if (feedback?.locationText || feedback?.address) return feedback.locationText || feedback.address;
-  if (lat && lng) return `Vị trí đã chọn: ${lat}, ${lng}`;
-  return 'Chưa có vị trí';
+  return areaName?.trim() || 'Chưa xác định khu vực';
 };
 
 const getStatusLabel = (status) => {
-  return STATUS_META[status]?.label || status || 'Chưa rõ';
+  return getStatusMeta(status)?.label || status || 'Chưa rõ';
 };
 
 const getPriorityLabel = (priority) => {
-  return PRIORITY_META[priority]?.label || priority || 'Trung bình';
+  return getPriorityMeta(priority)?.label || priority || 'Trung bình';
 };
 
 const getFeedbackAuthorText = (feedback) => {
@@ -99,129 +166,85 @@ const getFeedbackAuthorText = (feedback) => {
 };
 
 
-const normalizeFeedbackDetailResponse = (response) => {
-  return response?.data || response?.item || response?.result || response?.record || response;
+const normalizeSearchText = (value) => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd')
+  .replace(/Đ/g, 'D')
+  .toLowerCase()
+  .trim();
+
+const metricForStatus = (status) => {
+  const candidate = { status };
+  if (filterAdminFeedbacksByMetric([candidate], 'pending').length) return 'pending';
+  if (filterAdminFeedbacksByMetric([candidate], 'inProgress').length) return 'inProgress';
+  if (filterAdminFeedbacksByMetric([candidate], 'completed').length) return 'completed';
+  return 'total';
 };
 
-const normalizeAttachment = (file) => {
-  if (!file) return null;
+const feedbackMatchesSearch = (feedback, searchTerm, categories = []) => {
+  const normalizedSearch = normalizeSearchText(searchTerm);
+  if (!normalizedSearch) return true;
 
-  if (typeof file === 'string') {
-    return {
-      fileUrl: file,
-      url: file,
-      fileName: file.split('/').pop() || 'Tệp đính kèm',
-    };
-  }
-
-  const fileUrl =
-    file.fileUrl ||
-    file.url ||
-    file.path ||
-    file.attachmentUrl ||
-    file.displayUrl ||
-    file.mediaUrl ||
-    file.publicUrl ||
-    file.downloadUrl ||
-    '';
-
-  return {
-    ...file,
-    attachmentId:
-      file.attachmentId ||
-      file.attachmentID ||
-      file.feedbackAttachmentId ||
-      file.feedbackAttachmentID ||
-      file.fileId ||
-      file.fileID ||
-      file.id ||
-      null,
-    fileUrl,
-    fileName:
-      file.fileName ||
-      file.name ||
-      file.originalName ||
-      file.originalFileName ||
-      fileUrl?.split('/').pop() ||
-      'Tệp đính kèm',
-    mimeType: file.mimeType || file.contentType || file.type || '',
-  };
+  return [
+    feedback?.feedbackId,
+    feedback?.id,
+    feedback?.title,
+    feedback?.description,
+    feedback?.locationText,
+    getLocationText(feedback),
+    getCategoryName(feedback, categories),
+    getFeedbackAuthorText(feedback),
+    getStatusLabel(feedback?.status),
+    getPriorityLabel(feedback?.priority),
+  ].some((value) => normalizeSearchText(value).includes(normalizedSearch));
 };
 
-const getFeedbackAttachments = (feedback) => {
-  const candidates = [
-    feedback?.attachments,
-    feedback?.feedbackAttachments,
-    feedback?.files,
-    feedback?.media,
-    feedback?.medias,
-    feedback?.mediaFiles,
-    feedback?.uploadedFiles,
-    feedback?.evidenceFiles,
-    feedback?.images,
-    feedback?.videos,
-    feedback?.attachmentUrls,
-    feedback?.mediaUrls,
-  ];
 
-  return candidates
-    .filter(Array.isArray)
-    .flat()
-    .map(normalizeAttachment)
-    .filter((file) => file?.fileUrl || file?.url || file?.path || file?.attachmentUrl);
-};
-
-const getAttachmentUrl = (file) => {
-  const normalized = normalizeAttachment(file);
-  const raw = normalized?.fileUrl || normalized?.url || normalized?.path || normalized?.attachmentUrl || '';
-
-  if (!raw) return '';
-
-  if (
-    raw.startsWith('http://') ||
-    raw.startsWith('https://') ||
-    raw.startsWith('blob:') ||
-    raw.startsWith('data:')
-  ) {
-    return raw;
-  }
-
-  return raw.startsWith('/') ? raw : `/${raw}`;
-};
-
-const isVideoAttachment = (file) => {
-  const normalized = normalizeAttachment(file);
-  const value = `${normalized?.mimeType || ''} ${getAttachmentUrl(normalized)} ${normalized?.fileName || ''}`.toLowerCase();
-
-  return (
-    value.includes('video/') ||
-    value.includes('.mp4') ||
-    value.includes('.webm') ||
-    value.includes('.ogg') ||
-    value.includes('.mov') ||
-    value.includes('.m4v')
-  );
-};
 
 const StatusBadge = ({ status }) => {
-  const meta = STATUS_META[status] || { label: getStatusLabel(status), className: 'bg-slate-100 text-slate-600 ring-slate-200' };
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>
-      {meta.label}
-    </span>
-  );
+  const meta = getStatusMeta(status) || { label: getStatusLabel(status), className: 'bg-slate-100 text-slate-600 ring-slate-200' };
+  return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
 };
 
 const PriorityBadge = ({ priority }) => {
-  const meta = PRIORITY_META[priority] || { ...PRIORITY_META.Medium, label: getPriorityLabel(priority) };
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>
-      {meta.label}
-    </span>
-  );
+  const meta = getPriorityMeta(priority) || { ...PRIORITY_META.medium, label: getPriorityLabel(priority) };
+  return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
 };
 
-const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
+
+const FeedbackTableSkeleton = () => (
+  <div className="overflow-hidden">
+    <div className="border-b border-slate-200 bg-slate-50/80 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/40">
+      <div className="grid min-w-[1040px] grid-cols-[120px_minmax(280px,1.4fr)_180px_120px_140px_120px_96px] gap-6">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <div key={index} className="h-3 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+        ))}
+      </div>
+    </div>
+    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+      {Array.from({ length: 6 }).map((_, rowIndex) => (
+        <div
+          key={rowIndex}
+          className="grid min-w-[1040px] grid-cols-[120px_minmax(280px,1.4fr)_180px_120px_140px_120px_96px] items-center gap-6 px-6 py-5"
+        >
+          <div className="h-4 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="space-y-2">
+            <div className="h-4 w-4/5 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+            <div className="h-3 w-3/5 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+          </div>
+          <div className="h-4 w-3/4 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="h-7 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+          <div className="h-7 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+          <div className="h-4 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="h-9 w-20 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue', active = false, onClick }) => {
   const toneClass = {
     blue: 'bg-blue-50 text-blue-700 ring-blue-100',
     amber: 'bg-amber-50 text-amber-700 ring-amber-100',
@@ -230,550 +253,365 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => {
   }[tone];
 
   return (
-    <div className="admin-stat-card p-5 transition-all hover:-translate-y-0.5">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`group w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)] ${active
+        ? 'border-blue-400 ring-2 ring-blue-100 shadow-[0_16px_42px_rgba(37,99,235,0.10)]'
+        : 'border-slate-200'
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">{label}</p>
           <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
-          <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>
+          {helper && <p className="mt-1 text-xs font-medium text-slate-400">{helper}</p>}
         </div>
         <span className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ${toneClass}`}>
           <Icon size={20} />
         </span>
       </div>
-    </div>
-  );
-};
-
-const DetailItem = ({ label, value }) => (
-  <div className="admin-inset-panel p-4">
-    <p className="text-xs font-medium text-slate-500">{label}</p>
-    <p className="mt-1 text-sm font-semibold text-slate-900">{value || '—'}</p>
-  </div>
-);
-
-const pauseAllVideos = () => {
-  if (typeof document === 'undefined') return;
-
-  document.querySelectorAll('video').forEach((video) => {
-    video.pause();
-  });
-};
-
-
-const AttachmentGallery = ({ attachments }) => {
-  const validAttachments = attachments
-    .map((file) => {
-      const normalized = normalizeAttachment(file);
-      const fileUrl = getAttachmentUrl(normalized);
-      if (!fileUrl) return null;
-
-      return {
-        ...normalized,
-        fileUrl,
-        isVideo: isVideoAttachment(normalized),
-      };
-    })
-    .filter(Boolean);
-
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [previewOpen, setPreviewOpen] = useState(false);
-
-  if (!validAttachments.length) {
-    return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-medium text-slate-500">
-        Không có hình ảnh hoặc video đính kèm.
-      </div>
-    );
-  }
-
-  const safeActiveIndex = Math.min(activeIndex, validAttachments.length - 1);
-  const activeFile = validAttachments[safeActiveIndex];
-  const hasMultipleFiles = validAttachments.length > 1;
-
-  const showPrevious = () => {
-    pauseAllVideos();
-    setActiveIndex((currentIndex) =>
-      currentIndex === 0 ? validAttachments.length - 1 : currentIndex - 1,
-    );
-  };
-
-  const showNext = () => {
-    pauseAllVideos();
-    setActiveIndex((currentIndex) =>
-      currentIndex === validAttachments.length - 1 ? 0 : currentIndex + 1,
-    );
-  };
-
-  const openPreview = () => {
-    pauseAllVideos();
-    setPreviewOpen(true);
-  };
-
-  const closePreview = () => {
-    pauseAllVideos();
-    setPreviewOpen(false);
-  };
-
-  const previewFileName = activeFile.fileName || `Tệp ${safeActiveIndex + 1}`;
-
-  const preview = previewOpen && typeof document !== 'undefined' ? createPortal(
-    <div
-      className="fixed inset-0 z-[90] bg-slate-950/85 text-white backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-    >
-      <button
-        type="button"
-        aria-label="Đóng trình xem media"
-        className="absolute inset-0"
-        onClick={closePreview}
-      />
-
-      <div className="relative z-10 flex h-full min-h-0 flex-col px-4 py-4 sm:px-6 sm:py-5">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 shadow-2xl shadow-black/20 backdrop-blur-md">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex h-9 shrink-0 items-center rounded-full bg-white px-3 text-sm font-semibold text-slate-950">
-              {safeActiveIndex + 1}/{validAttachments.length}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{previewFileName}</p>
-              <p className="text-xs text-white/55">
-                {activeFile.isVideo ? 'Video đính kèm' : 'Hình ảnh đính kèm'}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={closePreview}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white hover:text-slate-950"
-            aria-label="Đóng"
-          >
-            <Lucide.X size={20} />
-          </button>
-        </div>
-
-        <div className="relative mx-auto flex min-h-0 w-full max-w-7xl flex-1 items-center justify-center py-5">
-          {hasMultipleFiles ? (
-            <button
-              type="button"
-              onClick={showPrevious}
-              className="absolute left-0 top-1/2 z-20 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/90 text-slate-950 shadow-2xl shadow-black/30 transition hover:scale-105 hover:bg-white sm:left-4"
-              aria-label="Xem tệp trước"
-            >
-              <Lucide.ChevronLeft size={26} />
-            </button>
-          ) : null}
-
-          <div className="mx-12 flex max-h-[calc(100vh-13rem)] w-full items-center justify-center overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-2xl shadow-black/40 sm:mx-20">
-            {activeFile.isVideo ? (
-              <video
-                key={activeFile.fileUrl}
-                src={activeFile.fileUrl}
-                controls
-                preload="metadata"
-                className="max-h-[calc(100vh-13rem)] max-w-full object-contain"
-              />
-            ) : (
-              <img
-                src={activeFile.fileUrl}
-                alt={previewFileName}
-                className="max-h-[calc(100vh-13rem)] max-w-full object-contain"
-              />
-            )}
-          </div>
-
-          {hasMultipleFiles ? (
-            <button
-              type="button"
-              onClick={showNext}
-              className="absolute right-0 top-1/2 z-20 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-white/90 text-slate-950 shadow-2xl shadow-black/30 transition hover:scale-105 hover:bg-white sm:right-4"
-              aria-label="Xem tệp tiếp theo"
-            >
-              <Lucide.ChevronRight size={26} />
-            </button>
-          ) : null}
-        </div>
-
-        {hasMultipleFiles ? (
-          <div className="mx-auto flex w-full max-w-5xl gap-3 overflow-x-auto rounded-2xl border border-white/10 bg-white/10 p-3 shadow-2xl shadow-black/20 backdrop-blur-md">
-            {validAttachments.map((file, index) => {
-              const isActive = index === safeActiveIndex;
-
-              return (
-                <button
-                  key={file.attachmentId || file.fileUrl || index}
-                  type="button"
-                  onClick={() => {
-                    pauseAllVideos();
-                    setActiveIndex(index);
-                  }}
-                  className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border transition ${
-                    isActive
-                      ? 'border-white ring-2 ring-white/70'
-                      : 'border-white/10 opacity-65 hover:opacity-100'
-                  }`}
-                  aria-label={`Xem tệp ${index + 1}`}
-                >
-                  {file.isVideo ? (
-                    <>
-                      <video src={file.fileUrl} preload="metadata" className="h-full w-full object-cover" />
-                      <span className="absolute inset-0 flex items-center justify-center bg-slate-950/25 text-white">
-                        <Lucide.PlayCircle size={22} />
-                      </span>
-                    </>
-                  ) : (
-                    <img
-                      src={file.fileUrl}
-                      alt={file.fileName || `Tệp ${index + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="mx-auto max-w-3xl truncate rounded-full bg-white/10 px-4 py-2 text-center text-sm font-medium text-white/80 backdrop-blur-md">
-            {previewFileName}
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body,
-  ) : null;
-
-  return (
-    <div className="space-y-4" onClick={(event) => event.stopPropagation()}>
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm">
-        <div className="relative flex aspect-[16/10] max-h-[430px] min-h-[260px] items-center justify-center bg-slate-950">
-          {activeFile.isVideo ? (
-            <video
-              key={activeFile.fileUrl}
-              src={activeFile.fileUrl}
-              controls
-              preload="metadata"
-              className="max-h-full w-full bg-black object-contain"
-            />
-          ) : (
-            <button type="button" onClick={openPreview} className="h-full w-full cursor-zoom-in" aria-label="Phóng to ảnh">
-              <img
-                src={activeFile.fileUrl}
-                alt={activeFile.fileName || `Tệp ${safeActiveIndex + 1}`}
-                className="h-full w-full object-contain"
-                loading="lazy"
-              />
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={openPreview}
-            className="absolute left-3 top-3 flex h-10 items-center gap-2 rounded-full bg-white/95 px-3 text-xs font-semibold text-slate-900 shadow-lg shadow-slate-950/15 transition hover:bg-white"
-            aria-label="Phóng to media"
-          >
-            <Lucide.Maximize2 size={16} />
-            Phóng to
-          </button>
-
-          {hasMultipleFiles ? (
-            <>
-              <button
-                type="button"
-                onClick={showPrevious}
-                className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/90 text-slate-900 shadow-lg shadow-slate-950/20 transition hover:scale-105 hover:bg-white"
-                aria-label="Xem tệp trước"
-              >
-                <Lucide.ChevronLeft size={20} />
-              </button>
-              <button
-                type="button"
-                onClick={showNext}
-                className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/90 text-slate-900 shadow-lg shadow-slate-950/20 transition hover:scale-105 hover:bg-white"
-                aria-label="Xem tệp tiếp theo"
-              >
-                <Lucide.ChevronRight size={20} />
-              </button>
-            </>
-          ) : null}
-
-          <div className="absolute right-3 top-3 rounded-full bg-slate-950/70 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-            {safeActiveIndex + 1}/{validAttachments.length}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 bg-white px-4 py-3 text-xs font-medium text-slate-600">
-          {activeFile.isVideo ? <Lucide.PlayCircle size={15} /> : <Lucide.Image size={15} />}
-          <span className="truncate">{activeFile.fileName || `Tệp ${safeActiveIndex + 1}`}</span>
-        </div>
-      </div>
-
-      {hasMultipleFiles ? (
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {validAttachments.map((file, index) => {
-            const isActive = index === safeActiveIndex;
-
-            return (
-              <button
-                key={file.attachmentId || file.fileUrl || index}
-                type="button"
-                onClick={() => {
-                  pauseAllVideos();
-                  setActiveIndex(index);
-                }}
-                className={`relative h-20 w-28 shrink-0 overflow-hidden rounded-xl border bg-slate-100 transition ${
-                  isActive
-                    ? 'border-blue-500 ring-2 ring-blue-100'
-                    : 'border-slate-200 hover:border-blue-300'
-                }`}
-                aria-label={`Xem tệp ${index + 1}`}
-              >
-                {file.isVideo ? (
-                  <>
-                    <video src={file.fileUrl} preload="metadata" className="h-full w-full object-cover" />
-                    <span className="absolute inset-0 flex items-center justify-center bg-slate-950/20 text-white">
-                      <Lucide.PlayCircle size={22} />
-                    </span>
-                  </>
-                ) : (
-                  <img
-                    src={file.fileUrl}
-                    alt={file.fileName || `Tệp ${index + 1}`}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {preview}
-    </div>
-  );
-};
-const FeedbackDetailModal = ({ feedback, loadingDetail, detailError, onClose, categories = [] }) => {
-  if (!feedback || typeof document === 'undefined') return null;
-
-  const feedbackId = feedback.feedbackId || feedback.id;
-  const attachments = getFeedbackAttachments(feedback);
-  const handleClose = () => {
-    pauseAllVideos();
-    onClose();
-  };
-
-  return createPortal(
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
-      <button
-        type="button"
-        aria-label="Đóng chi tiết feedback"
-        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]"
-        onClick={handleClose}
-      />
-
-      <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/20">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="admin-hero-icon">
-              <Lucide.MessageSquare size={22} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-blue-700">{formatFeedbackId(feedbackId)}</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                {feedback.title || 'Feedback không có tiêu đề'}
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{getLocationText(feedback)}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Đóng"
-          >
-            <Lucide.X size={18} />
-          </button>
-        </div>
-
-        <div className="max-h-[70vh] overflow-y-auto p-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <DetailItem label="Danh mục" value={getCategoryName(feedback.categoryId, categories)} />
-            <div className="admin-inset-panel p-4">
-              <p className="text-xs font-medium text-slate-500">Ưu tiên</p>
-              <div className="mt-2"><PriorityBadge priority={feedback.priority} /></div>
-            </div>
-            <div className="admin-inset-panel p-4">
-              <p className="text-xs font-medium text-slate-500">Trạng thái</p>
-              <div className="mt-2"><StatusBadge status={feedback.status} /></div>
-            </div>
-            <DetailItem label="Ngày tạo" value={formatDate(feedback.createdAt)} />
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-              <Lucide.FileText size={16} />
-              Nội dung phản ánh
-            </div>
-            <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
-              {feedback.description || feedback.content || feedback.title || 'Chưa có nội dung chi tiết.'}
-            </p>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-                <Lucide.Images size={16} />
-                Hình ảnh / video đính kèm
-              </div>
-              {loadingDetail ? (
-                <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
-                  <span className="loading loading-spinner loading-xs" />
-                  Đang tải tệp
-                </span>
-              ) : null}
-            </div>
-
-            {detailError ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800">
-                Không thể tải đầy đủ tệp đính kèm. Bạn có thể thử mở lại chi tiết sau.
-              </div>
-            ) : loadingDetail ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center text-sm font-medium text-slate-500">
-                Đang tải hình ảnh và video...
-              </div>
-            ) : (
-              <AttachmentGallery attachments={attachments} />
-            )}
-          </div>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <DetailItem label="Vị trí" value={getLocationText(feedback)} />
-            <DetailItem label="Người gửi" value={feedback.userName || feedback.createdBy || feedback.citizenName || 'Chưa có thông tin'} />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
-          <button type="button" onClick={handleClose} className="btn btn-outline h-10 rounded-xl text-sm font-medium">
-            Đóng
-          </button>
-          <Link
-            to="/community/map"
-            className="btn h-10 rounded-xl border-0 bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
-            onClick={handleClose}
-          >
-            <Lucide.Map size={16} />
-            Xem trên bản đồ
-          </Link>
-        </div>
-      </div>
-    </div>,
-    document.body,
+    </button>
   );
 };
 
 export const FeedbackManagement = () => {
-  const [feedbacks, setFeedbacks] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedFeedback, setSelectedFeedback] = useState(null);
-  const [selectedFeedbackLoading, setSelectedFeedbackLoading] = useState(false);
-  const [selectedFeedbackError, setSelectedFeedbackError] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [initialSnapshot] = useState(readFeedbackSnapshot);
+  const [shouldRestoreListContext] = useState(() => Boolean(location.state?.restoreFeedbackId));
+  const [restoredContext] = useState(() => {
+    if (!shouldRestoreListContext) return null;
 
-  const fetchFeedbacks = useCallback(async () => {
-    setLoading(true);
+    const stored = readAdminFeedbackReturnContext();
+    return {
+      ...(stored || {}),
+      feedbackId: location.state.restoreFeedbackId,
+    };
+  });
+
+  const parseUrlFilters = useCallback((params) => ({
+    group: normalizeAdminFeedbackMetric(params.get('metric')),
+    status: params.get('status') || 'all',
+    search: params.get('search') || '',
+    page: Math.max(1, Number(params.get('page')) || 1),
+  }), []);
+
+  const initialUrlFilters = parseUrlFilters(searchParams);
+  const initialFilters = restoredContext
+    ? {
+        group: normalizeAdminFeedbackMetric(
+          restoredContext.metricFilter ?? initialUrlFilters.group
+        ),
+        status: restoredContext.statusFilter ?? initialUrlFilters.status,
+        search: restoredContext.searchTerm ?? initialUrlFilters.search,
+        page: Math.max(
+          1,
+          Number(restoredContext.pageNumber ?? initialUrlFilters.page) || 1
+        ),
+      }
+    : initialUrlFilters;
+
+  const restoreContextRef = useRef(restoredContext);
+  const feedbackRequestIdRef = useRef(0);
+  const highlightTimerRef = useRef(null);
+  const lastWrittenQueryRef = useRef('');
+  const [filters, setFilters] = useState(initialFilters);
+  const [allFeedbacks, setAllFeedbacks] = useState(() => (
+    Array.isArray(initialSnapshot?.allFeedbacks)
+      ? initialSnapshot.allFeedbacks
+      : Array.isArray(initialSnapshot?.feedbacks)
+        ? initialSnapshot.feedbacks
+        : []
+  ));
+  const [categories, setCategories] = useState(() => initialSnapshot?.categories || []);
+  const [feedbackSummary, setFeedbackSummary] = useState(() => (
+    initialSnapshot?.feedbackSummary || calculateAdminFeedbackSummary(
+      initialSnapshot?.allFeedbacks || initialSnapshot?.feedbacks || [],
+      initialSnapshot?.totalItems
+    )
+  ));
+  const [loading, setLoading] = useState(() => allFeedbacks.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(
+    restoredContext?.feedbackId || ''
+  );
+
+  const fetchFeedbacks = useCallback(async ({ background = false } = {}) => {
+    const requestId = ++feedbackRequestIdRef.current;
+
+    if (background) setRefreshing(true);
+    else setLoading(true);
     setError('');
+
     try {
-      const response = await managementFeedbackApi.getFeedbacks();
-      setFeedbacks(normalizeFeedbackResponse(response));
+      const summaryResponse = await managementFeedbackApi.getFeedbackSummary();
+      if (requestId !== feedbackRequestIdRef.current) return;
+
+      const nextAllFeedbacks = Array.isArray(summaryResponse?.items)
+        ? summaryResponse.items
+        : [];
+      const fallbackSummary = calculateAdminFeedbackSummary(
+        nextAllFeedbacks,
+        summaryResponse?.total
+      );
+      const nextSummary = {
+        total: Number(summaryResponse?.total ?? fallbackSummary.total) || 0,
+        pending: Number(summaryResponse?.pending ?? fallbackSummary.pending) || 0,
+        inProgress: Number(summaryResponse?.inProgress ?? fallbackSummary.inProgress) || 0,
+        completed: Number(summaryResponse?.completed ?? fallbackSummary.completed) || 0,
+      };
+
+      setAllFeedbacks(nextAllFeedbacks);
+      setFeedbackSummary(nextSummary);
     } catch (err) {
+      if (requestId !== feedbackRequestIdRef.current) return;
+
       console.error(err);
-      setFeedbacks([]);
-      setError(err?.message || 'Không thể tải danh sách feedback.');
+      if (!background || allFeedbacks.length === 0) {
+        setError(err?.message || 'Không thể tải danh sách phản ánh.');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === feedbackRequestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
+  }, [allFeedbacks.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    toolsApi.getCategories()
+      .then((fetchedCategories) => {
+        if (!cancelled) setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
+      })
+      .catch((err) => console.warn('Failed to load categories for feedback management', err));
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    fetchFeedbacks();
+    fetchFeedbacks({ background: allFeedbacks.length > 0 });
 
-    const loadCategories = async () => {
-      try {
-        const fetchedCategories = await toolsApi.getCategories();
-        setCategories(Array.isArray(fetchedCategories) ? fetchedCategories : []);
-      } catch (err) {
-        console.warn('Failed to load categories for feedback management', err);
-        setCategories([]);
-      }
+    return () => {
+      feedbackRequestIdRef.current += 1;
     };
-
-    loadCategories();
-  }, [fetchFeedbacks]);
-
-  const handleOpenFeedbackDetail = useCallback(async (feedback) => {
-    const feedbackId = feedback?.feedbackId || feedback?.id;
-
-    setSelectedFeedback(feedback);
-    setSelectedFeedbackError('');
-
-    if (!feedbackId) return;
-
-    try {
-      setSelectedFeedbackLoading(true);
-      const response = await managementFeedbackApi.getFeedbackById(feedbackId);
-      const detail = normalizeFeedbackDetailResponse(response);
-      setSelectedFeedback((current) => ({ ...(current || feedback), ...(detail || {}) }));
-    } catch (err) {
-      console.error(err);
-      setSelectedFeedbackError(err?.message || 'Không thể tải chi tiết feedback.');
-    } finally {
-      setSelectedFeedbackLoading(false);
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stats = useMemo(() => {
-    const total = feedbacks.length;
-    const open = feedbacks.filter((item) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(item.status)).length;
-    const assigned = feedbacks.filter((item) => [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(item.status)).length;
-    const completed = feedbacks.filter((item) => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(item.status)).length;
+  useEffect(() => {
+    if (shouldRestoreListContext) return;
 
-    return { total, open, assigned, completed };
-  }, [feedbacks]);
+    try {
+      window.sessionStorage.removeItem(ADMIN_FEEDBACK_RETURN_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures; URL filters remain the source of truth.
+    }
+  }, [shouldRestoreListContext]);
 
-  const filteredFeedbacks = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-
-    return feedbacks.filter((item) => {
-      const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-      const searchable = [
-        item.feedbackId,
-        formatFeedbackId(item.feedbackId || item.id),
-        item.title,
-        item.description,
-        item.content,
-        item.locationText,
-        item.address,
-        getLocationText(item),
-        getCategoryName(item.categoryId, categories),
-        item.status,
-        getStatusLabel(item.status),
-        item.priority,
-        getPriorityLabel(item.priority),
-        getFeedbackAuthorText(item),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return matchesStatus && (!keyword || searchable.includes(keyword));
+  const matchingFeedbacks = useMemo(() => {
+    const source = Array.isArray(allFeedbacks) ? allFeedbacks : [];
+    return source.filter((feedback) => {
+      if (filters.status !== 'all' && String(feedback?.status) !== String(filters.status)) return false;
+      if (filters.status === 'all' && !filterAdminFeedbacksByMetric([feedback], filters.group).length) return false;
+      return feedbackMatchesSearch(feedback, filters.search, categories);
     });
-  }, [feedbacks, categories, searchTerm, statusFilter]);
+  }, [allFeedbacks, categories, filters.group, filters.search, filters.status]);
+
+  const pagination = useMemo(() => {
+    const totalItems = matchingFeedbacks.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / ADMIN_FEEDBACK_PAGE_SIZE));
+    const pageNumber = Math.min(Math.max(1, filters.page), totalPages);
+    return {
+      pageNumber,
+      pageSize: ADMIN_FEEDBACK_PAGE_SIZE,
+      totalItems,
+      totalPages,
+      hasPreviousPage: pageNumber > 1,
+      hasNextPage: pageNumber < totalPages,
+    };
+  }, [filters.page, matchingFeedbacks.length]);
+
+  const feedbacks = useMemo(() => {
+    const startIndex = (pagination.pageNumber - 1) * ADMIN_FEEDBACK_PAGE_SIZE;
+    return matchingFeedbacks.slice(startIndex, startIndex + ADMIN_FEEDBACK_PAGE_SIZE);
+  }, [matchingFeedbacks, pagination.pageNumber]);
+
+  const filteredFeedbacks = feedbacks;
+  const searchTerm = filters.search;
+  const statusFilter = filters.status;
+  const metricFilter = filters.group;
+  const pageNumber = pagination.pageNumber;
+  const stats = feedbackSummary;
+
+  useEffect(() => {
+    if (loading || filters.page === pagination.pageNumber) return;
+    setFilters((current) => ({ ...current, page: pagination.pageNumber }));
+  }, [filters.page, loading, pagination.pageNumber]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+    if (filters.status !== 'all') nextParams.set('status', filters.status);
+    else if (filters.group !== 'total') nextParams.set('metric', filters.group);
+    if (filters.search.trim()) nextParams.set('search', filters.search.trim());
+    if (filters.page > 1) nextParams.set('page', String(filters.page));
+
+    const nextQuery = nextParams.toString();
+    if (nextQuery === searchParams.toString()) return;
+    lastWrittenQueryRef.current = nextQuery;
+    setSearchParams(nextParams, { replace: true });
+  }, [filters, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const currentQuery = searchParams.toString();
+    if (currentQuery === lastWrittenQueryRef.current) {
+      lastWrittenQueryRef.current = '';
+      return;
+    }
+    const urlFilters = parseUrlFilters(searchParams);
+    setFilters((current) => (
+      current.group === urlFilters.group &&
+      current.status === urlFilters.status &&
+      current.search === urlFilters.search &&
+      current.page === urlFilters.page
+        ? current
+        : urlFilters
+    ));
+  }, [parseUrlFilters, searchParams]);
+
+  useEffect(() => {
+    writeFeedbackSnapshot({
+      feedbacks,
+      allFeedbacks,
+      categories,
+      searchTerm,
+      statusFilter,
+      metricFilter,
+      feedbackSummary,
+      ...pagination,
+    });
+  }, [allFeedbacks, categories, feedbackSummary, feedbacks, metricFilter, pagination, searchTerm, statusFilter]);
+
+  const updateFilters = useCallback((patch) => {
+    setFilters((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const handleMetricFilterChange = useCallback((nextMetric) => {
+    updateFilters({
+      group: normalizeAdminFeedbackMetric(nextMetric),
+      status: 'all',
+      page: 1,
+    });
+  }, [updateFilters]);
+
+  const handleStatusFilterChange = useCallback((nextStatus) => {
+    restoreContextRef.current = null;
+    updateFilters({
+      status: nextStatus,
+      group: nextStatus === 'all' ? 'total' : metricForStatus(nextStatus),
+      page: 1,
+    });
+  }, [updateFilters]);
+
+  const handleOpenFeedbackDetail = useCallback((feedback) => {
+    const feedbackId = feedback?.feedbackId || feedback?.id;
+    if (!feedbackId) return;
+    const scrollY = document.querySelector('[data-dashboard-scroll-container]')?.scrollTop || 0;
+
+    try {
+      window.sessionStorage.setItem(
+        ADMIN_FEEDBACK_RETURN_STORAGE_KEY,
+        JSON.stringify({
+          feedbackId: String(feedbackId),
+          searchTerm,
+          statusFilter,
+          metricFilter,
+          pageNumber,
+          scrollY,
+        })
+      );
+    } catch (storageError) {
+      console.warn('Không thể lưu vị trí danh sách phản ánh', storageError);
+    }
+
+    const prefetchedDetail = peekAdminFeedbackDetail(feedbackId);
+    navigate(`/management/feedbacks/${feedbackId}`, {
+      state: {
+        feedback: prefetchedDetail
+          ? { ...feedback, ...(prefetchedDetail?.data || prefetchedDetail?.item || prefetchedDetail?.result || prefetchedDetail?.record || prefetchedDetail) }
+          : feedback,
+        from: '/management/feedbacks',
+      },
+    });
+  }, [metricFilter, navigate, pageNumber, searchTerm, statusFilter]);
+
+  useEffect(() => () => {
+    if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    const savedContext = restoreContextRef.current;
+    if (!savedContext || loading || filteredFeedbacks.length === 0) return undefined;
+
+    let cancelled = false;
+    let animationFrameId;
+    let frameCount = 0;
+
+    const consumeReturnContext = () => {
+      try { window.sessionStorage.removeItem(ADMIN_FEEDBACK_RETURN_STORAGE_KEY); } catch { /* noop */ }
+      restoreContextRef.current = null;
+    };
+
+    const restorePosition = () => {
+      if (cancelled) return;
+
+      const feedbackId = String(savedContext.feedbackId || '');
+      const escapedFeedbackId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(feedbackId)
+        : feedbackId.replace(/["\\]/g, '\\$&');
+      const targetRow = escapedFeedbackId
+        ? document.querySelector(`[data-admin-feedback-id="${escapedFeedbackId}"]`)
+        : null;
+
+      if (!targetRow) {
+        frameCount += 1;
+        if (frameCount < 20) {
+          animationFrameId = window.requestAnimationFrame(restorePosition);
+          return;
+        }
+
+        const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+        scrollContainer?.scrollTo({
+          top: Number(savedContext.scrollY) || 0,
+          left: 0,
+          behavior: 'auto',
+        });
+        consumeReturnContext();
+        return;
+      }
+
+      targetRow.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      setHighlightedFeedbackId(feedbackId);
+
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setHighlightedFeedbackId('');
+        highlightTimerRef.current = null;
+      }, 2500);
+
+      consumeReturnContext();
+    };
+
+    animationFrameId = window.requestAnimationFrame(restorePosition);
+
+    return () => {
+      cancelled = true;
+      if (animationFrameId) window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [filteredFeedbacks, loading]);
+
 
   return (
     <div className="admin-page-shell space-y-6">
@@ -787,7 +625,7 @@ export const FeedbackManagement = () => {
             </div>
             <div className="min-w-0">
               <h1 className="admin-hero-title">
-                Quản lý feedback
+                Quản lý phản ánh
               </h1>
               <p className="admin-hero-description">
                 Theo dõi phản ánh, trạng thái xử lý và các điểm cần điều phối.
@@ -798,15 +636,15 @@ export const FeedbackManagement = () => {
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:self-center">
             <button
               type="button"
-              onClick={fetchFeedbacks}
+              onClick={() => fetchFeedbacks({ background: feedbacks.length > 0 })}
               className="btn btn-outline h-11 rounded-xl border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              disabled={loading}
+              disabled={loading || refreshing}
             >
-              <Lucide.RefreshCcw size={16} className={loading ? 'animate-spin' : ''} />
+              <Lucide.RefreshCcw size={16} className={loading || refreshing ? 'animate-spin' : ''} />
               Làm mới
             </button>
             <Link
-              to="/community/map"
+              to="/management/map"
               className="btn h-11 rounded-xl border-0 bg-blue-600 px-4 text-sm font-medium text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"
             >
               <Lucide.Map size={16} />
@@ -817,52 +655,84 @@ export const FeedbackManagement = () => {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={Lucide.Inbox} label="Tổng feedback" value={stats.total} helper="Tất cả phản ánh" tone="blue" />
-        <StatCard icon={Lucide.AlertCircle} label="Đang mở" value={stats.open} helper="Cần theo dõi" tone="amber" />
-        <StatCard icon={Lucide.Wrench} label="Đang xử lý" value={stats.assigned} helper="Đã điều phối" tone="slate" />
-        <StatCard icon={Lucide.CheckCircle2} label="Hoàn tất" value={stats.completed} helper="Đã nghiệm thu/đóng" tone="emerald" />
+        {ADMIN_FEEDBACK_METRICS.map((metric) => {
+          const Icon = Lucide[metric.icon] || Lucide.Circle;
+          return (
+            <StatCard
+              key={metric.key}
+              icon={Icon}
+              label={metric.label}
+              value={stats[metric.key] ?? 0}
+              helper={metric.helper}
+              tone={metric.tone}
+              active={(statusFilter === 'all' ? metricFilter : metricForStatus(statusFilter)) === metric.key}
+              onClick={() => handleMetricFilterChange(metric.key)}
+            />
+          );
+        })}
       </section>
 
-      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)]">
-        <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">Danh sách feedback</h2>
-            <p className="mt-1 text-sm text-slate-500">{filteredFeedbacks.length}/{feedbacks.length} phản ánh</p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative">
-              <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                className="input h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm focus:border-blue-300 focus:outline-none sm:w-72"
-                placeholder="Tìm mã, nội dung, vị trí, danh mục..."
-              />
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
+        <div className="border-b border-slate-200 px-5 py-5 sm:px-6 dark:border-slate-800">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách phản ánh</h2>
+              </div>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Hiển thị {filteredFeedbacks.length} trên tổng số {pagination.totalItems} phản ánh
+              </p>
             </div>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="select h-11 rounded-xl border-slate-200 bg-slate-50 text-sm focus:border-blue-300 focus:outline-none"
-            >
-              <option value="all">Tất cả trạng thái</option>
-              {Object.entries(STATUS_META).map(([value, meta]) => (
-                <option key={value} value={value}>{meta.label}</option>
-              ))}
-            </select>
+
+            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
+              <label className="relative block min-w-0 flex-1 xl:w-80">
+                <span className="sr-only">Tìm kiếm phản ánh</span>
+                <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  value={searchTerm}
+                  onChange={(event) => updateFilters({ search: event.target.value, page: 1 })}
+                  className="input h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  placeholder="Tìm theo mã, nội dung, vị trí..."
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => updateFilters({ search: '', page: 1 })}
+                    className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    aria-label="Xóa từ khóa tìm kiếm"
+                  >
+                    <Lucide.X size={15} />
+                  </button>
+                )}
+              </label>
+
+              <label className="relative block sm:w-56">
+                <span className="sr-only">Lọc theo trạng thái</span>
+                <Lucide.Filter className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
+                <select
+                  value={statusFilter}
+                  onChange={(event) => handleStatusFilterChange(event.target.value)}
+                  className="select h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-700 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="all">Tất cả trạng thái</option>
+                  {Object.values(STATUS_META).map((meta) => (
+                    <option key={meta.value} value={meta.value}>{meta.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex min-h-[260px] items-center justify-center">
-            <span className="loading loading-spinner loading-lg text-blue-600" />
-          </div>
+          <FeedbackTableSkeleton />
         ) : error ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
               <Lucide.WifiOff size={24} />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-slate-950">Không thể tải feedback</h3>
-            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{error}</p>
+            <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không thể tải danh sách phản ánh</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">{error}</p>
             <button type="button" onClick={fetchFeedbacks} className="btn btn-outline mt-5 h-10 rounded-xl text-sm">
               <Lucide.RefreshCcw size={15} />
               Thử lại
@@ -873,49 +743,80 @@ export const FeedbackManagement = () => {
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
               <Lucide.MessageSquare size={24} />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-slate-950">Chưa có feedback phù hợp</h3>
-            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Thử thay đổi bộ lọc hoặc làm mới dữ liệu.</p>
+            <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không tìm thấy phản ánh phù hợp</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+              {searchTerm || statusFilter !== 'all' || metricFilter !== 'total'
+                ? 'Thử xóa từ khóa hoặc chọn nhóm trạng thái khác.'
+                : 'Danh sách chưa có dữ liệu để hiển thị.'}
+            </p>
+            {(searchTerm || statusFilter !== 'all' || metricFilter !== 'total') && (
+              <button
+                type="button"
+                onClick={() => updateFilters({ search: '', status: 'all', group: 'total', page: 1 })}
+                className="btn btn-outline mt-5 h-10 rounded-xl border-slate-300 px-4 text-sm dark:border-slate-700"
+              >
+                <Lucide.RotateCcw size={15} />
+                Xóa bộ lọc
+              </button>
+            )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="table w-full min-w-[1040px] text-sm">
+          <div className="overflow-hidden">
+            <table className="table w-full table-fixed text-sm">
+              <colgroup>
+                <col className="w-[11%]" />
+                <col className="w-[34%]" />
+                <col className="w-[15%]" />
+                <col className="w-[9%]" />
+                <col className="w-[13%]" />
+                <col className="w-[10%]" />
+                <col className="w-[8%]" />
+              </colgroup>
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium text-slate-500">
-                  <th className="px-6 py-4">Mã</th>
-                  <th className="px-6 py-4">Nội dung</th>
-                  <th className="px-6 py-4">Danh mục</th>
-                  <th className="px-6 py-4">Ưu tiên</th>
-                  <th className="px-6 py-4">Trạng thái</th>
-                  <th className="px-6 py-4">Ngày tạo</th>
-                  <th className="px-6 py-4 text-right">Thao tác</th>
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-xs font-semibold uppercase tracking-[0.04em] text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-4">Mã</th>
+                  <th className="px-4 py-4">Nội dung</th>
+                  <th className="px-4 py-4">Danh mục</th>
+                  <th className="whitespace-nowrap px-4 py-4">Ưu tiên</th>
+                  <th className="whitespace-nowrap px-4 py-4">Trạng thái</th>
+                  <th className="whitespace-nowrap px-4 py-4">Ngày tạo</th>
+                  <th className="whitespace-nowrap px-4 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredFeedbacks.map((feedback) => {
                   const feedbackId = feedback.feedbackId || feedback.id;
                   return (
                     <tr
                       key={feedbackId}
-                      className="cursor-pointer transition hover:bg-slate-50/80"
+                      data-admin-feedback-id={String(feedbackId)}
+                      className={`cursor-pointer transition ${
+                        String(highlightedFeedbackId) === String(feedbackId)
+                          ? 'bg-blue-50 ring-1 ring-inset ring-blue-200 dark:bg-blue-500/10 dark:ring-blue-500/30'
+                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/70'
+                      }`}
                       onClick={() => handleOpenFeedbackDetail(feedback)}
+                      onMouseEnter={() => prefetchAdminFeedbackDetail(feedbackId)}
+                      onFocus={() => prefetchAdminFeedbackDetail(feedbackId)}
+                      onPointerDown={() => prefetchAdminFeedbackDetail(feedbackId)}
                     >
-                      <td className="px-6 py-4 text-sm font-semibold text-blue-700">{formatFeedbackId(feedbackId)}</td>
-                      <td className="max-w-[320px] px-6 py-4">
-                        <p className="truncate text-sm font-semibold text-slate-900">{feedback.title || 'Không có tiêu đề'}</p>
-                        <p className="mt-1 truncate text-xs text-slate-500">{getLocationText(feedback)}</p>
+                      <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-blue-700 dark:text-blue-300">{formatFeedbackId(feedbackId)}</td>
+                      <td className="min-w-0 px-4 py-4">
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{feedback.title || 'Không có tiêu đề'}</p>
+                        <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{getLocationText(feedback)}</p>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{getCategoryName(feedback.categoryId, categories)}</td>
-                      <td className="px-6 py-4"><PriorityBadge priority={feedback.priority} /></td>
-                      <td className="px-6 py-4"><StatusBadge status={feedback.status} /></td>
-                      <td className="px-6 py-4 text-sm text-slate-500">{formatDate(feedback.createdAt)}</td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300"><span className="block truncate" title={getCategoryName(feedback, categories)}>{getCategoryName(feedback, categories)}</span></td>
+                      <td className="whitespace-nowrap px-4 py-4"><PriorityBadge priority={feedback.priority} /></td>
+                      <td className="whitespace-nowrap px-4 py-4"><StatusBadge status={feedback.status} /></td>
+                      <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-500 dark:text-slate-400">{formatDate(feedback.createdAt)}</td>
+                      <td className="px-3 py-4 text-right">
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
                             handleOpenFeedbackDetail(feedback);
                           }}
-                          className="btn btn-ghost h-9 min-h-0 rounded-xl px-3 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                          className="btn btn-ghost h-9 min-h-0 whitespace-nowrap rounded-xl px-3 text-sm font-medium text-blue-700 hover:bg-blue-50"
                         >
                           Chi tiết
                         </button>
@@ -927,15 +828,69 @@ export const FeedbackManagement = () => {
             </table>
           </div>
         )}
+
+        {!loading && !error && pagination.totalItems > 0 && (
+          <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Trang <span className="font-semibold text-slate-700 dark:text-slate-200">{pagination.pageNumber}</span> / {pagination.totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={!pagination.hasPreviousPage || refreshing}
+                onClick={() => updateFilters({ page: Math.max(1, pageNumber - 1) })}
+                className="btn btn-outline h-10 min-h-0 rounded-xl border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+              >
+                <Lucide.ChevronLeft size={16} />
+                Trước
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: pagination.totalPages }, (_, index) => index + 1)
+                  .filter((page) => (
+                    page === 1 ||
+                    page === pagination.totalPages ||
+                    Math.abs(page - pagination.pageNumber) <= 1
+                  ))
+                  .map((page, index, pages) => {
+                    const previousPage = pages[index - 1];
+                    return (
+                      <div key={page} className="flex items-center gap-1">
+                        {previousPage && page - previousPage > 1 && (
+                          <span className="px-1 text-sm text-slate-400">…</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => updateFilters({ page })}
+                          disabled={refreshing}
+                          aria-current={page === pagination.pageNumber ? 'page' : undefined}
+                          className={`flex h-10 min-w-10 items-center justify-center rounded-xl px-3 text-sm font-semibold transition ${
+                            page === pagination.pageNumber
+                              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+                              : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                disabled={!pagination.hasNextPage || refreshing}
+                onClick={() => updateFilters({ page: Math.min(pagination.totalPages, pageNumber + 1) })}
+                className="btn btn-outline h-10 min-h-0 rounded-xl border-slate-300 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+              >
+                Sau
+                <Lucide.ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
-      <FeedbackDetailModal
-        feedback={selectedFeedback}
-        loadingDetail={selectedFeedbackLoading}
-        detailError={selectedFeedbackError}
-        onClose={() => setSelectedFeedback(null)}
-        categories={categories}
-      />
     </div>
   );
 };

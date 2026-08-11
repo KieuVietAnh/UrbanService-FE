@@ -37,6 +37,9 @@ const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/Managemen
 const ConversationQueuePage = lazy(() => import('../pages/staff/ConversationQueuePage').then((m) => ({ default: m.default })));
 const CoordinatorDirectoryPage = lazy(() => import('../pages/staff/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
 const CoordinatorDetailPage = lazy(() => import('../pages/staff/CoordinatorDetailPage').then((m) => ({ default: m.default })));
+const ManagementCoordinatorDirectoryPage = lazy(() => import('../pages/management/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
+const ManagementCoordinatorCreatePage = lazy(() => import('../pages/management/CoordinatorCreatePage').then((m) => ({ default: m.default })));
+const ManagementCoordinatorDetailPage = lazy(() => import('../pages/management/CoordinatorDetailPage').then((m) => ({ default: m.default })));
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
 const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
@@ -56,11 +59,10 @@ const InteractionApprovalDetailPage = lazy(() => import('../pages/manager/Intera
 
 const UserManagement = lazy(() => import('../pages/management/UserManagement').then((m) => ({ default: m.UserManagement })));
 const FeedbackManagement = lazy(() => import('../pages/management/FeedbackManagement').then((m) => ({ default: m.FeedbackManagement })));
+const FeedbackDetailPage = lazy(() => import('../pages/management/FeedbackDetailPage').then((m) => ({ default: m.FeedbackDetailPage })));
+const AdminIncidentMapPage = lazy(() => import('../pages/management/AdminIncidentMapPage').then((m) => ({ default: m.AdminIncidentMapPage })));
 const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
-const IntegrationSettings = lazy(() => import('../pages/management/IntegrationSettings').then((m) => ({ default: m.IntegrationSettings })));
-const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ default: m.AuditLog })));
-const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
 
 const RouteFallback = ({ isAuthenticated = false }) => {
   const location = useLocation();
@@ -149,7 +151,7 @@ const roleEntryPaths = {
   [APP_ROLES.SYSTEM_STAFF]: '/staff/queue',
   [APP_ROLES.SERVICE_PROVIDER]: '/provider/tasks',
   [APP_ROLES.INTERACTION_MANAGER]: '/manager/interactions',
-  [APP_ROLES.ADMINISTRATOR]: '/admin/audit',
+  [APP_ROLES.ADMINISTRATOR]: '/dashboard',
 };
 
 export const AppRoutes = () => {
@@ -529,6 +531,51 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/management/feedbacks/:feedbackId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <FeedbackDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/map" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <AdminIncidentMapPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/coordinators" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagementCoordinatorDirectoryPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/coordinators/new" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagementCoordinatorCreatePage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/coordinators/:coordinatorId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagementCoordinatorDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/management/categories" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
@@ -547,33 +594,9 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/management/integrations" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
-            <DashboardLayout>
-              <IntegrationSettings />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/audit" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
-            <DashboardLayout>
-              <AuditLog />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
-      <Route path="/admin/performance" element={
-        <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
-            <DashboardLayout>
-              <PerformanceDashboard />
-            </DashboardLayout>
-          </RoleGuard>
-        </ProtectedRoute>
-      } />
+      <Route path="/management/integrations" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/admin/audit" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/admin/performance" element={<Navigate to="/dashboard" replace />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

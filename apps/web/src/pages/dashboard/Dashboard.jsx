@@ -4,7 +4,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
-import { axiosClient, toolsApi, managementFeedbackApi } from '@urbanmind/shared-api';
+import { slaApi } from '../../services/api/slaApi';
+import { axiosClient, toolsApi, managementFeedbackApi, feedbackDashboardApi } from '@urbanmind/shared-api';
 import { SentimentDonutChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 import { normalizeRole } from '../../utils/roleMap';
@@ -12,10 +13,12 @@ import { APP_ROLES, getStatusLabel, managementTypes, STATUS_BADGE_CLASSES } from
 import { signalrService } from '../../services/socket/signalrService';
 import { ManagerMetricCard, ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import { ADMIN_FEEDBACK_METRICS, calculateAdminFeedbackSummary } from '../../utils/adminFeedbackMetrics';
 import { getCommunityFeed } from '../../services/api/feedApi';
 import usePublicLandingFeed from '../../hooks/usePublicLandingFeed';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
+import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-area-filter-v2';
@@ -124,6 +127,31 @@ const buildTicketListUrl = ({
 
   const queryString = params.toString();
   return queryString ? `/tickets?${queryString}` : '/tickets';
+};
+
+
+const toDashboardCount = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+
+const mapFeedbackDashboardOverview = (overview, fallbackSummary) => {
+  if (!overview || typeof overview !== 'object') return fallbackSummary;
+
+  const total = toDashboardCount(overview.totalFeedback);
+  const assigned = toDashboardCount(overview.assigned);
+  const inProgress = toDashboardCount(overview.inProgress);
+  const pendingApproval = toDashboardCount(overview.pendingApproval);
+  const completed = toDashboardCount(overview.completed);
+  const cancelled = toDashboardCount(overview.cancelled);
+  const groupedTotal = assigned + inProgress + pendingApproval + completed + cancelled;
+
+  return {
+    total,
+    pending: Math.max(0, total - groupedTotal),
+    inProgress: assigned + inProgress + pendingApproval,
+    completed: completed + cancelled,
+  };
 };
 
 const SAFE_DASHBOARD_STATS = {
@@ -568,13 +596,22 @@ export const Dashboard = () => {
   const currentRole = normalizeRole(user?.role);
   const navigate = useNavigate();
 
-  const [cachedDashboard] = useState(readDashboardSnapshot);
+  const [cachedDashboard] = useState(() => (
+    currentRole === APP_ROLES.ADMINISTRATOR
+      ? readAdminDashboardCache()
+      : readDashboardSnapshot()
+  ));
   const [stats, setStats] = useState(
     () => cachedDashboard?.stats || SAFE_DASHBOARD_STATS
   );
   const [tickets, setTickets] = useState(
     () => Array.isArray(cachedDashboard?.tickets)
       ? cachedDashboard.tickets
+      : []
+  );
+  const [adminMapTickets, setAdminMapTickets] = useState(
+    () => Array.isArray(cachedDashboard?.mapTickets)
+      ? cachedDashboard.mapTickets
       : []
   );
   const [ticketTotal, setTicketTotal] = useState(() => {
@@ -584,6 +621,13 @@ export const Dashboard = () => {
       ? cachedDashboard.tickets.length
       : 0;
   });
+  const [feedbackSummary, setFeedbackSummary] = useState(() => (
+    cachedDashboard?.feedbackSummary || calculateAdminFeedbackSummary(
+      cachedDashboard?.tickets || [],
+      cachedDashboard?.ticketTotal
+    )
+  ));
+  const [slaOverview, setSlaOverview] = useState(null);
   const [categories, setCategories] = useState(
     () => Array.isArray(cachedDashboard?.categories)
       ? cachedDashboard.categories
@@ -606,55 +650,73 @@ export const Dashboard = () => {
   ] = useState(false);
   const [showStaffFilter, setShowStaffFilter] = useState(false);
   const [staffFilter, setStaffFilter] = useState('all');
+  const dashboardRequestIdRef = useRef(0);
 
   const fetchScopedTickets = useCallback(async () => {
-    try {
-      if (!user) return { items: [], totalItems: 0 };
+    if (!user) return { items: [], totalItems: 0 };
 
-      if (currentRole === APP_ROLES.SERVICE_USER) {
-        const response = await axiosClient.get('/api/user/feedbacks', {
-          params: {
-            PageNumber: 1,
-            PageSize: 1000,
-          },
-        });
-        return normalizeTicketPage(response);
-      }
+    if (currentRole === APP_ROLES.SERVICE_USER) {
+      const response = await axiosClient.get('/api/user/feedbacks', {
+        params: {
+          PageNumber: 1,
+          PageSize: 1000,
+        },
+      });
+      return normalizeTicketPage(response);
+    }
 
-      if (currentRole === APP_ROLES.SERVICE_PROVIDER) {
-        const response = await ticketApi.getTickets(
-          { operatorId: user.operatorId },
-          { role: currentRole }
-        );
-        return normalizeTicketPage(response);
-      }
-
-      if (currentRole === APP_ROLES.SYSTEM_STAFF) {
-        const response = await managementFeedbackApi.getFeedbacks({
-          pageIndex: 0,
-          pageSize: 10,
-        });
-        return normalizeTicketPage(response);
-      }
-
+    if (currentRole === APP_ROLES.SERVICE_PROVIDER) {
       const response = await ticketApi.getTickets(
-        {},
+        { operatorId: user.operatorId },
         { role: currentRole }
       );
       return normalizeTicketPage(response);
-    } catch (err) {
-      console.warn(
-        'Dashboard ticket loading failed, using empty list',
-        err
-      );
-      return { items: [], totalItems: 0 };
     }
+
+    if (currentRole === APP_ROLES.SYSTEM_STAFF) {
+      const response = await managementFeedbackApi.getFeedbacks({
+        pageIndex: 0,
+        pageSize: 10,
+      });
+      return normalizeTicketPage(response);
+    }
+
+
+    const response = await ticketApi.getTickets(
+      {},
+      { role: currentRole }
+    );
+    return normalizeTicketPage(response);
   }, [currentRole, user]);
+
+  const fetchAdminDashboardContent = useCallback(async () => {
+    const [overviewResult, categoryResult, recentResult, mapResult, slaOverviewResult] = await Promise.allSettled([
+      feedbackDashboardApi.getOverview(),
+      feedbackDashboardApi.getCategoryDistribution(),
+      feedbackDashboardApi.getRecent(10),
+      managementFeedbackApi.getFeedbacks({
+        pageIndex: 0,
+        pageSize: 1000,
+      }),
+      slaApi.getDashboardOverview(),
+    ]);
+
+    return {
+      overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
+      categoryDistribution: categoryResult.status === 'fulfilled' ? categoryResult.value : null,
+      recentTickets: recentResult.status === 'fulfilled' ? recentResult.value : null,
+      mapTickets: mapResult.status === 'fulfilled'
+        ? normalizeTicketPage(mapResult.value).items
+        : null,
+      slaOverview: slaOverviewResult.status === 'fulfilled' ? slaOverviewResult.value : null,
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
 
     const loadDashboardContent = async () => {
+      const requestId = ++dashboardRequestIdRef.current;
       const hasCachedContent = Boolean(cachedDashboard);
 
       if (hasCachedContent) {
@@ -664,11 +726,13 @@ export const Dashboard = () => {
       }
 
       try {
+        const isAdmin = currentRole === APP_ROLES.ADMINISTRATOR;
         const [
           resStats,
           fetchedCategories,
           fetchedAreas,
           ticketPage,
+          adminDashboard,
         ] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
@@ -677,29 +741,59 @@ export const Dashboard = () => {
           currentRole === APP_ROLES.SERVICE_USER
             ? toolsApi.getAreas().catch(() => [])
             : Promise.resolve([]),
-          fetchScopedTickets(),
+          isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
+          isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
         ]);
-        const nextStats = normalizeDashboardStats(resStats);
+        const baseStats = normalizeDashboardStats(resStats);
+        const nextStats = isAdmin && Array.isArray(adminDashboard?.categoryDistribution)
+          ? {
+            ...baseStats,
+            categoryDistribution: adminDashboard.categoryDistribution,
+          }
+          : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
           : [];
         const nextAreas = Array.isArray(fetchedAreas)
           ? fetchedAreas
           : [];
-        const nextTickets = Array.isArray(ticketPage?.items)
-          ? ticketPage.items
+        const nextTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.recentTickets)
+            ? adminDashboard.recentTickets
+            : (Array.isArray(cachedDashboard?.tickets) ? cachedDashboard.tickets : []))
+          : (Array.isArray(ticketPage?.items) ? ticketPage.items : []);
+        const nextAdminMapTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.mapTickets)
+            ? adminDashboard.mapTickets
+            : (Array.isArray(cachedDashboard?.mapTickets) ? cachedDashboard.mapTickets : []))
           : [];
-        const nextTicketTotal = Number.isFinite(
-          Number(ticketPage?.totalItems)
-        )
-          ? Number(ticketPage.totalItems)
-          : nextTickets.length;
+        const nextFeedbackSummary = isAdmin
+          ? mapFeedbackDashboardOverview(
+            adminDashboard?.overview,
+            cachedDashboard?.feedbackSummary || calculateAdminFeedbackSummary(
+              nextTickets,
+              cachedDashboard?.ticketTotal
+            )
+          )
+          : null;
+        const nextTicketTotal = isAdmin
+          ? nextFeedbackSummary.total
+          : (Number.isFinite(Number(ticketPage?.totalItems))
+            ? Number(ticketPage.totalItems)
+            : nextTickets.length);
+
+        if (requestId !== dashboardRequestIdRef.current) return;
 
         setStats(nextStats);
         setCategories(nextCategories);
         setAreas(nextAreas);
         setTickets(nextTickets);
+        setAdminMapTickets(nextAdminMapTickets);
         setTicketTotal(nextTicketTotal);
+        if (currentRole === APP_ROLES.ADMINISTRATOR) {
+          setFeedbackSummary(nextFeedbackSummary);
+          setSlaOverview(adminDashboard?.slaOverview || null);
+        }
 
         if (currentRole === APP_ROLES.SERVICE_USER) {
           writeDashboardSnapshot({
@@ -709,8 +803,19 @@ export const Dashboard = () => {
             tickets: nextTickets,
             ticketTotal: nextTicketTotal,
           });
+        } else if (currentRole === APP_ROLES.ADMINISTRATOR) {
+          writeAdminDashboardCache({
+            stats: nextStats,
+            categories: nextCategories,
+            tickets: nextTickets,
+            mapTickets: nextAdminMapTickets,
+            ticketTotal: nextTicketTotal,
+            feedbackSummary: nextFeedbackSummary,
+          });
         }
       } catch (err) {
+        if (requestId !== dashboardRequestIdRef.current) return;
+
         console.error(err);
 
         if (!hasCachedContent) {
@@ -719,18 +824,28 @@ export const Dashboard = () => {
           setAreas([]);
           setTickets([]);
           setTicketTotal(0);
+          if (currentRole === APP_ROLES.ADMINISTRATOR) {
+            setSlaOverview(null);
+          }
         }
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (requestId === dashboardRequestIdRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
 
     loadDashboardContent();
+
+    return () => {
+      dashboardRequestIdRef.current += 1;
+    };
   }, [
     user,
     currentRole,
     fetchScopedTickets,
+    fetchAdminDashboardContent,
     cachedDashboard,
   ]);
 
@@ -740,33 +855,82 @@ export const Dashboard = () => {
     signalrService.start();
 
     const reload = async () => {
+      const requestId = ++dashboardRequestIdRef.current;
+
       try {
-        const [resStats, fetchedCategories, ticketPage] = await Promise.all([
+        const isAdmin = currentRole === APP_ROLES.ADMINISTRATOR;
+        const realtimeCache = isAdmin ? readAdminDashboardCache() : null;
+        const [resStats, fetchedCategories, ticketPage, adminDashboard] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
             : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
-          fetchScopedTickets(),
+          isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
+          isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
         ]);
-        const nextTickets = Array.isArray(ticketPage?.items)
-          ? ticketPage.items
+        const nextTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.recentTickets)
+            ? adminDashboard.recentTickets
+            : (Array.isArray(realtimeCache?.tickets) ? realtimeCache.tickets : []))
+          : (Array.isArray(ticketPage?.items) ? ticketPage.items : []);
+        const nextAdminMapTickets = isAdmin
+          ? (Array.isArray(adminDashboard?.mapTickets)
+            ? adminDashboard.mapTickets
+            : (Array.isArray(realtimeCache?.mapTickets) ? realtimeCache.mapTickets : []))
           : [];
-        const nextTicketTotal = Number.isFinite(
-          Number(ticketPage?.totalItems)
-        )
-          ? Number(ticketPage.totalItems)
-          : nextTickets.length;
+        const nextFeedbackSummary = isAdmin
+          ? mapFeedbackDashboardOverview(
+            adminDashboard?.overview,
+            realtimeCache?.feedbackSummary || calculateAdminFeedbackSummary(
+              realtimeCache?.tickets || [],
+              realtimeCache?.ticketTotal
+            )
+          )
+          : null;
+        const nextTicketTotal = isAdmin
+          ? nextFeedbackSummary.total
+          : (Number.isFinite(Number(ticketPage?.totalItems))
+            ? Number(ticketPage.totalItems)
+            : nextTickets.length);
 
-        setStats(normalizeDashboardStats(resStats));
-        setCategories(
-          Array.isArray(fetchedCategories)
-            ? fetchedCategories
-            : []
-        );
+        if (requestId !== dashboardRequestIdRef.current) return;
+
+        const baseStats = normalizeDashboardStats(resStats);
+        const nextStats = isAdmin && Array.isArray(adminDashboard?.categoryDistribution)
+          ? {
+            ...baseStats,
+            categoryDistribution: adminDashboard.categoryDistribution,
+          }
+          : baseStats;
+        const nextCategories = Array.isArray(fetchedCategories)
+          ? fetchedCategories
+          : [];
+
+        setStats(nextStats);
+        setCategories(nextCategories);
         setTickets(nextTickets);
+        setAdminMapTickets(nextAdminMapTickets);
         setTicketTotal(nextTicketTotal);
+        if (currentRole === APP_ROLES.ADMINISTRATOR) {
+          setFeedbackSummary(nextFeedbackSummary);
+          setSlaOverview(adminDashboard?.slaOverview || null);
+          writeAdminDashboardCache({
+            stats: nextStats,
+            categories: nextCategories,
+            tickets: nextTickets,
+            mapTickets: nextAdminMapTickets,
+            ticketTotal: nextTicketTotal,
+            feedbackSummary: nextFeedbackSummary,
+          });
+        }
       } catch (e) {
+        if (requestId !== dashboardRequestIdRef.current) return;
         console.warn('Dashboard realtime reload failed', e);
+      } finally {
+        if (requestId === dashboardRequestIdRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
 
@@ -789,8 +953,9 @@ export const Dashboard = () => {
       relevantEvents.forEach((eventName) => (
         signalrService.off(eventName, reload)
       ));
+      dashboardRequestIdRef.current += 1;
     };
-  }, [user, currentRole, fetchScopedTickets]);
+  }, [user, currentRole, fetchScopedTickets, fetchAdminDashboardContent]);
 
   useEffect(() => {
     if (
@@ -2279,102 +2444,31 @@ export const Dashboard = () => {
   // 5. ADMINISTRATOR DASHBOARD (administrator)
   // ----------------------------------------------------
   if (currentRole === 'administrator') {
-    const storageUsageValue = stats.storageUsage?.split(' ')[0] || '0';
     const adminTickets = Array.isArray(tickets) ? tickets : [];
+    const mapTickets = Array.isArray(adminMapTickets) ? adminMapTickets : [];
     const recentTickets = adminTickets.slice(0, 5);
-    const openFeedbackCount = adminTickets.filter((ticket) => ![managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
-    const resolvedFeedbackCount = adminTickets.filter((ticket) => [managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(ticket.status)).length;
-    const inProgressFeedbackCount = adminTickets.filter((ticket) => [managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS].includes(ticket.status)).length;
+    const adminMetrics = ADMIN_FEEDBACK_METRICS.map((metric) => ({
+      ...metric,
+      value: feedbackSummary?.[metric.key] ?? 0,
+      icon: Lucide[metric.icon] || Lucide.Circle,
+      tone: {
+        blue: 'bg-blue-50 text-blue-700 border-blue-100',
+        amber: 'bg-amber-50 text-amber-700 border-amber-100',
+        slate: 'bg-slate-100 text-slate-700 border-slate-200',
+        emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+      }[metric.tone],
+      to: `/management/feedbacks?metric=${metric.key}`,
+    }));
 
-    const adminMetrics = [
-      {
-        label: 'Tài khoản',
-        value: stats.totalUsers || 0,
-        helper: 'Người dùng toàn hệ thống',
-        icon: Lucide.Users,
-        tone: 'bg-blue-50 text-blue-700 border-blue-100',
-        to: '/management/users',
-      },
-      {
-        label: 'Feedback đang mở',
-        value: openFeedbackCount,
-        helper: 'Cần theo dõi xử lý',
-        icon: Lucide.MessageSquare,
-        tone: 'bg-amber-50 text-amber-700 border-amber-100',
-        to: '/management/feedbacks',
-      },
-      {
-        label: 'Đang xử lý',
-        value: inProgressFeedbackCount,
-        helper: 'Đã phân công / đang thực hiện',
-        icon: Lucide.RefreshCw,
-        tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-        to: '/management/feedbacks',
-      },
-      {
-        label: 'Dung lượng DB',
-        value: `${storageUsageValue} KB`,
-        helper: 'Theo thống kê hệ thống',
-        icon: Lucide.Database,
-        tone: 'bg-cyan-50 text-cyan-700 border-cyan-100',
-        to: '/admin/performance',
-      },
-    ];
-
-    const adminQuickLinks = [
-      {
-        title: 'Quản lý người dùng',
-        description: 'Tài khoản, đổi vai trò và khóa/mở quyền truy cập.',
-        to: '/management/users',
-        icon: Lucide.Users,
-      },
-      {
-        title: 'Quản lý feedback',
-        description: 'Giám sát phản ánh, trạng thái, mức ưu tiên và dữ liệu media.',
-        to: '/management/feedbacks',
-        icon: Lucide.MessageSquare,
-      },
-      {
-        title: 'Cấu hình SLA',
-        description: 'Thiết lập ngưỡng xử lý và tiêu chuẩn phản hồi theo danh mục.',
-        to: '/management/sla',
-        icon: Lucide.TimerReset,
-      },
-      {
-        title: 'Danh mục phản ánh',
-        description: 'Quản lý nhóm sự cố, biểu tượng và mức độ ưu tiên mặc định.',
-        to: '/management/categories',
-        icon: Lucide.Tags,
-      },
-      {
-        title: 'Nhật ký hệ thống',
-        description: 'Theo dõi thao tác quản trị và các sự kiện quan trọng.',
-        to: '/admin/audit',
-        icon: Lucide.FileClock,
-      },
-    ];
-
-    const healthItems = [
-      { label: 'Feedback đã xử lý', value: resolvedFeedbackCount, helper: 'Bao gồm đã đóng và đã giải quyết', icon: Lucide.CheckCircle2 },
-      { label: 'Truy cập tài khoản', value: 'Kiểm soát', helper: 'Đổi vai trò và khóa/mở tài khoản trong Quản lý người dùng', icon: Lucide.UserCog },
-      { label: 'Tích hợp', value: 'Ổn định', helper: 'Các kênh tiếp nhận đang hoạt động', icon: Lucide.Radio },
-    ];
-
-    const integrations = [
-      { name: 'Zalo Mini App API', status: 'Đã kết nối', icon: Lucide.Radio },
-      { name: 'Messenger Webhook', status: 'Đã kết nối', icon: Lucide.CheckCircle2 },
-      { name: 'Tổng đài hotline', status: 'Đang bật', icon: Lucide.PhoneCall },
-    ];
 
     const categoryDistribution = Array.isArray(stats.categoryDistribution)
       ? stats.categoryDistribution.map((item, index) => ({
         id: Number(item.categoryId ?? item.id ?? index + 1),
-        name: item.categoryName || item.name || item.label || `Danh mục ${index + 1}`,
+        name: getCategoryLabel(item.categoryName || item.name || item.label, `Danh mục ${index + 1}`),
         count: Number(item.count ?? item.value ?? item.total ?? 0),
       }))
       : [];
     const totalCategoryTickets = categoryDistribution.reduce((sum, item) => sum + item.count, 0);
-    const maxCategoryCount = Math.max(...categoryDistribution.map(item => item.count), 1);
     const hasLowCategoryData = totalCategoryTickets > 0 && totalCategoryTickets <= 5;
 
     return (
@@ -2393,7 +2487,7 @@ export const Dashboard = () => {
                   Tổng quan hệ thống
                 </h2>
                 <p className="admin-hero-description">
-                  Một màn hình để Admin theo dõi tài khoản, phản ánh, danh mục, SLA, tích hợp và tình trạng vận hành của UrbanMind.
+                  Theo dõi tài khoản, phản ánh, vị trí sự cố, danh mục và chính sách SLA trên một màn hình thống nhất.
                 </p>
               </div>
             </div>
@@ -2401,7 +2495,7 @@ export const Dashboard = () => {
             <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
               <Link to="/management/feedbacks" className="admin-primary-action btn rounded-xl px-5 text-sm font-semibold normal-case">
                 <Lucide.MessageSquare size={17} />
-                Quản lý feedback
+                Quản lý phản ánh
               </Link>
               <Link to="/management/users" className="admin-secondary-action btn rounded-xl px-5 text-sm font-semibold normal-case">
                 <Lucide.UserCog size={17} />
@@ -2416,179 +2510,227 @@ export const Dashboard = () => {
             const Icon = metric.icon;
 
             return (
-              <Link key={metric.label} to={metric.to} className="admin-stat-card group p-5 transition-all hover:-translate-y-0.5">
-                <div className="flex items-start justify-between gap-3">
+              <Link
+                key={metric.label}
+                to={metric.to}
+                className="admin-stat-card group flex min-h-[132px] items-center justify-between gap-4 p-5 transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-500">{metric.label}</p>
+                  <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{metric.value}</p>
+                  <p className="mt-1 min-h-10 line-clamp-2 text-xs leading-5 text-slate-400">{metric.helper}</p>
+                </div>
+
+                <div className="flex shrink-0 flex-col items-end justify-between self-stretch">
+                  <Lucide.ArrowUpRight
+                    size={15}
+                    className="text-slate-300 transition group-hover:text-blue-600"
+                  />
                   <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${metric.tone}`}>
                     <Icon size={20} />
                   </div>
-                  <Lucide.ArrowUpRight size={16} className="text-slate-300 transition group-hover:text-blue-600" />
-                </div>
-                <div className="mt-5 space-y-1">
-                  <p className="text-xs font-medium text-slate-500">{metric.label}</p>
-                  <p className="text-2xl font-semibold text-slate-950">{metric.value}</p>
-                  <p className="text-xs text-slate-400">{metric.helper}</p>
                 </div>
               </Link>
             );
           })}
         </section>
 
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="admin-panel p-5 xl:col-span-2">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="admin-section-title">Phân bổ phản ánh theo danh mục</h3>
-                <p className="admin-section-description">Tổng hợp khối lượng phản ánh để Admin kiểm tra danh mục phản ánh.</p>
-              </div>
-              <Link to="/management/categories" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
-                Danh mục phản ánh
-                <Lucide.ArrowRight size={14} />
-              </Link>
+        <section className="admin-panel overflow-hidden p-5">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="admin-section-title">Bản đồ phản ánh</h3>
+              <p className="admin-section-description">Quan sát nhanh các phản ánh có tọa độ và mở bản đồ điều hành đầy đủ.</p>
             </div>
-            <div className="admin-inset-panel p-4">
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Tổng phản ánh</p>
-                  <p className="mt-1 text-2xl font-semibold text-slate-950">{totalCategoryTickets}</p>
-                </div>
-                <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${hasLowCategoryData ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
-                  <span className="h-2 w-2 rounded-full bg-current" />
-                  {hasLowCategoryData ? 'Dữ liệu còn ít' : 'Đang cập nhật'}
-                </span>
-              </div>
-
-              {categoryDistribution.length === 0 ? (
-                <div className="admin-empty-panel flex min-h-[220px] flex-col items-center justify-center text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                    <Lucide.BarChart3 size={22} />
-                  </div>
-                  <p className="mt-3 text-sm font-semibold text-slate-700">Chưa có dữ liệu danh mục</p>
-                  <p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">
-                    Khi có phản ánh mới, hệ thống sẽ tự động tổng hợp theo từng danh mục.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {categoryDistribution.map((category) => {
-                    const percent = Math.round((category.count / maxCategoryCount) * 100);
-                    const barWidth = category.count === 0 ? '0%' : `${Math.max(percent, 12)}%`;
-
-                    return (
-                      <div key={`${category.id}-${category.name}`} className="rounded-2xl border border-slate-200 bg-white p-3">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50">
-                              {renderCategoryIcon(category.id)}
-                            </div>
-                            <span className="truncate text-xs font-semibold text-slate-800">{category.name}</span>
-                          </div>
-                          <span className="shrink-0 text-sm font-semibold text-slate-950">
-                            {category.count}
-                            <span className="ml-1 text-[10px] font-medium text-slate-400">phiếu</span>
-                          </span>
-                        </div>
-                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${category.count === 0 ? 'bg-transparent' : 'bg-gradient-to-r from-blue-600 to-violet-600'}`}
-                            style={{ width: barWidth }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {hasLowCategoryData && (
-                <div className="admin-warning-note mt-4 p-3 text-[11px] leading-5">
-                  Dữ liệu hiện còn ít nên hệ thống ưu tiên hiển thị dạng danh sách để tránh biểu đồ bị phóng đại.
-                </div>
-              )}
-            </div>
+            <Link to="/management/map#admin-incident-map" state={{ focusMap: true }} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
+              Mở bản đồ lớn
+              <Lucide.Maximize2 size={14} />
+            </Link>
           </div>
-
-          <div className="space-y-6">
-            <div className="admin-panel p-5">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="admin-section-title">Sức khỏe vận hành</h3>
-                  <p className="mt-1 admin-section-description">Các điểm Admin nên kiểm tra định kỳ.</p>
-                </div>
-                <div className="rounded-2xl bg-emerald-50 p-2 text-emerald-600">
-                  <Lucide.Activity size={18} />
-                </div>
-              </div>
-              <div className="space-y-3">
-                {healthItems.map((item) => {
-                  const Icon = item.icon;
-
-                  return (
-                    <div key={item.label} className="admin-inset-panel flex items-start gap-3 p-3">
-                      <div className="admin-mini-icon">
-                        <Icon size={16} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800">{item.label}</p>
-                        <p className="mt-0.5 text-sm font-semibold text-slate-950">{item.value}</p>
-                        <p className="mt-1 text-[11px] leading-4 text-slate-500">{item.helper}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="admin-panel p-5">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="admin-section-title">Tích hợp đa kênh</h3>
-                  <p className="mt-1 admin-section-description">Các kênh tiếp nhận phản ánh đang hoạt động.</p>
-                </div>
-                <div className="rounded-2xl bg-blue-50 p-2 text-blue-600">
-                  <Lucide.Network size={18} />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {integrations.map((integration) => {
-                  const Icon = integration.icon;
-
-                  return (
-                    <div key={integration.name} className="admin-inset-panel flex items-center justify-between gap-3 px-3 py-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="admin-mini-icon">
-                          <Icon size={16} />
-                        </div>
-                        <span className="truncate text-xs font-semibold text-slate-700">{integration.name}</span>
-                      </div>
-                      <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
-                        {integration.status}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <Link
-                to="/management/integrations"
-                className="admin-secondary-link mt-4 flex items-center justify-center gap-2 px-4 py-3 text-xs font-semibold transition-all"
-              >
-                Quản lý tích hợp
-                <Lucide.ArrowRight size={14} />
-              </Link>
-            </div>
+          <div className="h-[360px]">
+            <CompactPublicIncidentMap
+              items={mapTickets}
+              loading={loading}
+              fullMapPath="/management/map#admin-incident-map"
+              detailPathBuilder={(feedbackId) => `/management/feedbacks/${feedbackId}`}
+              detailStateBuilder={() => ({ from: '/dashboard' })}
+              mapLabel="Bản đồ phản ánh"
+            />
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="admin-panel p-5 xl:col-span-2">
+        <section className="admin-panel overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="admin-section-title">Thống kê phản ánh theo danh mục</h3>
+              <p className="admin-section-description">So sánh số lượng và tỷ trọng phản ánh giữa các danh mục đang cấu hình.</p>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tổng phản ánh</p>
+                <p className="mt-0.5 text-lg font-semibold text-slate-950">
+                  {categoryDistribution.length > 0 ? totalCategoryTickets : '—'}
+                </p>
+              </div>
+              <Link
+                to="/management/categories"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+              >
+                Quản lý danh mục
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+
+          {categoryDistribution.length === 0 ? (
+            <div className="admin-empty-panel m-5 flex min-h-[180px] flex-col items-center justify-center text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                <Lucide.BarChart3 size={20} />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-700">Chưa có dữ liệu theo danh mục</p>
+              <p className="mt-1 text-xs text-slate-400">Dữ liệu sẽ hiển thị khi API thống kê trả kết quả.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 p-5">
+              {categoryDistribution.map((category) => {
+                const percent = totalCategoryTickets > 0
+                  ? (category.count / totalCategoryTickets) * 100
+                  : 0;
+                const maxCount = Math.max(...categoryDistribution.map((item) => Number(item.count) || 0), 1);
+                const barWidth = (category.count / maxCount) * 100;
+
+                return (
+                  <div
+                    key={`${category.id}-${category.name}`}
+                    className="group grid gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-slate-50 md:grid-cols-[46px_minmax(210px,0.95fr)_minmax(260px,1.5fr)_130px] md:items-center"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                      {renderCategoryIcon(category.id)}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{category.name}</p>
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-blue-600 transition-all duration-300 group-hover:bg-blue-700"
+                          style={{ width: `${Math.min(100, Math.max(4, barWidth))}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 md:justify-end">
+                      <span className="text-sm font-semibold tabular-nums text-slate-950">
+                        {category.count}
+                        <span className="ml-1 text-[10px] font-medium text-slate-400">phản ánh</span>
+                      </span>
+                      <span className="w-12 text-right text-xs font-semibold tabular-nums text-slate-500">
+                        {percent.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {hasLowCategoryData ? (
+            <p className="border-t border-slate-100 px-5 py-3 text-[11px] text-slate-400">
+              Dữ liệu hiện còn ít; tỷ trọng có thể thay đổi đáng kể khi có thêm phản ánh.
+            </p>
+          ) : null}
+        </section>
+
+        <section className="admin-panel overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="admin-section-title">Tổng quan SLA</h3>
+              <p className="admin-section-description">Theo dõi nhanh tình trạng tuân thủ thời hạn xử lý phản ánh.</p>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tổng SLA</p>
+                <p className="mt-0.5 text-lg font-semibold text-slate-950">
+                  {slaOverview?.totalSla ?? '—'}
+                </p>
+              </div>
+              <Link
+                to="/management/sla"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+              >
+                Quản lý SLA
+                <Lucide.ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+
+          <Link
+            to="/management/sla"
+            className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4"
+          >
+            {[
+              {
+                label: 'Đang chạy',
+                value: slaOverview?.runningSla ?? '—',
+                helper: 'SLA đang được theo dõi',
+                icon: Lucide.Activity,
+                tone: 'bg-blue-50 text-blue-700',
+              },
+              {
+                label: 'Cảnh báo',
+                value: slaOverview?.warningSla ?? '—',
+                helper: 'Đang gần tới hạn',
+                icon: Lucide.ClockAlert,
+                tone: 'bg-amber-50 text-amber-700',
+              },
+              {
+                label: 'Vi phạm',
+                value: slaOverview?.breachedSla ?? '—',
+                helper: 'Đã vượt thời hạn',
+                icon: Lucide.TriangleAlert,
+                tone: 'bg-rose-50 text-rose-700',
+              },
+              {
+                label: 'Tỷ lệ thành công',
+                value: slaOverview?.successRate != null ? `${slaOverview.successRate}%` : '—',
+                helper: 'Hoàn thành đúng SLA',
+                icon: Lucide.BadgeCheck,
+                tone: 'bg-emerald-50 text-emerald-700',
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <div
+                  key={item.label}
+                  className="group flex min-h-[118px] items-center justify-between gap-4 bg-white px-5 py-4 transition-colors hover:bg-blue-50/40"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-500">{item.label}</p>
+                    <p className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">{item.value}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">{item.helper}</p>
+                  </div>
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                    <Icon size={18} />
+                  </div>
+                </div>
+              );
+            })}
+          </Link>
+        </section>
+
+        <section>
+          <div className="admin-panel p-5">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="admin-section-title">Phản ánh mới nhất</h3>
                 <p className="admin-section-description">Dữ liệu tổng hợp để Admin giám sát luồng vận hành.</p>
               </div>
               <Link to="/management/feedbacks" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
-                Quản lý feedback
+                Quản lý phản ánh
                 <Lucide.ArrowRight size={14} />
               </Link>
             </div>
@@ -2614,8 +2756,23 @@ export const Dashboard = () => {
                       </tr>
                     ) : (
                       recentTickets.map((ticket) => (
-                        <tr key={ticket.feedbackId} className="admin-table-row">
-                          <td className="py-3.5 font-semibold text-blue-700">{formatTicketId(ticket.feedbackId)}</td>
+                        <tr
+                          key={ticket.feedbackId}
+                          className="admin-table-row cursor-pointer transition-colors hover:bg-blue-50/60 focus-within:bg-blue-50/60"
+                          onClick={() => navigate(`/management/feedbacks/${ticket.feedbackId}`, { state: { from: '/dashboard', feedback: ticket } })}
+                        >
+                          <td className="py-3.5 font-semibold text-blue-700">
+                            <button
+                              type="button"
+                              className="text-left font-semibold text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                navigate(`/management/feedbacks/${ticket.feedbackId}`, { state: { from: '/dashboard', feedback: ticket } });
+                              }}
+                            >
+                              {formatTicketId(ticket.feedbackId)}
+                            </button>
+                          </td>
                           <td className="max-w-[240px] py-3.5 font-medium text-slate-700">
                             <div className="truncate">{ticket.title}</div>
                           </td>
@@ -2638,37 +2795,6 @@ export const Dashboard = () => {
             </div>
           </div>
 
-          <div className="admin-panel p-5">
-            <div className="mb-4">
-              <h3 className="admin-section-title">Lối tắt quản trị</h3>
-              <p className="mt-1 admin-section-description">Các flow Admin thường cần kiểm tra.</p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              {adminQuickLinks.map((item) => {
-                const Icon = item.icon;
-
-                return (
-                  <Link
-                    key={item.title}
-                    to={item.to}
-                    className="admin-quick-link group flex items-start gap-3 p-3 transition-all"
-                  >
-                    <div className="admin-mini-icon h-10 w-10 group-hover:text-blue-700">
-                      <Icon size={17} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <h4 className="text-xs font-semibold text-slate-800">{item.title}</h4>
-                        <Lucide.ArrowRight size={14} className="shrink-0 text-slate-300 group-hover:text-blue-700" />
-                      </div>
-                      <p className="mt-1 text-[11px] leading-5 text-slate-500">{item.description}</p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
         </section>
       </div>
     );

@@ -300,14 +300,12 @@ export const Header = ({ onMenuToggle }) => {
     const labelMap = {
       dashboard: 'Tổng quan hệ thống',
       admin: 'Quản trị hệ thống',
-      audit: 'Nhật ký hệ thống',
-      performance: 'Hiệu năng & Logs',
       management: 'Quản trị vận hành',
       users: 'Quản lý người dùng',
-      feedbacks: 'Quản lý feedback',
+      coordinators: 'Điều phối viên',
+      feedbacks: 'Quản lý phản ánh',
       categories: 'Danh mục phản ánh',
-      sla: 'Cấu hình SLA',
-      integrations: 'Cấu hình tích hợp',
+      sla: 'Chính sách SLA',
       analytics: 'Báo cáo phân tích',
       sentiment: 'Cảm xúc người dân',
       heatmap: 'Bản đồ nhiệt',
@@ -326,6 +324,7 @@ export const Header = ({ onMenuToggle }) => {
       map: 'Bản đồ sự cố',
       profile: 'Hồ sơ',
       settings: 'Cài đặt',
+      new: 'Thêm điều phối viên',
     };
 
     if (location.pathname === '/dashboard') {
@@ -347,7 +346,7 @@ export const Header = ({ onMenuToggle }) => {
 
     return (
       <div className="flex items-center gap-1.5">
-        <Link to="/dashboard" className="font-medium text-slate-500 transition-colors hover:text-blue-700">
+        <Link to="/dashboard" className="font-medium text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
           Tổng quan hệ thống
         </Link>
 
@@ -355,8 +354,11 @@ export const Header = ({ onMenuToggle }) => {
           if (index === 0 && path === 'dashboard') return null;
 
           const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
+          const isCoordinatorId = /^\d+$/.test(path) && location.pathname.startsWith('/management/coordinators/');
           const segmentName = isFeedbackId
             ? 'Chi tiết phản ánh'
+            : isCoordinatorId
+              ? 'Chi tiết điều phối viên'
             : path === 'sla' && location.pathname.startsWith('/analytics/')
               ? 'Phân tích SLA'
               : labelMap[path] || path;
@@ -368,6 +370,7 @@ export const Header = ({ onMenuToggle }) => {
             heatmap: '/analytics/heatmap',
             sentiment: '/analytics/sentiment',
             settings: '/settings',
+            coordinators: '/management/coordinators',
           };
 
           const breadcrumbLink = path === 'sla' && location.pathname.startsWith('/analytics/')
@@ -376,13 +379,13 @@ export const Header = ({ onMenuToggle }) => {
 
           return (
             <span key={`${path}-${index}`} className="flex items-center gap-1.5">
-              <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
+              <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
               {!isLast && breadcrumbLink ? (
-                <Link to={breadcrumbLink} className="font-semibold text-slate-500 transition-colors hover:text-blue-700">
+                <Link to={breadcrumbLink} className="font-semibold text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
                   {segmentName}
                 </Link>
               ) : (
-                <span className="font-semibold text-slate-950">{segmentName}</span>
+                <span className="font-semibold text-slate-950 dark:text-slate-100">{segmentName}</span>
               )}
             </span>
           );
@@ -403,7 +406,7 @@ export const Header = ({ onMenuToggle }) => {
   }
 
   return (
-    <header className="admin-topbar navbar sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-slate-200/70 bg-sky-50/75 px-6 py-3 shadow-[0_10px_30px_rgba(30,64,175,0.045)] backdrop-blur-xl supports-[backdrop-filter]:bg-sky-50/68">
+    <header className="admin-topbar navbar sticky top-0 z-40 flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/85 px-4 py-3 shadow-[0_8px_28px_rgba(15,23,42,0.045)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/75 dark:border-slate-800 dark:bg-slate-950/85 sm:px-6">
       <div className="flex items-center gap-4">
         <button
           type="button"
