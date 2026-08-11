@@ -14,9 +14,7 @@ import { AppEmptyState } from '@/components/ui/AppEmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { communityApi } from '@/services/api/communityApi';
 import { feedbackApi } from '@/services/api/feedbackApi';
-import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
 import { semantics } from '@/theme/semantics';
-import { getStatusLabel } from '@urbanmind/shared-types';
 
 interface CommentItem {
   id: string;
@@ -124,8 +122,7 @@ export default function CommunityDetailScreen() {
   const authorName = item?.authorName || item?.userName || 'Cộng đồng UrbanService';
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : '';
   const evidenceImages = attachments.filter((attachment) => attachment?.fileUrl).map((attachment) => attachment.fileUrl);
-  const statusValue = item?.status ?? 'Submitted';
-  const statusLabel = getStatusLabel(statusValue, 'Đang chờ xử lý');
+  const statusLabel = item?.status ? String(item.status).replace(/([A-Z])/g, ' $1').trim() : 'Đang chờ xử lý';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -148,7 +145,9 @@ export default function CommunityDetailScreen() {
                 <Text className="text-2xs text-text-muted mt-1">{createdAt}</Text>
               </View>
 
-              <TicketStatusBadge status={statusValue} size="sm" />
+              <View style={styles.statusPill}>
+                <Text className="text-2xs font-sans-semibold text-primary">{statusLabel}</Text>
+              </View>
             </View>
 
             <View style={styles.heroTitleRow}>

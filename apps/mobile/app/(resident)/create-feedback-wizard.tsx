@@ -129,7 +129,11 @@ function StepDescription({
 
       <View style={styles.aiTipRow}>
         <View style={styles.aiTip}>
-          <Icon name="zap" size={14} color={colors.primary} />
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Icon name="zap" size={14} color={colors.primary} />
+          )}
           <Text className="text-xs text-primary flex-1">
             {loading ? 'Đang dùng AI phân loại và xác định mức độ ưu tiên…' : 'AI sẽ phân loại tự động dựa trên mô tả của bạn để xử lý nhanh hơn.'}
           </Text>
@@ -271,6 +275,21 @@ function StepLocation({
     }
   }, [areaId, areas, mapRef]);
 
+  React.useEffect(() => {
+    if (latitude == null || longitude == null || !mapRef.current) return;
+
+    try {
+      mapRef.current.animateToRegion({
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }, 600);
+    } catch (e) {
+      console.warn('Failed to focus current location on map', e);
+    }
+  }, [latitude, longitude, mapRef]);
+
   return (
     <View style={styles.stepBody}>
       <Text style={styles.wizardTitle}>Vị trí xảy ra</Text>
@@ -279,16 +298,73 @@ function StepLocation({
       
 
       <View style={styles.locationPanel}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionLabel}>Khu vực</Text>
-          <View style={styles.miniChip}><Text style={styles.miniChipText}>{areas.length} khu vực</Text></View>
+        <View style={styles.locationMapCard}>
+          <View style={styles.mapHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mapTitle}>Bản đồ khu vực</Text>
+              <Text style={styles.mapSubtitle}>Đánh dấu vị trí sự cố</Text>
+            </View>
+            <Pressable style={styles.mapButton} onPress={onUseCurrentLocation}>
+              <Icon name="navigation" size={14} color={colors.primary} />
+              <Text style={styles.mapButtonText}>Hiện tại</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.mapInner}>
+            <MapView
+              ref={mapRef}
+              style={{ width: '100%', height: 300, borderRadius: 16 }}
+              initialRegion={{ latitude: latitude ?? 21.0278, longitude: longitude ?? 105.8342, latitudeDelta: 0.15, longitudeDelta: 0.15 }}
+              onPress={(e) => {
+                const coord = e.nativeEvent.coordinate;
+                onLatitudeChange(String(coord.latitude));
+                onLongitudeChange(String(coord.longitude));
+              }}
+            >
+              {latitude != null && longitude != null ? (
+                <Marker coordinate={{ latitude: Number(latitude), longitude: Number(longitude) }} />
+              ) : null}
+            </MapView>
+            <View style={styles.mapMetaRow}>
+              <Text style={styles.mapText}>{locationText || 'Chưa có địa chỉ cụ thể'}</Text>
+              <Text style={styles.mapHelperText}>{latitude != null && longitude != null ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` : 'Chưa có tọa độ'}</Text>
+            </View>
+          </View>
         </View>
-        {/* Dropdown-style selector for areas (replaces chip grid) */}
-        <View>
-          <Pressable style={styles.selectAreaInput} onPress={() => setShowAreaModal(true)}>
-            <Text style={styles.selectAreaText}>{areas.find((a) => getAreaId(a) === areaId)?.areaName ?? areas.find((a) => getAreaId(a) === areaId)?.name ?? 'Chọn khu vực'}</Text>
-            <Icon name="chevron-down" size={16} color={colors.muted} />
-          </Pressable>
+
+        <AppInput
+          label="Địa chỉ cụ thể"
+          leftIcon="map-pin"
+          value={locationText}
+          onChangeText={onLocationChange}
+          placeholder="VD: 123 Lê Lợi, Quận 1, TP.HCM"
+          error={locationError}
+        />
+
+        <View style={styles.areaFieldBlock}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionLabel}>Khu vực</Text>
+            <View style={styles.miniChip}><Text style={styles.miniChipText}>{areas.length} khu vực</Text></View>
+          </View>
+
+          {loading && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 12, backgroundColor: '#F0F9FF', borderRadius: 12, marginBottom: 12 }}>
+              <ActivityIndicator size="small" color="#0369A1" />
+              <Text style={{ fontSize: 13, color: '#0369A1', fontFamily: 'Geist-Medium' }}>Đang tải khu vực...</Text>
+            </View>
+          )}
+          {!loading && areas.length === 0 && (
+            <View style={{ paddingVertical: 12, paddingHorizontal: 12, backgroundColor: '#FEF2F2', borderRadius: 12, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: '#DC2626', fontFamily: 'Geist-SemiBold' }}>Không thể tải danh sách khu vực</Text>
+              <Text style={{ fontSize: 12, color: '#991B1B', marginTop: 4 }}>Vui lòng kiểm tra kết nối mạng hoặc thử lại.</Text>
+            </View>
+          )}
+          {!loading && areas.length > 0 && (
+            <Pressable style={styles.selectAreaInput} onPress={() => setShowAreaModal(true)}>
+              <Text style={styles.selectAreaText}>{areas.find((a) => getAreaId(a) === areaId)?.areaName ?? areas.find((a) => getAreaId(a) === areaId)?.name ?? 'Chọn khu vực'}</Text>
+              <Icon name="chevron-down" size={16} color={colors.muted} />
+            </Pressable>
+          )}
           <Modal visible={showAreaModal} transparent animationType="slide">
             <View style={styles.modalOverlay}>
               <View style={styles.modalContent}>
@@ -313,47 +389,9 @@ function StepLocation({
             </View>
           </Modal>
         </View>
+
         {error ? <Text style={styles.fieldError}>{error}</Text> : null}
 
-        <View style={styles.locationMapCard}>
-          <View style={styles.mapHeader}>
-            <View>
-              <Text style={styles.mapTitle}>Bản đồ khu vực</Text>
-              <Text style={styles.mapSubtitle}>Đánh dấu điểm xảy ra sự cố</Text>
-            </View>
-            <Pressable style={styles.mapButton} onPress={onUseCurrentLocation}>
-              <Icon name="navigation" size={14} color={colors.primary} />
-              <Text style={styles.mapButtonText}>Hiện tại</Text>
-            </Pressable>
-          </View>
-          <View style={styles.mapInner}>
-            <MapView
-              ref={mapRef}
-              style={{ width: '100%', height: 180, borderRadius: 12 }}
-              initialRegion={{ latitude: latitude ?? 21.0278, longitude: longitude ?? 105.8342, latitudeDelta: 0.15, longitudeDelta: 0.15 }}
-              onPress={(e) => {
-                const coord = e.nativeEvent.coordinate;
-                onLatitudeChange(String(coord.latitude));
-                onLongitudeChange(String(coord.longitude));
-              }}
-            >
-              {latitude != null && longitude != null ? (
-                <Marker coordinate={{ latitude: Number(latitude), longitude: Number(longitude) }} />
-              ) : null}
-            </MapView>
-            <Text style={styles.mapText}>{locationText || 'Chưa có địa chỉ cụ thể'}</Text>
-            <Text style={styles.mapHelperText}>{latitude != null && longitude != null ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` : 'Chưa có tọa độ'}</Text>
-          </View>
-        </View>
-
-        <AppInput
-          label="Địa chỉ cụ thể"
-          leftIcon="map-pin"
-          value={locationText}
-          onChangeText={onLocationChange}
-          placeholder="VD: 123 Lê Lợi, Quận 1, TP.HCM"
-          error={locationError}
-        />
         <View style={styles.coordRow}>
           <View style={{ flex: 1, marginRight: 8 }}>
             <AppInput
@@ -376,9 +414,6 @@ function StepLocation({
             />
           </View>
         </View>
-        <AppButton variant="outline" size="lg" onPress={onUseCurrentLocation}>
-          {loading ? 'Đang lấy vị trí…' : 'Dùng vị trí hiện tại'}
-        </AppButton>
         {duplicateWarning ? (
           <View style={styles.warningBox}>
             <Icon name="alert-triangle" size={16} color={colors.primary} />
@@ -448,17 +483,21 @@ function StepAttachments({
           <Text style={styles.sectionLabel}>Tệp minh chứng</Text>
           <View style={styles.miniChip}><Text style={styles.miniChipText}>{attachments.length}/{MAX_ATTACHMENT_COUNT}</Text></View>
         </View>
-        <View style={styles.uploadActions}>
-          <Pressable onPress={takePhoto} style={[styles.addImgBtn, { flex: 1 }]}>
-            <Icon name="camera" size={20} color={colors.primary} />
-            <Text className="text-sm font-sans-semibold text-primary mt-1">Chụp ảnh/video</Text>
-          </Pressable>
-          <Pressable onPress={pickImage} style={[styles.addImgBtn, { flex: 1 }]}>
-            <Icon name="image" size={20} color={colors.primary} />
-            <Text className="text-sm font-sans-semibold text-primary mt-1">Thư viện</Text>
-          </Pressable>
-        </View>
+
         {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+
+        <View style={styles.imgToolbar}>
+          <Pressable onPress={pickImage} style={styles.addPrimaryBtn}>
+            <Icon name="plus" size={18} color="#FFFFFF" />
+            <Text style={styles.addPrimaryBtnText}>Thêm ảnh</Text>
+          </Pressable>
+          {attachments.length > 0 && attachments.length < MAX_ATTACHMENT_COUNT ? (
+            <Pressable onPress={takePhoto} style={styles.secondaryActionBtn}>
+              <Icon name="camera" size={16} color={colors.primary} />
+            </Pressable>
+          ) : null}
+        </View>
+
         {attachments.length > 0 ? (
           <View style={styles.imgGrid}>
             {attachments.map((item, i) => (
@@ -475,11 +514,6 @@ function StepAttachments({
                 </Pressable>
               </View>
             ))}
-            {attachments.length < MAX_ATTACHMENT_COUNT && (
-              <Pressable onPress={pickImage} style={styles.imgAddMore}>
-                <Icon name="plus" size={24} color="#94A3B8" />
-              </Pressable>
-            )}
           </View>
         ) : (
           <View style={styles.noImgBox}>
@@ -578,6 +612,22 @@ function StepReview({
           </Text>
         </View>
       ) : null}
+
+      <View style={styles.trustBox}>
+        {[
+          'AI sẽ tự động phân loại',
+          'Bạn có thể theo dõi tiến độ',
+          'Thông báo sẽ được gửi khi có cập nhật',
+        ].map((line) => (
+          <View key={line} style={styles.trustItem}>
+            <View style={styles.trustIconWrap}>
+              <Icon name="check" size={12} color="#FFFFFF" />
+            </View>
+            <Text style={styles.trustText}>{line}</Text>
+          </View>
+        ))}
+      </View>
+
       <View style={{ marginTop: 16 }}>
         <AppButton size="lg" onPress={onSubmit} loading={submitting} fullWidth>
           Gửi phản ánh
@@ -625,8 +675,20 @@ export default function CreateFeedbackWizardScreen() {
       setAreasLoading(true);
       const [areasResult, categoriesResult] = await Promise.allSettled([toolsApi.getAreas(), toolsApi.getCategories()]);
       if (!active) return;
-      setAreas(areasResult.status === 'fulfilled' && Array.isArray(areasResult.value) ? areasResult.value : []);
-      setCategories(categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value) ? categoriesResult.value : []);
+      
+      const loadedAreas = areasResult.status === 'fulfilled' && Array.isArray(areasResult.value) ? areasResult.value : [];
+      const loadedCategories = categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value) ? categoriesResult.value : [];
+      
+      setAreas(loadedAreas);
+      setCategories(loadedCategories);
+      
+      // Log areas loading status
+      if (loadedAreas.length === 0) {
+        console.warn('No areas loaded from API. areasResult:', areasResult);
+      } else {
+        console.log(`Loaded ${loadedAreas.length} areas`);
+      }
+      
       setAreasLoading(false);
     };
     loadOptions();
@@ -760,9 +822,15 @@ export default function CreateFeedbackWizardScreen() {
   const goBack = () => {
     if (step > 1) {
       setStep((s) => s - 1);
-    } else {
-      router.back();
+      return;
     }
+
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/(resident)');
   };
 
   const handleDescriptionNext = async () => {
@@ -850,6 +918,12 @@ export default function CreateFeedbackWizardScreen() {
     clearFieldError('attachments');
   };
 
+  const extractCreatedFeedback = (result: any) => result?.data ?? result ?? null;
+  const extractFeedbackId = (result: any) => {
+    const payload = extractCreatedFeedback(result);
+    return payload?.feedbackId ?? payload?.id ?? result?.feedbackId ?? result?.id ?? null;
+  };
+
   const handleSubmit = async () => {
     setSubmitError('');
     const errors = {
@@ -884,7 +958,10 @@ export default function CreateFeedbackWizardScreen() {
 
     setSubmitting(true);
     try {
-      await feedbackApi.create(payload);
+      const response = await feedbackApi.create(payload);
+      const createdFeedback = extractCreatedFeedback(response);
+      const newFeedbackId = extractFeedbackId(response);
+      
       await AsyncStorage.removeItem(`${DRAFT_STORAGE_PREFIX}:mobile`);
       // Invalidate all feedback-related queries so lists refresh (tickets, stats, feeds)
       qc.invalidateQueries({ predicate: (query) => {
@@ -897,8 +974,20 @@ export default function CreateFeedbackWizardScreen() {
           return false;
         }
       } });
+      
+      // Pre-populate query cache with newly created feedback so detail screen loads instantly
+      if (newFeedbackId && createdFeedback) {
+        qc.setQueryData(['feedback', String(newFeedbackId)], createdFeedback);
+      }
+      
       toast.success('Phản ánh đã được gửi thành công!');
-      router.replace('/(resident)/tickets');
+      
+      // Navigate to newly created ticket detail instead of list
+      if (newFeedbackId) {
+        router.replace(`/(resident)/tickets/${newFeedbackId}`);
+      } else {
+        router.replace('/(resident)/tickets');
+      }
     } catch (error) {
       console.warn('Create feedback failed', error);
       const resp = (error as any)?.response;
@@ -910,7 +999,10 @@ export default function CreateFeedbackWizardScreen() {
         try {
           const fallback: any = { ...payload };
           delete fallback.areaId;
-          await feedbackApi.create(fallback);
+          const fallbackResponse = await feedbackApi.create(fallback);
+          const fallbackCreatedFeedback = extractCreatedFeedback(fallbackResponse);
+          const fallbackFeedbackId = extractFeedbackId(fallbackResponse);
+          
           await AsyncStorage.removeItem(`${DRAFT_STORAGE_PREFIX}:mobile`);
           qc.invalidateQueries({ predicate: (query) => {
             try {
@@ -920,8 +1012,20 @@ export default function CreateFeedbackWizardScreen() {
               return first === 'feedbacks' || first === 'myFeedbacks' || first === 'feedbacks_feed';
             } catch (e) { return false; }
           } });
+          
+          // Pre-populate query cache with newly created feedback
+          if (fallbackFeedbackId && fallbackCreatedFeedback) {
+            qc.setQueryData(['feedback', String(fallbackFeedbackId)], fallbackCreatedFeedback);
+          }
+          
           toast.success('Phản ánh đã được gửi (không kèm khu vực do lỗi hình dạng).');
-          router.replace('/(resident)/tickets');
+          
+          // Navigate to newly created ticket detail
+          if (fallbackFeedbackId) {
+            router.replace(`/(resident)/tickets/${fallbackFeedbackId}`);
+          } else {
+            router.replace('/(resident)/tickets');
+          }
         } catch (err2) {
           console.warn('Fallback submit without area failed', err2);
           toast.error('Khu vực được chọn chứa dữ liệu hình dạng không hợp lệ. Vui lòng chọn khu vực khác hoặc liên hệ quản trị viên.');
@@ -940,15 +1044,6 @@ export default function CreateFeedbackWizardScreen() {
         showBack
         onBack={goBack}
         title={STEPS[step - 1]}
-        rightAction={
-          step < STEPS.length ? (
-            <Pressable onPress={isStepValid ? goToNext : undefined} style={[styles.headerNext, !isStepValid && { opacity: 0.5 }]} hitSlop={8}>
-              <Icon name="arrow-right" size={18} color="#FFFFFF" />
-            </Pressable>
-          ) : (
-            <Text className="text-sm font-sans-semibold">{step}/{STEPS.length}</Text>
-          )
-        }
       />
       <AppStepBar currentStep={step} totalSteps={STEPS.length} labels={STEPS} />
       {draftNotice ? (
@@ -960,14 +1055,14 @@ export default function CreateFeedbackWizardScreen() {
       <KeyboardAvoidingView
         style={styles.flex1}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 96 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <View style={styles.flex1}>
           <ScrollView
             ref={scrollRef}
             style={styles.flex1}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 140, flexGrow: 1 }}
+            contentContainerStyle={{ paddingBottom: 120, flexGrow: 1 }}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             contentInsetAdjustmentBehavior="never"
@@ -1017,7 +1112,7 @@ export default function CreateFeedbackWizardScreen() {
                 clearFieldError('location');
               }}
               onUseCurrentLocation={handleUseCurrentLocation}
-              loading={false}
+              loading={areasLoading}
               error={fieldErrors.areaId}
               duplicateWarning={showDuplicateWarning ? 'Một số phản ánh gần vị trí này đã tồn tại. Vui lòng kiểm tra trước khi gửi.' : undefined}
               duplicates={duplicates}
@@ -1118,9 +1213,11 @@ const styles = StyleSheet.create({
   mapSubtitle: { fontFamily: 'Geist-Regular', fontSize: 11, color: '#64748B', marginTop: 2 },
   mapButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EFF6FF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: '#BFDBFE' },
   mapButtonText: { fontFamily: 'Geist-Medium', fontSize: 11, color: colors.primary },
-  mapInner: { marginTop: 12, minHeight: 110, borderRadius: 14, backgroundColor: '#EAF2F8', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#CBD5E1' },
-  mapText: { fontFamily: 'Geist-Medium', fontSize: 12, color: '#334155', marginTop: 6 },
+  mapInner: { marginTop: 12, minHeight: 300, height: 300, borderRadius: 16, backgroundColor: '#EAF2F8', overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1' },
+  mapMetaRow: { marginTop: 10 },
+  mapText: { fontFamily: 'Geist-Medium', fontSize: 12, color: '#334155' },
   mapHelperText: { fontFamily: 'Geist-Regular', fontSize: 10, color: '#64748B', marginTop: 4 },
+  areaFieldBlock: { marginTop: 8 },
   uploadPanel: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 18, borderWidth: 1, borderColor: '#E2E8F0' },
   uploadActions: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   areaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
@@ -1132,18 +1229,25 @@ const styles = StyleSheet.create({
   warningBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#EFF6FF', borderRadius: 14, padding: 12, marginTop: 10 },
   duplicateList: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginTop: 10, borderWidth: 1, borderColor: '#E2E8F0' },
   addImgBtn: { backgroundColor: '#EFF6FF', borderRadius: 16, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#BFDBFE', borderStyle: 'dashed' },
+  imgToolbar: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  addPrimaryBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
+  addPrimaryBtnText: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: '#FFFFFF' },
+  secondaryActionBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' },
   imgGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  imgItem: { position: 'relative' },
-  imgPreview: { width: 90, height: 90, borderRadius: 14, backgroundColor: '#E2E8F0' },
-  videoPreview: { width: 90, height: 90, borderRadius: 14, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
+  imgItem: { position: 'relative', width: '48%' },
+  imgPreview: { width: '100%', height: 120, borderRadius: 14, backgroundColor: '#E2E8F0' },
+  videoPreview: { width: '100%', height: 120, borderRadius: 14, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   imgRemoveBtn: { position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
-  imgAddMore: { width: 90, height: 90, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#CBD5E1', borderStyle: 'dashed' },
   noImgBox: { height: 150, backgroundColor: '#F8FAFC', borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed' },
   reviewRow: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#F1F5F9' },
   reviewIcon: { marginTop: 2, marginRight: 12 },
   reviewPreview: { width: 60, height: 60, borderRadius: 10, overflow: 'hidden', backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   reviewImage: { width: 60, height: 60 },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F1F5F9', zIndex: 50 },
+  trustBox: { backgroundColor: '#F0FDF4', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#BBF7D0', marginTop: 16 },
+  trustItem: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  trustIconWrap: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center' },
+  trustText: { flex: 1, fontFamily: 'Geist-Medium', fontSize: 12, color: '#166534', lineHeight: 18 },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 12 : 16, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F1F5F9', zIndex: 50 },
   floatingNext: { position: 'absolute', right: 20, bottom: 92, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 6, zIndex: 60 },
   headerNext: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   selectAreaInput: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 12 },

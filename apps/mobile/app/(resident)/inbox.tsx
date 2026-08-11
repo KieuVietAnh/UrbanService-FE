@@ -33,7 +33,7 @@ import {
 } from 'react-native';
 import { axiosClient, toolsApi } from '@urbanmind/shared-api';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
@@ -586,13 +586,20 @@ export default function InboxScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('ai');
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
+  const aiListRef = useRef<any>(null);
+  const supportListRef = useRef<any>(null);
   const { width: screenWidth } = useWindowDimensions();
   const user = useAuthStore((s) => s.user);
+  const authReady = useAuthStore((s) => s.hasHydrated);
+
+  // focus handled after queries are declared so we can trigger refetches
 
   // ── API: AI Conversations (DO NOT MODIFY) ──────────────────────────────────
   const {
     data: aiData,
     isLoading: aiLoading,
+    isFetching: aiFetching,
+    isFetched: aiFetched,
     refetch: refetchAi,
     isRefetching: aiRefetching,
   } = useQuery<AiConversationItem[]>({
@@ -606,7 +613,7 @@ export default function InboxScreen() {
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 30,
     initialData: [],
-    enabled: !!user, // Wait for auth session to hydrate
+    enabled: authReady && !!user,
   });
 
 
@@ -615,6 +622,8 @@ export default function InboxScreen() {
   const {
     data: supportThreads,
     isLoading: supportLoading,
+    isFetching: supportFetching,
+    isFetched: supportFetched,
     refetch: refetchSupport,
     isRefetching: supportRefetching,
   } = useQuery<SupportThread[]>({
@@ -688,18 +697,70 @@ export default function InboxScreen() {
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes to avoid redundant fetches
     gcTime: 1000 * 60 * 30,
     initialData: [],
-    enabled: !!user, // Wait for auth state before loading support inbox
+    enabled: authReady && !!user,
   });
 
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      (async () => {
+        try {
+          console.log('[Inbox] focus refetch start', { authReady, user: !!user, time: Date.now() });
+          await Promise.all([refetchAi?.(), refetchSupport?.()]);
+          console.log('[Inbox] focus refetch done', {
+            aiFetched: !!(refetchAi as any)?._result || aiFetched,
+            supportFetched: !!(refetchSupport as any)?._result || supportFetched,
+            aiLen: Array.isArray(aiData) ? aiData.length : 0,
+            supportLen: Array.isArray(supportThreads) ? supportThreads.length : 0,
+            aiFetching,
+            supportFetching,
+            time: Date.now(),
+          });
+        } catch (err) {
+          console.log('[Inbox] focus refetch error', err);
+        }
+        if (!mounted) return;
+      })();
+      return () => { mounted = false; };
+    }, [refetchAi, refetchSupport])
+  );
+
   const aiConversations = useMemo(() => (Array.isArray(aiData) ? aiData : []), [aiData]);
+  console.log('[Inbox] useMemo aiConversations recalculated', { len: Array.isArray(aiConversations) ? aiConversations.length : 0, time: Date.now() });
   const supportFeedbacks = useMemo(() => (Array.isArray(supportThreads) ? supportThreads : []), [supportThreads]);
+  console.log('[Inbox] useMemo supportFeedbacks recalculated', { len: Array.isArray(supportFeedbacks) ? supportFeedbacks.length : 0, time: Date.now() });
 
-  console.log('USER', user);
-  console.log('AI DATA', aiData);
-  console.log('SUPPORT DATA', supportThreads);
+  const isAuthBooting = !authReady || !user;
+  const isAiInitiallyLoading = isAuthBooting || (!aiFetched && (aiFetching || aiLoading));
+  const isSupportInitiallyLoading = isAuthBooting || (!supportFetched && (supportFetching || supportLoading));
 
-  const isAiInitiallyLoading = aiLoading && aiConversations.length === 0;
-  const isSupportInitiallyLoading = supportLoading && supportFeedbacks.length === 0;
+  // Determine initial load vs background refetches. Spinner should only block on
+  // the initial load (first paint). Subsequent focus/refetch should keep the
+  // tree mounted and show no full-screen blocker.
+  const isInitialLoad = Boolean(!aiFetched || !supportFetched || !authReady || !user);
+  // Compute inbox-ready state: all required sources must have completed for first paint
+  const isInboxReady = Boolean(authReady && user && aiFetched && supportFetched && !aiFetching && !supportFetching);
+  // Backwards-compatible alias used in places that expect "isInboxLoading" —
+  // keep it true only for the initial load so background refetches don't
+  // trigger a full-screen blocking spinner.
+  const isInboxLoading = isInitialLoad;
+
+  console.log('[Inbox] render', {
+    activeTab,
+    isInboxReady,
+    isInboxLoading,
+    authReady,
+    user: !!user,
+    aiLoading,
+    aiFetching,
+    aiFetched,
+    aiLen: Array.isArray(aiConversations) ? aiConversations.length : 0,
+    supportLoading,
+    supportFetching,
+    supportFetched,
+    supportLen: Array.isArray(supportFeedbacks) ? supportFeedbacks.length : 0,
+    time: Date.now(),
+  });
 
   // ── Skeleton data ──────────────────────────────────────────────────────────
   const aiSkeletonData = useMemo(
@@ -708,6 +769,7 @@ export default function InboxScreen() {
       : aiConversations,
     [aiLoading, aiConversations]
   );
+  console.log('[Inbox] useMemo aiSkeletonData recalculated', { len: Array.isArray(aiSkeletonData) ? aiSkeletonData.length : 0, aiLoading, time: Date.now() });
 
   const supportSkeletonData = useMemo(
     () => isSupportInitiallyLoading
@@ -743,27 +805,18 @@ export default function InboxScreen() {
   const handleSupportPress  = useCallback((item: SupportThread) => router.push(`/(resident)/tickets/${item.feedbackId}/chat` as any), [router]);
   const handleSelectFeedback = useCallback(() => router.push('/(resident)/support/select-feedback' as any), [router]);
 
-  // ── AI Tab header ──────────────────────────────────────────────────────────
-  const AiListHeader = useCallback(() => (
-    <View style={tabContentStyles.aiHeaderWrap}>
-      <AIHeroCard onPress={handleNewAi} />
-      {!aiLoading && aiConversations.length > 0 && (
-        <View style={tabContentStyles.sectionLabelRow}>
-          <View style={tabContentStyles.sectionLine} />
-          <Text style={tabContentStyles.sectionLabel}>Lịch sử</Text>
-          <View style={tabContentStyles.sectionLine} />
-        </View>
-      )}
-    </View>
-  ), [handleNewAi, aiLoading, aiConversations.length]);
+  // AI header is now a stable screen-level component rendered above the FlatList.
 
   const SupportEmpty = useCallback(
     () => <SupportEmptyState onPress={handleSelectFeedback} />,
     [handleSelectFeedback]
   );
 
+  // Always render the inbox tree. When the app is doing the initial load,
+  // show an overlay spinner so we don't unmount the component tree during
+  // background refetches (which can cause FlatList/header/layout issues).
   return (
-    <SafeAreaView style={rootStyles.safe} edges={['top']}>
+    <SafeAreaView style={rootStyles.safe} edges={['top']}> 
 
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
       <View style={rootStyles.header}>
@@ -818,31 +871,45 @@ export default function InboxScreen() {
         <View style={[tabContentStyles.tabPane, activeTab === 'ai' ? tabContentStyles.tabVisible : tabContentStyles.tabHidden]}>
           {isAiInitiallyLoading ? (
             <View style={tabContentStyles.loadingRoot}>
-              <ActivityIndicator size="large" color={D.aiPrimary} />
+              <ActivityIndicator size={"large"} color={D.aiPrimary} />
               <Text style={tabContentStyles.loadingText}>Đang tải hộp thư AI…</Text>
             </View>
           ) : (
-            <FlatList
-              key="ai"
-              style={{ flex: 1 }}
-              data={aiSkeletonData as any[]}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={[
-                tabContentStyles.listContent,
-                aiConversations.length === 0 && !aiLoading && tabContentStyles.flexGrow,
-              ]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={aiRefetching} onRefresh={refetchAi} tintColor={D.aiPrimary} />
-              }
-              ListHeaderComponent={AiListHeader}
-              ListEmptyComponent={!aiLoading ? <AiEmptyHint onPress={handleNewAi} /> : null}
-              renderItem={({ item, index }: { item: any; index: number }) => {
-                if (item._skeleton) return <AiRowSkeleton index={item._index ?? index} />;
-                return <AiConversationRow item={item} index={index} onPress={() => handleAiItemPress(item)} />;
-              }}
-              ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
-            />
+            <>
+              <View style={tabContentStyles.aiHeaderWrap}>
+                <AIHeroCard onPress={handleNewAi} />
+                {aiConversations.length > 0 && !aiLoading && (
+                  <View style={tabContentStyles.sectionLabelRow}>
+                    <View style={tabContentStyles.sectionLine} />
+                    <Text style={tabContentStyles.sectionLabel}>Lịch sử</Text>
+                    <View style={tabContentStyles.sectionLine} />
+                  </View>
+                )}
+              </View>
+
+              <FlatList
+                key="ai"
+                style={{ flex: 1 }}
+                ref={aiListRef}
+                extraData={[isInboxLoading, isAuthBooting, aiConversations.length]}
+                data={aiSkeletonData as any[]}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={[
+                  tabContentStyles.listContent,
+                  aiConversations.length === 0 && !aiLoading && tabContentStyles.flexGrow,
+                ]}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl refreshing={aiRefetching} onRefresh={refetchAi} tintColor={D.aiPrimary} />
+                }
+                ListEmptyComponent={!aiLoading ? <AiEmptyHint onPress={handleNewAi} /> : null}
+                renderItem={({ item, index }: { item: any; index: number }) => {
+                  if (item._skeleton) return <AiRowSkeleton index={item._index ?? index} />;
+                  return <AiConversationRow item={item} index={index} onPress={() => handleAiItemPress(item)} />;
+                }}
+                ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
+              />
+            </>
           )}
         </View>
 
@@ -856,6 +923,8 @@ export default function InboxScreen() {
             <FlatList
               key="support"
               style={{ flex: 1 }}
+              ref={supportListRef}
+              extraData={[isInboxLoading, isAuthBooting, supportFeedbacks.length]}
               data={supportSkeletonData as any[]}
               keyExtractor={(item, i) => String(item?.feedbackId ?? i)}
               contentContainerStyle={[
@@ -876,6 +945,25 @@ export default function InboxScreen() {
           )}
         </View>
       </View>
+      {/* Overlay spinner that appears only during the initial inbox load. */}
+      {isInboxLoading && (
+        <View
+          pointerEvents="auto"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            zIndex: 999,
+          }}
+        >
+          <ActivityIndicator size="large" color={D.aiPrimary} />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
