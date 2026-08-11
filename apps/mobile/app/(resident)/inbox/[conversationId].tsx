@@ -242,9 +242,6 @@ export default function InboxConversationScreen() {
                     <Pressable onPress={() => sendAiMessage('Tôi muốn báo ngập nước')} style={{ padding: 8, backgroundColor: '#EEF2FF', borderRadius: 8 }}>
                       <Text>Tôi muốn báo ngập nước</Text>
                     </Pressable>
-                    <Pressable onPress={() => sendAiMessage('Ticket #123')} style={{ padding: 8, backgroundColor: '#EEF2FF', borderRadius: 8 }}>
-                      <Text>Ticket #123</Text>
-                    </Pressable>
                     <Pressable onPress={() => sendAiMessage('Làm sao để gửi phản ánh?')} style={{ padding: 8, backgroundColor: '#EEF2FF', borderRadius: 8 }}>
                       <Text>FAQ</Text>
                     </Pressable>

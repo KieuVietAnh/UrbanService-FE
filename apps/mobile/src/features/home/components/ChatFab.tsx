@@ -18,12 +18,12 @@ export function ChatFab({ isOpen, onToggle }: Props) {
 
   const handleSelect = async (id: 'ai' | 'staff' | 'inbox') => {
     if (id === 'ai') {
-      router.push('/(resident)/ai' as any);
+      router.push('/(resident)/ai/ai-assistant');
       return;
     }
 
     if (id === 'inbox') {
-      router.push('/(resident)/inbox' as any);
+      router.push('/(resident)/inbox');
       return;
     }
 

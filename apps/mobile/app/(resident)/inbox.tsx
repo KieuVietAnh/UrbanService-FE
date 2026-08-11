@@ -175,16 +175,58 @@ const getAllFeedbackImages = (item: any): string[] => {
 
 const formatRelativeTime = (value: string): string => {
   if (!value) return '';
-  const diff = Date.now() - new Date(value).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Vừa xong';
-  if (mins < 60) return `${mins}ph`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}g`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'Hôm qua';
-  if (days < 7) return `${days}N`;
-  return new Date(value).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  if (isToday) {
+    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  const isCurrentYear = date.getFullYear() === now.getFullYear();
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: isCurrentYear ? undefined : 'numeric',
+  });
+};
+
+const getMessageTimestamp = (message: any): number => {
+  const candidates = [
+    message?.createdAt,
+    message?.sentAt,
+    message?.created_at,
+    message?.sent_at,
+    message?.createdDate,
+    message?.createdOn,
+    message?.createdAtUtc,
+    message?.sentAtUtc,
+    message?.timestamp,
+    message?.updatedAt,
+    message?.updated_at,
+    message?.updatedAtUtc,
+    message?.data?.createdAt,
+    message?.data?.sentAt,
+    message?.data?.created_at,
+    message?.data?.sent_at,
+    message?.data?.createdDate,
+    message?.data?.createdOn,
+    message?.data?.createdAtUtc,
+    message?.data?.sentAtUtc,
+    message?.data?.timestamp,
+    message?.data?.updatedAt,
+    message?.data?.updated_at,
+    message?.data?.updatedAtUtc,
+  ];
+
+  for (const value of candidates) {
+    if (!value) continue;
+    const time = new Date(value).getTime();
+    if (!Number.isNaN(time)) return time;
+  }
+
+  return 0;
 };
 
 const normalizeAiConversation = (raw: any): AiConversationItem | null => {
@@ -198,7 +240,10 @@ const normalizeAiConversation = (raw: any): AiConversationItem | null => {
       raw.lastMessage ?? raw.preview ?? raw.snippet ??
       raw.summary ?? raw.description ?? 'Bắt đầu hội thoại với trợ lý AI.'
     ),
-    updatedAt: String(raw.updatedAt ?? raw.lastUpdated ?? raw.createdAt ?? new Date().toISOString()),
+    updatedAt: String(
+      raw.lastMessageAt ?? raw.lastMessageAtUtc ?? raw.lastUpdatedAt ?? raw.updatedAt ??
+      raw.lastUpdated ?? raw.createdAt ?? new Date().toISOString()
+    ),
   };
 };
 
@@ -514,7 +559,6 @@ function SupportFeedbackCard({
           >
             {item.title}
           </Text>
-          <Text style={supportStyles.feedbackCode}>{item.code}</Text>
           <View style={supportStyles.metaRow}>
             <AppBadge status={item.status} size="sm" />
             {hasUnread ? (
@@ -665,7 +709,27 @@ export default function InboxScreen() {
       // List API never returns attachments — only GET /feedbacks/{id} does.
       const threads = await Promise.all(
         withMsgs.map(async ({ item, feedbackId, msgs }) => {
-          const lastMsg = msgs[msgs.length - 1];
+          const orderedMsgs = [...msgs].sort((left, right) => getMessageTimestamp(left) - getMessageTimestamp(right));
+          const lastMsg = orderedMsgs[orderedMsgs.length - 1];
+          const lastMessageAt = lastMsg
+            ? String(
+                lastMsg.createdAt ?? lastMsg.sentAt ?? lastMsg.created_at ?? lastMsg.sent_at ??
+                lastMsg.createdDate ?? lastMsg.createdOn ?? lastMsg.createdAtUtc ?? lastMsg.sentAtUtc ??
+                lastMsg.updatedAt ?? lastMsg.updated_at ?? lastMsg.updatedAtUtc ??
+                lastMsg.data?.createdAt ?? lastMsg.data?.sentAt ?? lastMsg.data?.created_at ?? lastMsg.data?.sent_at ??
+                lastMsg.data?.createdDate ?? lastMsg.data?.createdOn ?? lastMsg.data?.createdAtUtc ?? lastMsg.data?.sentAtUtc ??
+                lastMsg.data?.updatedAt ?? lastMsg.data?.updated_at ?? lastMsg.data?.updatedAtUtc ??
+                ''
+              )
+            : '';
+
+          const fallbackThreadTime = String(item?.updatedAt ?? item?.createdAt ?? '');
+
+          const resolvedUpdatedAt = lastMessageAt || fallbackThreadTime;
+
+          const finalLastMsg = orderedMsgs.reduce((latest, current) => {
+            return getMessageTimestamp(current) >= getMessageTimestamp(latest) ? current : latest;
+          }, msgs[0]);
           const unreadCount = msgs.filter(
             (m: any) => m?.senderType === 'Staff' || m?.senderRole === 'Staff'
           ).length;
@@ -685,8 +749,8 @@ export default function InboxScreen() {
             status: String(item?.status ?? 'SUBMITTED'),
             imageUris,
             unreadCount,
-            lastMessage: String(lastMsg?.messageText ?? lastMsg?.content ?? lastMsg?.message ?? ''),
-            updatedAt: String(item?.updatedAt ?? item?.createdAt ?? new Date().toISOString()),
+            lastMessage: String(finalLastMsg?.messageText ?? finalLastMsg?.content ?? finalLastMsg?.message ?? ''),
+            updatedAt: resolvedUpdatedAt,
           } as SupportThread;
         })
       );
@@ -734,21 +798,20 @@ export default function InboxScreen() {
   const isAiInitiallyLoading = isAuthBooting || (!aiFetched && (aiFetching || aiLoading));
   const isSupportInitiallyLoading = isAuthBooting || (!supportFetched && (supportFetching || supportLoading));
 
-  // Determine initial load vs background refetches. Spinner should only block on
-  // the initial load (first paint). Subsequent focus/refetch should keep the
-  // tree mounted and show no full-screen blocker.
-  const isInitialLoad = Boolean(!aiFetched || !supportFetched || !authReady || !user);
-  // Compute inbox-ready state: all required sources must have completed for first paint
-  const isInboxReady = Boolean(authReady && user && aiFetched && supportFetched && !aiFetching && !supportFetching);
-  // Backwards-compatible alias used in places that expect "isInboxLoading" —
-  // keep it true only for the initial load so background refetches don't
-  // trigger a full-screen blocking spinner.
-  const isInboxLoading = isInitialLoad;
+  const isInboxReady = Boolean(authReady && user && aiFetched && supportFetched);
+  const isInboxLoading = !isInboxReady;
+  const isInitialLoad = Boolean(isAuthBooting || !aiFetched || !supportFetched);
+  const hasHistoricData = aiConversations.length > 0 || supportFeedbacks.length > 0;
+  const isInitialInboxLoad = isInboxLoading && !hasHistoricData;
+  const isRefetchingWithData = !isInitialLoad && (aiFetching || supportFetching) && hasHistoricData;
 
   console.log('[Inbox] render', {
     activeTab,
     isInboxReady,
     isInboxLoading,
+    isInitialLoad,
+    isInitialInboxLoad,
+    isRefetchingWithData,
     authReady,
     user: !!user,
     aiLoading,
@@ -778,7 +841,6 @@ export default function InboxScreen() {
     [isSupportInitiallyLoading, supportFeedbacks]
   );
 
-  // ── Tab switch — spring physics ────────────────────────────────────────────
   const handleTabPress = useCallback(
     (tab: TabKey) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -793,6 +855,8 @@ export default function InboxScreen() {
     [tabIndicatorAnim]
   );
 
+  // ── Tab switch — spring physics ────────────────────────────────────────────
+
   const tabW = (screenWidth - 40) / 2;
   const indicatorX = tabIndicatorAnim.interpolate({
     inputRange: [0, 1],
@@ -800,10 +864,10 @@ export default function InboxScreen() {
   });
 
   // ── Navigation (DO NOT MODIFY) ─────────────────────────────────────────────
-  const handleAiItemPress   = useCallback((item: AiConversationItem) => router.push(`/(resident)/ai/${item.id}` as any), [router]);
-  const handleNewAi         = useCallback(() => router.push('/(resident)/ai' as any), [router]);
-  const handleSupportPress  = useCallback((item: SupportThread) => router.push(`/(resident)/tickets/${item.feedbackId}/chat` as any), [router]);
-  const handleSelectFeedback = useCallback(() => router.push('/(resident)/support/select-feedback' as any), [router]);
+  const handleAiItemPress   = useCallback((item: AiConversationItem) => router.push(`/(resident)/ai/${item.id}`), [router]);
+  const handleNewAi         = useCallback(() => router.push('/(resident)/ai/ai-assistant'), [router]);
+  const handleSupportPress  = useCallback((item: SupportThread) => router.push(`/(resident)/tickets/${item.feedbackId}/chat`), [router]);
+  const handleSelectFeedback = useCallback(() => router.push('/(resident)/support/select-feedback'), [router]);
 
   // AI header is now a stable screen-level component rendered above the FlatList.
 
@@ -812,11 +876,18 @@ export default function InboxScreen() {
     [handleSelectFeedback]
   );
 
-  // Always render the inbox tree. When the app is doing the initial load,
-  // show an overlay spinner so we don't unmount the component tree during
-  // background refetches (which can cause FlatList/header/layout issues).
+  if (isInitialInboxLoad) {
+    return (
+      <SafeAreaView style={rootStyles.safe} edges={['top']}>
+        <View style={rootStyles.initialLoadingRoot}>
+          <ActivityIndicator size="large" color={D.aiPrimary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={rootStyles.safe} edges={['top']}> 
+    <SafeAreaView style={rootStyles.safe} edges={['top']}>
 
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
       <View style={rootStyles.header}>
@@ -828,13 +899,15 @@ export default function InboxScreen() {
           <Text style={rootStyles.pageTitle}>Hộp thư</Text>
           <Text style={rootStyles.pageSubtitle}>Trao đổi với AI hoặc phản ánh của bạn</Text>
         </View>
-        <Pressable
-          hitSlop={12}
-          style={({ pressed }) => [rootStyles.searchBtn, pressed && { opacity: 0.7 }]}
-          accessibilityLabel="Tìm kiếm"
-        >
-          <Icon name="search" size={18} color={semantics.text.secondary} />
-        </Pressable>
+        <View style={rootStyles.headerActions}>
+          <Pressable
+            hitSlop={12}
+            style={({ pressed }) => [rootStyles.searchBtn, pressed && { opacity: 0.7 }]}
+            accessibilityLabel="Tìm kiếm"
+          >
+            <Icon name="search" size={18} color={semantics.text.secondary} />
+          </Pressable>
+        </View>
       </View>
 
       {/* ── Segmented Control ───────────────────────────────────────────────── */}
@@ -867,7 +940,7 @@ export default function InboxScreen() {
       </View>
 
       {/* ── Tab Content ─────────────────────────────────────────────────────── */}
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, position: 'relative' }}>
         <View style={[tabContentStyles.tabPane, activeTab === 'ai' ? tabContentStyles.tabVisible : tabContentStyles.tabHidden]}>
           {isAiInitiallyLoading ? (
             <View style={tabContentStyles.loadingRoot}>
@@ -945,23 +1018,12 @@ export default function InboxScreen() {
           )}
         </View>
       </View>
-      {/* Overlay spinner that appears only during the initial inbox load. */}
-      {isInboxLoading && (
-        <View
-          pointerEvents="auto"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: 'rgba(255,255,255,0.9)',
-            zIndex: 999,
-          }}
-        >
-          <ActivityIndicator size="large" color={D.aiPrimary} />
+
+      {isRefetchingWithData && (
+        <View style={tabContentStyles.refetchOverlay} pointerEvents="none">
+          <View style={tabContentStyles.refetchOverlayCard}>
+            <ActivityIndicator size="large" color={D.aiPrimary} />
+          </View>
         </View>
       )}
     </SafeAreaView>
@@ -982,6 +1044,17 @@ const rootStyles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 6,
     paddingBottom: 14,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  initialLoadingRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: D.appBg,
   },
   eyebrowRow: {
     flexDirection: 'row',
@@ -1086,16 +1159,51 @@ const tabContentStyles = StyleSheet.create({
     flex: 1,
   },
   tabVisible: {
-    display: 'flex',
+    opacity: 1,
+    position: 'relative',
+    pointerEvents: 'auto',
   },
   tabHidden: {
-    display: 'none',
+    opacity: 0,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
   },
   loadingRoot: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  initialOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  refetchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  refetchOverlayCard: {
+    width: 92,
+    height: 92,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
+    elevation: 8,
   },
   loadingText: {
     marginTop: 18,
@@ -1438,12 +1546,6 @@ const supportStyles = StyleSheet.create({
     letterSpacing: -0.1,
   },
   feedbackTitleUnread: { fontFamily: 'Geist-SemiBold' },
-  feedbackCode: {
-    fontFamily: 'Geist-Medium',
-    fontSize: 11,
-    color: D.aiPrimary,
-    letterSpacing: 0.2,
-  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',

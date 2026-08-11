@@ -19,9 +19,8 @@ export default function MessageComposer({
   const handleSend = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    await onSend(trimmed);
-    // keep text if send failed; caller should clear on success
     setText('');
+    await onSend(trimmed);
   };
 
   const handleLayout = (e: LayoutChangeEvent) => {
