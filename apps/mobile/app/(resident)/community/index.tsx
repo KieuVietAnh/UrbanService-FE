@@ -43,14 +43,6 @@ export default function CommunityFeedScreen() {
     active: Math.max(1, items.length),
   }), [data?.totalItems, items]);
 
-  const trendingItems = useMemo(() => {
-    return items.slice(0, 3).map((item: any) => ({
-      title: item?.title ?? 'Phản ánh cộng đồng',
-      count: item?.supportCount ?? 0,
-      tag: item?.locationText ?? 'Địa điểm',
-    }));
-  }, [items]);
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
@@ -126,24 +118,6 @@ export default function CommunityFeedScreen() {
           })}
         </View>
 
-        <AppCard shadow="sm" className="mb-4">
-          <View style={styles.trendingCard}>
-            <View style={styles.trendingHeader}>
-              <Icon name="trending-up" size={16} color={colors.primary} />
-              <Text className="text-sm font-sans-semibold text-text">Trending reports</Text>
-            </View>
-            {trendingItems.map((item, index) => (
-              <View key={`${item.title}-${index}`} style={styles.trendingItem}>
-                <View style={styles.trendingDot} />
-                <View style={{ flex: 1 }}>
-                  <Text className="text-sm font-sans-semibold text-text" numberOfLines={1}>{item.title}</Text>
-                  <Text className="text-xs text-text-muted mt-1">{item.tag} • {item.count} lượt ủng hộ</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </AppCard>
-
         {isLoading ? (
           <View>
             {Array.from({ length: 3 }).map((_, index) => (
@@ -163,6 +137,7 @@ export default function CommunityFeedScreen() {
                 key={item.feedbackId ?? item.id}
                 item={item}
                 onPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}` as any)}
+                onCommentPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}?focusComment=1` as any)}
               />
             ))}
           </View>
@@ -222,7 +197,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    padding: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
   },
   heroTextWrap: { flex: 1 },
   heroStatsWrap: {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, ScrollView, Pressable, Image, StyleSheet, TextInput, KeyboardAvoidingView, Platform, RefreshControl, Modal } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { Text } from '@/components/ui/Text';
 import { AppCard } from '@/components/ui/AppCard';
 import { AppHeader } from '@/components/ui/AppHeader';
 import { AppButton } from '@/components/ui/AppButton';
+import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
 import { SkeletonCard } from '@/components/ui/AppSkeleton';
 import { AppErrorState } from '@/components/ui/AppErrorState';
 import { AppEmptyState } from '@/components/ui/AppEmptyState';
@@ -24,8 +25,19 @@ interface CommentItem {
 }
 
 export default function CommunityDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, focusComment } = useLocalSearchParams<{ id: string; focusComment?: string }>();
   const toast = useToast();
+  const commentInputRef = useRef<TextInput | null>(null);
+
+  const shouldFocusComposer = focusComment === '1' || focusComment === 'true';
+
+  useEffect(() => {
+    if (!shouldFocusComposer) return;
+    const timer = setTimeout(() => {
+      commentInputRef.current?.focus();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [shouldFocusComposer]);
   const queryClient = useQueryClient();
   const feedbackId = id || '';
 
@@ -70,6 +82,24 @@ export default function CommunityDetailScreen() {
       return { supported: true };
     },
     onSuccess: (result) => {
+      queryClient.setQueriesData({
+        predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'community-feed-mobile',
+      }, (data: any) => {
+        if (!data || !Array.isArray(data.items)) return data;
+        return {
+          ...data,
+          items: data.items.map((feedItem: any) => {
+            const itemId = String(feedItem.feedbackId ?? feedItem.id ?? '');
+            if (itemId !== feedbackId) return feedItem;
+            return {
+              ...feedItem,
+              isSupported: result.supported,
+              supportCount: Math.max(0, Number(feedItem.supportCount ?? 0) + (result.supported ? 1 : -1)),
+            };
+          }),
+        };
+      });
+
       queryClient.setQueryData(['community-detail', feedbackId], (prev: any) => {
         if (!prev) return prev;
         return {
@@ -122,7 +152,6 @@ export default function CommunityDetailScreen() {
   const authorName = item?.authorName || item?.userName || 'Cộng đồng UrbanService';
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : '';
   const evidenceImages = attachments.filter((attachment) => attachment?.fileUrl).map((attachment) => attachment.fileUrl);
-  const statusLabel = item?.status ? String(item.status).replace(/([A-Z])/g, ' $1').trim() : 'Đang chờ xử lý';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -145,9 +174,7 @@ export default function CommunityDetailScreen() {
                 <Text className="text-2xs text-text-muted mt-1">{createdAt}</Text>
               </View>
 
-              <View style={styles.statusPill}>
-                <Text className="text-2xs font-sans-semibold text-primary">{statusLabel}</Text>
-              </View>
+              <TicketStatusBadge status={item?.status ?? 'SUBMITTED'} size="sm" />
             </View>
 
             <View style={styles.heroTitleRow}>
@@ -254,6 +281,7 @@ export default function CommunityDetailScreen() {
       >
         <View style={styles.composer}>
           <TextInput
+            ref={commentInputRef}
             style={styles.input}
             placeholder="Viết bình luận..."
             value={commentInput}
@@ -427,11 +455,12 @@ const styles = StyleSheet.create({
     backgroundColor: semantics.bg.surfaceSubtle,
   },
   commentSection: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 0,
     marginTop: 18,
     paddingBottom: 8,
   },
   commentFilterRow: {
+    paddingHorizontal:30,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -444,9 +473,10 @@ const styles = StyleSheet.create({
   },
   commentFeedCard: {
     backgroundColor: semantics.bg.surface,
-    borderBottomWidth: 1,
+    borderBottomWidth: 0.2,
     borderBottomColor: semantics.border.default,
-    paddingVertical: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 30,
   },
   commentRow: {
     flexDirection: 'row',

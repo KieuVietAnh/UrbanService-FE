@@ -81,12 +81,7 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
           <Text style={styles.emptySubtitle}>Các phản ánh trong bán kính gần bạn sẽ xuất hiện ở đây.</Text>
         </View>
       ) : (
-        <Pressable
-          style={styles.mapCard}
-          onPress={() => router.push('/(resident)/community/map')}
-          accessibilityRole="button"
-          accessibilityLabel={`${nearby.length} phản ánh trong bán kính 1 km, xem bản đồ`}
-        >
+        <View style={styles.mapCard}>
           <View style={styles.mapHeaderOverlay}>
             <View>
               <Text style={styles.mapTitle}>Sự cố gần bạn</Text>
@@ -95,10 +90,15 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
                 <Text style={styles.mapSubtitle}>{nearby.length} sự cố trong bán kính 1 km</Text>
               </View>
             </View>
-            <View style={styles.mapLink}>
+            <Pressable
+              style={styles.mapLink}
+              onPress={() => router.push('/(resident)/community/map')}
+              accessibilityRole="button"
+              accessibilityLabel={`${nearby.length} phản ánh trong bán kính 1 km, xem bản đồ`}
+            >
               <Text style={styles.mapLinkText}>Xem bản đồ</Text>
               <Icon name="chevron-right" size={15} color={colors.primary} />
-            </View>
+            </Pressable>
           </View>
 
           <View style={styles.mapIllustration}>
@@ -163,7 +163,7 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
               </View>
             </Pressable>
           ) : null}
-        </Pressable>
+        </View>
       )}
     </View>
   );
