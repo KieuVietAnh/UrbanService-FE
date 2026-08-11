@@ -49,19 +49,15 @@ function TicketCard({ ticket, onPress }: { ticket: any; onPress: () => void }) {
     <Pressable onPress={onPress} style={styles.ticketListItem}>
       <AppCard shadow="sm">
         <View style={styles.ticketCardContent}>
+          
           <View style={styles.ticketTopRow}>
-            <View style={styles.ticketCodeWrap}>
-              <Icon name="hash" size={12} color={colors.lightMuted} />
-              <Text style={styles.ticketCodeText}>
-                #{ticket.code ?? ticket.feedbackCode ?? '—'}
-              </Text>
-            </View>
+            <Text style={styles.ticketTitle} numberOfLines={2}>
+            {ticket.title ?? 'Chưa có tiêu đề'}
+          </Text>
             <TicketStatusBadge status={ticket.status ?? 'PENDING'} size="sm" />
           </View>
 
-          <Text style={styles.ticketTitle} numberOfLines={2}>
-            {ticket.title ?? 'Chưa có tiêu đề'}
-          </Text>
+          
 
           {ticket.categoryName && (
             <View style={styles.categoryRow}>
@@ -353,16 +349,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
-  },
-  ticketCodeWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ticketCodeText: {
-    fontFamily: 'Geist-Bold',
-    fontSize: 11,
-    color: colors.lightMuted,
   },
   ticketTitle: {
     fontFamily: 'Geist-Bold',

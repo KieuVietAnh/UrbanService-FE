@@ -127,9 +127,6 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFe
 
           <View style={styles.bodyWrap}>
             <View style={styles.badgeRow}>
-              <View style={styles.codePill}>
-                <Text className="text-2xs font-sans-semibold text-primary">#{item?.code ?? item?.feedbackCode ?? '—'}</Text>
-              </View>
               <View style={styles.metaPill}>
                 <Icon name="map-pin" size={12} color={colors.muted} />
                 <Text className="text-2xs text-text-muted" numberOfLines={1}>
@@ -234,13 +231,6 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  codePill: {
-    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: colors.primarySoft,

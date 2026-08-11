@@ -40,10 +40,6 @@ export default function SelectFeedbackScreen() {
           <TicketStatusBadge status={item.status ?? 'PENDING'} size="sm" />
         </View>
         <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Mã phản ánh</Text>
-          <Text style={styles.metaValue}>{item.code ?? item.feedbackCode ?? '—'}</Text>
-        </View>
-        <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Ngày tạo</Text>
           <Text style={styles.metaValue}>{createdAt}</Text>
         </View>

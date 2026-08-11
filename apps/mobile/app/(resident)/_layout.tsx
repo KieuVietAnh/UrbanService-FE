@@ -149,7 +149,7 @@ export default function ResidentLayout() {
   const toast = useToast();
   const handleFloatingSelect = async (id: 'ai' | 'staff' | 'inbox') => {
     if (id === 'ai') {
-      router.push('/(resident)/ai');
+      router.push('/(resident)/ai/ai-assistant');
       return;
     }
     if (id === 'inbox') {

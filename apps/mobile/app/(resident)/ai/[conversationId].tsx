@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   FlatList,
@@ -89,7 +89,8 @@ export default function AiConversationDetailScreen() {
   const listRef = useRef<FlatList<any> | null>(null);
   const queryClient = useQueryClient();
   const [composerHeight, setComposerHeight] = useState(72);
-  const keyboardOffset = Platform.OS === 'ios' ? (insets.top || 0) -64 : 0;
+  const keyboardOffset = Platform.OS === 'ios' ? (insets.top || 0) - 120 : 0;
+  const isPlaceholderConversation = conversationId === 'ai-assistant';
 
   const {
     data,
@@ -102,6 +103,16 @@ export default function AiConversationDetailScreen() {
     queryKey: ['ai-conversation-messages', conversationId],
     queryFn: async () => {
       if (!conversationId) return [];
+      if (isPlaceholderConversation) {
+        return [
+          {
+            id: 'welcome',
+            content: 'Xin chào! Mình là trợ lý AI. Hãy hỏi về phản ánh, trạng thái xử lý hoặc hướng dẫn nhanh.',
+            sender: 'assistant',
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
       const raw = await toolsApi.getAiConversationMessages(conversationId);
       if (!Array.isArray(raw)) return [];
       return raw
@@ -114,9 +125,17 @@ export default function AiConversationDetailScreen() {
   });
 
   const messages = useMemo(() => Array.isArray(data) ? data : [], [data]);
+  const scrollToBottom = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
 
   const sendMutation = useMutation({
     mutationFn: async (messageText: string) => {
+      if (isPlaceholderConversation) {
+        return toolsApi.getAiChatReply({ message: messageText });
+      }
       return toolsApi.getAiChatReply({ conversationId, message: messageText });
     },
     onMutate: async (messageText: string) => {
@@ -131,6 +150,7 @@ export default function AiConversationDetailScreen() {
         const arr = Array.isArray(old) ? old : [];
         return [...arr, optimistic];
       });
+      scrollToBottom(true);
       return { tempId };
     },
     onSuccess: (response) => {
@@ -144,9 +164,9 @@ export default function AiConversationDetailScreen() {
       });
       queryClient.invalidateQueries({ queryKey: ['ai-conversations'] });
       if (reply.conversationId && reply.conversationId !== conversationId) {
-        router.replace(`/(resident)/ai/${reply.conversationId}` as any);
+        router.replace(`/(resident)/ai/${reply.conversationId}`);
       }
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true } as any), 120);
+      scrollToBottom(true);
     },
     onError: (err: any) => {
       console.warn('AI send failed', err);
@@ -225,12 +245,12 @@ export default function AiConversationDetailScreen() {
             />
             </View>
 
-            <View style={[styles.composerWrap, { paddingBottom: insets.bottom || 0, position: 'absolute', left: 0, right: 0, bottom: 50 }]}> 
+            <View style={[styles.composerWrap, { paddingBottom: insets.bottom || 0, position: 'absolute', left: 0, right: 0, bottom: 40 }]}> 
               <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
               <MessageComposer
                 onSend={handleSend}
                 sending={(sendMutation as any).isLoading}
-                onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true } as any), 80)}
+                onFocus={() => scrollToBottom(true)}
                 onHeightChange={(height) => setComposerHeight(height)}
               />
             </View>
