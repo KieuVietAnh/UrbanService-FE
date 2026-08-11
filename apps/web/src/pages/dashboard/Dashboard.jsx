@@ -1082,19 +1082,27 @@ export const Dashboard = () => {
   const renderStatusBadge = (s) => {
     switch (s) {
       case managementTypes.feedbackStatus.SUBMITTED:
-        return <span className="circle-status-review">Cần review AI</span>;
+        return <span className="status-label border-indigo-200 bg-indigo-50 text-indigo-700">Cần review AI</span>;
       case managementTypes.feedbackStatus.AI_REVIEWED:
-        return <span className="circle-status-pending">Chờ phân công</span>;
+        return <span className="status-label border-violet-200 bg-violet-50 text-violet-700">Chờ phân công</span>;
+      case managementTypes.feedbackStatus.VERIFIED:
+        return <span className="status-label border-sky-200 bg-sky-50 text-sky-700">Đã xác minh</span>;
       case managementTypes.feedbackStatus.ASSIGNED:
-        return <span className="circle-status-pending">Đã phân công</span>;
+        return <span className="status-label border-cyan-200 bg-cyan-50 text-cyan-700">Đã phân công</span>;
       case managementTypes.feedbackStatus.IN_PROGRESS:
-        return <span className="circle-status-pending">Đang xử lý</span>;
+        return <span className="status-label border-purple-200 bg-purple-50 text-purple-700">Đang xử lý</span>;
+      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL:
+        return <span className="status-label border-amber-200 bg-amber-50 text-amber-700">Chờ duyệt KQ</span>;
+      case managementTypes.feedbackStatus.NEED_REWORK:
+        return <span className="status-label border-orange-200 bg-orange-50 text-orange-700">Cần bổ sung</span>;
       case managementTypes.feedbackStatus.RESOLVED:
-        return <span className="circle-status-review">Chờ duyệt KQ</span>;
+        return <span className="status-label border-emerald-200 bg-emerald-50 text-emerald-700">Chờ duyệt KQ</span>;
+      case managementTypes.feedbackStatus.REJECTED:
+        return <span className="status-label border-rose-200 bg-rose-50 text-rose-700">Không tiếp nhận</span>;
       case managementTypes.feedbackStatus.CLOSED:
-        return <span className="circle-status-pending">Đã đóng</span>;
+        return <span className="status-label border-teal-200 bg-teal-50 text-teal-700">Đã đóng</span>;
       default:
-        return <span className="circle-status-pending">Chờ xử lý</span>;
+        return <span className="status-label border-slate-200 bg-slate-50 text-slate-700">Chờ xử lý</span>;
     }
   };
 
@@ -1123,6 +1131,9 @@ export const Dashboard = () => {
   };
 
   const residentTickets = Array.isArray(tickets) ? tickets : [];
+  const isConfirmedDuplicateTicket = (ticket) => Boolean(
+    ticket?.parentTicketId || ticket?.parentFeedbackId
+  );
   const residentTotal = Math.max(ticketTotal, residentTickets.length);
   const residentInProgressStatuses = [
     managementTypes.feedbackStatus.VERIFIED,
@@ -1155,16 +1166,16 @@ export const Dashboard = () => {
     return 0;
   });
   const residentInProgress = residentTickets.filter((ticket) => (
-    residentInProgressStatuses.includes(ticket.status)
+    !isConfirmedDuplicateTicket(ticket) && residentInProgressStatuses.includes(ticket.status)
   )).length;
   const residentEnded = residentTickets.filter((ticket) => (
     ticket.status === managementTypes.feedbackStatus.CLOSED
   )).length;
   const needsReworkTickets = residentTickets.filter((ticket) => (
-    ticket.status === managementTypes.feedbackStatus.NEED_REWORK
+    !isConfirmedDuplicateTicket(ticket) && ticket.status === managementTypes.feedbackStatus.NEED_REWORK
   ));
   const awaitingReviewTickets = residentTickets.filter((ticket) => (
-    ticket.status === managementTypes.feedbackStatus.APPROVED
+    !isConfirmedDuplicateTicket(ticket) && ticket.status === managementTypes.feedbackStatus.APPROVED
   ));
   const residentNeedsAttention = (
     needsReworkTickets.length + awaitingReviewTickets.length
@@ -1214,47 +1225,47 @@ export const Dashboard = () => {
     const statusMap = {
       [managementTypes.feedbackStatus.SUBMITTED]: {
         label: 'Đã tiếp nhận',
-        className: 'border-info/25 bg-info/10 text-info',
+        className: 'border-indigo-200 bg-indigo-50 text-indigo-700',
       },
       [managementTypes.feedbackStatus.AI_REVIEWED]: {
         label: 'Đang phân loại',
-        className: 'border-secondary/25 bg-secondary/10 text-secondary',
+        className: 'border-violet-200 bg-violet-50 text-violet-700',
       },
       [managementTypes.feedbackStatus.VERIFIED]: {
         label: 'Đã xác minh',
-        className: 'border-info/25 bg-info/10 text-info',
+        className: 'border-sky-200 bg-sky-50 text-sky-700',
       },
       [managementTypes.feedbackStatus.ASSIGNED]: {
         label: 'Đã chuyển xử lý',
-        className: 'border-primary/25 bg-primary/10 text-primary',
+        className: 'border-cyan-200 bg-cyan-50 text-cyan-700',
       },
       [managementTypes.feedbackStatus.IN_PROGRESS]: {
         label: 'Đang xử lý',
-        className: 'border-warning/25 bg-warning/10 text-warning',
+        className: 'border-purple-200 bg-purple-50 text-purple-700',
       },
       [managementTypes.feedbackStatus.RESOLVED]: {
         label: 'Đang kiểm tra kết quả',
-        className: 'border-warning/25 bg-warning/10 text-warning',
+        className: 'border-teal-200 bg-teal-50 text-teal-700',
       },
       [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: {
         label: 'Đang kiểm tra kết quả',
-        className: 'border-warning/25 bg-warning/10 text-warning',
+        className: 'border-amber-200 bg-amber-50 text-amber-700',
       },
       [managementTypes.feedbackStatus.APPROVED]: {
         label: 'Chờ bạn đánh giá',
-        className: 'border-success/25 bg-success/10 text-success',
+        className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
       },
       [managementTypes.feedbackStatus.NEED_REWORK]: {
         label: 'Đang bổ sung',
-        className: 'border-warning/25 bg-warning/10 text-warning',
+        className: 'border-orange-200 bg-orange-50 text-orange-700',
       },
       [managementTypes.feedbackStatus.REJECTED]: {
         label: 'Không tiếp nhận',
-        className: 'border-error/25 bg-error/10 text-error',
+        className: 'border-rose-200 bg-rose-50 text-rose-700',
       },
       [managementTypes.feedbackStatus.CLOSED]: {
         label: 'Đã kết thúc',
-        className: 'border-success/25 bg-success/10 text-success',
+        className: 'border-slate-200 bg-slate-50 text-slate-700',
       },
       [managementTypes.feedbackStatus.CANCELLED]: {
         label: 'Đã hủy',
@@ -1614,6 +1625,7 @@ export const Dashboard = () => {
                   const feedbackId = ticket.feedbackId || ticket.id;
                   const statusMeta = getResidentStatusMeta(ticket.status);
                   const updatedAt = ticket.updatedAt || ticket.createdAt;
+                  const isConfirmedDuplicate = isConfirmedDuplicateTicket(ticket);
 
                   return (
                     <li key={feedbackId}>
@@ -1632,7 +1644,12 @@ export const Dashboard = () => {
                                 {ticket.title || 'Phản ánh chưa có tiêu đề'}
                               </h3>
                               <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusMeta.className}`}>
-                                {statusMeta.label}
+                                {isConfirmedDuplicate ? (
+                                  <span className="inline-flex items-center gap-1 text-violet-700">
+                                    <Lucide.GitMerge size={11} aria-hidden="true" />
+                                    Phản ánh trùng
+                                  </span>
+                                ) : statusMeta.label}
                               </span>
                             </div>
 

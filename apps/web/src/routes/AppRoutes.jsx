@@ -34,6 +34,7 @@ const DuplicateDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailP
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
+const ConversationQueuePage = lazy(() => import('../pages/staff/ConversationQueuePage').then((m) => ({ default: m.default })));
 const CoordinatorDirectoryPage = lazy(() => import('../pages/staff/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
 const CoordinatorDetailPage = lazy(() => import('../pages/staff/CoordinatorDetailPage').then((m) => ({ default: m.default })));
 const ManagementCoordinatorDirectoryPage = lazy(() => import('../pages/management/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
@@ -322,6 +323,24 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <ManagementFeedbackDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/assignment-history" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <AssignmentHistoryPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/conversations" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <ConversationQueuePage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

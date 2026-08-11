@@ -1,13 +1,13 @@
-import { TextInput, View, Text, StyleSheet, StyleProp, TextStyle, ViewStyle } from 'react-native';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import { TextInput, View, StyleSheet, StyleProp, TextStyle, ViewStyle, TextInputProps } from 'react-native';
+import { Text } from './Text';
+import { colors } from '@/constants/theme';
 
-interface AppTextAreaProps {
+interface AppTextAreaProps extends Omit<TextInputProps, 'style'> {
   label?: string;
-  placeholder?: string;
   error?: string;
   containerStyle?: StyleProp<ViewStyle>;
   inputStyle?: StyleProp<TextStyle>;
-  [key: string]: any; // Allow other TextInput props
+  rows?: number;
 }
 
 export const AppTextArea = ({
@@ -16,62 +16,64 @@ export const AppTextArea = ({
   error,
   containerStyle,
   inputStyle,
+  rows = 4,
   ...props
 }: AppTextAreaProps) => {
-  const hasError = !!error;
+  const hasError = Boolean(error);
 
   return (
     <View style={[styles.container, containerStyle]}>
       {label && (
-        <Text style={[
-          styles.label,
-          { color: hasError ? colors.red : colors.muted },
-        ]}>
+        <Text style={[styles.label, hasError && { color: colors.red }]}>
           {label}
         </Text>
       )}
       <TextInput
         {...props}
         placeholder={placeholder}
+        placeholderTextColor={colors.lightMuted}
         multiline
-        numberOfLines={4}
+        numberOfLines={rows}
+        textAlignVertical="top"
         style={[
           styles.input,
           { borderColor: hasError ? colors.red : colors.border },
+          { height: rows * 22 + 24 },
           inputStyle,
         ]}
       />
       {error && (
-        <Text style={[{ ...styles.error, color: colors.red }]}>
-          {error}
-        </Text>
+        <Text style={styles.error}>{error}</Text>
       )}
     </View>
   );
 };
 
-
 const styles = StyleSheet.create({
   container: {
-    marginBottom: spacing.md,
+    marginBottom: 16,
   },
   label: {
-    fontSize: typography.sm,
-    fontWeight: typography.medium as any,
-    marginBottom: spacing.xs,
+    fontSize: 13,
+    fontFamily: 'Geist-Medium',
+    color: '#334155',
+    marginBottom: 6,
   },
   input: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    fontSize: typography.md,
-    color: colors.text,
-    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    fontSize: 15,
+    fontFamily: 'Geist-Regular',
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
   },
   error: {
-    fontSize: typography.xs,
-    marginTop: spacing.xs,
+    fontSize: 12,
+    fontFamily: 'Geist-Regular',
+    color: '#EF4444',
+    marginTop: 4,
   },
 });

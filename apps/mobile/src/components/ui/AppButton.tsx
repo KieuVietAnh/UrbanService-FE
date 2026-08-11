@@ -1,104 +1,137 @@
-import { Pressable, PressableProps, Text, StyleSheet, StyleProp, TextStyle, ViewStyle } from 'react-native';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import React from 'react';
+import {
+  Pressable,
+  PressableProps,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import { Text } from './Text';
 
-interface AppButtonProps extends PressableProps {
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+type Size = 'sm' | 'md' | 'lg';
+
+interface AppButtonProps extends Omit<PressableProps, 'style'> {
   children: React.ReactNode;
-  variant?: 'primary' | 'secondary' | 'outline' | 'text';
-  size?: 'sm' | 'md' | 'lg';
-  disabled?: boolean;
+  variant?: Variant;
+  size?: Size;
   loading?: boolean;
-  textStyle?: StyleProp<TextStyle>;
-  containerStyle?: StyleProp<ViewStyle>;
+  fullWidth?: boolean;
+  leftIcon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
+  className?: string;
 }
 
-export const AppButton = ({
+const VARIANT_CLASSES: Record<Variant, string> = {
+  primary: 'bg-primary active:bg-primary-dark',
+  secondary: 'bg-primary-soft border border-primary',
+  outline: 'bg-transparent border border-border-strong',
+  ghost: 'bg-transparent',
+  danger: 'bg-red',
+};
+
+const TEXT_CLASSES: Record<Variant, string> = {
+  primary: 'text-text-inverse',
+  secondary: 'text-primary',
+  outline: 'text-text',
+  ghost: 'text-primary',
+  danger: 'text-text-inverse',
+};
+
+const SIZE_CLASSES: Record<Size, string> = {
+  sm: 'h-9 px-4 rounded-lg gap-1.5',
+  md: 'h-12 px-5 rounded-xl gap-2',
+  lg: 'h-14 px-6 rounded-2xl gap-2',
+};
+
+const TEXT_SIZE_CLASSES: Record<Size, string> = {
+  sm: 'text-sm',
+  md: 'text-base',
+  lg: 'text-lg',
+};
+
+export function AppButton({
   children,
   variant = 'primary',
   size = 'md',
-  disabled = false,
   loading = false,
-  textStyle,
-  containerStyle,
+  fullWidth = false,
+  leftIcon,
+  rightIcon,
+  disabled,
+  onPress,
+  className = '',
   ...props
-}: AppButtonProps) => {
-  // Variant styles
-  const variantStyles: { container: ViewStyle; text: TextStyle } = variant === 'primary'
-    ? {
-        container: { backgroundColor: colors.primary },
-        text: { color: colors.surface },
-      }
-    : variant === 'secondary'
-    ? {
-        container: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary },
-        text: { color: colors.primary },
-      }
-    : variant === 'outline'
-    ? {
-        container: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary },
-        text: { color: colors.primary },
-      }
-    : variant === 'text'
-    ? {
-        container: { backgroundColor: 'transparent' },
-        text: { color: colors.primary },
-      }
-    : {
-        container: { backgroundColor: colors.primary },
-        text: { color: colors.surface },
-      };
+}: AppButtonProps) {
+  const scale = useSharedValue(1);
 
-  // Size styles
-  const sizeStyles: { padding: number; borderRadius: number; text: { fontSize: number; fontWeight: any } } =
-    size === 'sm'
-      ? {
-          padding: spacing.sm,
-          borderRadius: radius.sm,
-          text: { fontSize: typography.md, fontWeight: typography.semibold as any },
-        }
-      : size === 'md'
-      ? {
-          padding: 20,
-          borderRadius: radius.md,
-          text: { fontSize: typography.lg, fontWeight: typography.semibold as any },
-        }
-      : size === 'lg'
-      ? {
-          padding: 28,
-          borderRadius: radius.lg,
-          text: { fontSize: typography.xl, fontWeight: typography.bold as any },
-        }
-      : {
-          padding: spacing.md,
-          borderRadius: radius.md,
-          text: { fontSize: typography.lg, fontWeight: typography.semibold as any },
-        };
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
-  const computedContainerStyle: StyleProp<ViewStyle> = [
-    variantStyles.container,
-    { padding: sizeStyles.padding, borderRadius: sizeStyles.borderRadius },
-    disabled ? { opacity: 0.5 } : {},
-    containerStyle,
-  ];
+  const handlePressIn = () => {
+    scale.value = withSpring(0.96, { damping: 15, stiffness: 400 });
+  };
 
-  const computedTextStyle: StyleProp<TextStyle> = [
-    variantStyles.text,
-    { fontSize: sizeStyles.text.fontSize, fontWeight: sizeStyles.text.fontWeight },
-    textStyle,
-  ];
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
+  };
+
+  const handlePress = (event: any) => {
+    if (loading || disabled) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress?.(event);
+  };
+
+  const isDisabled = disabled || loading;
 
   return (
-    <Pressable
-      disabled={disabled || loading}
-      style={computedContainerStyle}
+    <AnimatedPressable
+      style={animatedStyle}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={handlePress}
+      disabled={isDisabled}
+      className={[
+        'flex-row items-center justify-center',
+        VARIANT_CLASSES[variant],
+        SIZE_CLASSES[size],
+        fullWidth ? 'w-full' : 'self-start',
+        isDisabled ? 'opacity-50' : '',
+        className,
+      ].join(' ')}
       {...props}
     >
       {loading ? (
-        <Text style={[computedTextStyle, { letterSpacing: -0.5 }]}>
-          Loading...
-        </Text>
+        <ActivityIndicator
+          size="small"
+          color={variant === 'primary' || variant === 'danger' ? '#FFFFFF' : '#0052CC'}
+        />
       ) : (
-        <Text style={computedTextStyle}>{children}</Text>
+        <>
+          {leftIcon}
+          <Text
+            className={[
+              'font-sans-semibold text-center',
+              TEXT_CLASSES[variant],
+              TEXT_SIZE_CLASSES[size],
+            ].join(' ')}
+          >
+            {children}
+          </Text>
+          {rightIcon}
+        </>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
-};
+}
+
+// Keep legacy API compat export
+export default AppButton;

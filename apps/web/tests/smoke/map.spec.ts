@@ -1,58 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { LoginPage } from '../pages/LoginPage';
 import { MapPage } from '../pages/MapPage';
 
-const validEmail = 'nguyengiauzxc@gmail.com';
-const validPassword = 'nguyenhuugiau';
+test.describe('Public map smoke tests', () => {
+  test('Community map page loads without backend stubbing', async ({ page }) => {
+    await page.goto('/community/map');
+    const mapPage = new MapPage(page);
 
-test.setTimeout(120000);
-test.describe('Map view', () => {
-  test.beforeEach(async ({ page }) => {
-    // Mock auth endpoint so tests don't depend on the backend
-    await page.route('**/api/user/feedbacks**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            feedbackId: 'smoke-map-feedback-1',
-            userId: 1,
-            title: 'Điểm phản ánh kiểm thử bản đồ',
-            categoryName: 'Garbage Collection',
-            status: 'Verified',
-            priority: 'Medium',
-            areaName: 'Phường Long Trường',
-            locationText: 'Vị trí đã chọn: 10.781288, 106.725419',
-            latitude: 10.781288,
-            longitude: 106.725419,
-          },
-        ]),
-      });
-    });
-
-    await page.route('**/api/auth/login', async (route) => {
-      const req = route.request();
-      const post = (await req.postData()) || '';
-      if (post.includes(validEmail) && post.includes(validPassword)) {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ data: { token: 'fake-token', user: { userId: 1, email: validEmail, fullName: 'Test User', role: 'service-user', isVerified: true } } }),
-        });
-      } else {
-        await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ message: 'Unauthorized' }) });
-      }
-    });
-
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
-    const loginPage = new LoginPage(page);
-    await loginPage.login(validEmail, validPassword);
-    await page.waitForLoadState('networkidle').catch(() => {});
-  });
-
-  test('Map loads and markers are clickable', async ({ page }) => {
-    await page.goto('/community/map', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('body')).toBeVisible();
-    await expect(page.locator('body')).toContainText(/Bản đồ|Map|UrbanMind|Phản ánh/i);
+    await expect(page.getByRole('heading', { name: /Bản đồ sự cố đô thị/i })).toBeVisible();
+    await expect(mapPage.mapContainer).toBeVisible();
   });
 });

@@ -1,31 +1,4 @@
-const STATUS_INTENTS = {
-  Submitted: 'info',
-  'AI Reviewed': 'info',
-  Verified: 'info',
-  Assigned: 'warning',
-  InProgress: 'warning',
-  Resolved: 'success',
-  SubmittedForApproval: 'warning',
-  Approved: 'success',
-  Rejected: 'danger',
-  NeedRework: 'warning',
-  Closed: 'success',
-  Cancelled: 'neutral',
-};
-
-const PRIORITY_INTENTS = {
-  Critical: 'danger',
-  High: 'warning',
-  Medium: 'info',
-  Low: 'neutral',
-};
-
-const SEVERITY_INTENTS = {
-  Critical: 'danger',
-  High: 'warning',
-  Medium: 'info',
-  Low: 'neutral',
-};
+import { getStatusIntent, getPriorityIntent } from '@urbanmind/shared-types';
 
 const ACTION_INTENTS = {
   delete: 'danger',
@@ -45,12 +18,8 @@ export function getBadgeIntent(value, kind = 'status') {
   const normalizedValue = normalizeValue(value);
   const loweredValue = normalizedValue.toLowerCase();
 
-  if (kind === 'priority') {
-    return PRIORITY_INTENTS[normalizedValue] || 'neutral';
-  }
-
-  if (kind === 'severity') {
-    return SEVERITY_INTENTS[normalizedValue] || 'neutral';
+  if (kind === 'priority' || kind === 'severity') {
+    return getPriorityIntent(normalizedValue);
   }
 
   if (kind === 'action') {
@@ -60,5 +29,5 @@ export function getBadgeIntent(value, kind = 'status') {
     return 'neutral';
   }
 
-  return STATUS_INTENTS[normalizedValue] || 'neutral';
+  return getStatusIntent(normalizedValue);
 }

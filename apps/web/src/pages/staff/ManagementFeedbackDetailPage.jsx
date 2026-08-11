@@ -2,9 +2,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
-import { managementTypes } from '@urbanmind/shared-types';
+import { managementTypes, getPriorityIntent, getStatusIntent } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { LoadingSpinner, EmptyState, ConfirmationModal } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
@@ -14,7 +15,6 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
-import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 
 const CITIZEN_NOTIFICATION_TEMPLATES = [
   {
@@ -101,6 +101,63 @@ export const ManagementFeedbackDetailPage = () => {
     return currentFeedback?.categoryId ?? currentFeedback?.category?.categoryId ?? '';
   };
 
+  const getStatusClass = (s) => {
+    if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
+    const key = String(s).trim().toLowerCase();
+    switch (key) {
+      case managementTypes.feedbackStatus.AI_REVIEWED.toLowerCase():
+      case 'aireviewed':
+      case 'ai reviewed':
+      case 'ai_reviewed':
+        return 'border-violet-200 bg-violet-50 text-violet-700';
+      case 'submitted':
+        return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+      case managementTypes.feedbackStatus.VERIFIED.toLowerCase():
+      case 'verified':
+        return 'border-sky-200 bg-sky-50 text-sky-700';
+      case managementTypes.feedbackStatus.ASSIGNED.toLowerCase():
+      case 'assigned':
+        return 'border-cyan-200 bg-cyan-50 text-cyan-700';
+      case 'inprogress':
+      case 'in progress':
+      case managementTypes.feedbackStatus.IN_PROGRESS.toLowerCase():
+        return 'border-purple-200 bg-purple-50 text-purple-700';
+      case 'waitingcitizen':
+      case 'waiting citizen':
+      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL.toLowerCase():
+      case 'submittedforapproval':
+        return 'border-amber-200 bg-amber-50 text-amber-700';
+      case managementTypes.feedbackStatus.NEED_REWORK.toLowerCase():
+      case 'needrework':
+        return 'border-orange-200 bg-orange-50 text-orange-700';
+      case managementTypes.feedbackStatus.APPROVED.toLowerCase():
+      case 'approved':
+        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      case 'resolved':
+        return 'border-teal-200 bg-teal-50 text-teal-700';
+      case 'closed':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      case 'rejected':
+        return 'border-rose-200 bg-rose-50 text-rose-700';
+      case 'duplicate':
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+      default:
+        return 'border-slate-200 bg-slate-50 text-slate-700';
+    }
+  };
+
+  const getPriorityClass = (p) => {
+    if (!p) return 'badge-priority-low';
+    const key = String(p).trim().toLowerCase();
+    switch (key) {
+      case 'critical': return 'badge-priority-critical';
+      case 'high': return 'badge-priority-high';
+      case 'medium': return 'badge-priority-medium';
+      case 'low': return 'badge-priority-low';
+      default: return 'badge-priority-low';
+    }
+  };
+
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -149,8 +206,24 @@ export const ManagementFeedbackDetailPage = () => {
   const [notificationActivities, setNotificationActivities] = useState([]);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
 
+  // Internal communication
+  const [messageDraft, setMessageDraft] = useState('');
+  const [composerMode, setComposerMode] = useState('public');
+  const [activeViewTab, setActiveViewTab] = useState('detail');
+
+  const {
+    messages,
+    messagesLoading,
+    messagesError,
+    messageSubmitting,
+    loadMessages: reloadFeedbackMessages,
+    sendMessage: sendFeedbackMessage,
+  } = useFeedbackMessages();
+
   // Load feedback details
   useEffect(() => {
+    let active = true;
+
     const loadFeedback = async () => {
       setLoading(true);
       setError('');
@@ -158,11 +231,12 @@ export const ManagementFeedbackDetailPage = () => {
       try {
         const feedbackRes = await managementFeedbackApi.getFeedbackById(feedbackId);
         const linkedFeedbackId = feedbackRes?.feedbackId || feedbackId;
-        const [categoriesRes, candidatesRes, linkedFeedbacksRes] = await Promise.allSettled([
+        const [categoriesRes, candidatesRes] = await Promise.allSettled([
           toolsApi.getCategories(),
           managementFeedbackApi.getProviderCandidates(linkedFeedbackId),
-          managementFeedbackApi.getLinkedFeedbacks(linkedFeedbackId),
         ]);
+
+        if (!active) return;
 
         setCategories(Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
         if (candidatesRes.status === 'fulfilled') {
@@ -170,14 +244,6 @@ export const ManagementFeedbackDetailPage = () => {
         } else {
           setCandidates([]);
           setCandidatesLoadError(candidatesRes.reason?.message || 'Không thể tải danh sách đơn vị xử lý.');
-        }
-
-        if (linkedFeedbacksRes.status === 'fulfilled') {
-          setLinkedFeedbacks(Array.isArray(linkedFeedbacksRes.value) ? linkedFeedbacksRes.value : []);
-          setLinkedFeedbacksError('');
-        } else {
-          setLinkedFeedbacks([]);
-          setLinkedFeedbacksError(linkedFeedbacksRes.reason?.message || 'Không thể tải danh sách phản ánh liên kết.');
         }
 
         setFeedback(feedbackRes);
@@ -225,17 +291,51 @@ export const ManagementFeedbackDetailPage = () => {
           categoryId: String(getFeedbackCategoryId(feedbackRes) || ''),
         });
       } catch (err) {
+        if (!active) return;
         console.error('Failed to load feedback details', err);
         setError('Không thể tải chi tiết phản ánh. Vui lòng thử lại.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     if (feedbackId) {
       loadFeedback();
     }
+
+    return () => {
+      active = false;
+    };
   }, [feedbackId]);
+
+  useEffect(() => {
+    if (!feedbackId) {
+      return;
+    }
+
+    reloadFeedbackMessages();
+  }, [feedbackId, reloadFeedbackMessages]);
+
+  const handleMessageSend = async () => {
+    if (!feedbackId || !messageDraft.trim()) return;
+
+    try {
+      const refreshed = await sendFeedbackMessage({
+        messageText: messageDraft.trim(),
+        isInternal: composerMode === 'internal',
+      });
+
+      if (refreshed) {
+        setMessageDraft('');
+        setPageMessage({ type: 'success', text: composerMode === 'internal' ? 'Ghi chú nội bộ đã được lưu.' : 'Đã gửi trao đổi cho phản ánh.' });
+      } else {
+        setPageMessage({ type: 'warning', text: 'Tin nhắn đã được gửi nhưng không thể đồng bộ.' });
+      }
+    } catch (err) {
+      console.error('Failed to send feedback message', err);
+      setPageMessage({ type: 'error', text: 'Không thể gửi trao đổi. Vui lòng thử lại.' });
+    }
+  };
 
   // Handle edit
   const handleEdit = async () => {
@@ -584,60 +684,98 @@ export const ManagementFeedbackDetailPage = () => {
 
   const nextStatusOptions = managementTypes.statusFlow[feedback?.status] || [];
 
-  const canVerify = [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED].includes(feedback?.status);
-  const canAssign = feedback?.status === managementTypes.feedbackStatus.VERIFIED;
-  const canUpdateStatus = nextStatusOptions.length > 0;
+  const parentFeedbackId = feedback?.parentTicketId || feedback?.parentFeedbackId || null;
+  const isConfirmedDuplicate = Boolean(parentFeedbackId);
+  const isMasterTicket = Boolean(feedback?.isMasterTicket);
+  const canVerify = !isConfirmedDuplicate && [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED].includes(feedback?.status);
+  const canAssign = !isConfirmedDuplicate && feedback?.status === managementTypes.feedbackStatus.VERIFIED;
+  const canUpdateStatus = !isConfirmedDuplicate && nextStatusOptions.length > 0;
 
   const attachments = Array.isArray(feedback?.attachments) ? feedback.attachments : [];
   const comments = Array.isArray(feedback?.comments) ? feedback.comments : [];
 
   useEffect(() => {
+    let active = true;
+    const abortController = new AbortController();
+
     const loadLinkedFeedbacks = async () => {
-      if (!feedbackId) return;
+      if (!feedbackId || !isMasterTicket) {
+        setLinkedFeedbacks([]);
+        setLinkedFeedbacksError('');
+        setLinkedFeedbacksLoading(false);
+        return;
+      }
 
       setLinkedFeedbacksLoading(true);
       setLinkedFeedbacksError('');
       try {
         const linkedFeedbackId = feedback?.feedbackId || feedbackId;
-        const response = await managementFeedbackApi.getLinkedFeedbacks(linkedFeedbackId);
-        setLinkedFeedbacks(Array.isArray(response) ? response : []);
+        const response = await managementFeedbackApi.getLinkedFeedbacks(linkedFeedbackId, {
+          signal: abortController.signal,
+        });
+        if (active) setLinkedFeedbacks(Array.isArray(response) ? response : []);
       } catch (err) {
+        if (abortController.signal.aborted) return;
         console.error('Failed to load linked feedbacks', err);
-        setLinkedFeedbacks([]);
-        setLinkedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên kết.');
+        if (active) {
+          setLinkedFeedbacks([]);
+          setLinkedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên kết.');
+        }
       } finally {
-        setLinkedFeedbacksLoading(false);
+        if (active) setLinkedFeedbacksLoading(false);
       }
     };
 
     if (feedback) {
       loadLinkedFeedbacks();
     }
-  }, [feedback, feedbackId]);
+
+    return () => {
+      active = false;
+      abortController.abort();
+    };
+  }, [feedback, feedbackId, isMasterTicket]);
 
   useEffect(() => {
+    let active = true;
+    const abortController = new AbortController();
+
     const loadRelatedFeedbacks = async () => {
-      if (!feedbackId) return;
+      if (!parentFeedbackId) {
+        setRelatedFeedbacks([]);
+        setRelatedFeedbacksError('');
+        setRelatedFeedbacksLoading(false);
+        return;
+      }
 
       setRelatedFeedbacksLoading(true);
       setRelatedFeedbacksError('');
       try {
-        const relatedFeedbackId = feedback?.feedbackId || feedbackId;
-        const response = await managementFeedbackApi.getRelatedFeedbacks(relatedFeedbackId);
-        setRelatedFeedbacks(Array.isArray(response) ? response : []);
+        const response = await managementFeedbackApi.getRelatedFeedbacks(feedbackId, {
+          signal: abortController.signal,
+        });
+        if (active) setRelatedFeedbacks(Array.isArray(response) ? response : []);
       } catch (err) {
+        if (abortController.signal.aborted) return;
         console.error('Failed to load related feedbacks', err);
-        setRelatedFeedbacks([]);
-        setRelatedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên quan.');
+        if (active) {
+          setRelatedFeedbacks([]);
+          setRelatedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên quan.');
+        }
       } finally {
-        setRelatedFeedbacksLoading(false);
+        if (active) setRelatedFeedbacksLoading(false);
       }
     };
 
     if (feedback) {
       loadRelatedFeedbacks();
     }
-  }, [feedback, feedbackId]);
+
+    return () => {
+      active = false;
+      abortController.abort();
+    };
+  }, [feedback, feedbackId, parentFeedbackId]);
   const statusHistories = useMemo(
     () => Array.isArray(feedback?.statusHistories) ? feedback.statusHistories : [],
     [feedback]
@@ -683,7 +821,7 @@ export const ManagementFeedbackDetailPage = () => {
       [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL]: {
         title: 'Đã nộp duyệt',
         subtitle: 'Kết quả sẵn sàng chờ phê duyệt',
-        accent: 'teal',
+        accent: 'amber',
         icon: 'FileCheck2',
       },
       [managementTypes.feedbackStatus.APPROVED]: {
@@ -807,6 +945,123 @@ export const ManagementFeedbackDetailPage = () => {
     }
   }, [timelineEvents, selectedTimelineEventId]);
 
+  const isStaffMessage = (message) => {
+    const normalizedRole = `${message?.userRole || ''}`.toLowerCase();
+    const senderType = `${message?.senderType || ''}`.toLowerCase();
+    return normalizedRole.includes('staff')
+      || normalizedRole.includes('manager')
+      || normalizedRole.includes('admin')
+      || normalizedRole.includes('system')
+      || senderType.includes('staff')
+      || senderType.includes('system');
+  };
+
+  const getMessageAuthor = (message) => {
+    return message?.userFullName || message?.userName || message?.author || 'Hệ thống';
+  };
+
+  const getMessageBody = (message) => {
+    return message?.messageText || message?.message || message?.note || '';
+  };
+
+  const getMessageAvatar = (label) => {
+    return (label || '')
+      .split(' ')
+      .filter(Boolean)
+      .map((word) => word[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  };
+
+  const messageItems = useMemo(() => {
+    return Array.isArray(messages)
+      ? [...messages].sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0))
+      : [];
+  }, [messages]);
+
+  const groupedMessageBlocks = useMemo(() => {
+    const blocks = [];
+    let currentBlock = null;
+
+    messageItems.forEach((message) => {
+      const author = getMessageAuthor(message);
+      const isInternal = Boolean(message?.isInternal);
+      const isStaff = isStaffMessage(message) && !isInternal;
+      const senderKey = `${isInternal ? 'internal' : isStaff ? 'staff' : 'resident'}|${author}`;
+
+      if (!currentBlock || currentBlock.senderKey !== senderKey) {
+        if (currentBlock) {
+          blocks.push(currentBlock);
+        }
+        currentBlock = {
+          senderKey,
+          author,
+          isInternal,
+          isStaff,
+          messages: [],
+        };
+      }
+
+      currentBlock.messages.push(message);
+    });
+
+    if (currentBlock) {
+      blocks.push(currentBlock);
+    }
+
+    return blocks;
+  }, [messageItems]);
+
+  const historyEvents = useMemo(() => {
+    const accentPalette = {
+      blue: { dot: 'bg-blue-600', pill: 'bg-blue-50 text-blue-700' },
+      violet: { dot: 'bg-violet-600', pill: 'bg-violet-50 text-violet-700' },
+      sky: { dot: 'bg-sky-600', pill: 'bg-sky-50 text-sky-700' },
+      indigo: { dot: 'bg-indigo-600', pill: 'bg-indigo-50 text-indigo-700' },
+      amber: { dot: 'bg-amber-600', pill: 'bg-amber-50 text-amber-700' },
+      teal: { dot: 'bg-teal-600', pill: 'bg-teal-50 text-teal-700' },
+      emerald: { dot: 'bg-emerald-600', pill: 'bg-emerald-50 text-emerald-700' },
+      rose: { dot: 'bg-rose-600', pill: 'bg-rose-50 text-rose-700' },
+      orange: { dot: 'bg-orange-600', pill: 'bg-orange-50 text-orange-700' },
+      slate: { dot: 'bg-slate-500', pill: 'bg-slate-100 text-slate-700' },
+    };
+
+    const getActivityAccent = (accent) => accentPalette[accent] || accentPalette.slate;
+
+    const mappedTimelineEvents = timelineEvents.map((event) => ({
+      ...event,
+      accentTone: getActivityAccent(event.accent),
+      label: event.type === 'assignment' ? 'Phân công' : event.type === 'approval' ? 'Duyệt' : 'Trạng thái',
+    }));
+
+    const mappedNotificationActivities = Array.isArray(notificationActivities)
+      ? notificationActivities.map((activity, index) => ({
+          id: activity.id || `notification-${index}`,
+          type: 'notification',
+          title: activity.title || 'Thông báo',
+          subtitle: activity.subtitle || '',
+          actor: activity.actor || activity.sender || activity.userName || 'Hệ thống',
+          timestamp: activity.timestamp,
+          note: activity.note || activity.message || '',
+          accent: 'rose',
+          accentTone: accentPalette.rose,
+          label: 'Thông báo',
+        }))
+      : [];
+
+    return [...mappedTimelineEvents, ...mappedNotificationActivities].sort(
+      (left, right) => new Date(left.timestamp || 0) - new Date(right.timestamp || 0)
+    );
+  }, [timelineEvents, notificationActivities]);
+
+  const formatHistoryLabel = (event) => {
+    if (event.type === 'notification') return 'Thông báo';
+    if (event.type === 'assignment') return 'Phân công';
+    if (event.type === 'approval') return 'Duyệt';
+    return 'Trạng thái';
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -849,6 +1104,30 @@ export const ManagementFeedbackDetailPage = () => {
           onClose={() => setPageMessage({ type: '', text: '' })}
         />
       )}
+      <div className="border-b border-slate-200 pb-4">
+        <div className="flex flex-wrap items-center gap-6">
+          {[
+            { id: 'detail', label: 'Chi tiết', icon: Lucide.FileText },
+            { id: 'exchange', label: 'Trao đổi', icon: Lucide.MessageSquareText },
+            { id: 'history', label: 'Lịch sử', icon: Lucide.Clock3 },
+          ].map((tab) => {
+            const selected = activeViewTab === tab.id;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveViewTab(tab.id)}
+                className={`flex items-center gap-2 border-b-2 pb-3 text-sm font-semibold transition duration-200 ${selected ? 'border-primary text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Breadcrumb */}
       <div className="admin-info-note flex items-center gap-1 px-4 py-3 text-[11px] font-bold text-slate-500">
         <button
@@ -863,7 +1142,30 @@ export const ManagementFeedbackDetailPage = () => {
         <span className="text-[#0052CC]">{feedback.title}</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      {isConfirmedDuplicate ? (
+        <section className="rounded-[1.4rem] border border-violet-200 bg-violet-50 p-5 shadow-sm" aria-labelledby="staff-duplicate-feedback-title">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white">
+                <Lucide.GitMerge size={20} aria-hidden="true" />
+              </span>
+              <div>
+                <h2 id="staff-duplicate-feedback-title" className="font-bold text-violet-950">Phản ánh trùng</h2>
+                <p className="mt-1 text-sm leading-6 text-violet-800">
+                  Phản ánh này đã được đánh dấu trùng và được xử lý theo phản ánh đã có.
+                </p>
+              </div>
+            </div>
+            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${parentFeedbackId}`)} variant="outline" size="sm">
+              <Lucide.ExternalLink size={14} aria-hidden="true" />
+              Xem phản ánh đã có
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      {activeViewTab === 'detail' ? (
+        <div className="grid grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="col-span-2 space-y-6">
           {/* Header Card */}
@@ -872,15 +1174,21 @@ export const ManagementFeedbackDetailPage = () => {
               <div>
                 <h1 className="admin-hero-title">{feedback.title}</h1>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge intent={getBadgeIntent(feedback.status, 'status')} className="px-2 py-1 text-[10px] font-bold">
+                  {isConfirmedDuplicate ? (
+                    <Badge intent="neutral" className="gap-1 px-2 py-1 text-[10px] font-bold">
+                      <Lucide.GitMerge size={12} aria-hidden="true" />
+                      Phản ánh trùng
+                    </Badge>
+                  ) : null}
+                  <Badge intent={getStatusIntent(feedback.status)} className={`${getStatusClass(feedback.status)} px-2 py-1 text-[10px] font-bold`}>
                     {getStatusLabel(feedback.status)}
                   </Badge>
-                  <Badge intent={getBadgeIntent(feedback.priority, 'priority')} className="px-2 py-1 text-[10px] font-bold">
+                  <Badge intent={getPriorityIntent(feedback.priority)} className={`${getPriorityClass(feedback.priority)} px-2 py-1 text-[10px] font-bold`}>
                     {getPriorityLabel(feedback.priority)}
                   </Badge>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {canVerify && (
                   <Button
                     type="button"
@@ -1460,7 +1768,7 @@ export const ManagementFeedbackDetailPage = () => {
                   <div className="text-sm font-semibold text-slate-900">{feedback ? getStatusLabel(feedback.status) : 'Đang tải...'}</div>
                   <div className="mt-1 text-sm text-slate-500">Thông báo đề xuất sẽ được đánh dấu phù hợp với trạng thái hiện tại.</div>
                 </div>
-                <Badge intent={feedback?.status ? getBadgeIntent(feedback.status, 'status') : 'neutral'} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
+                <Badge intent={feedback?.status ? getStatusIntent(feedback.status) : 'neutral'} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
                   {feedback ? getStatusLabel(feedback.status) : 'Đang tải'}
                 </Badge>
               </div>
@@ -1643,21 +1951,22 @@ export const ManagementFeedbackDetailPage = () => {
           </div>
 
           {/* Attachments */}
-          {attachments.length > 0 && (
+          {activeViewTab === 'detail' && attachments.length > 0 && (
             <div className="admin-panel p-6 space-y-4">
               <h3 className="font-bold text-slate-900">Tệp đính kèm ({attachments.length})</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {attachments.map((attachment, idx) => {
                   const fileUrl = getAttachmentUrl(attachment);
                   const isVideo = isVideoFile(fileUrl);
+                  const attachmentKey = attachment?.attachmentId || attachment?.id || fileUrl || `attachment-${idx}`;
                   return (
                     <div
-                      key={idx}
+                      key={attachmentKey}
                       className="relative bg-slate-100 rounded-lg overflow-hidden cursor-pointer group"
                       onClick={() => setPreviewAttachment(fileUrl)}
                     >
                       {isVideo ? (
-                        <div className="w-full aspect-video bg-slate-800 flex items-center justify-center group-hover:bg-slate-900">
+                        <div className="w-full aspect-video bg-primary/80 flex items-center justify-center group-hover:bg-primary/90">
                           <Lucide.Play className="text-white" size={32} />
                         </div>
                       ) : (
@@ -1667,7 +1976,7 @@ export const ManagementFeedbackDetailPage = () => {
                           className="w-full aspect-video object-cover group-hover:opacity-75"
                         />
                       )}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition"></div>
+                      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/20 transition"></div>
                     </div>
                   );
                 })}
@@ -1676,148 +1985,36 @@ export const ManagementFeedbackDetailPage = () => {
           )}
 
           {/* Comments */}
-          <div className="admin-panel p-6 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Bình luận</h3>
-              <span className="text-xs text-slate-500">{comments.length} bình luận</span>
-            </div>
-            {comments.length === 0 ? (
-              <EmptyState
-                title="Chưa có bình luận nào"
-                description="Phản ánh này hiện chưa có bình luận nào."
-              />
-            ) : (
-              <div className="space-y-4">
-                {comments.map((comment, idx) => (
-                  <div key={comment.commentId || comment.id || idx} className="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-bold text-slate-800">{comment.userName || comment.author || 'Người dùng'}</div>
-                      <div className="text-[10px] text-slate-500">
-                        {comment.createdAt ? formatDate(comment.createdAt) : ''}
+          {activeViewTab === 'detail' ? (
+            <div className="admin-panel p-6 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-bold text-slate-900">Bình luận</h3>
+                <span className="text-xs text-slate-500">{comments.length} bình luận</span>
+              </div>
+              {comments.length === 0 ? (
+                <EmptyState
+                  title="Chưa có bình luận nào"
+                  description="Phản ánh này hiện chưa có bình luận nào."
+                />
+              ) : (
+                <div className="space-y-4">
+                  {comments.map((comment, idx) => (
+                    <div key={comment.commentId || comment.id || idx} className="rounded-2xl bg-slate-50 border border-slate-200 p-4 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-bold text-slate-800">{comment.userName || comment.author || 'Người dùng'}</div>
+                        <div className="text-[10px] text-slate-500">
+                          {comment.createdAt ? formatDate(comment.createdAt) : ''}
+                        </div>
                       </div>
+                      <div className="mt-2 text-slate-700 whitespace-pre-line">{comment.content || comment.message || comment.note}</div>
                     </div>
-                    <div className="mt-2 text-slate-700 whitespace-pre-line">{comment.content || comment.message || comment.note}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Timeline */}
-          {timelineEvents.length > 0 && (
-            <div className="admin-panel p-5 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Theo dõi hồ sơ</div>
-                  <h3 className="mt-1 text-lg font-semibold text-slate-900">Theo dõi hồ sơ từ đầu đến cuối</h3>
+                  ))}
                 </div>
-                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  {timelineEvents.length} mốc thời gian
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-                <div className="space-y-3">
-                  {timelineEvents.map((event) => {
-                    const Icon = Lucide[event.icon] || Lucide.CircleDot;
-                    const isActive = event.id === selectedTimelineEventId;
-                    const accentClass = event.accent === 'blue'
-                      ? 'border-blue-200 bg-blue-50 text-blue-700'
-                      : event.accent === 'violet'
-                        ? 'border-violet-200 bg-violet-50 text-violet-700'
-                        : event.accent === 'sky'
-                          ? 'border-sky-200 bg-sky-50 text-sky-700'
-                          : event.accent === 'indigo'
-                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                            : event.accent === 'amber'
-                              ? 'border-amber-200 bg-amber-50 text-amber-700'
-                              : event.accent === 'teal'
-                                ? 'border-teal-200 bg-teal-50 text-teal-700'
-                                : event.accent === 'emerald'
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                  : event.accent === 'rose'
-                                    ? 'border-rose-200 bg-rose-50 text-rose-700'
-                                    : event.accent === 'orange'
-                                      ? 'border-orange-200 bg-orange-50 text-orange-700'
-                                      : 'border-slate-200 bg-slate-50 text-slate-700';
-
-                    return (
-                      <button
-                        key={event.id}
-                        type="button"
-                        onClick={() => setSelectedTimelineEventId(event.id)}
-                        className={`flex w-full items-start gap-3 rounded-[1.25rem] border p-4 text-left transition ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,251,255,0.96))] hover:border-slate-300 hover:bg-slate-50'}`}
-                      >
-                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${isActive ? 'border-white/20 bg-white/10 text-white' : accentClass}`}>
-                          <Icon size={18} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-slate-900'}`}>{event.title}</div>
-                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${isActive ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                              {event.type === 'assignment' ? 'Phân công' : event.type === 'approval' ? 'Phê duyệt' : 'Trạng thái'}
-                            </span>
-                          </div>
-                          <div className={`mt-1 text-sm ${isActive ? 'text-slate-200' : 'text-slate-500'}`}>{event.subtitle}</div>
-                          <div className={`mt-2 text-xs ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>{event.actor} • {formatDate(event.timestamp)}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="admin-inset-panel p-4 sm:p-5">
-                  {(() => {
-                    const activeEvent = timelineEvents.find((event) => event.id === selectedTimelineEventId) || timelineEvents[0];
-                    if (!activeEvent) return null;
-                    const ActiveIcon = Lucide[activeEvent.icon] || Lucide.CircleDot;
-                    return (
-                      <div className="space-y-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Mốc đang xem</div>
-                            <div className="mt-1 text-xl font-semibold text-slate-900">{activeEvent.title}</div>
-                          </div>
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700">
-                            <ActiveIcon size={18} />
-                          </div>
-                        </div>
-
-                        <div className="admin-inset-panel p-4">
-                          <div className="text-sm font-semibold text-slate-900">{activeEvent.subtitle}</div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">{activeEvent.actor}</span>
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">{formatDate(activeEvent.timestamp)}</span>
-                          </div>
-                          {activeEvent.note ? (
-                            <div className="mt-3 rounded-[1rem] border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
-                              {activeEvent.note}
-                            </div>
-                          ) : (
-                            <div className="mt-3 rounded-[1rem] border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-                              Không có ghi chú chi tiết cho bước này.
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div className="admin-inset-panel p-3 text-sm">
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thực hiện bởi</div>
-                            <div className="mt-1 font-semibold text-slate-700">{activeEvent.actor}</div>
-                          </div>
-                          <div className="admin-inset-panel p-3 text-sm">
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thời điểm</div>
-                            <div className="mt-1 font-semibold text-slate-700">{formatDate(activeEvent.timestamp)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
+              )}
             </div>
-          )}
+          ) : null}
 
+          {isMasterTicket ? (
           <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-bold text-slate-900">Phản ánh liên kết</h3>
@@ -1853,7 +2050,13 @@ export const ManagementFeedbackDetailPage = () => {
                         </div>
                         <div className="space-y-1">
                           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
-                          <div className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</div>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                              <Lucide.GitMerge size={11} aria-hidden="true" />
+                              Phản ánh trùng
+                            </span>
+                            <span className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</span>
+                          </div>
                         </div>
                       </div>
                       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1888,10 +2091,12 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
             )}
           </div>
+          ) : null}
 
+          {isConfirmedDuplicate ? (
           <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Phản ánh liên quan</h3>
+              <h3 className="font-bold text-slate-900">Cụm phản ánh trùng</h3>
               <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                 {relatedFeedbacks.length} mục
               </span>
@@ -1919,7 +2124,9 @@ export const ManagementFeedbackDetailPage = () => {
                     <div key={relatedId || index} className="admin-inset-panel p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                            {item?.relationType === 'master' ? 'Phản ánh chính đã có' : 'Phản ánh trùng liên quan'}
+                          </div>
                           <div className="font-semibold text-slate-900">{relatedId || '—'}</div>
                         </div>
                         <div className="space-y-1">
@@ -1959,6 +2166,7 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
             )}
           </div>
+          ) : null}
 
           {showAreaAlertModal && (
             <div className="absolute right-4 bottom-16 z-50 w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow pointer-events-auto">
@@ -2110,7 +2318,11 @@ export const ManagementFeedbackDetailPage = () => {
                   <div className="text-xs text-slate-500 font-bold mb-2">Trạng thái tiếp theo</div>
                   <div className="flex flex-wrap gap-2">
                     {nextStatusOptions.map((nextStatus) => (
-                      <Badge intent={getBadgeIntent(nextStatus, 'status')} className="px-3 py-1 text-[11px] font-semibold">
+                      <Badge
+                        key={nextStatus}
+                        intent={getStatusIntent(nextStatus)}
+                        className="px-3 py-1 text-[11px] font-semibold"
+                      >
                         {getStatusLabel(nextStatus)}
                       </Badge>
                     ))}
@@ -2151,12 +2363,200 @@ export const ManagementFeedbackDetailPage = () => {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {activeViewTab === 'exchange' ? (
+        <div className="admin-panel p-6 space-y-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Trao đổi</div>
+              <h3 className="mt-1 text-lg font-semibold text-slate-900">Trao đổi phản ánh</h3>
+              <p className="mt-1 text-sm text-slate-500">Gửi phản hồi trực tiếp cho người dân và quản lý ghi chú nội bộ trong cùng một workspace.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-slate-600">{messages.length} mục</span>
+              <Badge intent="info" className="px-3 py-1 text-xs uppercase tracking-[0.2em]">Trao đổi</Badge>
+            </div>
+          </div>
 
+          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { id: 'public', label: 'Trả lời người dân' },
+                { id: 'internal', label: 'Ghi chú nội bộ' },
+              ].map((tab) => {
+                const selected = composerMode === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setComposerMode(tab.id)}
+                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${selected ? 'bg-white text-primary shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <label className="mt-4 block text-sm font-semibold text-slate-700">
+              <span className="mb-2 block">Nội dung</span>
+              <textarea
+                value={messageDraft}
+                onChange={(event) => setMessageDraft(event.target.value)}
+                rows={5}
+                placeholder={composerMode === 'internal' ? 'Nhập ghi chú nội bộ...' : 'Nhập phản hồi cho người dân...'}
+                className="w-full rounded-[1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+              />
+            </label>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-slate-500">{messageDraft.length} ký tự</div>
+              <Button
+                type="button"
+                onClick={handleMessageSend}
+                disabled={messageSubmitting || !messageDraft.trim()}
+                variant="primary"
+                size="sm"
+              >
+                {messageSubmitting ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={14} />}
+                Gửi
+              </Button>
+            </div>
+          </div>
+
+          {messagesLoading ? (
+            <div className="rounded-[1rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+              <span className="loading loading-spinner loading-sm mr-2" />
+              Đang tải trao đổi...
+            </div>
+          ) : messagesError ? (
+            <div className="rounded-[1rem] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{messagesError}</div>
+          ) : (
+            <div className="space-y-6">
+              {groupedMessageBlocks.map((block, blockIndex) => {
+                const blockKey = `${block.senderKey}-${block.messages[0]?.interactionMessageId || block.messages[0]?.id}`;
+                const blockOuterClass = blockIndex > 0 ? 'pt-6 border-t border-slate-200' : '';
+                const blockHeaderTone = block.isInternal ? 'border-amber-200 bg-amber-50 text-amber-900' : block.isStaff ? 'border-slate-200 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-900';
+                const blockBadgeTone = block.isInternal ? 'bg-amber-200 text-amber-800' : block.isStaff ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-600';
+
+                return (
+                  <div key={blockKey} className={blockOuterClass}>
+                    <div className="rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
+                      <div className={`flex flex-col gap-3 rounded-t-[1.5rem] border-b border-slate-200 px-5 py-4 ${blockHeaderTone}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
+                              {getMessageAvatar(block.author)}
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{block.author}</div>
+                              <div className="text-xs text-slate-500">{formatDate(block.messages[0]?.createdAt)}</div>
+                            </div>
+                          </div>
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${blockBadgeTone}`}>
+                            {block.isInternal ? 'Ghi chú nội bộ' : block.isStaff ? 'Nhân viên' : 'Công dân'}
+                          </span>
+                        </div>
+                        {block.isInternal ? (
+                          <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                            <div className="flex items-center gap-2 font-semibold">
+                              <Lucide.AlertTriangle size={16} />
+                              Nội dung này chỉ hiển thị với quản lý và nhân viên.
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-4 px-5 py-5">
+                        {block.messages.map((message, messageIndex) => {
+                          const body = getMessageBody(message);
+                          const itemClass = messageIndex > 0 ? 'pt-4 border-t border-slate-200/70' : '';
+                          return (
+                            <div key={message?.interactionMessageId || message?.id} className={`${itemClass} space-y-3`}>
+                              <div className={`rounded-[1.25rem] border ${block.isInternal ? 'border-amber-200 bg-amber-50 text-amber-900' : block.isStaff ? 'border-primary/20 bg-primary/10 text-slate-900' : 'border-slate-200 bg-slate-50 text-slate-700'} p-4`}>
+                                <div className="text-sm leading-7 whitespace-pre-line">{body || '—'}</div>
+                              </div>
+                              <div className="text-[11px] text-slate-500">{formatDate(message?.createdAt)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {activeViewTab === 'history' ? (
+        <div className="space-y-6">
+          <div className="admin-panel p-6 space-y-4">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Theo dõi hồ sơ</div>
+              <h3 className="mt-1 text-lg font-semibold text-slate-900">Dòng sự kiện phản ánh</h3>
+              <p className="mt-1 text-sm text-slate-500">Xem lại toàn bộ tiến trình xử lý, quyết định và thông báo của phản ánh từ lúc tiếp nhận đến hiện tại.</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Tổng số</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-900">{historyEvents.length}</div>
+                </div>
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Theo dõi từ đầu đến cuối</div>
+              </div>
+
+              <ol className="mt-6 space-y-6">
+                {historyEvents.map((event, index) => {
+                  const isLast = index === historyEvents.length - 1;
+                  return (
+                    <li key={event.id || `${event.title}-${index}`} className="relative flex gap-4">
+                      <div className="flex flex-col items-center text-center">
+                        <div className={`${event.accentTone.dot} h-3.5 w-3.5 rounded-full`} aria-hidden="true" />
+                        {!isLast && <div className="mt-2 h-full w-px bg-slate-200" aria-hidden="true" />}
+                      </div>
+                      <div className="flex-1 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-900">{event.title}</div>
+                            {event.subtitle ? <div className="mt-1 text-sm text-slate-500">{event.subtitle}</div> : null}
+                          </div>
+                          <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${event.accentTone.pill}`}>
+                            {formatHistoryLabel(event)}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người thực hiện</div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900">{event.actor || 'Hệ thống'}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Thời gian</div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(event.timestamp)}</div>
+                          </div>
+                        </div>
+
+                        {event.note ? (
+                          <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">
+                            {event.note}
+                          </div>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Attachment Preview Modal */}
       {previewAttachment && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[99999]">
+        <div className="fixed inset-0 bg-primary/90 flex items-center justify-center p-4 z-[99999]">
           <div className="relative max-w-4xl w-full">
             <button
               onClick={() => setPreviewAttachment(null)}

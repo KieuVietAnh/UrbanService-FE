@@ -1,449 +1,298 @@
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { AppScreen } from '@/components/ui/AppScreen';
+import React, { useState } from 'react';
+import {
+  View,
+  ScrollView,
+  Pressable,
+  Alert,
+  StyleSheet,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Icon from '@expo/vector-icons/Feather';
+import { Text } from '@/components/ui/Text';
+import { AppButton } from '@/components/ui/AppButton';
 import { useAuthStore } from '@/features/auth/auth.store';
+import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/theme';
-import { useState } from 'react';
 
-type MenuItem = {
-  title: string;
-  icon: keyof typeof Icon.glyphMap;
-};
+interface SettingRow {
+  icon: string;
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <Text style={styles.sectionHeader}>{label}</Text>
+  );
+}
+
+function SettingItem({ item }: { item: SettingRow }) {
+  return (
+    <Pressable
+      onPress={item.onPress}
+      style={({ pressed }) => [styles.settingItem, pressed && styles.settingItemPressed]}
+    >
+      <View style={[styles.settingIcon, item.destructive && styles.settingIconDestructive]}>
+        <Icon
+          name={item.icon as any}
+          size={18}
+          color={item.destructive ? '#EF4444' : colors.primary}
+        />
+      </View>
+      <Text style={[styles.settingLabel, item.destructive && styles.settingLabelDestructive]}>
+        {item.label}
+      </Text>
+      {!item.destructive && (
+        <Icon name="chevron-right" size={16} color="#CBD5E1" />
+      )}
+    </Pressable>
+  );
+}
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuthStore();
   const router = useRouter();
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const toast = useToast();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
-  const getDisplayName = () => {
-    if (!user) return 'bạn';
-
-    const fullName = ((user as any).fullName || (user as any).name || '').trim();
-    if (fullName) return fullName;
-
-    const emailPrefix = user.email?.split('@')[0] ?? '';
-    if (!emailPrefix) return 'bạn';
-
-    return emailPrefix
-      .split(/[._-]/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-      .join(' ');
-  };
-
-  const displayName = getDisplayName();
-  const userEmail = user?.email ?? '';
-  const userRole = user?.role === 'service-user' ? 'Cư dân' : 'Nhân viên';
-  const initial = displayName.charAt(0).toUpperCase();
+  const fullName = (user as any)?.fullName ?? 'Người dùng';
+  const phone = (user as any)?.phone ?? '';
+  const email = user?.email ?? '';
+  const initials = fullName
+    .split(' ')
+    .slice(-2)
+    .map((w: string) => w[0])
+    .join('')
+    .toUpperCase();
 
   const handleLogout = () => {
-    setLogoutModalVisible(true);
+    Alert.alert(
+      'Đăng xuất',
+      'Bạn có chắc muốn đăng xuất khỏi UrbanMind?',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: 'Đăng xuất',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/(auth)/login');
+          },
+        },
+      ]
+    );
   };
 
-  const confirmLogout = () => {
-    setLogoutModalVisible(false);
-    logout();
-    router.replace('/(auth)/login');
-  };
-
-  const accountItems: MenuItem[] = [
-    {
-      title: 'Thông tin cá nhân',
-      icon: 'user',
-    },
-    {
-      title: 'Địa chỉ thường dùng',
-      icon: 'map-pin',
-    },
-    {
-      title: 'Cài đặt thông báo',
-      icon: 'bell',
-    },
+  const ACCOUNT_ROWS: SettingRow[] = [
+    { icon: 'user', label: 'Thông tin cá nhân', onPress: () => toast.info('Coming soon') },
+    { icon: 'map-pin', label: 'Địa chỉ thường dùng', onPress: () => toast.info('Coming soon') },
+    { icon: 'bell', label: 'Cài đặt thông báo', onPress: () => toast.info('Coming soon') },
   ];
 
-  const supportItems: MenuItem[] = [
-    {
-      title: 'Hỗ trợ',
-      icon: 'help-circle',
-    },
-    {
-      title: 'Điều khoản sử dụng',
-      icon: 'file-text',
-    },
+  const SUPPORT_ROWS: SettingRow[] = [
+    { icon: 'help-circle', label: 'Hỗ trợ', onPress: () => toast.info('Coming soon') },
+    { icon: 'shield', label: 'Điều khoản sử dụng', onPress: () => toast.info('Coming soon') },
   ];
-
-  const renderMenuItem = (item: MenuItem) => (
-    <TouchableOpacity key={item.title} activeOpacity={0.78} style={styles.menuItem}>
-      <View style={styles.menuIcon}>
-        <Icon name={item.icon} size={20} color={colors.primary} />
-      </View>
-
-      <Text style={styles.menuText}>{item.title}</Text>
-
-      <Icon name="chevron-right" size={20} color="#6B7280" />
-    </TouchableOpacity>
-  );
 
   return (
-    <AppScreen>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity
-            activeOpacity={0.75}
-            style={styles.headerButton}
-            onPress={() => {
-              router.replace('/(resident)');
-            }}
-          >
-            <Icon name="arrow-left" size={22} color={colors.text} />
-          </TouchableOpacity>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Header */}
+      <View className="flex-row items-center justify-between px-5 pt-3 pb-3 bg-surface border-b border-border-light">
+        <Text className="text-xl font-sans-bold text-text">Tài khoản</Text>
+        <Pressable
+          onPress={() => router.push('/(resident)/notifications' as any)}
+          style={styles.bellBtn}
+          hitSlop={10}
+        >
+          <Icon name="bell" size={20} color={colors.text} />
+        </Pressable>
+      </View>
 
-          <Text style={styles.headerTitle}>Tài khoản</Text>
-
-          <TouchableOpacity activeOpacity={0.75} style={styles.headerButton}>
-            <Icon name="bell" size={20} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.profileHero}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initial}</Text>
-
-            <View style={styles.editBadge}>
-              <Icon name="edit-2" size={14} color={colors.surface} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+        {/* ─── Avatar + Info ─── */}
+        <View className="items-center py-8 bg-surface">
+          <View style={styles.avatarWrap}>
+            <Text style={styles.avatarInitials}>{initials}</Text>
+            <View style={styles.avatarEditBtn}>
+              <Icon name="edit-2" size={12} color="#FFFFFF" />
             </View>
           </View>
-
-          <Text style={styles.name}>{displayName}</Text>
-
-          {userEmail ? (
-            <View style={styles.contactRow}>
-              <Icon name="mail" size={15} color="#4B5563" />
-              <Text style={styles.contactText}>{userEmail}</Text>
+          <Text className="text-xl font-sans-bold text-text mt-4">{fullName}</Text>
+          {phone ? (
+            <View className="flex-row items-center gap-1.5 mt-1">
+              <Icon name="phone" size={13} color={colors.muted} />
+              <Text className="text-sm text-text-muted">{phone}</Text>
             </View>
           ) : null}
-
-          <View style={styles.rolePill}>
-            <Icon name="shield" size={14} color={colors.primary} />
-            <Text style={styles.roleText}>{userRole}</Text>
-          </View>
+          {email ? (
+            <View className="flex-row items-center gap-1.5 mt-1">
+              <Icon name="mail" size={13} color={colors.muted} />
+              <Text className="text-sm text-text-muted">{email}</Text>
+            </View>
+          ) : null}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>CÀI ĐẶT TÀI KHOẢN</Text>
-          <View style={styles.menuCard}>{accountItems.map(renderMenuItem)}</View>
+        {/* Stats row */}
+        <View style={styles.statsRow}>
+          {[
+            { label: 'Đã gửi', value: '—' },
+            { label: 'Đang xử lý', value: '—' },
+            { label: 'Hoàn thành', value: '—' },
+          ].map((s, i) => (
+            <React.Fragment key={s.label}>
+              {i > 0 && <View style={styles.statsDivider} />}
+              <View className="flex-1 items-center">
+                <Text className="text-xl font-sans-bold text-primary">{s.value}</Text>
+                <Text className="text-xs text-text-muted mt-0.5 font-sans-medium">{s.label}</Text>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>HỖ TRỢ & PHÁP LÝ</Text>
-          <View style={styles.menuCard}>{supportItems.map(renderMenuItem)}</View>
+        {/* ─── Settings ─── */}
+        <SectionHeader label="CÀI ĐẶT TÀI KHOẢN" />
+        <View style={styles.settingsGroup}>
+          {ACCOUNT_ROWS.map((row) => (
+            <SettingItem key={row.label} item={row} />
+          ))}
         </View>
 
-        <TouchableOpacity activeOpacity={0.82} style={styles.logoutButton} onPress={handleLogout}>
-          <Icon name="log-out" size={18} color="#B91C1C" />
-          <Text style={styles.logoutText}>Đăng xuất</Text>
-        </TouchableOpacity>
+        <SectionHeader label="HỖ TRỢ & PHÁP LÝ" />
+        <View style={styles.settingsGroup}>
+          {SUPPORT_ROWS.map((row) => (
+            <SettingItem key={row.label} item={row} />
+          ))}
+        </View>
 
-        <View style={styles.versionBox}>
-          <Text style={styles.versionText}>UrbanMind v2.4.0 (2024)</Text>
-          <Text style={styles.versionSubtext}>Phát triển bởi Trung tâm Chuyển đổi số</Text>
+        {/* Logout */}
+        <View className="px-5 mt-4">
+          <AppButton
+            variant="danger"
+            size="lg"
+            fullWidth
+            leftIcon={<Icon name="log-out" size={18} color="#FFFFFF" style={{ marginRight: 4 }} />}
+            onPress={handleLogout}
+          >
+            Đăng xuất
+          </AppButton>
+        </View>
+
+        {/* Version */}
+        <View className="items-center mt-8">
+          <Text className="text-xs text-text-light font-sans-semibold">
+            UrbanMind v2.5.0
+          </Text>
+          <Text className="text-2xs text-text-light mt-0.5">
+            Phát triển bởi Trung tâm Chuyển đổi số
+          </Text>
         </View>
       </ScrollView>
-      <Modal
-        visible={logoutModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLogoutModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.logoutModal}>
-            <View style={styles.logoutModalIcon}>
-              <Icon name="log-out" size={24} color="#B91C1C" />
-            </View>
-
-            <Text style={styles.logoutModalTitle}>Đăng xuất tài khoản?</Text>
-
-            <Text style={styles.logoutModalDescription}>
-              Bạn có chắc chắn muốn đăng xuất khỏi tài khoản này không?
-            </Text>
-
-            <View style={styles.logoutModalActions}>
-              <TouchableOpacity
-                activeOpacity={0.78}
-                style={styles.cancelButton}
-                onPress={() => setLogoutModalVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>Hủy</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.82}
-                style={styles.confirmLogoutButton}
-                onPress={confirmLogout}
-              >
-                <Text style={styles.confirmLogoutText}>Đăng xuất</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </AppScreen>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    paddingTop: 46,
-    paddingHorizontal: 20,
-    paddingBottom: 112,
-  },
-  header: {
-    height: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 26,
-  },
-  headerButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  profileHero: {
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  avatar: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 4,
-    borderColor: '#DBEAFE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  avatarText: {
-    fontSize: 38,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  editBadge: {
-    position: 'absolute',
-    right: 0,
-    bottom: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: colors.background,
-  },
-  name: {
-    fontSize: 25,
-    lineHeight: 32,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  contactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 10,
-  },
-  contactText: {
-    fontSize: 14,
-    lineHeight: 19,
-    color: '#4B5563',
-  },
-  rolePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  roleText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  section: {
-    marginBottom: 22,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-    color: '#6B7280',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-    paddingLeft: 14,
-  },
-  menuCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  menuItem: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  menuIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  menuText: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  logoutButton: {
-    minHeight: 54,
-    borderRadius: 16,
-    backgroundColor: '#FEE2E2',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  logoutText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#B91C1C',
-  },
-  versionBox: {
-    alignItems: 'center',
-    marginTop: 28,
-  },
-  versionText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '800',
-    color: '#4B5563',
-  },
-  versionSubtext: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#6B7280',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.48)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  logoutModal: {
-    width: '100%',
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingTop: 26,
-    paddingBottom: 20,
-    alignItems: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  logoutModalIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  logoutModalTitle: {
-    fontSize: 19,
-    lineHeight: 25,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  logoutModalDescription: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 22,
-  },
-  logoutModalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  cancelButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
+  safe: { flex: 1, backgroundColor: '#F8FAFC' },
+  bellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelButtonText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#334155',
+  avatarWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 3,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  confirmLogoutButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: '#DC2626',
+  avatarInitials: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 28,
+    color: colors.primary,
+    letterSpacing: -0.5,
+  },
+  avatarEditBtn: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    marginBottom: 8,
+  },
+  statsDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: '#E2E8F0',
+  },
+  sectionHeader: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 11,
+    color: '#94A3B8',
+    letterSpacing: 0.6,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 6,
+  },
+  settingsGroup: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  settingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  settingItemPressed: {
+    backgroundColor: '#F8FAFC',
+  },
+  settingIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  confirmLogoutText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.surface,
+  settingIconDestructive: {
+    backgroundColor: '#FEE2E2',
+  },
+  settingLabel: {
+    flex: 1,
+    fontFamily: 'Geist-Medium',
+    fontSize: 15,
+    color: '#0F172A',
+  },
+  settingLabelDestructive: {
+    color: '#EF4444',
   },
 });

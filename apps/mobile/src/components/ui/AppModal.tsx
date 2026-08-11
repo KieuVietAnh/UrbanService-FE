@@ -1,41 +1,29 @@
-import { Modal, View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import { Modal, View, Pressable, StyleSheet } from 'react-native';
 import { ReactNode } from 'react';
-import { colors, radius, spacing } from '@/constants/theme';
 
 interface AppModalProps {
   visible: boolean;
   onRequestClose: () => void;
   children: ReactNode;
-  style?: StyleProp<ViewStyle>;
-  containerStyle?: StyleProp<ViewStyle>;
-  backdropStyle?: StyleProp<ViewStyle>;
   backdropPressToClose?: boolean;
-  backdropOpacity?: number;
 }
 
 export const AppModal = ({
   visible,
   onRequestClose,
   children,
-  style,
-  containerStyle,
-  backdropStyle,
   backdropPressToClose = true,
-  backdropOpacity = 0.5,
 }: AppModalProps) => {
   return (
-    <Modal
-      transparent
-      visible={visible}
-      onRequestClose={onRequestClose}
-    >
-      <View style={[styles.backdrop, { opacity: backdropOpacity }, backdropStyle]}
-        {...(backdropPressToClose ? { onPress: onRequestClose } : {})}
+    <Modal transparent visible={visible} onRequestClose={onRequestClose} animationType="fade">
+      <Pressable
+        style={styles.backdrop}
+        onPress={backdropPressToClose ? onRequestClose : undefined}
       >
-        <View style={[styles.container, containerStyle]}>
+        <Pressable style={styles.container} onPress={() => {}}>
           {children}
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 };
@@ -43,15 +31,15 @@ export const AppModal = ({
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   container: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    width: '80%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    width: '85%',
     maxHeight: '80%',
   },
 });

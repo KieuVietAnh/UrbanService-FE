@@ -329,15 +329,25 @@ export const ProfilePage = () => {
                   Chưa có hoạt động gần đây.
                 </div>
               ) : (
-                latestTickets.map(ticket => (
+                latestTickets.map(ticket => {
+                  const isConfirmedDuplicate = Boolean(ticket?.parentTicketId || ticket?.parentFeedbackId);
+                  return (
                   <div key={ticket.feedbackId || ticket.createdAt} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-bold text-slate-950">{ticket.title || ticket.categoryName || 'Phản ánh mới'}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-slate-950">{ticket.title || ticket.categoryName || 'Phản ánh mới'}</p>
+                          {isConfirmedDuplicate ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                              <Lucide.GitMerge size={11} aria-hidden="true" />
+                              Phản ánh trùng
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="mt-2 text-sm text-slate-500">{ticket.locationText || 'Vị trí chưa xác định'}</p>
                       </div>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                        {ticket.status || 'Chờ xử lý'}
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isConfirmedDuplicate ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {isConfirmedDuplicate ? 'Phản ánh trùng' : (ticket.status || 'Chờ xử lý')}
                       </span>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -345,7 +355,8 @@ export const ProfilePage = () => {
                       <span className="rounded-full bg-slate-100 px-2 py-1">#{ticket.feedbackId || 'N/A'}</span>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>

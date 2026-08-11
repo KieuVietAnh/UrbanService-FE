@@ -7,45 +7,97 @@ import { User } from '@/types/auth.types';
 interface AuthState {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  clearError: () => void;
   error: string | null;
+  // Actions
+  login: (email: string, password: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
+  sendOtp: (phone: string) => Promise<void>;
+  verifyOtp: (phone: string, otp: string) => Promise<void>;
+  logout: () => Promise<void>;
+  clearError: () => void;
+  setUser: (user: User) => void;
+}
+
+interface RegisterData {
+  fullName: string;
+  phone: string;
+  email: string;
+  password: string;
 }
 
 export const useAuthStore = create<AuthState>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set) => ({
         user: null,
         isLoading: false,
         error: null,
+
         login: async (email: string, password: string) => {
           set({ isLoading: true, error: null });
           try {
-            // TODO: Replace with real API call
             const user = await AuthService.login(email, password);
             set({ user, isLoading: false });
           } catch (err: any) {
-            set({ error: err.message, isLoading: false });
+            set({ error: err.message ?? 'Đăng nhập thất bại', isLoading: false });
+            throw err;
           }
         },
-        logout: () => {
-          set({ user: null });
+
+        register: async (data: RegisterData) => {
+          set({ isLoading: true, error: null });
+          try {
+            await AuthService.register(data);
+            set({ isLoading: false });
+          } catch (err: any) {
+            set({ error: err.message ?? 'Đăng ký thất bại', isLoading: false });
+            throw err;
+          }
         },
-        clearError: () => {
-          set({ error: null });
+
+        sendOtp: async (phone: string) => {
+          set({ isLoading: true, error: null });
+          try {
+            await AuthService.sendOtp(phone);
+            set({ isLoading: false });
+          } catch (err: any) {
+            set({ error: err.message ?? 'Gửi OTP thất bại', isLoading: false });
+            throw err;
+          }
         },
+
+        verifyOtp: async (phone: string, otp: string) => {
+          set({ isLoading: true, error: null });
+          try {
+            const user = await AuthService.verifyOtp(phone, otp);
+            set({ user, isLoading: false });
+          } catch (err: any) {
+            set({ error: err.message ?? 'Mã OTP không chính xác', isLoading: false });
+            throw err;
+          }
+        },
+
+        logout: async () => {
+          try {
+            await AuthService.logout();
+          } catch { /* silent */ }
+          set({ user: null, error: null });
+        },
+
+        clearError: () => set({ error: null }),
+
+        setUser: (user: User) => set({ user }),
       }),
       {
-        name: 'auth-storage',
+        name: 'urbanmind-auth',
         storage: {
           getItem: (key) =>
-            AsyncStorageService.getItem<string>(key).then((value) => (value ? JSON.parse(value) : null)),
+            AsyncStorageService.getItem<string>(key).then((v) => (v ? JSON.parse(v) : null)),
           setItem: (key, value) =>
             AsyncStorageService.setItem<string>(key, JSON.stringify(value)),
           removeItem: (key) => AsyncStorageService.removeItem(key),
         },
+        partialize: (state) => ({ user: state.user }) as AuthState,
       }
     )
   )

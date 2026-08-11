@@ -339,6 +339,7 @@ export const Header = ({ onMenuToggle }) => {
       'tickets',
       'community',
       'manager',
+      'staff',
     ]);
 
     const visiblePaths = paths.filter((path) => !hiddenBreadcrumbSegments.has(path));
