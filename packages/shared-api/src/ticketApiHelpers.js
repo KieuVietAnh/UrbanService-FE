@@ -88,10 +88,20 @@ export const normalizeTicketsResponse = (response) => {
 };
 
 export const normalizeCommentsResponse = (resp) => {
-  const payload = resp?.data ?? resp;
+  const top = resp?.data ?? resp;
+  const payload = top?.data ?? top;
+
+  if (Array.isArray(top)) return top;
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.content)) return payload.content;
   if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.comments)) return payload.comments;
+  if (Array.isArray(payload?.commentList)) return payload.commentList;
+  if (Array.isArray(payload?.comment)) return payload.comment;
+  if (Array.isArray(top?.comments)) return top.comments;
+  if (Array.isArray(top?.commentList)) return top.commentList;
+  if (Array.isArray(top?.comment)) return top.comment;
+
   return [];
 };

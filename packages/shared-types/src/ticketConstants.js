@@ -1,5 +1,7 @@
 import { managementTypes } from './managementTypes.js';
 
+const normalizeStatusKey = (value) => `${value ?? ''}`.trim().replace(/[_\s]+/g, '').toLowerCase();
+
 export const TICKET_STATUS_STEPS = [
   { title: 'Đã gửi', sub: managementTypes.feedbackStatus.SUBMITTED },
   { title: 'Đã xác minh', sub: managementTypes.feedbackStatus.VERIFIED },
@@ -26,7 +28,13 @@ export const getStatusLabel = (status, fallback = 'Không xác định') => {
     [managementTypes.feedbackStatus.CANCELLED]: 'Đã hủy',
   };
 
-  return labels[status] || fallback;
+  if (!status) return fallback;
+
+  if (labels[status]) return labels[status];
+
+  const normalizedKey = normalizeStatusKey(status);
+  const normalizedLabels = new Map(Object.entries(labels).map(([key, label]) => [normalizeStatusKey(key), label]));
+  return normalizedLabels.get(normalizedKey) || fallback;
 };
 
 export const getStatusStep = (status) => {

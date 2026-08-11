@@ -122,12 +122,10 @@ const getStepStatus = (
 };
 
 const TIMELINE_STEPS = [
-  { key: 'SUBMITTED', label: 'Đã gửi phản ánh', desc: 'Phản ánh của bạn đã được tiếp nhận.' },
-  { key: 'VERIFIED', label: 'Đã xác minh', desc: 'Phản ánh đã được kiểm tra tính hợp lệ.' },
+  { key: 'SUBMITTED', label: 'Đã nhận', desc: 'Phản ánh của bạn đã được tiếp nhận.' },
   { key: 'ASSIGNED', label: 'Đã phân công', desc: 'Đơn vị chuyên trách đã nhận nhiệm vụ.' },
   { key: 'IN_PROGRESS', label: 'Đang xử lý', desc: 'Lực lượng chức năng đang tiến hành xử lý.' },
-  { key: 'RESOLVED', label: 'Đã xử lý xong', desc: 'Vấn đề đã được khắc phục hoàn tất.' },
-  { key: 'CLOSED', label: 'Hoàn thành & Đóng', desc: 'Phản ánh được xác nhận hoàn thành.' },
+  { key: 'RESOLVED', label: 'Đã xử lý', desc: 'Vấn đề đã được khắc phục hoàn tất.' },
 ];
 
 interface CommentItem {
@@ -184,7 +182,7 @@ export default function TicketDetailScreen() {
     enabled: Boolean(feedbackId),
   });
 
-  // Fetch Comments
+  // Fetch Comments for both the preview card and the bottom discussion sheet.
   const { data: comments = [] } = useQuery<CommentItem[]>({
     queryKey: ['feedback-comments', feedbackId],
     queryFn: async () => {
@@ -198,34 +196,32 @@ export default function TicketDetailScreen() {
         createdAt: c.createdAt ?? new Date().toISOString(),
       }));
     },
-    enabled: Boolean(feedbackId) && showComments,
-    refetchInterval: showComments ? 6000 : false,
+    enabled: Boolean(feedbackId),
+    refetchInterval: 6000,
   });
 
   // Post Comment Mutation
   const addCommentMutation = useMutation({
     mutationFn: (content: string) => feedbackApi.addComment(feedbackId, content),
-    onSuccess: () => {
+    onSuccess: async () => {
       setCommentInput('');
-      queryClient.invalidateQueries({ queryKey: ['feedback-comments', feedbackId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feedback', feedbackId] }),
+        queryClient.invalidateQueries({ queryKey: ['feedback-comments', feedbackId] }),
+        queryClient.refetchQueries({ queryKey: ['feedback-comments', feedbackId] }),
+      ]);
       toast.success('Đã gửi trao đổi');
     },
     onError: (err: any) => toast.error(err.message || 'Không thể gửi bình luận'),
   });
 
-  // Message count for discussion card
-  const { data: _messagesForCount = [] } = useQuery({
-    queryKey: ['feedback-messages-count', feedbackId],
-    queryFn: async () => {
-      const res = await axiosClient.get(`/api/feedbacks/${feedbackId}/messages`, { params: { includeInternal: false } });
-      const data = res?.data ?? res;
-      return Array.isArray(data) ? data : (data?.items ?? []);
-    },
-    enabled: Boolean(feedbackId),
-    staleTime: 1000 * 30,
-  });
-
-  const messageCount = Array.isArray(_messagesForCount) ? _messagesForCount.length : 0;
+  const commentCount = Array.isArray(comments) ? comments.length : 0;
+  const latestComment = Array.isArray(comments) && comments.length > 0
+    ? comments[comments.length - 1]
+    : null;
+  const latestCommentPreview = latestComment?.content
+    ? String(latestComment.content).slice(0, 96)
+    : 'Chưa có bình luận';
 
   const status = ticket?.status ?? 'SUBMITTED';
   const normalizedStatus = normalizeStatusKey(status);
@@ -281,7 +277,7 @@ export default function TicketDetailScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 140 }}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -291,16 +287,12 @@ export default function TicketDetailScreen() {
         }
       >
         <View style={styles.heroSection}>
-          <View style={styles.statusHeaderRow}>
-            <View style={styles.statusHeaderLeft}>
-              <Text style={styles.codeText}>
-                #{ticket?.code ?? ticket?.feedbackCode ?? feedbackId}
-              </Text>
-              <Text style={styles.titleText}>
-                {ticket?.title ?? '—'}
-              </Text>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroTitleBlock}>
+              <Text style={styles.codeText}>#{ticket?.code ?? ticket?.feedbackCode ?? feedbackId}</Text>
+              <Text style={styles.titleText}>{ticket?.title ?? '—'}</Text>
             </View>
-            <View style={styles.statusHeaderRight}>
+            <View style={styles.heroBadgeStack}>
               <AppBadge status={status} size="md" />
               {ticket?.priority && (
                 <View style={styles.priorityBadgeWrap}>
@@ -310,151 +302,167 @@ export default function TicketDetailScreen() {
             </View>
           </View>
 
-          <View style={styles.metaRow}>
-            <Icon name="map-pin" size={13} color={semantics.text.muted} />
-            <Text style={styles.metaText}>{ticket?.locationText ?? 'Không rõ vị trí'}</Text>
+          <View style={styles.metaRows}>
+            <View style={styles.metaRow}>
+              <Icon name="map-pin" size={13} color={semantics.text.muted} />
+              <Text style={styles.metaText}>{ticket?.locationText ?? 'Không rõ vị trí'}</Text>
+            </View>
+            <View style={styles.metaRow}>
+              <Icon name="calendar" size={13} color={semantics.text.muted} />
+              <Text style={styles.metaText}>{createdAt}</Text>
+            </View>
           </View>
 
-          <View style={styles.metaRow}>
-            <Icon name="calendar" size={13} color={semantics.text.muted} />
-            <Text style={styles.metaText}>{createdAt}</Text>
+          <View style={styles.heroActionRow}>
+            <AppButton
+              variant="primary"
+              size="md"
+              onPress={() => router.push(`/(resident)/tickets/${feedbackId}/chat` as any)}
+              fullWidth
+              leftIcon={<Icon name="message-circle" size={15} color="#FFFFFF" style={{ marginRight: 5 }} />}
+            >
+              Mở hỗ trợ
+            </AppButton>
           </View>
         </View>
 
-        <View style={styles.cardWrap}>
+        <View style={styles.sectionStack}>
           <AppCard shadow="sm">
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
-                <Text style={styles.cardHeaderTitle}>Ticket Summary</Text>
-                <View style={styles.liveChip}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveChipText}>Live</Text>
-                </View>
+                <Text style={styles.cardHeaderTitle}>Tiến độ xử lý</Text>
+                <Text style={styles.sectionCounter}>{TIMELINE_STEPS.length} bước</Text>
               </View>
-              <Text style={styles.descriptionText}>
-                {ticket?.description ?? 'Không có mô tả chi tiết.'}
-              </Text>
-            </View>
-          </AppCard>
-        </View>
+              <View style={styles.timelineCard}>
+                {TIMELINE_STEPS.map((step, i) => {
+                  const stepStatus = getStepStatus(step.key, status);
+                  const histEntry = histories.find(
+                    (h: any) => normalizeStatusKey(h.status) === normalizeStatusKey(step.key)
+                  );
+                  const ts = histEntry?.createdAt
+                    ? new Date(histEntry.createdAt).toLocaleString('vi-VN')
+                    : undefined;
 
-        <View style={styles.metricsGrid}>
-          <AppCard shadow="sm">
-            <View style={styles.metricCardContent}>
-              <View style={styles.metricHeader}>
-                <Icon name="clock" size={14} color={semantics.text.brand} />
-                <Text style={styles.metricTitle}>SLA Countdown</Text>
+                  return (
+                    <TimelineStep
+                      key={step.key}
+                      title={step.label}
+                      description={stepStatus !== 'pending' ? (histEntry?.note ?? step.desc) : step.desc}
+                      timestamp={ts}
+                      status={stepStatus}
+                      isLast={i === TIMELINE_STEPS.length - 1}
+                    />
+                  );
+                })}
               </View>
-              <Text style={styles.slaValue}>{ticket?.slaRemaining ?? '24h'}</Text>
-              <Text style={styles.metricSub}>Còn lại cho xử lý</Text>
             </View>
           </AppCard>
-          <AppCard shadow="sm">
-            <View style={styles.metricCardContent}>
-              <View style={styles.metricHeader}>
-                <Icon name="flag" size={14} color={semantics.text.brand} />
-                <Text style={styles.metricTitle}>Priority</Text>
-              </View>
-              <Text style={styles.priorityValue}>{ticket?.priority ?? 'Medium'}</Text>
-              <Text style={styles.metricSub}>Độ ưu tiên phản ánh</Text>
-            </View>
-          </AppCard>
-        </View>
 
-        <View style={styles.cardWrap}>
           <AppCard shadow="sm">
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
-                <Text style={styles.cardHeaderTitle}>Assigned Unit</Text>
-                <View style={styles.unitBadge}>
-                  <Icon name="briefcase" size={12} color={semantics.text.brand} />
-                  <Text style={styles.unitBadgeText}>Đơn vị phụ trách</Text>
+                <Text style={styles.cardHeaderTitle}>Vị trí phản ánh</Text>
+                <View style={styles.locationBadge}>
+                  <Icon name="map-pin" size={12} color={semantics.text.brand} />
+                  <Text style={styles.locationBadgeText}>Bản đồ</Text>
                 </View>
               </View>
-              <View style={styles.unitBody}>
-                <View style={styles.unitIconWrap}>
-                  <Icon name="building" size={22} color={semantics.text.brand} />
+              <View style={styles.locationMapCard}>
+                <View style={styles.locationMapCompact}>
+                  <Icon name="map" size={28} color={semantics.text.brand} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.unitTitle}>{ticket?.assignedUnit ?? ticket?.unitName ?? 'Đơn vị chưa phân công'}</Text>
-                  <Text style={styles.unitSubtitle}>{ticket?.assigneeName ?? 'Chưa có cán bộ xử lý'}</Text>
-                </View>
-                <View style={styles.unitStatus}>
-                  <Icon name="check-circle" size={14} color="#10B981" />
-                  <Text style={styles.unitStatusText}>Online</Text>
+                  <Text style={styles.locationTitle}>{ticket?.locationText ?? 'Không rõ vị trí'}</Text>
+                  <Text style={styles.locationSubtitle}>Vị trí phản ánh đang được theo dõi</Text>
                 </View>
               </View>
             </View>
           </AppCard>
-        </View>
 
-        {attachmentUrls.length > 0 && (
-          <View style={styles.attachmentSection}>
-            <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>Attachments</Text>
-              <Text style={styles.sectionCounter}>({attachmentUrls.length})</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.gallery}
-            >
-              {attachmentUrls.map((imgUri, i) => (
-                <Pressable key={i} onPress={() => setSelectedImage(imgUri)}>
-                  <Image source={{ uri: imgUri }} style={styles.galleryImage} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        <Pressable onPress={() => setShowComments(true)} style={styles.discussionPill}>
-          <Icon name="message-circle" size={12} color={semantics.text.brand} />
-          <Text style={styles.discussionPillText}>Discussion</Text>
-        </Pressable>
-
-        {TIMELINE_STEPS.map((step, i) => {
-          const stepStatus = getStepStatus(step.key, status);
-          const histEntry = histories.find(
-            (h: any) => normalizeStatusKey(h.status) === normalizeStatusKey(step.key)
-          );
-          const ts = histEntry?.createdAt
-            ? new Date(histEntry.createdAt).toLocaleString('vi-VN')
-            : undefined;
-
-          return (
-            <TimelineStep
-              key={step.key}
-              title={step.label}
-              description={stepStatus !== 'pending' ? (histEntry?.note ?? step.desc) : step.desc}
-              timestamp={ts}
-              status={stepStatus}
-              isLast={i === TIMELINE_STEPS.length - 1}
-            />
-          );
-        })}
-        {/* Discussion Card (opens dedicated chat screen) */}
-        <View style={styles.cardWrap}>
           <AppCard shadow="sm">
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
-                <Text style={styles.cardHeaderTitle}>💬 Thảo luận ({messageCount})</Text>
+                <Text style={styles.cardHeaderTitle}>Nội dung phản ánh</Text>
               </View>
+              <Text style={styles.descriptionText}>{ticket?.description ?? 'Không có mô tả chi tiết.'}</Text>
+            </View>
+          </AppCard>
 
-              <Text style={styles.descriptionText}>Trao đổi với nhân viên phụ trách phản ánh</Text>
-
-              <View style={{ marginTop: 12 }}>
-                <AppButton
-                  variant="primary"
-                  onPress={() => router.push(`/(resident)/tickets/${feedbackId}/chat` as any)}
+          {attachmentUrls.length > 0 && (
+            <AppCard shadow="sm">
+              <View style={styles.cardContent}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardHeaderTitle}>Bằng chứng & đính kèm</Text>
+                  <Text style={styles.sectionCounter}>({attachmentUrls.length})</Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.gallery}
                 >
-                  Mở cuộc trò chuyện
-                </AppButton>
+                  {attachmentUrls.map((imgUri, i) => (
+                    <Pressable key={i} onPress={() => setSelectedImage(imgUri)}>
+                      <Image source={{ uri: imgUri }} style={styles.galleryImage} />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            </AppCard>
+          )}
+
+          <AppCard shadow="sm">
+            <View style={styles.cardContent}>
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.cardHeaderTitle}>Lịch sử cập nhật</Text>
+                <Text style={styles.sectionCounter}>{histories.length}</Text>
+              </View>
+              <View style={styles.activityList}>
+                {histories.length > 0 ? histories.slice(0, 4).map((history: any, index: number) => (
+                  <View key={`${history?.id ?? index}-${history?.createdAt ?? index}`} style={styles.activityRow}>
+                    <View style={styles.activityDot} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.activityTitle}>{history?.status ?? 'Cập nhật'}</Text>
+                      <Text style={styles.activityNote}>{history?.note ?? 'Cập nhật hệ thống'}</Text>
+                      <Text style={styles.activityTime}>{history?.createdAt ? new Date(history.createdAt).toLocaleString('vi-VN') : '—'}</Text>
+                    </View>
+                  </View>
+                )) : (
+                  <Text style={styles.descriptionText}>Chưa có lịch sử hoạt động.</Text>
+                )}
               </View>
             </View>
           </AppCard>
+
+          <AppCard shadow="sm">
+            <View style={styles.cardContent}>
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.cardHeaderTitle}>Thảo luận cộng đồng</Text>
+                <View style={styles.supportMeta}>
+                  <Icon name="message-circle" size={12} color={semantics.text.brand} />
+                  <Text style={styles.supportCount}>{commentCount} bình luận</Text>
+                </View>
+              </View>
+              <View style={styles.communityPreview}>
+                <Text style={styles.communityTitle}>Trò chuyện với cộng đồng</Text>
+                <Text style={styles.descriptionText} numberOfLines={2}>{latestCommentPreview}</Text>
+                <View style={styles.supportRow}>
+                  <AppButton
+                    variant="outline"
+                    size="sm"
+                    fullWidth
+                    onPress={() => router.push(`/(resident)/community/${feedbackId}` as any)}
+                    leftIcon={<Icon name="message-circle" size={16} color={semantics.text.brand} style={{ marginRight: 6 }} />}
+                  >
+                    Mở thảo luận
+                  </AppButton>
+                </View>
+              </View>
+            </View>
+          </AppCard>
+
+
         </View>
-    </ScrollView>
+      </ScrollView>
 
       {/* Resolution Review Card / Bottom Action Bar */}
       <View style={styles.bottomBar}>
@@ -563,24 +571,27 @@ export default function TicketDetailScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: semantics.bg.app },
+  scrollContent: {
+    paddingBottom: 140,
+  },
   heroSection: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 14,
+    paddingBottom: 18,
     backgroundColor: semantics.bg.surface,
     borderBottomWidth: 1,
     borderBottomColor: semantics.border.default,
   },
-  statusHeaderRow: {
+  heroTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 14,
   },
-  statusHeaderLeft: {
+  heroTitleBlock: {
     flex: 1,
   },
-  statusHeaderRight: {
+  heroBadgeStack: {
     alignItems: 'flex-end',
     gap: 8,
   },
@@ -594,23 +605,37 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   titleText: {
-    fontSize: 22,
+    fontSize: 26,
     fontFamily: 'Geist-Bold',
     color: semantics.text.primary,
     marginBottom: 10,
     letterSpacing: -0.4,
   },
+  metaRows: {
+    gap: 6,
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 4,
   },
   metaText: {
     fontSize: 13,
     fontFamily: 'Geist-Regular',
     color: semantics.text.muted,
     flex: 1,
+  },
+  heroActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 16,
+    minHeight: 44,
+  },
+  sectionStack: {
+    paddingHorizontal: 20,
+    gap: 12,
+    marginTop: 14,
   },
   cardWrap: {
     paddingHorizontal: 20,
@@ -652,52 +677,170 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist-SemiBold',
     color: '#047857',
   },
+  currentStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statusCurrentIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: semantics.bg.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentStatusLabel: {
+    fontSize: 17,
+    fontFamily: 'Geist-Bold',
+    color: semantics.text.primary,
+    marginBottom: 4,
+  },
+  currentStatusBody: {
+    fontSize: 11,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.brand,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   descriptionText: {
     fontSize: 14,
     fontFamily: 'Geist-Regular',
     color: semantics.text.primary,
     lineHeight: 22,
   },
-  metricsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    marginTop: 14,
-  },
-  metricCardContent: {
-    padding: 14,
-  },
-  metricHeader: {
+  statusDetailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: semantics.border.default,
+    marginTop: 12,
   },
-  metricTitle: {
-    fontFamily: 'Geist-SemiBold',
+  statusDetailKey: {
     fontSize: 11,
-    color: semantics.text.lightMuted,
-    textTransform: 'uppercase',
-  },
-  slaValue: {
-    fontFamily: 'Geist-Bold',
-    fontSize: 24,
-    color: semantics.text.primary,
-    letterSpacing: -0.3,
-  },
-  priorityValue: {
-    fontFamily: 'Geist-Bold',
-    fontSize: 20,
-    color: semantics.text.primary,
-  },
-  metricSub: {
     fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
+  },
+  statusDetailValue: {
+    fontSize: 12,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.primary,
+  },
+  supportMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  supportCount: {
+    fontSize: 10,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.muted,
+  },
+  chatCardMain: {
+    borderRadius: 16,
+    backgroundColor: '#EFF6FF',
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  chatHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  chatIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatTitle: {
+    fontSize: 14,
+    fontFamily: 'Geist-Bold',
+    color: semantics.text.primary,
+  },
+  chatSubtitle: {
     fontSize: 11,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
+    marginTop: 3,
+  },
+  chatPreviewWrap: {
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  chatPreviewText: {
+    fontSize: 12,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.primary,
+    lineHeight: 18,
+  },
+  supportRow: {
+    marginTop: 12,
+  },
+  timelineCard: {
+    paddingTop: 2,
+  },
+  locationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 99,
+    backgroundColor: '#EAF7EE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  locationBadgeText: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 10,
+    color: '#047857',
+  },
+  locationMapCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  locationMapCompact: {
+    width: 80,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#EAF7EE',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationTitle: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 13,
+    color: semantics.text.primary,
+  },
+  locationSubtitle: {
+    fontFamily: 'Geist-Regular',
+    fontSize: 10,
     color: semantics.text.muted,
     marginTop: 4,
   },
-  attachmentSection: {
-    marginTop: 20,
+  communityPreview: {
+    paddingVertical: 4,
+  },
+  communityTitle: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 13,
+    color: semantics.text.primary,
+    marginBottom: 6,
+  },
+  metadataLabel: {
+    fontSize: 11,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
   },
   sectionTitleRow: {
     flexDirection: 'row',
@@ -765,13 +908,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  unitIconWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: semantics.bg.surfaceSubtle,
+  unitAvatarWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#DBEAFE',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#93C5FD',
   },
   unitTitle: {
     fontFamily: 'Geist-Bold',
@@ -784,6 +929,12 @@ const styles = StyleSheet.create({
     color: semantics.text.muted,
     marginTop: 3,
   },
+  slaOwnerText: {
+    fontFamily: 'Geist-Regular',
+    fontSize: 10,
+    color: semantics.text.lightMuted,
+    marginTop: 4,
+  },
   unitStatus: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -793,10 +944,70 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#DCFCE7',
   },
+  unitOnlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 10,
+    backgroundColor: '#22C55E',
+  },
   unitStatusText: {
     fontFamily: 'Geist-SemiBold',
     fontSize: 10,
     color: '#047857',
+  },
+  metaDetailGrid: {
+    gap: 10,
+  },
+  metaDetailItem: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: semantics.border.default,
+  },
+  metaDetailLabel: {
+    fontSize: 10,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  metaDetailValue: {
+    marginTop: 4,
+    fontSize: 13,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.primary,
+  },
+  activityList: {
+    gap: 10,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  activityDot: {
+    width: 8,
+    height: 8,
+    marginTop: 4,
+    borderRadius: 999,
+    backgroundColor: semantics.bg.primary,
+  },
+  activityTitle: {
+    fontSize: 12,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.primary,
+  },
+  activityNote: {
+    fontSize: 11,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.muted,
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  activityTime: {
+    fontSize: 10,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.lightMuted,
+    marginTop: 4,
   },
   bottomBar: {
     position: 'absolute',

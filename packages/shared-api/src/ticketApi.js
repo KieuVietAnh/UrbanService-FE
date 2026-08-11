@@ -27,48 +27,61 @@ export const ticketApi = {
 
   getTicketById(feedbackId, options = {}) {
     return (async () => {
-      const response = await axiosClient.get(getTicketPath(feedbackId, options.role));
-      const payload = response?.data ?? response?.item ?? response?.result ?? response;
-      const res = normalizeTicketsResponse([payload])[0] || payload;
-
       try {
-        if (res && Array.isArray(res.attachments)) {
-          res.attachments = res.attachments.map((a) => {
-            if (!a) return a;
+        const response = await axiosClient.get(getTicketPath(feedbackId, options.role));
+        const payload = response?.data ?? response?.item ?? response?.result ?? response;
+        const res = normalizeTicketsResponse([payload])[0] || payload;
 
-            if (typeof a === 'string') {
+        try {
+          if (res && Array.isArray(res.attachments)) {
+            res.attachments = res.attachments.map((a) => {
+              if (!a) return a;
+
+              if (typeof a === 'string') {
+                return {
+                  fileUrl: a,
+                  url: a,
+                };
+              }
+
               return {
-                fileUrl: a,
-                url: a,
+                ...a,
+                attachmentId:
+                  a.attachmentId ||
+                  a.attachmentID ||
+                  a.feedbackAttachmentId ||
+                  a.feedbackAttachmentID ||
+                  a.fileId ||
+                  a.fileID ||
+                  a.id ||
+                  null,
+                fileUrl:
+                  a.fileUrl ||
+                  a.url ||
+                  a.path ||
+                  a.attachmentUrl ||
+                  a.displayUrl ||
+                  '',
               };
-            }
-
-            return {
-              ...a,
-              attachmentId:
-                a.attachmentId ||
-                a.attachmentID ||
-                a.feedbackAttachmentId ||
-                a.feedbackAttachmentID ||
-                a.fileId ||
-                a.fileID ||
-                a.id ||
-                null,
-              fileUrl:
-                a.fileUrl ||
-                a.url ||
-                a.path ||
-                a.attachmentUrl ||
-                a.displayUrl ||
-                '',
-            };
-          });
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to normalize attachments', e);
         }
-      } catch (e) {
-        console.warn('Failed to normalize attachments', e);
-      }
 
-      return res;
+        return res;
+      } catch (err) {
+        try {
+          const response = await axiosClient.get(
+            `${getFeedbackBasePath(options.role)}/feed/${encodeURIComponent(feedbackId)}`,
+          );
+          const payload = response?.data ?? response?.item ?? response?.result ?? response;
+          const res = normalizeTicketsResponse([payload])[0] || payload;
+          return res;
+        } catch (feedErr) {
+          throw err;
+        }
+      }
     })();
   },
 
@@ -159,16 +172,23 @@ export const ticketApi = {
     return axiosClient.delete(`${getTicketPath(feedbackId, options.role)}/support`);
   },
 
- getComments(feedbackId, options = {}) {
-  return (async () => {
-    try {
-      const ticket = await axiosClient.get(getTicketPath(feedbackId, options.role));
-      return normalizeCommentsResponse(ticket);
-    } catch (err) {
-      return [];
-    }
-  })();
-},
+  getComments(feedbackId, options = {}) {
+    return (async () => {
+      try {
+        const ticket = await axiosClient.get(getTicketPath(feedbackId, options.role));
+        return normalizeCommentsResponse(ticket);
+      } catch (err) {
+        try {
+          const feedTicket = await axiosClient.get(
+            `${getFeedbackBasePath(options.role)}/feed/${encodeURIComponent(feedbackId)}`,
+          );
+          return normalizeCommentsResponse(feedTicket);
+        } catch (feedErr) {
+          return [];
+        }
+      }
+    })();
+  },
 
   addComment(feedbackId, userId, userName, userRole, content, options = {}) {
     return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, normalizeCommentPayload({ content }));
