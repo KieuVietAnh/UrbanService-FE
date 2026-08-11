@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, ScrollView, Pressable, Image, StyleSheet, TextInput, KeyboardAvoidingView, Platform, RefreshControl, Modal } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,8 +14,9 @@ import { AppEmptyState } from '@/components/ui/AppEmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { communityApi } from '@/services/api/communityApi';
 import { feedbackApi } from '@/services/api/feedbackApi';
+import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
 import { semantics } from '@/theme/semantics';
-import { FloatingChatMenu } from '@/components/ui/FloatingChatMenu';
+import { getStatusLabel } from '@urbanmind/shared-types';
 
 interface CommentItem {
   id: string;
@@ -45,20 +46,21 @@ export default function CommunityDetailScreen() {
     enabled: Boolean(feedbackId),
   });
 
-  const { data: comments = [] } = useQuery<CommentItem[]>({
-    queryKey: ['community-comments', feedbackId],
-    queryFn: async () => {
-      const res = await feedbackApi.getComments(feedbackId);
-      const items = Array.isArray(res) ? res : res?.items || [];
-      return items.map((c: any) => ({
-        id: String(c.commentId ?? c.id ?? Math.random()),
-        senderName: c.authorName ?? c.userName ?? c.userFullName ?? 'Cộng đồng',
-        content: c.content ?? c.text ?? '',
-        createdAt: c.createdAt ?? new Date().toISOString(),
-      }));
-    },
-    enabled: Boolean(feedbackId),
-  });
+  const comments = useMemo<CommentItem[]>(() => {
+    if (!item) return [];
+    const rawComments = Array.isArray(item?.comments)
+      ? item.comments
+      : Array.isArray(item?.commentList)
+        ? item.commentList
+        : [];
+
+    return rawComments.map((c: any) => ({
+      id: String(c.commentId ?? c.id ?? Math.random()),
+      senderName: c.authorName ?? c.userName ?? c.userFullName ?? 'Cộng đồng',
+      content: c.content ?? c.text ?? '',
+      createdAt: c.createdAt ?? new Date().toISOString(),
+    }));
+  }, [item]);
 
   const supportMutation = useMutation({
     mutationFn: async () => {
@@ -85,9 +87,12 @@ export default function CommunityDetailScreen() {
 
   const addCommentMutation = useMutation({
     mutationFn: (content: string) => feedbackApi.addComment(feedbackId, content),
-    onSuccess: () => {
+    onSuccess: async () => {
       setCommentInput('');
-      queryClient.invalidateQueries({ queryKey: ['community-comments', feedbackId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['community-detail', feedbackId] }),
+        queryClient.refetchQueries({ queryKey: ['community-detail', feedbackId] }),
+      ]);
       toast.success('Đã gửi bình luận');
     },
     onError: (err: any) => toast.error(err.message || 'Không thể gửi bình luận'),
@@ -119,7 +124,8 @@ export default function CommunityDetailScreen() {
   const authorName = item?.authorName || item?.userName || 'Cộng đồng UrbanService';
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : '';
   const evidenceImages = attachments.filter((attachment) => attachment?.fileUrl).map((attachment) => attachment.fileUrl);
-  const statusLabel = item?.status ? String(item.status).replace(/([A-Z])/g, ' $1').trim() : 'Đang chờ xử lý';
+  const statusValue = item?.status ?? 'Submitted';
+  const statusLabel = getStatusLabel(statusValue, 'Đang chờ xử lý');
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -136,16 +142,19 @@ export default function CommunityDetailScreen() {
               <View style={styles.avatarBadge}>
                 <Text className="text-sm font-sans-semibold text-white">{authorName.charAt(0).toUpperCase()}</Text>
               </View>
+
               <View style={styles.heroInfo}>
                 <Text className="text-sm font-sans-semibold text-text">{authorName}</Text>
                 <Text className="text-2xs text-text-muted mt-1">{createdAt}</Text>
               </View>
-              <View style={styles.statusPill}>
-                <Text className="text-2xs font-sans-semibold text-primary">{statusLabel}</Text>
-              </View>
+
+              <TicketStatusBadge status={statusValue} size="sm" />
             </View>
 
-            <Text className="text-xl font-sans-bold text-text mt-4">{item?.title ?? 'Không có tiêu đề'}</Text>
+            <View style={styles.heroTitleRow}>
+              <Text className="text-xl font-sans-bold text-text">{item?.title ?? 'Không có tiêu đề'}</Text>
+            </View>
+
             <Text className="text-sm text-text-muted mt-3">{item?.description ?? 'Không có mô tả.'}</Text>
 
             {evidenceImages[0] ? (
@@ -203,29 +212,47 @@ export default function CommunityDetailScreen() {
           </View>
         )}
 
-        <View style={styles.section}>
-          <Text className="text-xs font-sans-semibold text-text-muted uppercase tracking-[0.3px] mb-3">Bình luận</Text>
+        <View style={styles.commentSection}>
+          <View style={styles.commentFilterRow}>
+            <Text style={styles.filterTitle}>Tất cả bình luận</Text>
+            
+
+          </View>
+
           {comments.length === 0 ? (
             <AppEmptyState icon={<Icon name="message-circle" size={36} color={semantics.text.lightMuted} />}>
               Chưa có bình luận nào cho phản ánh này.
             </AppEmptyState>
           ) : (
             comments.map((comment) => (
-              <AppCard key={comment.id} shadow="sm" className="mb-3">
-                <View style={styles.commentCard}>
-                  <View style={styles.commentHeader}>
-                    <Text className="text-sm font-sans-semibold text-text">{comment.senderName}</Text>
-                    <Text className="text-2xs text-text-muted">{comment.createdAt ? new Date(comment.createdAt).toLocaleString('vi-VN') : ''}</Text>
+              <View key={comment.id} style={styles.commentFeedCard}>
+                <View style={styles.commentRow}>
+                  <View style={styles.avatarWrap}>
+                    <Text style={styles.avatarText}>{String(comment.senderName || 'C').charAt(0).toUpperCase()}</Text>
                   </View>
-                  <Text className="text-sm text-text-muted mt-2">{comment.content}</Text>
+
+                  <View style={styles.commentBody}>
+                    <View style={styles.commentMetaRow}>
+                      <Text style={styles.commentAuthorName}>{comment.senderName || 'Cộng đồng'}</Text>
+                      <Text style={styles.commentTimeText}>
+                        {comment.createdAt ? new Date(comment.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.commentText}>{comment.content}</Text>
+                  </View>
                 </View>
-              </AppCard>
+              </View>
             ))
           )}
         </View>
       </ScrollView>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 84 : 0}
+        style={styles.composerHost}
+      >
         <View style={styles.composer}>
           <TextInput
             style={styles.input}
@@ -302,11 +329,11 @@ const styles = StyleSheet.create({
   },
   heroTop: {
     padding: 20,
+    backgroundColor: semantics.bg.surface,
   },
   heroBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
   avatarBadge: {
@@ -319,7 +346,10 @@ const styles = StyleSheet.create({
   },
   heroInfo: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 6,
+  },
+  heroTitleRow: {
+    marginTop: 16,
   },
   statusPill: {
     borderRadius: 999,
@@ -375,6 +405,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     padding: 20,
+    backgroundColor: semantics.bg.surface,
   },
   heroImage: {
     width: '100%',
@@ -396,30 +427,81 @@ const styles = StyleSheet.create({
     height: 120,
     backgroundColor: semantics.bg.surfaceSubtle,
   },
-  commentCard: {
-    padding: 14,
+  commentSection: {
+    paddingHorizontal: 20,
+    marginTop: 18,
+    paddingBottom: 8,
   },
-  commentHeader: {
+  commentFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 16,
   },
-  commentAuthor: {
+  filterTitle: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 16,
+    color: semantics.text.primary,
+  },
+  commentFeedCard: {
+    backgroundColor: semantics.bg.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: semantics.border.default,
+    paddingVertical: 12,
+  },
+  commentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  avatarWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    overflow: 'hidden',
+    backgroundColor: semantics.bg.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: semantics.border.light,
+  },
+  avatarText: {
     fontFamily: 'Geist-SemiBold',
     fontSize: 13,
     color: semantics.text.primary,
+  },
+  commentBody: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  commentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 4,
+  },
+  commentAuthorName: {
+    fontFamily: 'Geist-Bold',
+    fontSize: 13,
+    color: semantics.text.primary,
+  },
+  commentTimeText: {
+    fontFamily: 'Geist-Regular',
+    fontSize: 11,
+    color: semantics.text.muted,
   },
   commentText: {
     fontFamily: 'Geist-Regular',
     fontSize: 14,
+    lineHeight: 22,
     color: semantics.text.primary,
-    lineHeight: 20,
   },
-  commentTime: {
-    fontSize: 11,
-    color: semantics.text.lightMuted,
-    marginTop: 6,
+  composerHost: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 100,
+    zIndex: 2,
   },
   composer: {
     flexDirection: 'row',

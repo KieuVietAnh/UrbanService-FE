@@ -11,6 +11,7 @@ import {
   canTransitionProviderReportStatus,
   resolveProviderReportById,
 } from './managementFeedbackApi.js';
+import { normalizeCommentsResponse } from './ticketApiHelpers.js';
 
 test('normalizeAiReviewedPayload maps ai-reviewed payloads to queue-ready items', () => {
   const normalized = normalizeAiReviewedPayload({
@@ -130,6 +131,18 @@ test('normalizeCommentPayload keeps only the swagger-accepted content field', ()
   });
 
   assert.deepEqual(normalized, { content: 'hello' });
+});
+
+test('normalizeCommentsResponse resolves comments from a ticket detail payload shape', () => {
+  const normalized = normalizeCommentsResponse({
+    data: {
+      comments: [
+        { id: 'c-1', content: 'hello' },
+      ],
+    },
+  });
+
+  assert.deepEqual(normalized, [{ id: 'c-1', content: 'hello' }]);
 });
 
 test('provider report status helpers enforce the Reported → Contacted → Accepted → InProgress → Done workflow', () => {
