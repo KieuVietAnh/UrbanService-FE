@@ -338,6 +338,49 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  async getFeedbackSummary() {
+    const response = await axiosClient.get('/api/management/feedbacks', {
+      params: normalizeFeedbackListParams({ PageNumber: 1, PageSize: 1000 }),
+    });
+    const payload = response?.data ?? response ?? {};
+    const items = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload?.data?.items)
+          ? payload.data.items
+          : [];
+    const total = Number(
+      payload?.totalItems ??
+      payload?.totalCount ??
+      payload?.data?.totalItems ??
+      payload?.data?.totalCount ??
+      items.length
+    );
+
+    const normalizeStatus = (value) => String(value ?? '')
+      .replace(/[-_\s]/g, '')
+      .toLowerCase();
+    const pendingStatuses = new Set(['submitted', 'aireviewed', 'verified']);
+    const inProgressStatuses = new Set(['assigned', 'inprogress', 'submittedforapproval', 'needrework']);
+    const completedStatuses = new Set(['resolved', 'approved', 'rejected', 'closed', 'cancelled']);
+    const summary = {
+      total: Number.isFinite(total) ? total : items.length,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+    };
+
+    items.forEach((feedback) => {
+      const status = normalizeStatus(feedback?.status);
+      if (pendingStatuses.has(status)) summary.pending += 1;
+      else if (inProgressStatuses.has(status)) summary.inProgress += 1;
+      else if (completedStatuses.has(status)) summary.completed += 1;
+    });
+
+    return { items, ...summary };
+  },
+
   // Get specific feedback by ID
   async getFeedbackById(feedbackId) {
     const response = await axiosClient.get(`/api/management/feedbacks/${feedbackId}`);
@@ -576,6 +619,18 @@ export const managementFeedbackApi = {
     }
   },
 
+  async createServiceProvider(payload) {
+    return axiosClient.post('/api/management/service-providers', payload);
+  },
+
+  async updateServiceProvider(coordinatorId, payload) {
+    return axiosClient.put(`/api/management/service-providers/${coordinatorId}`, payload);
+  },
+
+  async setServiceProviderActive(coordinatorId, isActive) {
+    return axiosClient.patch(`/api/management/service-providers/${coordinatorId}/active`, { isActive });
+  },
+
   // Get coverages for a coordinator
   async getCoordinatorCoverages(coordinatorId) {
     if (!coordinatorId) return [];
@@ -595,6 +650,17 @@ export const managementFeedbackApi = {
     }
   },
 
+  async createCoordinatorCoverage(coordinatorId, payload) {
+    return axiosClient.post(`/api/management/service-providers/${coordinatorId}/coverages`, payload);
+  },
+
+  async updateCoordinatorCoverage(coordinatorId, coverageId, payload) {
+    return axiosClient.put(
+      `/api/management/service-providers/${coordinatorId}/coverages/${coverageId}`,
+      payload
+    );
+  },
+
   async createProviderReportContactLog(providerReportId, payload) {
     const normalizedPayload = normalizeProviderContactLogPayload(payload);
     const response = await axiosClient.post(
@@ -602,15 +668,6 @@ export const managementFeedbackApi = {
       normalizedPayload
     );
     return response;
-  },
-
-  async notifyProviderResult(feedbackId, payload = {}) {
-    const normalizedFeedbackId = String(feedbackId ?? '').trim();
-    if (!normalizedFeedbackId) {
-      throw new Error('Thiếu feedbackId để gửi thông báo cho người dân.');
-    }
-
-    return axiosClient.post(`/api/management/feedbacks/${normalizedFeedbackId}/notify-provider-result`, payload);
   },
 
   async createAreaAlertFromFeedback(feedbackId, payload = {}) {

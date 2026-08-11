@@ -14,20 +14,37 @@ import { normalizeRole } from '../../utils/roleMap';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const DashboardLayout = ({ children }) => {
-
   const { user } = useAuth();
   const location = useLocation();
-  const isCitizen = normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
+
+  const isCitizen =
+    normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const mainScrollRef = useRef(null);
 
   useLayoutEffect(() => {
     const scrollContainer = mainScrollRef.current;
-    if (!scrollContainer || typeof window === 'undefined') return undefined;
+
+    if (!scrollContainer || typeof window === 'undefined') {
+      return undefined;
+    }
 
     // Trang danh sách sẽ tự khôi phục đúng card khi quay lại từ chi tiết.
     // Không reset vùng cuộn dùng chung trong trường hợp này để tránh ghi đè vị trí.
-    if (location.state?.restoreFeedbackId || location.state?.restoreTicketId) return undefined;
+    const preserveScrollOnEnter =
+      location.state?.restoreFeedbackId ||
+      location.state?.restoreTicketId ||
+      location.state?.restoreCoordinatorList ||
+      location.state?.focusMap ||
+      location.state?.focusFeedbackId ||
+      location.state?.mapState?.focusMap ||
+      location.state?.mapState?.focusFeedbackId ||
+      location.state?.preserveScroll;
+
+    if (preserveScrollOnEnter) {
+      return undefined;
+    }
 
     const rawHash = String(location.hash || '').replace(/^#/, '');
     let targetId = '';
@@ -41,7 +58,11 @@ export const DashboardLayout = ({ children }) => {
     }
 
     const scrollToTop = () => {
-      scrollContainer.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      scrollContainer.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'auto',
+      });
     };
 
     const scrollToTarget = () => {
@@ -51,6 +72,7 @@ export const DashboardLayout = ({ children }) => {
       }
 
       const target = document.getElementById(targetId);
+
       if (!target) {
         scrollToTop();
         return;
@@ -58,12 +80,12 @@ export const DashboardLayout = ({ children }) => {
 
       const containerRect = scrollContainer.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
-      const targetTop = (
+
+      const targetTop =
         scrollContainer.scrollTop +
         targetRect.top -
         containerRect.top -
-        12
-      );
+        12;
 
       scrollContainer.scrollTo({
         top: Math.max(0, targetTop),
@@ -72,33 +94,77 @@ export const DashboardLayout = ({ children }) => {
       });
     };
 
-    // Reset immediately, then repeat after the page-enter transition settles.
-    // The workspace itself owns scrolling, so handling it here avoids page-level
-    // effects racing with the shared layout and reopening a route at the old offset.
+    // Reset ngay, sau đó chạy lại sau transition để tránh giữ scroll của route cũ.
     scrollToTop();
 
     const frameId = window.requestAnimationFrame(scrollToTarget);
-    const timerIds = [120, 280, 520].map((delay) => (
+
+    const timerIds = [120, 280, 520].map((delay) =>
       window.setTimeout(scrollToTarget, delay)
-    ));
+    );
 
     return () => {
       window.cancelAnimationFrame(frameId);
-      timerIds.forEach((timerId) => window.clearTimeout(timerId));
+
+      timerIds.forEach((timerId) => {
+        window.clearTimeout(timerId);
+      });
     };
   }, [
     location.hash,
     location.key,
     location.state?.restoreFeedbackId,
     location.state?.restoreTicketId,
+    location.state?.restoreCoordinatorList,
+    location.state?.focusMap,
+    location.state?.focusFeedbackId,
+    location.state?.mapState?.focusMap,
+    location.state?.mapState?.focusFeedbackId,
+    location.state?.preserveScroll,
   ]);
 
-  const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+  const toggleSidebar = () => {
+    setSidebarOpen((current) => !current);
+  };
+
   const showFooter = isCitizen;
 
-  const isStaffFeedbackDetailRoute = /^\/staff\/feedbacks\/[^/]+\/?$/.test(location.pathname);
-  const staffDetailFeedbackId = isStaffFeedbackDetailRoute ? location.pathname.split('/').filter(Boolean).pop() : null;
-  const shouldWrapFeedbackMessages = isStaffFeedbackDetailRoute && Boolean(staffDetailFeedbackId);
+  const isStaffFeedbackDetailRoute =
+    /^\/staff\/feedbacks\/[^/]+\/?$/.test(location.pathname);
+
+  const staffDetailFeedbackId = isStaffFeedbackDetailRoute
+    ? location.pathname.split('/').filter(Boolean).pop()
+    : null;
+
+  const shouldWrapFeedbackMessages =
+    isStaffFeedbackDetailRoute && Boolean(staffDetailFeedbackId);
+
+  const renderMainContent = () => (
+    <main
+      ref={mainScrollRef}
+      data-dashboard-scroll-container
+      className={`min-h-0 flex-1 overflow-y-scroll overflow-x-hidden ${
+        isCitizen
+          ? 'bg-transparent'
+          : 'bg-slate-50 dark:bg-slate-950'
+      }`}
+    >
+      <div className="flex min-h-full flex-col">
+        <PageTransition
+          key={location.pathname}
+          className={`mx-auto w-full flex-1 ${
+            isCitizen
+              ? 'citizen-content-shell max-w-[1440px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9'
+              : 'max-w-7xl space-y-6 p-5 sm:p-6'
+          }`}
+        >
+          {children}
+        </PageTransition>
+
+        {showFooter ? <Footer /> : null}
+      </div>
+    </main>
+  );
 
   return (
     <div
@@ -109,14 +175,22 @@ export const DashboardLayout = ({ children }) => {
       }`}
     >
       {isCitizen ? <PublicThemeStyles /> : null}
+
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}
-        {!isCitizen && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+        {!isCitizen && (
+          <Sidebar
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+          />
+        )}
 
         {/* Main container */}
         <div
           className={`flex min-w-0 w-full flex-1 flex-col overflow-hidden ${
-            isCitizen ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
+            isCitizen
+              ? 'bg-transparent'
+              : 'bg-slate-50 dark:bg-slate-950'
           }`}
         >
           <Header onMenuToggle={toggleSidebar} />
@@ -124,54 +198,15 @@ export const DashboardLayout = ({ children }) => {
           {/* Main scrollable workspace */}
           {shouldWrapFeedbackMessages ? (
             <FeedbackMessagesProvider feedbackId={staffDetailFeedbackId}>
-              <main
-                ref={mainScrollRef}
-                data-dashboard-scroll-container
-                className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
-                  isCitizen ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
-                }`}
-              >
-                <div className="flex min-h-full flex-col">
-                  <PageTransition
-                    key={location.pathname}
-                    className={`mx-auto w-full flex-1 ${
-                      isCitizen
-                        ? 'citizen-content-shell max-w-[1440px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9'
-                        : 'max-w-7xl space-y-6 p-5 sm:p-6'
-                    }`}
-                  >
-                    {children}
-                  </PageTransition>
-                  {showFooter ? <Footer /> : null}
-                </div>
-              </main>
+              {renderMainContent()}
+
               <StaffCommunicationSurface
                 feedbackId={staffDetailFeedbackId}
                 feedbackTitle={location.state?.feedbackTitle || ''}
               />
             </FeedbackMessagesProvider>
           ) : (
-            <main
-              ref={mainScrollRef}
-              data-dashboard-scroll-container
-              className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
-                isCitizen ? 'bg-transparent' : 'bg-slate-50 dark:bg-slate-950'
-              }`}
-            >
-              <div className="flex min-h-full flex-col">
-                <PageTransition
-                  key={location.pathname}
-                  className={`mx-auto w-full flex-1 ${
-                    isCitizen
-                      ? 'citizen-content-shell max-w-[1440px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9'
-                      : 'max-w-7xl space-y-6 p-5 sm:p-6'
-                  }`}
-                >
-                  {children}
-                </PageTransition>
-                {showFooter ? <Footer /> : null}
-              </div>
-            </main>
+            renderMainContent()
           )}
         </div>
       </div>
@@ -180,8 +215,8 @@ export const DashboardLayout = ({ children }) => {
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
-        ></div>
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
       )}
     </div>
   );
