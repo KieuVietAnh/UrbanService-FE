@@ -19,6 +19,7 @@ interface AuthState {
   hasHydrated: boolean;
   // Actions
   login: (email: string, password: string) => Promise<User>;
+  googleLogin: (idToken: string) => Promise<User>;
   register: (data: RegisterData) => Promise<User>;
   sendOtp: () => Promise<void>;
   verifyOtp: (otp: string) => Promise<User>;
@@ -75,6 +76,30 @@ export const useAuthStore = create<AuthState>()(
           } catch (err: any) {
             const msg = extractApiErrorMessage(err, 'Đăng nhập thất bại');
             console.error('[Auth login failed]', {
+              code: err?.code || null,
+              message: err?.message || null,
+              status: err?.status || null,
+              response: err?.response || null,
+              stack: err?.stack || null,
+            });
+            set({ error: msg, isLoading: false });
+            throw new Error(msg);
+          } finally {
+            set({ isLoading: false });
+          }
+        },
+
+        googleLogin: async (idToken: string) => {
+          console.log('[Auth googleLogin] start');
+          set({ isLoading: true, error: null });
+          try {
+            const user = await withRequestTimeout(AuthService.googleLogin(idToken));
+            console.log('[Auth googleLogin] completed', { userId: user?.id, email: user?.email, role: user?.role });
+            set({ user, isLoading: false });
+            return user;
+          } catch (err: any) {
+            const msg = extractApiErrorMessage(err, 'Đăng nhập bằng Google thất bại');
+            console.error('[Auth googleLogin failed]', {
               code: err?.code || null,
               message: err?.message || null,
               status: err?.status || null,
