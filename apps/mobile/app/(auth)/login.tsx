@@ -1,13 +1,18 @@
 import React, { useRef, useState } from 'react';
 import {
   View,
-  ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
+import Constants from 'expo-constants';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui/Text';
 import { AppButton } from '@/components/ui/AppButton';
@@ -16,11 +21,15 @@ import { PasswordInput } from '@/components/ui/PasswordInput';
 import { useAuthStore } from '@/features/auth/auth.store';
 import { useToast } from '@/components/ui/Toast';
 import { semantics } from '@/theme/semantics';
+import UrbanHeroBackground from '@/components/auth/UrbanHeroBackground';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const router = useRouter();
   const toast = useToast();
   const login = useAuthStore((s) => s.login);
+  const googleLogin = useAuthStore((s) => s.googleLogin);
   const isLoading = useAuthStore((s) => s.isLoading);
   const authError = useAuthStore((s) => s.error);
   const clearError = useAuthStore((s) => s.clearError);
@@ -29,6 +38,34 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const submitLockRef = useRef(false);
+
+  const googleClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+    '';
+  const googleIosClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+    '';
+  const googleAndroidClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    '';
+  const googleWebClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    '';
+
+  const [request, , promptAsync] = Google.useAuthRequest({
+    clientId: googleClientId,
+    iosClientId: googleIosClientId,
+    androidClientId: googleAndroidClientId,
+    webClientId: googleWebClientId,
+    redirectUri: makeRedirectUri({
+      scheme: Constants.expoConfig?.scheme || Constants.manifest?.scheme || 'urbanmind',
+    }),
+    scopes: ['profile', 'email'],
+  });
 
   const validate = () => {
     const e: typeof errors = {};
@@ -54,8 +91,44 @@ export default function LoginScreen() {
       } else {
         router.replace('/(resident)');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Email hoặc mật khẩu không chính xác');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Email hoặc mật khẩu không chính xác';
+      toast.error(message || 'Email hoặc mật khẩu không chính xác');
+    } finally {
+      submitLockRef.current = false;
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (submitLockRef.current || isLoading) return;
+    if (!request) {
+      toast.error('Google login chưa sẵn sàng. Vui lòng thử lại.');
+      return;
+    }
+
+    submitLockRef.current = true;
+    clearError();
+    setErrors({});
+
+    try {
+      const result = await promptAsync({ useProxy: true });
+      if (result.type !== 'success' || !result.authentication?.idToken) {
+        const errorMessage = result.type === 'dismiss'
+          ? 'Google login đã bị hủy'
+          : 'Google login không thành công';
+        toast.error(errorMessage);
+        return;
+      }
+
+      const user = await googleLogin(result.authentication.idToken);
+      if (user.isVerified === false) {
+        router.replace('/(auth)/verify-email');
+      } else {
+        router.replace('/(resident)');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Google đăng nhập thất bại';
+      toast.error(message || 'Google đăng nhập thất bại');
     } finally {
       submitLockRef.current = false;
     }
@@ -68,62 +141,55 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
       >
-        <View style={styles.flex1}>
-          <ScrollView
-            style={styles.flex1}
-            contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            showsVerticalScrollIndicator={false}
-            contentInsetAdjustmentBehavior="never"
-          >
-          {/* Hero Panel — Aligned with Web Auth Layout */}
-          <View style={styles.heroPanel}>
-            <View style={styles.heroGlow} />
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.container}>
+            <View style={styles.backgroundLayer}>
+              <UrbanHeroBackground />
+            </View>
+
+          <View style={styles.contentWrap}>
             <View style={styles.brandHeaderRow}>
               <View style={styles.brandIconSquare}>
                 <Icon name="map-pin" size={20} color="#FFFFFF" />
               </View>
-              <View>
+              <View style={styles.brandTextWrap}>
                 <Text style={styles.brandTitle}>UrbanMind</Text>
                 <Text style={styles.brandTagline}>Cổng phản ánh đô thị thông minh</Text>
               </View>
             </View>
 
-            <Text style={styles.brandSubtitle}>
+            <Text style={styles.heroMessage}>
               Theo dõi phản ánh, nhận thông báo tiến độ và tương tác với chính quyền dễ dàng.
             </Text>
 
-            {/* Step Pills — Aligned with Web AuthProductionRoute */}
-            <View style={styles.stepRow}>
-              <View style={styles.stepPill}>
-                <View style={[styles.stepNumBadge, { backgroundColor: semantics.bg.primary }]}>
-                  <Text style={styles.stepNumText}>1</Text>
+            <View style={styles.benefitsRow}>
+              <View style={styles.benefitInlineItem}>
+                <View style={styles.benefitIconWrap}>
+                  <Icon name="message-square" size={16} color={semantics.text.brand} />
                 </View>
-                <Text style={styles.stepLabelText}>Ghi nhận</Text>
+                <Text style={styles.benefitTitle}>Ghi nhận</Text>
               </View>
-              <View style={styles.stepDivider} />
-              <View style={styles.stepPill}>
-                <View style={[styles.stepNumBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                  <Text style={styles.stepNumText}>2</Text>
+              <View style={styles.benefitSeparator} />
+              <View style={styles.benefitInlineItem}>
+                <View style={styles.benefitIconWrap}>
+                  <Icon name="bell" size={16} color={semantics.text.brand} />
                 </View>
-                <Text style={styles.stepLabelText}>Theo dõi</Text>
+                <Text style={styles.benefitTitle}>Theo dõi</Text>
               </View>
-              <View style={styles.stepDivider} />
-              <View style={styles.stepPill}>
-                <View style={[styles.stepNumBadge, { backgroundColor: 'rgba(16,185,129,0.3)' }]}>
-                  <Text style={[styles.stepNumText, { color: '#6EE7B7' }]}>3</Text>
+              <View style={styles.benefitSeparator} />
+              <View style={styles.benefitInlineItem}>
+                <View style={styles.benefitIconWrap}>
+                  <Icon name="check-circle" size={16} color={semantics.text.brand} />
                 </View>
-                <Text style={styles.stepLabelText}>Hoàn tất</Text>
+                <Text style={styles.benefitTitle}>Hoàn tất</Text>
               </View>
             </View>
           </View>
 
-          {/* Form Card */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Đăng nhập</Text>
             <Text style={styles.cardSub}>
-              Nhập thông tin tài khoản để tiếp tục theo dõi phản ánh của bạn
+              Tiếp tục theo dõi phản ánh của bạn
             </Text>
 
             <AppInput
@@ -161,39 +227,50 @@ export default function LoginScreen() {
               loading={isLoading}
               fullWidth
               size="lg"
-              className="mt-2"
               rightIcon={<Icon name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 4 }} />}
+              style={styles.primaryButtonStyle}
             >
               Đăng nhập
             </AppButton>
 
-            <View style={styles.divider}>
+            <View style={styles.dividerWrap}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>HOẶC</Text>
+              <Text style={styles.dividerText}>hoặc</Text>
               <View style={styles.dividerLine} />
             </View>
 
             <AppButton
-              variant="outline"
+              variant="secondary"
               fullWidth
               size="lg"
-              onPress={() => router.push('/(auth)/register')}
+              leftIcon={
+                <View style={styles.googleBadge}>
+                  <Text style={styles.googleBadgeText}>G</Text>
+                </View>
+              }
+              onPress={handleGoogleSignIn}
+              style={styles.secondaryButtonStyle}
             >
-              Tạo tài khoản mới
+              Đăng nhập với Google
             </AppButton>
+
+            <View style={styles.registerRow}>
+              <Text style={styles.registerPrompt}>Chưa có tài khoản?</Text>
+              <Text style={styles.registerLink} onPress={() => router.push('/(auth)/register')}>
+                Tạo tài khoản
+              </Text>
+            </View>
           </View>
 
           <View style={styles.footerWrap}>
             <Text style={styles.footerText}>
-              Bằng cách đăng nhập, bạn đồng ý với{' '}
-              <Text style={styles.footerLink}>Điều khoản sử dụng</Text>
-              {' '}và{' '}
-              <Text style={styles.footerLink}>Chính sách bảo mật</Text>
-              {' '}của UrbanMind.
+              <Text style={styles.footerLink}>Điều khoản</Text>
+              {' '}•{' '}
+              <Text style={styles.footerLink}>Chính sách</Text>
             </Text>
           </View>
-          </ScrollView>
         </View>
+      </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -202,184 +279,240 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: semantics.bg.app,
+    backgroundColor: '#EAF3FF',
   },
   flex1: {
     flex: 1,
   },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 56,
+  container: {
+    flex: 1,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    backgroundColor: '#EAF3FF',
   },
-  heroPanel: {
-    backgroundColor: '#071024',
-    borderRadius: 28,
-    padding: 22,
-    marginBottom: 18,
+  backgroundLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 300,
+    backgroundColor: '#F8FAFC',
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(96, 165, 250, 0.18)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 6,
+    zIndex: 0,
   },
-  heroGlow: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+  contentWrap: {
+    position: 'relative',
+    zIndex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 28,
+    paddingBottom: 8,
   },
   brandHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 12,
+    zIndex: 1,
   },
   brandIconSquare: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: semantics.bg.primary,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: semantics.bg.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  brandTextWrap: {
+    flex: 1,
   },
   brandTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: 'Geist-Bold',
-    color: '#FFFFFF',
-    letterSpacing: -0.4,
+    color: '#0F172A',
+    letterSpacing: -0.5,
   },
   brandTagline: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Geist-Medium',
-    color: 'rgba(255, 255, 255, 0.65)',
-    marginTop: 1,
+    color: '#475569',
+    marginTop: 2,
   },
-  brandSubtitle: {
+  heroMessage: {
+    marginTop: 14,
     fontSize: 13,
     fontFamily: 'Geist-Regular',
-    color: 'rgba(255, 255, 255, 0.82)',
+    color: '#0F172A',
     lineHeight: 19,
-    marginBottom: 16,
+    width: '78%',
+    zIndex: 1,
   },
-  stepRow: {
+  benefitsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 18,
+    paddingHorizontal: 0,
+    zIndex: 1,
+    
   },
-  stepPill: {
-    flexDirection: 'row',
+  benefitTitle: {
+    fontSize: 11,
+    fontFamily: 'Geist-Bold',
+    color: '#0F172A',
+    textAlign: 'center',
+  },
+  benefitInlineItem: {
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    gap: 3,
+    marginHorizontal: 18,
   },
-  stepNumBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+  benefitIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#EAF3FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepNumText: {
-    fontSize: 11,
-    fontFamily: 'Geist-Bold',
-    color: '#FFFFFF',
-  },
-  stepLabelText: {
-    fontSize: 11,
-    fontFamily: 'Geist-Medium',
-    color: 'rgba(255, 255, 255, 0.88)',
-  },
-  stepDivider: {
-    width: 16,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  benefitSeparator: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(148,163,184,0.22)',
   },
   card: {
-    backgroundColor: semantics.bg.surface,
-    borderRadius: 26,
-    padding: 24,
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 58,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 12,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    elevation: 12,
     borderWidth: 1,
-    borderColor: semantics.border.default,
+    borderColor: 'rgba(148,163,184,0.14)',
+    zIndex: 2,
   },
   cardTitle: {
-    fontSize: 22,
+    alignSelf: 'center',
+    fontSize: 28,
     fontFamily: 'Geist-Bold',
     color: semantics.text.primary,
-    textAlign: 'center',
     marginBottom: 4,
     letterSpacing: -0.4,
   },
   cardSub: {
+        alignSelf: 'center',
+
     fontSize: 13,
     fontFamily: 'Geist-Regular',
-    color: semantics.text.muted,
-    textAlign: 'center',
-    marginBottom: 22,
+    color: '#64748B',
+    marginBottom: 14,
     lineHeight: 18,
   },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
     backgroundColor: semantics.feedback.error.bg,
     borderWidth: 1,
     borderColor: semantics.feedback.error.border,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   errorText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Geist-Medium',
     color: semantics.feedback.error.text,
-    lineHeight: 18,
+    lineHeight: 16,
   },
-  divider: {
+  primaryButtonStyle: {
+    marginTop: 4,
+  },
+  dividerWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 18,
+    marginVertical: 14,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: semantics.border.light,
+    backgroundColor: 'rgba(148,163,184,0.24)',
   },
   dividerText: {
     fontSize: 11,
     fontFamily: 'Geist-Medium',
-    color: semantics.text.lightMuted,
-    paddingHorizontal: 12,
+    color: '#64748B',
+    paddingHorizontal: 10,
+    textTransform: 'lowercase',
+  },
+  googleBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#DDE7F5',
+    marginRight: 6,
+  },
+  googleBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Geist-Bold',
+    color: '#4285F4',
+  },
+  secondaryButtonStyle: {
+    marginTop: 0,
+    backgroundColor: '#EFF6FF',
+  },
+  registerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    gap: 6,
+  },
+  registerPrompt: {
+    fontSize: 12.5,
+    fontFamily: 'Geist-Regular',
+    color: '#64748B',
+  },
+  registerLink: {
+    fontSize: 12.5,
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.brand,
   },
   footerWrap: {
-    marginTop: 24,
-    paddingHorizontal: 16,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 10,
+    zIndex: 3,
+    alignItems: 'center',
   },
   footerText: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'Geist-Regular',
-    color: semantics.text.muted,
+    color: '#475569',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 15,
   },
   footerLink: {
     fontFamily: 'Geist-SemiBold',

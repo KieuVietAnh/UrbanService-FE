@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import {
   setApiBaseUrl,
   setTokenStorage,
@@ -11,7 +12,11 @@ let isInitialized = false;
 export const DEFAULT_API_URL = 'https://api.urbanservice.me';
 
 export const getEffectiveApiUrl = () => {
-  const configuredTargetUrl = String(process.env.EXPO_PUBLIC_API_URL || '').trim();
+  const configuredTargetUrl = String(
+    process.env.EXPO_PUBLIC_API_URL ||
+    Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL ||
+    ''
+  ).trim();
   return configuredTargetUrl || DEFAULT_API_URL;
 };
 
