@@ -1,38 +1,22 @@
 import { axiosClient } from './axiosClient.js';
 
 export const userApi = {
-  // Deprecated: old signature accepted userId. New behaviour: fetch current authenticated user's profile.
   async getProfile() {
-    const url = '/api/profile';
     try {
-      console.log('[userApi.getProfile] request', { url });
-      const response = await axiosClient.get(url);
+      const response = await axiosClient.get('/api/profile');
       return response?.data || response || null;
     } catch (error) {
-      const status = error?.response?.status;
-      if (status === 404) {
-        console.debug('[userApi.getProfile] profile not found', { url, status });
-        return null;
-      }
-
-      console.warn('userApi.getProfile failed, returning null', {
-        message: error?.message,
-        status,
-        url: error?.config?.url,
-        data: error?.response?.data,
-        stack: error?.stack,
-      });
-      return null;
+      console.error('userApi.getProfile failed', error);
+      throw error;
     }
   },
 
-  // Update current authenticated user's profile. No userId required.
   async updateProfile(data) {
     try {
       const response = await axiosClient.put('/api/profile', data);
       return response?.data || response || null;
     } catch (error) {
-      console.warn('userApi.updateProfile failed', error);
+      console.error('userApi.updateProfile failed', error);
       throw error;
     }
   },
@@ -79,41 +63,6 @@ export const userApi = {
       return response?.data || response || data;
     } catch (error) {
       console.warn('userApi.createUser failed', error);
-      throw error;
-    }
-  },
-
-  // Current authenticated user's profile endpoints
-  async getCurrentProfile() {
-    const url = '/api/profile';
-    try {
-      console.log('[userApi.getCurrentProfile] request', { url });
-      const response = await axiosClient.get(url);
-      return response?.data || response || null;
-    } catch (error) {
-      const status = error?.response?.status;
-      if (status === 404) {
-        console.debug('[userApi.getCurrentProfile] profile not found', { url, status });
-        return null;
-      }
-
-      console.warn('userApi.getCurrentProfile failed', {
-        message: error?.message,
-        status,
-        url: error?.config?.url,
-        data: error?.response?.data,
-        stack: error?.stack,
-      });
-      return null;
-    }
-  },
-
-  async updateCurrentProfile(data) {
-    try {
-      const response = await axiosClient.put('/api/profile', data);
-      return response?.data || response || null;
-    } catch (error) {
-      console.warn('userApi.updateCurrentProfile failed', error);
       throw error;
     }
   },
