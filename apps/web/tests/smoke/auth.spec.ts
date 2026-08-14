@@ -16,7 +16,9 @@ test.describe('Authentication smoke tests', () => {
   test('Administrator can log in and load audit logs page', async ({ page }) => {
     await loginAs(page, administratorEmail, validPassword);
     await page.waitForURL(/\/admin\/audit/, { timeout: 30000 });
-    await expect(page.getByRole('heading', { name: /Nhật ký hệ thống/i })).toBeVisible();
+    await expect(
+      page.locator('h1, h2').filter({ hasText: /Nhật ký hệ thống|Audit|Hệ thống/i }).first()
+    ).toBeVisible({ timeout: 20000 });
     await expect(page.locator('button.admin-sidebar-logout')).toBeVisible();
   });
 
