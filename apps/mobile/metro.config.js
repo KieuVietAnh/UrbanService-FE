@@ -7,8 +7,8 @@ const workspaceRoot = path.resolve(projectRoot, '..', '..');
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Watch all files in the monorepo workspace
-config.watchFolders = [workspaceRoot];
+// 1. Watch all files in the monorepo workspace (merge with defaults)
+config.watchFolders = [...(config.watchFolders || []), workspaceRoot];
 
 // 2. Prioritize project node_modules over workspace root node_modules
 config.resolver.nodeModulesPaths = [

@@ -111,7 +111,7 @@ export default function LoginScreen() {
     setErrors({});
 
     try {
-      const result = await promptAsync({ useProxy: true });
+      const result = await promptAsync();
       if (result.type !== 'success' || !result.authentication?.idToken) {
         const errorMessage = result.type === 'dismiss'
           ? 'Google login đã bị hủy'

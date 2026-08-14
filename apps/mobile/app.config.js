@@ -10,6 +10,7 @@ if (fs.existsSync(envFilePath)) {
 module.exports = ({ config }) => ({
   ...config,
   extra: {
+    ...config.extra,
     EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL || 'https://api.urbanservice.me',
     EXPO_PUBLIC_GOOGLE_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
     EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
