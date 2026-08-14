@@ -17,6 +17,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
       - run: npm install -g eas-cli
 
       - run: pnpm install
