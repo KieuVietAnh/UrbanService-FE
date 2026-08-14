@@ -63,6 +63,8 @@ const FeedbackDetailPage = lazy(() => import('../pages/management/FeedbackDetail
 const AdminIncidentMapPage = lazy(() => import('../pages/management/AdminIncidentMapPage').then((m) => ({ default: m.AdminIncidentMapPage })));
 const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
+const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ default: m.AuditLog })));
+const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
 
 const RouteFallback = ({ isAuthenticated = false }) => {
   const location = useLocation();
@@ -151,7 +153,7 @@ const roleEntryPaths = {
   [APP_ROLES.SYSTEM_STAFF]: '/staff/queue',
   [APP_ROLES.SERVICE_PROVIDER]: '/provider/tasks',
   [APP_ROLES.INTERACTION_MANAGER]: '/manager/interactions',
-  [APP_ROLES.ADMINISTRATOR]: '/dashboard',
+  [APP_ROLES.ADMINISTRATOR]: '/admin/audit',
 };
 
 export const AppRoutes = () => {
@@ -595,8 +597,24 @@ export const AppRoutes = () => {
         </ProtectedRoute>
       } />
       <Route path="/management/integrations" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/admin/audit" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/admin/performance" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/admin/audit" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <AuditLog />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/performance" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <PerformanceDashboard />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

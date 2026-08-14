@@ -6,6 +6,7 @@
     "scheme": "urbanmind",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+     "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -15,6 +16,10 @@
     },
     "android": {
       "package": "com.giaunh.urbanmind",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.LOCATION_HARDWARE",

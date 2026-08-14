@@ -57,14 +57,14 @@ const loginAsInteractionManager = async (page: Page) => {
   await page.goto('/login');
   const loginPage = new LoginPage(page);
   await loginPage.login(interactionManagerEmail, interactionManagerPassword);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
   await page.waitForSelector('.admin-page-hero, .admin-hero-title, .dashboard-shell, header', { timeout: 30000 }).catch(() => undefined);
 };
 
 const verifyRouteAndPage = async (page: Page, route: string, locator: string | ReturnType<Page['locator']>, description: string) => {
   await page.goto(route);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   if (typeof locator === 'string') {
     await expect(page.locator(locator)).toBeVisible({ timeout: 15000 });
@@ -113,7 +113,7 @@ test.describe.serial('Interaction Manager smoke tests', () => {
 
     await loginAsInteractionManager(page);
     await page.goto(approvalsRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const rowCount = await page.locator('table tbody tr').count();
     if (rowCount === 0) {
@@ -129,8 +129,10 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     await approvalButton.click();
     await page.waitForURL(/\/manager\/approvals\/[A-Za-z0-9_-]+/, { timeout: 30000 });
 
-    await expect(page.getByRole('heading', { name: /Nội dung phản ánh|Chi tiết phản ánh|Không tìm thấy hồ sơ/i }).first()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('button', { name: /Quay lại/i })).toBeVisible({ timeout: 15000 });
+    await expect(
+      page.locator('h1, h2, h3').filter({ hasText: /Nội dung phản ánh|Chi tiết phản ánh|Không tìm thấy hồ sơ/i }).first()
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /Quay lại|Quay lại danh sách/i })).toBeVisible({ timeout: 15000 });
     await assertNoErrors(monitor, 'Approval detail');
   });
 

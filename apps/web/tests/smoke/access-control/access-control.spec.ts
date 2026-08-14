@@ -14,13 +14,13 @@ const loginAs = async (page: Page, email: string, password: string) => {
   await page.goto('/login');
   const loginPage = new LoginPage(page);
   await loginPage.login(email, password);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
 };
 
 const verifyUnauthorizedAccess = async (page: Page, route: string, description: string) => {
   await page.goto(route);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(1000);
 
   const currentPath = new URL(page.url()).pathname;

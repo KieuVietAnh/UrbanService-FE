@@ -13,7 +13,7 @@ export class MapPage extends BasePage {
     super(page);
     this.leafletContainer = page.locator('.leaflet-container');
     this.markerLayer = page.locator('.leaflet-marker-pane .leaflet-marker-icon');
-    this.mapContainer = page.locator('.leaflet-container');
+    this.mapContainer = page.getByTestId('incident-map-container');
     this.spinner = page.locator('.loading-spinner, .loading.loading-spinner');
     this.loadingState = page.getByTestId('community-map-loading');
     this.emptyStateCard = page.getByTestId('community-map-empty-state');

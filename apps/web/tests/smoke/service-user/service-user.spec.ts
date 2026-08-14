@@ -64,7 +64,7 @@ const loginAsServiceUser = async (page: Page) => {
   await page.goto('/login');
   const loginPage = new LoginPage(page);
   await loginPage.login(serviceUserEmail, serviceUserPassword);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   // Wait until the app redirects away from the login route and the client finishes loading.
   await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
   // Wait for either the service-user landing hero or a dashboard shell to appear.
@@ -74,7 +74,7 @@ const loginAsServiceUser = async (page: Page) => {
 
 const verifyRouteAndPage = async (page: Page, route: string, locator: string | ReturnType<Page['locator']>, description: string) => {
   await page.goto(route);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   if (typeof locator === 'string') {
     await expect(page.locator(locator)).toBeVisible({ timeout: 15000 });
@@ -112,7 +112,7 @@ test.describe('Service User smoke tests', () => {
 
     await loginAsServiceUser(page);
     await page.goto(ticketListRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const ticketListPage = new TicketListPage(page);
     // Ensure the ticket list page loaded.
@@ -140,7 +140,7 @@ test.describe('Service User smoke tests', () => {
 
     await loginAsServiceUser(page);
     await page.goto(communityFeedRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('main.community-feed-page')).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('heading', { name: /Bảng tin cộng đồng|Community Feed|Bảng tin/i }).first()).toBeVisible({ timeout: 15000 });
@@ -152,7 +152,7 @@ test.describe('Service User smoke tests', () => {
 
     await loginAsServiceUser(page);
     await page.goto(notificationCenterRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.getByRole('heading', { name: /Thông báo của tôi/i })).toBeVisible({ timeout: 15000 });
     // locator(...) may match multiple elements; assert the first matching shell/page is visible.
@@ -165,7 +165,7 @@ test.describe('Service User smoke tests', () => {
 
     await loginAsServiceUser(page);
     await page.goto(profileRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // The page shows a small label "Hồ sơ tài khoản" (not necessarily an h1). Match by text instead.
     await expect(page.getByText(/Hồ sơ tài khoản/i)).toBeVisible({ timeout: 15000 });

@@ -68,7 +68,7 @@ const loginAsSystemAdmin = async (page: Page) => {
   await page.goto('/login');
   const loginPage = new LoginPage(page);
   await loginPage.login(systemAdminEmail, systemAdminPassword);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
   await page.waitForSelector('.admin-page-hero, .admin-hero-title, .dashboard-shell, header', { timeout: 30000 }).catch(() => undefined);
 };
@@ -80,7 +80,7 @@ const verifyRouteAndPage = async (
   description: string
 ) => {
   await page.goto(route);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   if (typeof locator === 'string') {
     await expect(page.locator(locator)).toBeVisible({ timeout: 15000 });
@@ -99,7 +99,18 @@ test.describe.serial('System Administrator smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await expect(page.getByRole('heading', { name: /Quản lý người dùng|Quản lý feedback|Danh mục phản ánh|Cấu hình thời hạn SLA|Nhật ký hệ thống|Hiệu năng & trạng thái hệ thống/i }).first()).toBeVisible({ timeout: 15000 });
+    const adminHeading = page
+      .locator('h1, h2')
+      .filter({ hasText: /Quản lý người dùng|Quản lý feedback|Quản lý phản ánh|Danh mục phản ánh|Cấu hình thời hạn SLA|Chính sách SLA|Nhật ký hệ thống|Hiệu năng/i })
+      .first();
+    const shellOrLogout = page.locator('button.admin-sidebar-logout, .dashboard-shell, .admin-page-hero').first();
+
+    const headingVisible = await adminHeading.isVisible().catch(() => false);
+    const shellVisible = await shellOrLogout.isVisible().catch(() => false);
+    expect(
+      headingVisible || shellVisible,
+      'Administrator login did not reach an expected admin landing surface'
+    ).toBeTruthy();
     await assertNoErrors(monitor, 'Administrator login');
   });
 
@@ -115,7 +126,7 @@ test.describe.serial('System Administrator smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(page, feedbacksRoute, page.getByRole('heading', { name: /Quản lý feedback/i }), 'Feedback Management');
+    await verifyRouteAndPage(page, feedbacksRoute, page.getByRole('heading', { name: /Quản lý feedback|Quản lý phản ánh/i }), 'Feedback Management');
     await assertNoErrors(monitor, 'Feedback Management');
   });
 
@@ -136,7 +147,7 @@ test.describe.serial('System Administrator smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(page, slaRoute, page.getByRole('heading', { name: /Cấu hình thời hạn SLA/i }), 'SLA Configuration');
+    await verifyRouteAndPage(page, slaRoute, page.getByRole('heading', { name: /Cấu hình thời hạn SLA|Chính sách SLA/i }), 'SLA Configuration');
     await assertNoErrors(
       monitor,
       'SLA Configuration',

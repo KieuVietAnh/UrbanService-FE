@@ -172,8 +172,11 @@ const createApiError = (error, fallbackMessage) => {
  * Call this once during app initialization with the appropriate environment variable.
  */
 export const setApiBaseUrl = (baseUrl) => {
-  const normalizedBaseUrl = String(baseUrl || '').trim();
-  apiBaseUrl = normalizedBaseUrl || DEFAULT_API_BASE_URL;
+  if (baseUrl === undefined || baseUrl === null) {
+    apiBaseUrl = DEFAULT_API_BASE_URL;
+  } else {
+    apiBaseUrl = String(baseUrl).trim();
+  }
   axiosClient.defaults.baseURL = apiBaseUrl;
 };
 

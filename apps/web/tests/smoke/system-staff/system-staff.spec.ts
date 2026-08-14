@@ -55,7 +55,7 @@ const loginAsStaff = async (page: Page) => {
   await page.goto('/login');
   const loginPage = new LoginPage(page);
   await loginPage.login(staffEmail, staffPassword);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
   await page.waitForSelector('.admin-page-hero, .admin-hero-title, #staff-queue', { timeout: 30000 }).catch(() => undefined);
 };
@@ -67,7 +67,7 @@ test.describe.serial('System Staff smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsStaff(page);
     await page.goto(queueRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check for the admin hero title or queue indicator (fall back to text if heading not found)
     // Check for expected queue headings; different deployments may show different titles
@@ -80,7 +80,7 @@ test.describe.serial('System Staff smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsStaff(page);
     await page.goto(feedbackListRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('h1.admin-hero-title, .management-feedback-list')).toBeVisible({ timeout: 15000 });
     await assertNoErrors(monitor, 'Feedback list');
@@ -92,7 +92,7 @@ test.describe.serial('System Staff smoke tests', () => {
 
     // Open first feedback from list if present
     await page.goto(feedbackListRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const firstRow = page.locator('table tbody tr').first();
     const count = await page.locator('table tbody tr').count();
@@ -131,7 +131,7 @@ test.describe.serial('System Staff smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsStaff(page);
     await page.goto(duplicateDetectionRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('h2.admin-section-title, h1.admin-hero-title, .duplicate-list')).toBeVisible({ timeout: 15000 });
 
@@ -150,7 +150,7 @@ test.describe.serial('System Staff smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsStaff(page);
     await page.goto(assignmentHistoryRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('h1.admin-hero-title, .assignment-history')).toBeVisible({ timeout: 15000 });
     await assertNoErrors(monitor, 'Assignment history');
@@ -160,7 +160,7 @@ test.describe.serial('System Staff smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsStaff(page);
     await page.goto(areaAlertsRoute);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('h1.admin-hero-title')).toBeVisible({ timeout: 15000 });
     await assertNoErrors(monitor, 'Area alerts');
