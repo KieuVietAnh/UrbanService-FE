@@ -1,0 +1,9 @@
+.agents
+.claude
+.cursor
+.git
+.vscode
+node_modules
+
+coverage
+dist
