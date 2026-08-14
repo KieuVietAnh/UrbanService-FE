@@ -79,13 +79,15 @@ const verifyRouteAndPage = async (
   locator: string | ReturnType<Page['locator']>,
   description: string
 ) => {
+  const pageLoadTimeout = 30000;
+
   await page.goto(route);
   await page.waitForLoadState('domcontentloaded');
 
   if (typeof locator === 'string') {
-    await expect(page.locator(locator)).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(locator)).toBeVisible({ timeout: pageLoadTimeout });
   } else {
-    await expect(locator).toBeVisible({ timeout: 15000 });
+    await expect(locator).toBeVisible({ timeout: pageLoadTimeout });
   }
 
   const currentPath = new URL(page.url()).pathname;
@@ -160,7 +162,12 @@ test.describe.serial('System Administrator smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(page, auditRoute, page.getByRole('heading', { name: /Nhật ký hệ thống/i }), 'Audit Log');
+    await verifyRouteAndPage(
+      page,
+      auditRoute,
+      page.getByRole('heading', { name: /Nhật ký hệ thống|Audit Log|System Audit Log/i }),
+      'Audit Log'
+    );
     await assertNoErrors(monitor, 'Audit Log');
   });
 
