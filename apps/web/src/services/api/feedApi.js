@@ -1,6 +1,12 @@
 const getBaseUrl = () => {
+  if (import.meta.env.DEV) return '';
   const raw = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
   return raw.replace(/\/$/, '');
+};
+
+const buildApiEndpoint = (path) => {
+  const baseUrl = getBaseUrl();
+  return baseUrl ? `${baseUrl}${path}` : path;
 };
 
 const getAuthToken = () => {
@@ -73,9 +79,8 @@ export const getCommunityFeed = async (
   params = {},
   { force = false } = {}
 ) => {
-  const baseUrl = getBaseUrl();
-  const endpoint = `${baseUrl}/api/user/feedbacks/feed`;
-  const url = new URL(endpoint);
+  const endpoint = buildApiEndpoint('/api/user/feedbacks/feed');
+  const url = new URL(endpoint, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
   Object.entries(normalizeFeedParams(params)).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       url.searchParams.set(key, value);
@@ -255,8 +260,7 @@ export const getCommunityFeedDetail = async (
   }
 
   const request = (async () => {
-    const baseUrl = getBaseUrl();
-    const endpoint = `${baseUrl}/api/user/feedbacks/feed/${encodeURIComponent(feedbackId)}`;
+    const endpoint = buildApiEndpoint(`/api/user/feedbacks/feed/${encodeURIComponent(feedbackId)}`);
     const token = getAuthToken();
     const headers = {
       Accept: 'application/json',

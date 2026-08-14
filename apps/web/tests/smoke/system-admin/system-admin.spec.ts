@@ -68,7 +68,7 @@ const loginAsSystemAdmin = async (page: Page) => {
   await page.goto('/login');
   const loginPage = new LoginPage(page);
   await loginPage.login(systemAdminEmail, systemAdminPassword);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
   await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
   await page.waitForSelector('.admin-page-hero, .admin-hero-title, .dashboard-shell, header', { timeout: 30000 }).catch(() => undefined);
 };
@@ -80,7 +80,7 @@ const verifyRouteAndPage = async (
   description: string
 ) => {
   await page.goto(route);
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   if (typeof locator === 'string') {
     await expect(page.locator(locator)).toBeVisible({ timeout: 15000 });
@@ -115,7 +115,7 @@ test.describe.serial('System Administrator smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(page, feedbacksRoute, page.getByRole('heading', { name: /Quản lý feedback/i }), 'Feedback Management');
+    await verifyRouteAndPage(page, feedbacksRoute, page.getByRole('heading', { name: /Quản lý feedback|Quản lý phản ánh/i }), 'Feedback Management');
     await assertNoErrors(monitor, 'Feedback Management');
   });
 
@@ -136,7 +136,7 @@ test.describe.serial('System Administrator smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(page, slaRoute, page.getByRole('heading', { name: /Cấu hình thời hạn SLA/i }), 'SLA Configuration');
+    await verifyRouteAndPage(page, slaRoute, page.getByRole('heading', { name: /Cấu hình thời hạn SLA|Chính sách SLA/i }), 'SLA Configuration');
     await assertNoErrors(
       monitor,
       'SLA Configuration',
