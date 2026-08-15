@@ -1,8 +1,6 @@
-export * as ai from './ai';
 export * as auth from './auth';
 export * as community from './community';
 export * as home from './home';
-export * as maps from './maps';
 export * as messaging from './messaging';
 export * as notifications from './notifications';
 export * as profile from './profile';

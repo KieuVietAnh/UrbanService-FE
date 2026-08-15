@@ -1,1 +1,1 @@
-export {};
+export { default as ProfileScreen } from './profile-screen';
