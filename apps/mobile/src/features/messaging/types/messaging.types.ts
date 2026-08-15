@@ -2,9 +2,13 @@ export type SenderType = 'ServiceUser' | 'SystemStaff' | 'InteractionManager' | 
 
 export interface ChatMessage {
   id: string;
+  messageId?: string | number;
+  tempId?: string;
   feedbackId?: string;
   senderName?: string | null;
   senderType?: SenderType | string;
+  senderRole?: string;
+  sender?: string;
   messageText?: string | null;
   createdAt: string;
 }

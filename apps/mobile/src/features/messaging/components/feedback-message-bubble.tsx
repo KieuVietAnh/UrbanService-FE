@@ -15,8 +15,8 @@ const formatTime = (iso?: string) => {
 };
 
 function MessageBubble({ msg }: { msg: ChatMessage }) {
-  const sender = (msg as any).senderType ?? (msg as any).senderRole ?? (msg as any).sender ?? 'System';
-  const senderRaw = String(sender ?? (msg as any).senderName ?? msg.senderName ?? '').toLowerCase();
+  const sender = msg.senderType ?? msg.senderRole ?? msg.sender ?? 'System';
+  const senderRaw = String(sender ?? msg.senderName ?? '').toLowerCase();
   const senderNorm = senderRaw.replace(/[^a-z0-9]/g, '');
   const isResident = /service|serviceuser|service_user|service-user|resident|user/.test(senderNorm);
   const isSystem = sender === 'System' || sender === 'system';

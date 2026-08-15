@@ -28,6 +28,12 @@ interface AuthState {
   setUser: (user: User | null) => void;
 }
 
+type ApiErrorDetails = Error & {
+  code?: unknown;
+  status?: unknown;
+  response?: unknown;
+};
+
 const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -73,14 +79,15 @@ export const useAuthStore = create<AuthState>()(
             console.log('[Auth login] completed', { userId: user?.id, email: user?.email, role: user?.role });
             set({ user, isLoading: false });
             return user;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng nhập thất bại');
+            const details = err as ApiErrorDetails;
             console.error('[Auth login failed]', {
-              code: err?.code || null,
-              message: err?.message || null,
-              status: err?.status || null,
-              response: err?.response || null,
-              stack: err?.stack || null,
+              code: details?.code || null,
+              message: details?.message || null,
+              status: details?.status || null,
+              response: details?.response || null,
+              stack: details?.stack || null,
             });
             set({ error: msg, isLoading: false });
             throw new Error(msg);
@@ -97,14 +104,15 @@ export const useAuthStore = create<AuthState>()(
             console.log('[Auth googleLogin] completed', { userId: user?.id, email: user?.email, role: user?.role });
             set({ user, isLoading: false });
             return user;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng nhập bằng Google thất bại');
+            const details = err as ApiErrorDetails;
             console.error('[Auth googleLogin failed]', {
-              code: err?.code || null,
-              message: err?.message || null,
-              status: err?.status || null,
-              response: err?.response || null,
-              stack: err?.stack || null,
+              code: details?.code || null,
+              message: details?.message || null,
+              status: details?.status || null,
+              response: details?.response || null,
+              stack: details?.stack || null,
             });
             set({ error: msg, isLoading: false });
             throw new Error(msg);
@@ -119,7 +127,7 @@ export const useAuthStore = create<AuthState>()(
             const user = await withRequestTimeout(AuthService.register(data));
             set({ user, isLoading: false });
             return user;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng ký thất bại');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
@@ -133,7 +141,7 @@ export const useAuthStore = create<AuthState>()(
           try {
             await withRequestTimeout(AuthService.sendOtp());
             set({ isLoading: false });
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Gửi mã OTP thất bại');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
@@ -150,7 +158,7 @@ export const useAuthStore = create<AuthState>()(
             const updatedUser = { ...user, isVerified: true };
             set({ user: updatedUser, isLoading: false });
             return updatedUser;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Mã OTP không chính xác');
             set({ error: msg, isLoading: false });
             throw new Error(msg);

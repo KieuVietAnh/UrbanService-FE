@@ -1,7 +1,12 @@
 import { axiosClient } from '@urbanmind/shared-api';
-import type { CommunityFeedParams, CommunityFeedResponse } from '../types/community.types';
+import type { CommunityFeedItem, CommunityFeedParams, CommunityFeedResponse } from '../types/community.types';
 
-const resolveMediaUrl = (value: any) => {
+type ApiRecord = Record<string, unknown>;
+
+const isApiRecord = (value: unknown): value is ApiRecord =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const resolveMediaUrl = (value: unknown) => {
   if (!value || typeof value !== 'string') return '';
   const trimmed = value.trim();
   if (!trimmed) return '';
@@ -14,73 +19,80 @@ const resolveMediaUrl = (value: any) => {
   return `${axiosClient.defaults.baseURL || 'https://api.urbanservice.me'}/${trimmed}`;
 };
 
-const normalizeAttachment = (attachment: any) => {
+const normalizeAttachment = (attachment: unknown) => {
   if (typeof attachment === 'string') {
     return { fileUrl: resolveMediaUrl(attachment), url: resolveMediaUrl(attachment) };
   }
 
-  const rawUrl = attachment?.fileUrl || attachment?.url || attachment?.path || attachment?.attachmentUrl || attachment?.displayUrl || '';
+  const record = isApiRecord(attachment) ? attachment : {};
+  const rawUrl = record.fileUrl || record.url || record.path || record.attachmentUrl || record.displayUrl || '';
   const url = resolveMediaUrl(rawUrl);
   return {
-    ...attachment,
-    attachmentId: attachment?.attachmentId || attachment?.attachmentID || attachment?.feedbackAttachmentId || attachment?.fileId || attachment?.id || null,
+    ...record,
+    attachmentId: record.attachmentId || record.attachmentID || record.feedbackAttachmentId || record.fileId || record.id || null,
     fileUrl: url,
     url,
   };
 };
 
-const normalizeFeedItem = (item: any) => {
-  const id = item?.feedbackId ?? item?.id ?? item?.feedbackID ?? null;
-  const title = item?.title ?? item?.subject ?? '';
-  const description = item?.description ?? item?.content ?? item?.message ?? '';
-  const locationText = item?.locationText ?? item?.address ?? item?.location ?? '';
-  const attachments = Array.isArray(item?.attachments)
-    ? item.attachments.map(normalizeAttachment)
-    : Array.isArray(item?.attachmentList)
-      ? item.attachmentList.map(normalizeAttachment)
+const normalizeFeedItem = (item: unknown): CommunityFeedItem => {
+  const record = isApiRecord(item) ? item : {};
+  const user = isApiRecord(record.user) ? record.user : {};
+  const id = record.feedbackId ?? record.id ?? record.feedbackID ?? null;
+  const title = record.title ?? record.subject ?? '';
+  const description = record.description ?? record.content ?? record.message ?? '';
+  const locationText = record.locationText ?? record.address ?? record.location ?? '';
+  const attachments = Array.isArray(record.attachments)
+    ? record.attachments.map(normalizeAttachment)
+    : Array.isArray(record.attachmentList)
+      ? record.attachmentList.map(normalizeAttachment)
       : [];
 
   const imageCandidates = [
-    ...(Array.isArray(item?.imageUrls) ? item.imageUrls : []),
-    ...(Array.isArray(item?.images) ? item.images : []),
-    ...(Array.isArray(item?.mediaUrls) ? item.mediaUrls : []),
-    ...(Array.isArray(item?.attachments) ? item.attachments : []),
-    ...(Array.isArray(item?.attachmentList) ? item.attachmentList : []),
+    ...(Array.isArray(record.imageUrls) ? record.imageUrls : []),
+    ...(Array.isArray(record.images) ? record.images : []),
+    ...(Array.isArray(record.mediaUrls) ? record.mediaUrls : []),
+    ...(Array.isArray(record.attachments) ? record.attachments : []),
+    ...(Array.isArray(record.attachmentList) ? record.attachmentList : []),
   ];
+
+  const firstImage = imageCandidates[0];
+  const firstImageRecord = isApiRecord(firstImage) ? firstImage : {};
 
   const imageUrl = resolveMediaUrl(
     attachments[0]?.fileUrl ||
-    item?.imageUrl ||
-    item?.coverImageUrl ||
-    item?.thumbnailUrl ||
-    item?.mediaUrl ||
-    item?.attachmentUrl ||
-    (typeof imageCandidates[0] === 'string' ? imageCandidates[0] : imageCandidates[0]?.fileUrl || imageCandidates[0]?.url || imageCandidates[0]?.path || '') ||
+    record.imageUrl ||
+    record.coverImageUrl ||
+    record.thumbnailUrl ||
+    record.mediaUrl ||
+    record.attachmentUrl ||
+    (typeof firstImage === 'string' ? firstImage : firstImageRecord.fileUrl || firstImageRecord.url || firstImageRecord.path || '') ||
     ''
   );
 
   return {
-    ...item,
+    ...record,
     id,
     feedbackId: id,
     title,
     description,
     locationText,
-    authorName: item?.authorName ?? item?.userName ?? item?.createdByName ?? item?.displayName ?? item?.fullName ?? item?.user?.userName ?? item?.user?.fullName ?? item?.user?.name ?? '',
-    createdAt: item?.createdAt ?? item?.created_at ?? item?.updatedAt ?? null,
+    authorName: record.authorName ?? record.userName ?? record.createdByName ?? record.displayName ?? record.fullName ?? user.userName ?? user.fullName ?? user.name ?? '',
+    createdAt: record.createdAt ?? record.created_at ?? record.updatedAt ?? null,
     attachments,
     imageUrl,
-    supportCount: Number(item?.supportCount ?? item?.supports ?? item?.likeCount ?? item?.upvotes ?? 0),
-    commentCount: Number(item?.commentCount ?? item?.commentsCount ?? item?.comment_count ?? item?.comments?.length ?? 0),
-    isSupported: Boolean(item?.isSupported ?? item?.supported ?? item?.isLiked ?? false),
-    latitude: item?.latitude ?? item?.lat ?? null,
-    longitude: item?.longitude ?? item?.lng ?? item?.lon ?? null,
-  };
+    supportCount: Number(record.supportCount ?? record.supports ?? record.likeCount ?? record.upvotes ?? 0),
+    commentCount: Number(record.commentCount ?? record.commentsCount ?? record.comment_count ?? (Array.isArray(record.comments) ? record.comments.length : 0)),
+    isSupported: Boolean(record.isSupported ?? record.supported ?? record.isLiked ?? false),
+    latitude: record.latitude ?? record.lat ?? null,
+    longitude: record.longitude ?? record.lng ?? record.lon ?? null,
+  } as CommunityFeedItem;
 };
 
-const normalizeFeedPayload = (value: any): CommunityFeedResponse => {
-  const unwrappedValue = value?.data && !Array.isArray(value.data) && typeof value.data === 'object'
-    ? value.data
+const normalizeFeedPayload = (value: unknown): CommunityFeedResponse => {
+  const valueRecord = isApiRecord(value) ? value : null;
+  const unwrappedValue = valueRecord && isApiRecord(valueRecord.data)
+    ? valueRecord.data
     : value;
 
   if (Array.isArray(unwrappedValue)) {
@@ -93,7 +105,7 @@ const normalizeFeedPayload = (value: any): CommunityFeedResponse => {
     };
   }
 
-  if (!unwrappedValue || typeof unwrappedValue !== 'object') {
+  if (!isApiRecord(unwrappedValue)) {
     return {
       items: [],
       pageNumber: 1,
@@ -132,7 +144,7 @@ const normalizeFeedPayload = (value: any): CommunityFeedResponse => {
 };
 
 const normalizeFeedParams = (params: CommunityFeedParams = {}) => {
-  const normalized: Record<string, any> = {};
+  const normalized: Record<string, string | number> = {};
   const pageNumber = Number(params?.pageNumber ?? 1);
   const pageSize = Number(params?.pageSize ?? 10);
   const status = params?.status;
@@ -162,7 +174,7 @@ const normalizeFeedParams = (params: CommunityFeedParams = {}) => {
   return normalized;
 };
 
-const resolveFeedItemImages = async (item: any) => {
+const resolveFeedItemImages = async (item: CommunityFeedItem) => {
   if (item?.imageUrl || !item?.feedbackId) return item;
 
   const attachmentCount = Number(item?.attachmentCount ?? item?.attachments?.length ?? 0);

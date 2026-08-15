@@ -21,6 +21,16 @@ import { semantics } from '@/theme/semantics';
 import { useToast } from '@/components/shared';
 import type { AiMessage } from '../types/messaging.types';
 
+type ApiRecord = Record<string, unknown>;
+
+const isApiRecord = (value: unknown): value is ApiRecord =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const getErrorMessage = (value: unknown): string | null => {
+  if (!isApiRecord(value) || typeof value.message !== 'string') return null;
+  return value.message;
+};
+
 const formatTime = (value: string) => {
   if (!value) return '';
   return new Date(value).toLocaleTimeString('vi-VN', {
@@ -29,17 +39,18 @@ const formatTime = (value: string) => {
   });
 };
 
-const normalizeMessage = (raw: any): AiMessage | null => {
-  if (!raw) return null;
+const normalizeMessage = (raw: unknown): AiMessage | null => {
+  if (!isApiRecord(raw)) return null;
+  const nestedData = isApiRecord(raw.data) ? raw.data : {};
   const id = String(raw.messageId ?? raw.id ?? raw.uuid ?? `${raw.createdAt ?? Date.now()}`);
   const content =
     raw.messageText ??
     raw.message ??
     raw.reply ??
     raw.content ??
-    raw.data?.message ??
-    raw.data?.reply ??
-    raw.data?.messageText ??
+    nestedData.message ??
+    nestedData.reply ??
+    nestedData.messageText ??
     '';
   const senderRaw = String(raw.senderType ?? raw.sender ?? raw.role ?? '').toLowerCase();
   const sender = senderRaw.includes('user') ? 'user' : senderRaw.includes('assistant') || senderRaw.includes('ai') ? 'assistant' : 'assistant';
@@ -52,23 +63,27 @@ const normalizeMessage = (raw: any): AiMessage | null => {
   };
 };
 
-const normalizeChatReply = (payload: any) => {
-  const data = payload?.data ?? payload ?? {};
+const normalizeChatReply = (payload: unknown) => {
+  const payloadRecord = isApiRecord(payload) ? payload : {};
+  const data = isApiRecord(payloadRecord.data) ? payloadRecord.data : payloadRecord;
+  const nestedData = isApiRecord(data.data) ? data.data : {};
+  const conversation = isApiRecord(data.conversation) ? data.conversation : {};
+  const result = isApiRecord(data.result) ? data.result : {};
   const message =
     data.message ??
     data.messageText ??
     data.reply ??
     data.content ??
-    data.data?.message ??
-    data.data?.reply ??
-    data.data?.messageText ??
+    nestedData.message ??
+    nestedData.reply ??
+    nestedData.messageText ??
     '';
   const conversationId = String(
     data.conversationId ??
     data.conversationID ??
     data.id ??
-    data?.conversation?.id ??
-    data?.result?.conversationId ??
+    conversation.id ??
+    result.conversationId ??
     ''
   );
   const createdAt = data.createdAt ?? data.createdAtUtc ?? new Date().toISOString();
@@ -80,7 +95,7 @@ export default function AiConversationDetailScreen() {
   const router = useRouter();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const listRef = useRef<FlatList<any> | null>(null);
+  const listRef = useRef<FlatList<AiMessage> | null>(null);
   const queryClient = useQueryClient();
   const [composerHeight, setComposerHeight] = useState(72);
   const keyboardOffset = Platform.OS === 'ios' ? (insets.top || 0) - 120 : 0;
@@ -140,7 +155,7 @@ export default function AiConversationDetailScreen() {
         sender: 'user',
         createdAt: new Date().toISOString(),
       };
-      queryClient.setQueryData(['ai-conversation-messages', conversationId], (old: any) => {
+      queryClient.setQueryData<AiMessage[]>(['ai-conversation-messages', conversationId], (old) => {
         const arr = Array.isArray(old) ? old : [];
         return [...arr, optimistic];
       });
@@ -149,7 +164,7 @@ export default function AiConversationDetailScreen() {
     },
     onSuccess: (response) => {
       const reply = normalizeChatReply(response);
-      queryClient.setQueryData(['ai-conversation-messages', conversationId], (old: any) => {
+      queryClient.setQueryData<AiMessage[]>(['ai-conversation-messages', conversationId], (old) => {
         const arr = Array.isArray(old) ? old : [];
         if (reply.message) {
           return [...arr, { id: `ai-${Date.now()}`, content: reply.message, sender: 'assistant', createdAt: reply.createdAt }];
@@ -162,7 +177,7 @@ export default function AiConversationDetailScreen() {
       }
       scrollToBottom(true);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.warn('AI send failed', err);
       toast.error('Gửi tin nhắn AI thất bại. Vui lòng thử lại.');
     },
@@ -198,7 +213,7 @@ export default function AiConversationDetailScreen() {
 
       {isError ? (
         <AppErrorState onRetry={refetch}>
-          {(error as any)?.message || 'Không thể tải hội thoại AI.'}
+          {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
         </AppErrorState>
       ) : (
         <KeyboardAvoidingView

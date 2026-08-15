@@ -11,7 +11,7 @@ import { semantics } from '@/theme/semantics';
 export default function FeedbackChatSection({ feedbackId }: { feedbackId: string }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const listRef = useRef<FlatList<any> | null>(null);
+  const listRef = useRef<FlatList<ChatMessage> | null>(null);
   const insets = useSafeAreaInsets();
   const [composerHeight, setComposerHeight] = useState<number>(72);
   const keyboardOffset = Platform.OS === 'ios'
@@ -36,7 +36,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
     onMutate: async (text: string) => {
       const tempId = `temp-${Date.now()}`;
       const optimistic: ChatMessage = { id: tempId, feedbackId, senderName: 'Bạn', senderType: 'ServiceUser', messageText: text, createdAt: new Date().toISOString() };
-      qc.setQueryData(['feedback-messages', feedbackId], (old: any) => {
+      qc.setQueryData<ChatMessage[]>(['feedback-messages', feedbackId], (old) => {
         const arr = Array.isArray(old) ? old : [];
         return [...arr, optimistic];
       });
@@ -46,9 +46,9 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
       qc.invalidateQueries({ queryKey: ['feedback-messages', feedbackId] });
       refetch();
       // scroll to bottom after small delay
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true } as any), 120);
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.warn('send failed', err);
       toast.error('Unable to send message');
     },
@@ -79,7 +79,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
             <FlatList
               ref={listRef}
               data={messages}
-              keyExtractor={(m: any, i: number) =>
+              keyExtractor={(m: ChatMessage, i: number) =>
                 String(m?.id ?? m?.messageId ?? m?.tempId ?? `${m?.createdAt ?? ''}-${i}`)
               }
               renderItem={({ item }) => <MessageBubble msg={item} />}
@@ -100,7 +100,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
             <MessageComposer
               onSend={handleSend}
               sending={(sendMutation as any).isLoading}
-              onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true } as any), 80)}
+              onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80)}
               onHeightChange={(h: number) => setComposerHeight(h)}
             />
           </View>

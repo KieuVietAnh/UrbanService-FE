@@ -12,7 +12,7 @@ const CITIZEN_OPTS = { role: 'service-user' };
 export const feedbackApi = {
   /** List feedbacks with filters, search, pagination */
   async list(filters: FeedbackFilters = {}) {
-    const params: Record<string, any> = {
+    const params: Record<string, string | number> = {
       pageNumber: filters.pageNumber ?? 1,
       pageSize: filters.pageSize ?? 15,
     };
@@ -61,7 +61,7 @@ export const feedbackApi = {
   /** Upload additional evidence to existing feedback */
   async addEvidence(feedbackId: string, files: Array<{ uri: string; name: string; type: string }>) {
     const formFiles = files.map((f) => ({ uri: f.uri, name: f.name, type: f.type }));
-    return ticketApi.addAttachments(feedbackId, formFiles as any, CITIZEN_OPTS);
+    return ticketApi.addAttachments(feedbackId, formFiles, CITIZEN_OPTS);
   },
 
   /** Support (upvote) a feedback */

@@ -21,7 +21,7 @@ export interface CommunityFeedItem {
   userName?: string;
   status?: string;
   categoryName?: string;
-  attachments?: Array<{ fileUrl?: string } | null>;
+  attachments?: Array<{ fileUrl?: string; url?: string; attachmentId?: unknown } | null>;
   imageUrl?: string;
   title?: string;
   description?: string;
@@ -32,6 +32,9 @@ export interface CommunityFeedItem {
   commentCount?: number;
   isSupported?: boolean;
   createdAt?: string | null;
+  attachmentCount?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface CommunityFeedCardProps {

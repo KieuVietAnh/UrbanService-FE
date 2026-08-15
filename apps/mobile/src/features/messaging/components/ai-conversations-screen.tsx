@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { toolsApi } from '@urbanmind/shared-api';
 import { semantics } from '@/theme/semantics';
 import type { AiConversationListItem } from '../types/messaging.types';
 
-const normalizeConversation = (raw: any): AiConversationListItem | null => {
-  if (!raw) return null;
-  const id = String(raw.conversationId ?? raw.id ?? raw.uuid ?? raw.key ?? '');
+const normalizeConversation = (raw: unknown): AiConversationListItem | null => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const id = String(record.conversationId ?? record.id ?? record.uuid ?? record.key ?? '');
   if (!id) return null;
   return { id };
 };
@@ -40,7 +41,7 @@ export default function AiConversationRedirectScreen() {
     const target = isError || conversations.length === 0
       ? '/(resident)/ai/ai-assistant'
       : `/(resident)/ai/${conversations[0].id}`;
-    router.replace(target as any);
+    router.replace(target as Href);
   }, [isLoading, isError, conversations, router]);
 
   return (
