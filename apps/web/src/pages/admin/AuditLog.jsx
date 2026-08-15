@@ -92,8 +92,25 @@ export const AuditLog = () => {
   const [actionFilter, setActionFilter] = useState('all');
 
   useEffect(() => {
-    setLogs(toolsApi.getAuditLogs());
-    setLoading(false);
+    let active = true;
+
+    const loadLogs = async () => {
+      try {
+        const response = await toolsApi.getAuditLogs();
+        if (active) setLogs(Array.isArray(response) ? response : []);
+      } catch (error) {
+        console.error('Failed to load audit logs', error);
+        if (active) setLogs([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadLogs();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const auditLogs = useMemo(() => Array.isArray(logs) ? logs : [], [logs]);
