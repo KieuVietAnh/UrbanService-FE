@@ -42,7 +42,6 @@ export const PublicFooter = () => {
           <ul className="mt-4 space-y-3 text-sm font-medium text-slate-300">
             <li><Link to="/community/feed" className="transition hover:text-cyan-300">Bảng tin cộng đồng</Link></li>
             <li><Link to="/community/map" className="transition hover:text-cyan-300">Bản đồ phản ánh</Link></li>
-            <li><Link to="/about" className="transition hover:text-cyan-300">Giới thiệu nền tảng</Link></li>
           </ul>
         </nav>
 

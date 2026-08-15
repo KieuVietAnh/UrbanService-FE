@@ -1002,110 +1002,238 @@ export const CreateTicketPage = () => {
 
   return (
     <main className="create-ticket-page text-base-content">
+      <style>{`
+        .create-step-current {
+          border-color: rgba(147, 197, 253, 0.85);
+          background: rgba(239, 246, 255, 0.92);
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .create-step-current-label { color: #1d4ed8; }
+        .create-step-complete {
+          border-color: rgba(167, 243, 208, 0.9);
+          background: rgba(236, 253, 245, 0.82);
+        }
+        .create-step-complete-icon {
+          background: #d1fae5;
+          color: #047857;
+        }
+        .create-step-complete-label { color: #047857; }
+        .create-draft-notice {
+          border-color: rgba(191, 219, 254, 0.9);
+          background: rgba(239, 246, 255, 0.88);
+          color: #1e3a8a;
+        }
+        .create-draft-action {
+          border-color: rgba(191, 219, 254, 0.95);
+          background: rgba(255,255,255,0.88);
+          color: #1d4ed8;
+        }
+        .create-ai-notice {
+          border-color: rgba(167, 243, 208, 0.9);
+          background: rgba(236, 253, 245, 0.86);
+          color: #064e3b;
+        }
+        .create-description-tip {
+          border-color: rgba(219, 234, 254, 0.95);
+          background: linear-gradient(160deg, #eff6ff 0%, #f8fbff 100%);
+        }
+        .create-form-footer {
+          border-color: rgba(226,232,240,.9);
+          background: rgba(255,255,255,.96);
+        }
+        html[data-theme="dark"] .create-step-current {
+          border-color: rgba(96,165,250,.42) !important;
+          background: rgba(30, 64, 175, .20) !important;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important;
+        }
+        html[data-theme="dark"] .create-step-current-label { color: #93c5fd !important; }
+        html[data-theme="dark"] .create-step-complete {
+          border-color: rgba(52,211,153,.22) !important;
+          background: rgba(5,150,105,.10) !important;
+        }
+        html[data-theme="dark"] .create-step-complete-icon {
+          background: rgba(16,185,129,.14) !important;
+          color: #6ee7b7 !important;
+        }
+        html[data-theme="dark"] .create-step-complete-label { color: #6ee7b7 !important; }
+        html[data-theme="dark"] .create-draft-notice {
+          border-color: rgba(96,165,250,.20) !important;
+          background: rgba(30,58,138,.12) !important;
+          color: #bfdbfe !important;
+        }
+        html[data-theme="dark"] .create-draft-action {
+          border-color: rgba(96,165,250,.22) !important;
+          background: rgba(8,23,43,.72) !important;
+          color: #bfdbfe !important;
+        }
+        html[data-theme="dark"] .create-ai-notice {
+          border-color: rgba(52,211,153,.20) !important;
+          background: rgba(6,78,59,.18) !important;
+          color: #a7f3d0 !important;
+        }
+        html[data-theme="dark"] .create-description-tip {
+          border-color: rgba(96,165,250,.15) !important;
+          background: linear-gradient(160deg, rgba(14,29,51,.96), rgba(9,22,39,.96)) !important;
+        }
+        html[data-theme="dark"] .create-form-footer {
+          border-color: rgba(96,165,250,.14) !important;
+          background: rgba(8,23,43,.90) !important;
+        }
+        .create-ticket-hero {
+          background:
+            linear-gradient(135deg, rgba(239,247,255,.98), rgba(248,251,255,.98)),
+            radial-gradient(circle at 78% 18%, rgba(56,189,248,.10), transparent 28%);
+        }
+        .create-ticket-hero-orb {
+          background: radial-gradient(circle, rgba(186,230,253,.44), rgba(186,230,253,.10) 66%, transparent 100%);
+        }
+        .create-ticket-hero-wave { color: rgba(59,130,246,.20); }
+        .create-ticket-hero-float {
+          border-color: rgba(147,197,253,.62);
+          background: rgba(255,255,255,.72);
+          color: #2563eb;
+        }
+        html[data-theme="dark"] .create-ticket-hero {
+          background:
+            linear-gradient(135deg, rgba(8,25,49,.98), rgba(6,20,40,.98)),
+            radial-gradient(circle at 78% 18%, rgba(34,211,238,.07), transparent 30%) !important;
+        }
+        html[data-theme="dark"] .create-ticket-hero-orb {
+          background: radial-gradient(circle, rgba(125,211,252,.10), rgba(125,211,252,.03) 66%, transparent 100%) !important;
+        }
+        html[data-theme="dark"] .create-ticket-hero-wave { color: rgba(96,165,250,.16) !important; }
+        html[data-theme="dark"] .create-ticket-hero-float {
+          border-color: rgba(96,165,250,.18) !important;
+          background: rgba(8,25,49,.72) !important;
+          color: #7dd3fc !important;
+        }
+      `}</style>
       <div className="mx-auto w-full max-w-[1240px]">
         <div className="create-ticket-shell relative isolate rounded-[34px] border p-4 sm:p-5 lg:p-6">
 
-        <header className="create-ticket-hero mb-5 overflow-hidden rounded-[26px] border p-5 sm:p-7">
-          <nav aria-label="Điều hướng" className="mb-6">
-            <button
-              type="button"
-              onClick={handleReturnToSource}
-              className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700"
-            >
-              <Lucide.ArrowLeft size={14} aria-hidden="true" />
-              Quay lại
-            </button>
-          </nav>
-
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-4">
-              <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_12px_28px_rgba(37,99,235,0.28)] sm:flex" aria-hidden="true"><Lucide.MessageSquarePlus size={22} /></span>
-              <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-600 dark:text-blue-300">Phản ánh đô thị</p>
-              <h1 className="text-[32px] font-bold tracking-[-0.04em] text-slate-950 sm:text-[38px] dark:text-white">Gửi phản ánh</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-base-content/55 sm:text-[15px]">
-                Mô tả vấn đề, đánh dấu vị trí và thêm minh chứng để hệ thống tiếp nhận chính xác hơn.
-              </p>
-              </div>
+        <header className="create-ticket-hero mb-4 overflow-hidden rounded-[26px] border border-[var(--public-border)] shadow-[0_16px_44px_rgba(37,99,235,0.08)]">
+          <div className="relative overflow-hidden px-5 py-5 sm:px-6 sm:py-6">
+            <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+              <div className="create-ticket-hero-orb absolute -left-20 -top-24 h-64 w-64 rounded-full" />
+              <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full border border-blue-300/25 bg-blue-400/[0.04]" />
+              <div className="absolute right-24 top-4 h-20 w-20 rounded-full border border-cyan-300/25" />
+              <svg className="create-ticket-hero-wave absolute inset-x-0 bottom-0 h-20 w-full" viewBox="0 0 1200 110" preserveAspectRatio="none">
+                <path d="M0,72 C160,34 302,96 470,60 C642,24 756,83 920,49 C1035,24 1114,35 1200,19" fill="none" stroke="currentColor" strokeWidth="2" />
+                <path d="M0,94 C185,58 330,108 520,82 C710,54 828,101 1004,68 C1090,52 1148,54 1200,48" fill="none" stroke="currentColor" strokeWidth="1.4" strokeDasharray="9 12" opacity="0.7" />
+              </svg>
+              <span className="create-ticket-hero-float absolute left-[46%] top-5 flex h-7 w-7 items-center justify-center rounded-full border shadow-sm backdrop-blur">
+                <Lucide.Sparkles size={13} />
+              </span>
+              <span className="create-ticket-hero-float absolute bottom-5 right-[27%] hidden h-7 w-7 items-center justify-center rounded-full border shadow-sm backdrop-blur sm:flex">
+                <Lucide.MapPin size={13} />
+              </span>
             </div>
 
-            <Link
-              to="/tickets"
-              className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700 sm:self-end"
-            >
-              <Lucide.ListChecks size={16} aria-hidden="true" />
-              Phản ánh của tôi
-            </Link>
+            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={handleReturnToSource}
+                  className="mb-4 inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-copy)] shadow-sm transition hover:border-blue-300 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20"
+                >
+                  <Lucide.ArrowLeft size={14} aria-hidden="true" />
+                  Quay lại
+                </button>
+
+                <div className="flex items-start gap-3.5">
+                  <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]" aria-hidden="true">
+                    <Lucide.MessageSquarePlus size={20} />
+                  </span>
+                  <div>
+                    <h1 className="text-[30px] font-semibold tracking-[-0.035em] text-[var(--public-title)] sm:text-[34px]">Gửi phản ánh</h1>
+                    <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
+                      Mô tả vấn đề, chọn đúng vị trí và thêm minh chứng để phản ánh được tiếp nhận nhanh hơn.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Link
+                to="/tickets"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 text-sm font-semibold text-[var(--public-title)] shadow-sm transition hover:border-blue-300 hover:text-blue-600 sm:self-center"
+              >
+                <Lucide.ListChecks size={16} aria-hidden="true" />
+                Phản ánh của tôi
+              </Link>
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--public-border)] bg-[var(--public-surface-soft)] px-5 py-4 sm:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg bg-blue-600 px-2 text-xs font-bold text-white shadow-sm">
+                  {step}/{STEPS.length}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--public-title)]">{STEPS[step - 1]?.label}</p>
+                  <p className="text-xs text-[var(--public-muted)]">{STEPS[step - 1]?.description}</p>
+                </div>
+              </div>
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-2.5 py-1 text-[11px] font-medium text-[var(--public-muted)]">
+                <Lucide.Clock3 size={12} aria-hidden="true" />
+                Khoảng 2–3 phút
+              </span>
+            </div>
+
+            <ol className="mt-4 grid grid-cols-3 gap-2 sm:gap-3" aria-label="Tiến trình gửi phản ánh">
+              {STEPS.map(({ id, label, icon: Icon }) => {
+                const isCurrent = step === id;
+                const isComplete = stepCompletion[id];
+                const previousStepsComplete = STEPS
+                  .filter((item) => item.id < id)
+                  .every((item) => stepCompletion[item.id]);
+                const isEnabled = id <= step || previousStepsComplete;
+
+                return (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      onClick={() => isEnabled && goToStep(id)}
+                      disabled={!isEnabled}
+                      aria-current={isCurrent ? 'step' : undefined}
+                      className={`group flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
+                        isCurrent
+                          ? 'create-step-current'
+                          : isComplete
+                            ? 'create-step-complete'
+                            : 'border-[var(--public-border)] bg-[var(--public-surface-strong)]'
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                    >
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                        isCurrent
+                          ? 'bg-blue-600 text-white'
+                          : isComplete
+                            ? 'create-step-complete-icon'
+                            : 'bg-[var(--public-surface-soft)] text-[var(--public-muted)]'
+                      }`} aria-hidden="true">
+                        {isComplete && !isCurrent ? <Lucide.Check size={14} /> : <Icon size={14} />}
+                      </span>
+                      <span className={`truncate text-xs font-semibold sm:text-sm ${
+                        isCurrent
+                          ? 'create-step-current-label'
+                          : isComplete
+                            ? 'create-step-complete-label'
+                            : 'text-[var(--public-copy)]'
+                      }`}>
+                        {label}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         </header>
 
-        <section className="create-ticket-stepper mb-5 rounded-[22px] border px-5 py-4 sm:px-6" aria-label="Tiến trình gửi phản ánh">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.13em] text-blue-600 dark:text-blue-300">
-                Bước {step} trên {STEPS.length}
-              </p>
-              <p className="mt-1 text-sm font-semibold">{STEPS[step - 1]?.label}</p>
-            </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"><Lucide.Clock3 size={12} aria-hidden="true" /> Khoảng 2–3 phút</span>
-          </div>
-
-          <div className="mt-4 grid grid-cols-3 gap-2" aria-hidden="true">
-            {STEPS.map(({ id }) => (
-              <span
-                key={id}
-                className={`h-1 rounded-full transition-colors ${
-                  id <= step ? 'bg-blue-600' : 'bg-slate-200 dark:bg-slate-700'
-                }`}
-              />
-            ))}
-          </div>
-
-          <ol className="mt-4 grid grid-cols-3 gap-2 sm:gap-4">
-            {STEPS.map(({ id, label, icon: Icon }) => {
-              const isCurrent = step === id;
-              const isComplete = stepCompletion[id];
-              const previousStepsComplete = STEPS
-                .filter((item) => item.id < id)
-                .every((item) => stepCompletion[item.id]);
-              const isEnabled = id <= step || previousStepsComplete;
-
-              return (
-                <li key={id}>
-                  <button
-                    type="button"
-                    onClick={() => isEnabled && goToStep(id)}
-                    disabled={!isEnabled}
-                    aria-current={isCurrent ? 'step' : undefined}
-                    className={`flex w-full items-center gap-2 rounded-lg py-1.5 text-left text-xs transition sm:text-sm ${
-                      isCurrent
-                        ? 'font-semibold text-blue-700 dark:text-blue-300'
-                        : isComplete
-                          ? 'font-medium text-emerald-700 dark:text-emerald-300'
-                          : 'text-base-content/40'
-                    } disabled:cursor-not-allowed`}
-                  >
-                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                      isCurrent
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : isComplete
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-                          : 'border-slate-200 bg-slate-50 text-base-content/35 dark:border-slate-700 dark:bg-slate-800'
-                    }`} aria-hidden="true">
-                      {isComplete && !isCurrent ? <Lucide.Check size={13} /> : <Icon size={13} />}
-                    </span>
-                    <span className="truncate">{label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-
       {aiDraftNotice ? (
-        <aside className="mb-5 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100" role="status">
+        <aside className="create-ai-notice mb-5 rounded-2xl border px-4 py-3 text-sm" role="status">
           <div className="flex gap-3">
-            <Lucide.Sparkles size={18} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
+            <Lucide.Sparkles size={18} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
             <div>
               <p className="font-semibold">Bản nháp phản ánh từ AI đã sẵn sàng</p>
               <p className="mt-1 leading-5">{aiDraftNotice}</p>
@@ -1125,15 +1253,15 @@ export const CreateTicketPage = () => {
       ) : null}
 
       {draftNotice ? (
-        <aside className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-200/80 bg-blue-50/80 px-4 py-3 text-sm text-blue-900 sm:flex-row sm:items-center dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-100" role="status">
+        <aside className="create-draft-notice mb-5 flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm sm:flex-row sm:items-center" role="status">
           <span className="flex min-w-0 flex-1 items-start gap-3">
-            <Lucide.History size={18} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-300" aria-hidden="true" />
+            <Lucide.History size={18} className="mt-0.5 shrink-0 text-blue-500" aria-hidden="true" />
             <span className="leading-5">{draftNotice}</span>
           </span>
           <button
             type="button"
             onClick={clearDraft}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-900 dark:text-blue-200 dark:hover:bg-slate-800"
+            className="create-draft-action inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-semibold transition hover:brightness-105"
           >
             <Lucide.Trash2 size={14} aria-hidden="true" />
             Xóa bản nháp
@@ -1233,7 +1361,7 @@ export const CreateTicketPage = () => {
 
                 </div>
 
-                <aside className="h-fit rounded-[20px] border border-blue-100 bg-[linear-gradient(160deg,#eff6ff_0%,#f8fbff_100%)] p-5 lg:sticky lg:top-24 dark:border-slate-700 dark:bg-[linear-gradient(160deg,#101d33_0%,#0d1728_100%)]" aria-label="Gợi ý mô tả">
+                <aside className="create-description-tip h-fit rounded-[20px] border p-5 lg:sticky lg:top-24" aria-label="Gợi ý mô tả">
                   <div className="flex items-center gap-2 text-sm font-semibold text-blue-800 dark:text-blue-200">
                     <Lucide.Lightbulb size={16} aria-hidden="true" />
                     Mô tả tốt nên có
@@ -1517,7 +1645,7 @@ export const CreateTicketPage = () => {
             </section>
           ) : null}
 
-          <footer className={`flex flex-col-reverse gap-3 border-t border-slate-200/80 bg-white px-5 py-4 sm:flex-row sm:items-center sm:px-7 dark:border-slate-700 dark:bg-[#0d1728] ${step === 1 ? 'sm:justify-end' : 'sm:justify-between'}`}>
+          <footer className={`create-form-footer flex flex-col-reverse gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:px-7 ${step === 1 ? 'sm:justify-end' : 'sm:justify-between'}`}>
             {step > 1 ? (
               <button
                 type="button"

@@ -1099,12 +1099,19 @@ export default function CommunityFeed({
 
         <div className="relative grid gap-6 px-6 py-7 sm:px-8 sm:py-8 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
           <div className="max-w-3xl">
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-[var(--public-title)] sm:text-4xl">
-              Bảng tin đô thị
-            </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--public-copy)]">
-              Theo dõi các phản ánh đã được xác minh, cùng trao đổi và giám sát tiến độ xử lý trong cộng đồng.
-            </p>
+            <div className="flex items-start gap-3.5">
+              <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]">
+                <Lucide.Newspaper size={21} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="text-3xl font-bold tracking-tight text-[var(--public-title)] sm:text-4xl">
+                  Bảng tin đô thị
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
+                  Theo dõi phản ánh đã xác minh, trao đổi và giám sát tiến độ xử lý trong cộng đồng.
+                </p>
+              </div>
+            </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success">
