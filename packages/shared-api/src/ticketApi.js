@@ -25,63 +25,119 @@ export const ticketApi = {
     return normalizeTicketsResponse(response);
   },
 
+  async getAllTickets(filters = {}, options = {}) {
+    const {
+      pageNumber: _ignoredPageNumber,
+      pageSize: requestedPageSize,
+      ...baseFilters
+    } = filters || {};
+    const pageSize = Math.max(1, Number(requestedPageSize) || 100);
+    const allTickets = [];
+    const seenTicketIds = new Set();
+    let pageNumber = 1;
+    let totalPages = null;
+
+    // The user feedback endpoint is paged. Fetch every backend page so callers
+    // that need client-side grouped filters/sorting do not silently stop at 100 items.
+    while (totalPages === null || pageNumber <= totalPages) {
+      const response = await axiosClient.get(getFeedbackBasePath(options.role), {
+        params: {
+          ...baseFilters,
+          pageNumber,
+          pageSize,
+        },
+      });
+      const pagedPayload = (
+        response?.data &&
+        !Array.isArray(response.data) &&
+        (Array.isArray(response.data.items) || response.data.totalPages != null)
+      )
+        ? response.data
+        : response;
+      const pageTickets = normalizeTicketsResponse(pagedPayload);
+
+      pageTickets.forEach((ticket) => {
+        const ticketId = ticket?.feedbackId || ticket?.id;
+        if (!ticketId) {
+          allTickets.push(ticket);
+          return;
+        }
+
+        const normalizedId = String(ticketId);
+        if (!seenTicketIds.has(normalizedId)) {
+          seenTicketIds.add(normalizedId);
+          allTickets.push(ticket);
+        }
+      });
+
+      const reportedTotalPages = Number(pagedPayload?.totalPages);
+      if (Number.isFinite(reportedTotalPages) && reportedTotalPages >= 0) {
+        totalPages = reportedTotalPages;
+      }
+
+      if (pagedPayload?.hasNextPage === false) break;
+      if (totalPages !== null && pageNumber >= totalPages) break;
+
+      // Fallback for APIs that omit pagination metadata.
+      if (totalPages === null && pageTickets.length < pageSize) break;
+      if (pageTickets.length === 0) break;
+
+      pageNumber += 1;
+
+      // Defensive guard against malformed pagination metadata.
+      if (pageNumber > 1000) {
+        console.warn('ticketApi.getAllTickets stopped after 1000 pages');
+        break;
+      }
+    }
+
+    return allTickets;
+  },
+
   getTicketById(feedbackId, options = {}) {
     return (async () => {
+      const response = await axiosClient.get(getTicketPath(feedbackId, options.role));
+      const payload = response?.data ?? response?.item ?? response?.result ?? response;
+      const res = normalizeTicketsResponse([payload])[0] || payload;
+
       try {
-        const response = await axiosClient.get(getTicketPath(feedbackId, options.role));
-        const payload = response?.data ?? response?.item ?? response?.result ?? response;
-        const res = normalizeTicketsResponse([payload])[0] || payload;
+        if (res && Array.isArray(res.attachments)) {
+          res.attachments = res.attachments.map((a) => {
+            if (!a) return a;
 
-        try {
-          if (res && Array.isArray(res.attachments)) {
-            res.attachments = res.attachments.map((a) => {
-              if (!a) return a;
-
-              if (typeof a === 'string') {
-                return {
-                  fileUrl: a,
-                  url: a,
-                };
-              }
-
+            if (typeof a === 'string') {
               return {
-                ...a,
-                attachmentId:
-                  a.attachmentId ||
-                  a.attachmentID ||
-                  a.feedbackAttachmentId ||
-                  a.feedbackAttachmentID ||
-                  a.fileId ||
-                  a.fileID ||
-                  a.id ||
-                  null,
-                fileUrl:
-                  a.fileUrl ||
-                  a.url ||
-                  a.path ||
-                  a.attachmentUrl ||
-                  a.displayUrl ||
-                  '',
+                fileUrl: a,
+                url: a,
               };
-            });
-          }
-        } catch (e) {
-          console.warn('Failed to normalize attachments', e);
-        }
+            }
 
-        return res;
-      } catch (err) {
-        try {
-          const response = await axiosClient.get(
-            `${getFeedbackBasePath(options.role)}/feed/${encodeURIComponent(feedbackId)}`,
-          );
-          const payload = response?.data ?? response?.item ?? response?.result ?? response;
-          const res = normalizeTicketsResponse([payload])[0] || payload;
-          return res;
-        } catch (feedErr) {
-          throw err;
+            return {
+              ...a,
+              attachmentId:
+                a.attachmentId ||
+                a.attachmentID ||
+                a.feedbackAttachmentId ||
+                a.feedbackAttachmentID ||
+                a.fileId ||
+                a.fileID ||
+                a.id ||
+                null,
+              fileUrl:
+                a.fileUrl ||
+                a.url ||
+                a.path ||
+                a.attachmentUrl ||
+                a.displayUrl ||
+                '',
+            };
+          });
         }
+      } catch (e) {
+        console.warn('Failed to normalize attachments', e);
       }
+
+      return res;
     })();
   },
 
@@ -172,23 +228,16 @@ export const ticketApi = {
     return axiosClient.delete(`${getTicketPath(feedbackId, options.role)}/support`);
   },
 
-  getComments(feedbackId, options = {}) {
-    return (async () => {
-      try {
-        const ticket = await axiosClient.get(getTicketPath(feedbackId, options.role));
-        return normalizeCommentsResponse(ticket);
-      } catch (err) {
-        try {
-          const feedTicket = await axiosClient.get(
-            `${getFeedbackBasePath(options.role)}/feed/${encodeURIComponent(feedbackId)}`,
-          );
-          return normalizeCommentsResponse(feedTicket);
-        } catch (feedErr) {
-          return [];
-        }
-      }
-    })();
-  },
+ getComments(feedbackId, options = {}) {
+  return (async () => {
+    try {
+      const ticket = await axiosClient.get(getTicketPath(feedbackId, options.role));
+      return normalizeCommentsResponse(ticket);
+    } catch (err) {
+      return [];
+    }
+  })();
+},
 
   addComment(feedbackId, userId, userName, userRole, content, options = {}) {
     return axiosClient.post(`${getTicketPath(feedbackId, options.role)}/comments`, normalizeCommentPayload({ content }));

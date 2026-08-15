@@ -824,8 +824,8 @@ export const TicketListPage = () => {
     setError('');
 
     try {
-      const response = await ticketApi.getTickets(
-        { pageNumber: 1, pageSize: 100 },
+      const response = await ticketApi.getAllTickets(
+        { pageSize: 100 },
         { role: 'service-user' }
       );
       const nextTickets = Array.isArray(response) ? response : [];
@@ -1243,16 +1243,21 @@ export const TicketListPage = () => {
 
           <div className="relative px-5 py-6 sm:px-7 sm:py-7">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <header className="max-w-2xl">
-                <h1
-                  id="my-feedback-title"
-                  className="text-3xl font-bold tracking-tight sm:text-4xl"
-                >
-                  Phản ánh của tôi
-                </h1>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--public-copy)] sm:text-base">
-                  Theo dõi tiến trình, xem kết quả và quản lý những phản ánh bạn đã gửi.
-                </p>
+              <header className="flex max-w-2xl items-start gap-3.5">
+                <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]">
+                  <Lucide.ClipboardList size={21} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h1
+                    id="my-feedback-title"
+                    className="text-3xl font-bold tracking-tight sm:text-4xl"
+                  >
+                    Phản ánh của tôi
+                  </h1>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--public-copy)] sm:text-base">
+                    Theo dõi tiến trình, xem kết quả và quản lý những phản ánh bạn đã gửi.
+                  </p>
+                </div>
               </header>
 
               <nav
