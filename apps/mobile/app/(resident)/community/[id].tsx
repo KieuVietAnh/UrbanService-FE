@@ -4,64 +4,24 @@ import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppCard } from '@/components/ui/AppCard';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { AppButton } from '@/components/ui/AppButton';
-import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { AppErrorState } from '@/components/ui/AppErrorState';
-import { AppEmptyState } from '@/components/ui/AppEmptyState';
-import { useToast } from '@/components/ui/Toast';
-import { communityApi } from '@/services/api/communityApi';
-import { feedbackApi } from '@/services/api/feedbackApi';
+import { Text } from '@/components/ui';
+import { AppCard } from '@/components/ui';
+import { AppHeader } from '@/components/ui';
+import { AppButton } from '@/components/ui';
+import { TicketStatusBadge } from '@/components/ui';
+import { SkeletonCard } from '@/components/shared';
+import { AppErrorState } from '@/components/shared';
+import { AppEmptyState } from '@/components/shared';
+import { useToast } from '@/components/shared';
+import { communityApi, communityKeys } from '@/features/community/api';
+import { feedbackApi } from '@/features/reporting/api';
 import { semantics } from '@/theme/semantics';
-
-interface CommentItem {
-  id: string;
-  senderName: string;
-  content: string;
-  createdAt: string;
-}
-
-type RawComment = {
-  commentId?: string | number;
-  id?: string | number;
-  authorName?: string;
-  userName?: string;
-  userFullName?: string;
-  content?: string;
-  text?: string;
-  createdAt?: string;
-};
-
-interface CommunityFeedbackDetail {
-  feedbackId?: string;
-  id?: string;
-  authorName?: string;
-  userName?: string;
-  status?: string;
-  categoryName?: string;
-  locationText?: string;
-  title?: string;
-  description?: string;
-  createdAt?: string | null;
-  attachments?: Array<{ fileUrl?: string } | null>;
-  comments?: RawComment[];
-  commentList?: RawComment[];
-  supportCount?: number;
-  commentCount?: number;
-  isSupported?: boolean;
-}
-
-type CommunityFeedCache = {
-  items?: Array<{
-    feedbackId?: string;
-    id?: string;
-    supportCount?: number;
-    isSupported?: boolean;
-  }>;
-};
+import type {
+  CommentItem,
+  CommunityFeedbackDetail,
+  CommunityFeedCache,
+  RawComment,
+} from '@/features/community/types';
 
 export default function CommunityDetailScreen() {
   const { id, focusComment, autoFocusComment } = useLocalSearchParams<{ id: string; focusComment?: string; autoFocusComment?: string }>();
@@ -81,7 +41,9 @@ export default function CommunityDetailScreen() {
   const shouldFocusComposer = normalizeFlag(focusComment) || normalizeFlag(autoFocusComment);
 
   const debugLog = (...args: Array<unknown>) => {
-    console.log('[CommunityDetailScreen]', ...args);
+    if (__DEV__) {
+      console.log('[CommunityDetailScreen]', ...args);
+    }
   };
 
   const focusComposer = () => {
@@ -144,7 +106,7 @@ export default function CommunityDetailScreen() {
     refetch,
     isRefetching,
   } = useQuery<CommunityFeedbackDetail | null>({
-    queryKey: ['community-detail', feedbackId],
+    queryKey: communityKeys.detail(feedbackId),
     queryFn: () => communityApi.getFeedDetail(feedbackId),
     enabled: Boolean(feedbackId),
   });
@@ -176,7 +138,7 @@ export default function CommunityDetailScreen() {
     },
     onSuccess: (result) => {
       queryClient.setQueriesData<CommunityFeedCache>({
-        predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'community-feed-mobile',
+        queryKey: communityKeys.feeds(),
       }, (data) => {
         if (!data || !Array.isArray(data.items)) return data;
         return {
@@ -193,7 +155,7 @@ export default function CommunityDetailScreen() {
         };
       });
 
-      queryClient.setQueryData<CommunityFeedbackDetail | null>(['community-detail', feedbackId], (prev) => {
+      queryClient.setQueryData<CommunityFeedbackDetail | null>(communityKeys.detail(feedbackId), (prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -210,10 +172,7 @@ export default function CommunityDetailScreen() {
     mutationFn: (content: string) => feedbackApi.addComment(feedbackId, content),
     onSuccess: async () => {
       setCommentInput('');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['community-detail', feedbackId] }),
-        queryClient.refetchQueries({ queryKey: ['community-detail', feedbackId] }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: communityKeys.detail(feedbackId) });
       toast.success('Đã gửi bình luận');
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể gửi bình luận'),

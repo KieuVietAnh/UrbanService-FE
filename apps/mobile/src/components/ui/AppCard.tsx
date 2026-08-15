@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Pressable, PressableProps, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,

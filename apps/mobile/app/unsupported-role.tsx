@@ -3,9 +3,9 @@ import { View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppButton } from '@/components/ui/AppButton';
-import { useAuthStore } from '@/features/auth/auth.store';
+import { Text } from '@/components/ui';
+import { AppButton } from '@/components/ui';
+import { useAuthStore } from '@/features/auth';
 import { getRoleLabel } from '@urbanmind/shared-types';
 import { semantics } from '@/theme/semantics';
 

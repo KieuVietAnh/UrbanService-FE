@@ -4,17 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { AppCard } from '@/components/ui/AppCard';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { communityApi } from '@/services/api/communityApi';
+import { Text } from '@/components/ui';
+import { AppHeader } from '@/components/ui';
+import { AppCard } from '@/components/ui';
+import { SkeletonCard } from '@/components/shared';
+import { communityApi, communityKeys } from '@/features/community/api';
 import { colors } from '@/constants/theme';
 
 export default function CommunityMapScreen() {
   const router = useRouter();
   const { data, isLoading } = useQuery({
-    queryKey: ['community-map'],
+    queryKey: communityKeys.webMapFeed(),
     queryFn: () => communityApi.getFeed({ pageNumber: 1, pageSize: 50 }),
   });
 

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useRouter, useSegments } from 'expo-router';
-import { useAuthStore } from '@/features/auth/auth.store';
+import { useAuthStore } from './auth.store';
 import { APP_ROLES } from '@urbanmind/shared-types';
 
 /**

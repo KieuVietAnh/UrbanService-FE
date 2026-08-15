@@ -1,24 +1,18 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
-import {
-  useFonts,
-  Geist_100Thin,
-  Geist_200ExtraLight,
-  Geist_300Light,
-  Geist_400Regular,
-  Geist_500Medium,
-  Geist_600SemiBold,
-  Geist_700Bold,
-  Geist_800ExtraBold,
-  Geist_900Black,
-} from '@expo-google-fonts/geist';
+import { useFonts } from '@expo-google-fonts/geist/useFonts';
+import { Geist_400Regular } from '@expo-google-fonts/geist/400Regular';
+import { Geist_500Medium } from '@expo-google-fonts/geist/500Medium';
+import { Geist_600SemiBold } from '@expo-google-fonts/geist/600SemiBold';
+import { Geist_700Bold } from '@expo-google-fonts/geist/700Bold';
 import { initApi } from '@/config/api';
-import { ToastProvider } from '@/components/ui/Toast';
-import { useAuthGuard } from '@/features/auth/useAuthGuard';
+import { queryClient } from '@/config/query-client';
+import { ToastProvider } from '@/components/shared';
+import { useAuthGuard } from '@/features/auth';
 
 import '../global.css';
 
@@ -26,15 +20,6 @@ SplashScreen.preventAutoHideAsync();
 
 // Ensure API is configured before any child component or data fetch runs.
 initApi();
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 1000 * 60 * 2, // 2 min
-    },
-  },
-});
 
 function RootNavigation() {
   useAuthGuard();
@@ -44,15 +29,10 @@ function RootNavigation() {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    'Geist-Thin': Geist_100Thin,
-    'Geist-ExtraLight': Geist_200ExtraLight,
-    'Geist-Light': Geist_300Light,
     'Geist-Regular': Geist_400Regular,
     'Geist-Medium': Geist_500Medium,
     'Geist-SemiBold': Geist_600SemiBold,
     'Geist-Bold': Geist_700Bold,
-    'Geist-ExtraBold': Geist_800ExtraBold,
-    'Geist-Black': Geist_900Black,
   });
 
   useEffect(() => {

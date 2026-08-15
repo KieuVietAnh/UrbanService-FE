@@ -15,10 +15,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { FloatingChatMenu } from '@/components/ui/FloatingChatMenu';
-import { useToast } from '@/components/ui/Toast';
-import { axiosClient } from '@urbanmind/shared-api';
+import { Text } from '@/components/ui';
+import { FloatingChatMenu } from '@/components/ui';
 import { colors } from '@/constants/theme';
 
 type NavItem = {
@@ -28,6 +26,8 @@ type NavItem = {
   match?: string[];
   isFab?: boolean;
 };
+
+const RESIDENT_TAB_BAR_HEIGHT = 68;
 
 const NAV_ITEMS: NavItem[] = [
   {
@@ -144,9 +144,8 @@ export default function ResidentLayout() {
 
   const isHomePath = normalizedPath === '/' || normalizedPath === '' || normalizedPath === '/index';
   const hideBottomNav = normalizedPath === '/create-feedback' || normalizedPath === '/create-feedback-wizard' || normalizedPath.startsWith('/create-feedback');
-  const tabBarHeight = 64 + insets.bottom;
+  const tabBarHeight = RESIDENT_TAB_BAR_HEIGHT + insets.bottom;
 
-  const toast = useToast();
   const handleFloatingSelect = async (id: 'ai' | 'staff' | 'inbox') => {
     if (id === 'ai') {
       router.push('/(resident)/ai/ai-assistant');
@@ -162,7 +161,7 @@ export default function ResidentLayout() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.content}>
+      <View style={[styles.content, !hideBottomNav && { marginBottom: tabBarHeight }]}>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -222,7 +221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 6,
     paddingHorizontal: 4,
-    height: 68,
+    height: RESIDENT_TAB_BAR_HEIGHT,
   },
   tabItem: {
     flex: 1,

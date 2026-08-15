@@ -1,16 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import * as Location from 'expo-location';
-import MapView from 'react-native-map-clustering';
-import { Circle, Marker } from 'react-native-maps';
 import Icon from '@expo/vector-icons/Feather';
 import * as Haptics from 'expo-haptics';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
-import { Text } from '@/components/ui/Text';
+import { SkeletonCard } from '@/components/shared';
+import { TicketStatusBadge } from '@/components/ui';
+import { Text } from '@/components/ui';
 import { colors } from '@/constants/theme';
 import type { RouterLike, TicketLike } from '../types';
 import { styles } from '../homeStyles';
+import NearbyIncidentsMap from './nearby-incidents-map';
 
 type Props = {
   nearbyLoading: boolean;
@@ -102,41 +101,13 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
           </View>
 
           <View style={styles.mapIllustration}>
-            <MapView
-              style={{ ...StyleSheet.absoluteFillObject }}
-              initialRegion={
-                userLocation
-                  ? { latitude: userLocation.latitude, longitude: userLocation.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }
-                  : { latitude: 10.7399, longitude: 106.7019, latitudeDelta: 0.05, longitudeDelta: 0.05 }
-              }
-              mapRef={(map) => {
+            <NearbyIncidentsMap
+              userLocation={userLocation}
+              markers={markers}
+              onMapRef={(map) => {
                 mapRefLocal.current = map;
               }}
-              onRegionChangeComplete={() => {}}
-              showsUserLocation={false}
-              showsMyLocationButton={false}
-              toolbarEnabled={false}
-            >
-              {userLocation ? (
-                <>
-                  <Circle
-                    center={{ latitude: userLocation.latitude, longitude: userLocation.longitude }}
-                    radius={1000}
-                    strokeColor="rgba(37,99,235,0.18)"
-                    fillColor="rgba(37,99,235,0.08)"
-                  />
-                  <Marker key="__user" coordinate={{ latitude: userLocation.latitude, longitude: userLocation.longitude }}>
-                    <View style={styles.mapPinUser} />
-                  </Marker>
-                </>
-              ) : null}
-
-              {markers.map((marker, index) => (
-                <Marker key={marker.id} coordinate={{ latitude: marker.latitude, longitude: marker.longitude }}>
-                  <View style={[styles.mapPin, index % 3 === 0 && styles.mapPinHot, index % 3 === 1 && styles.mapPinWarn]} />
-                </Marker>
-              ))}
-            </MapView>
+            />
           </View>
 
           {nearby[0] ? (

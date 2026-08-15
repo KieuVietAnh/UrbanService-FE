@@ -5,9 +5,14 @@ import {
   clearAuthTokens,
 } from '@urbanmind/shared-api';
 import { getInternalRole } from '@urbanmind/shared-types';
-import { User } from '@/types/auth.types';
+import type { User } from '@/types';
 
-const extractData = (response: any) => {
+type ApiRecord = Record<string, unknown>;
+
+const isApiRecord = (value: unknown): value is ApiRecord =>
+  typeof value === 'object' && value !== null;
+
+const extractData = (response: unknown): unknown => {
   if (typeof response === 'string') {
     if (response.includes('<!DOCTYPE html>') || response.includes('<html')) {
       throw new Error('Không thể kết nối đến máy chủ API (phản hồi trang HTML 404/500). Vui lòng kiểm tra cấu hình EXPO_PUBLIC_API_URL.');
@@ -19,8 +24,8 @@ const extractData = (response: any) => {
     }
   }
 
-  if (response && typeof response === 'object') {
-    if ('data' in response && response.data && typeof response.data === 'object') {
+  if (isApiRecord(response)) {
+    if (isApiRecord(response.data)) {
       return response.data;
     }
     return response;
@@ -29,29 +34,33 @@ const extractData = (response: any) => {
   return response;
 };
 
-const buildUser = (rawResponse: any): User => {
-  const data = extractData(rawResponse);
-  const userPayload = data.user || data;
+const buildUser = (rawResponse: unknown): User => {
+  const extracted = extractData(rawResponse);
+  const data = isApiRecord(extracted) ? extracted : {};
+  const userPayload = isApiRecord(data.user) ? data.user : data;
   const token =
     data.token ||
     data.accessToken ||
     data.authToken ||
     data.access_token ||
-    (userPayload && (userPayload.token || userPayload.accessToken || userPayload.authToken || userPayload.access_token));
+    userPayload.token ||
+    userPayload.accessToken ||
+    userPayload.authToken ||
+    userPayload.access_token;
 
   return {
-    id: userPayload.userId ?? userPayload.id ?? data.userId ?? data.id ?? '',
-    email: userPayload.email ?? data.email ?? '',
-    role: getInternalRole(userPayload.role ?? data.role ?? 'service-user'),
-    token: token || '',
-    fullName: userPayload.fullName ?? data.fullName ?? '',
+    id: (userPayload.userId ?? userPayload.id ?? data.userId ?? data.id ?? '') as string,
+    email: (userPayload.email ?? data.email ?? '') as string,
+    role: getInternalRole((userPayload.role ?? data.role ?? 'service-user') as string),
+    token: (token || '') as string,
+    fullName: (userPayload.fullName ?? data.fullName ?? '') as string,
     isVerified: Boolean(userPayload.isVerified ?? data.isVerified ?? false),
-    phone: userPayload.phone ?? data.phone ?? '',
-    avatarUrl: userPayload.avatarUrl ?? data.avatarUrl ?? null,
+    phone: (userPayload.phone ?? data.phone ?? '') as string,
+    avatarUrl: (userPayload.avatarUrl ?? data.avatarUrl ?? null) as string | null,
   };
 };
 
-const extractRefreshToken = (response: any) => {
+const extractRefreshToken = (response: unknown): string | null => {
   if (typeof response === 'string') {
     try {
       response = JSON.parse(response);
@@ -60,31 +69,25 @@ const extractRefreshToken = (response: any) => {
     }
   }
 
-  const data = response && typeof response === 'object'
-    ? (response.data && typeof response.data === 'object' ? response.data : response)
+  const data = isApiRecord(response)
+    ? (isApiRecord(response.data) ? response.data : response)
     : {};
 
-  return data.refreshToken || data.refresh_token || null;
+  return (data.refreshToken || data.refresh_token || null) as string | null;
 };
 
 export class AuthService {
   static async login(email: string, password: string): Promise<User> {
-    console.log('[AuthService login] before authApi.login', { email });
     const response = await authApi.login(email, password);
-    console.log('[AuthService login] authApi.login resolved', { responseType: typeof response, hasData: !!response });
     const user = buildUser(response);
     const refreshToken = extractRefreshToken(response);
 
     if (user.token) {
-      console.log('[AuthService login] saving auth token');
       await setAuthToken(user.token);
-      console.log('[AuthService login] auth token saved');
     }
 
     if (refreshToken) {
-      console.log('[AuthService login] saving refresh token');
       await setAuthRefreshToken(refreshToken);
-      console.log('[AuthService login] refresh token saved');
     }
 
     return user;

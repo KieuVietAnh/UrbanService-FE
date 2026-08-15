@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/ui';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/Feather';
 import { colors } from '@/constants/theme';

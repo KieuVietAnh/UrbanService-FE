@@ -4,12 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppCard } from '@/components/ui/AppCard';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { AppEmptyState } from '@/components/ui/AppEmptyState';
-import { CommunityFeedCard } from '@/components/community/CommunityFeedCard';
-import { communityApi } from '@/services/api/communityApi';
+import { Text } from '@/components/ui';
+import { AppCard } from '@/components/ui';
+import { SkeletonCard } from '@/components/shared';
+import { AppEmptyState } from '@/components/shared';
+import { CommunityFeedCard } from '@/features/community';
+import { communityApi, communityKeys } from '@/features/community/api';
+import type { CommunityFeedItem } from '@/features/community/types';
 import { colors } from '@/constants/theme';
 
 const FILTERS = [
@@ -18,26 +19,21 @@ const FILTERS = [
   { key: 'trending', label: 'Phổ biến' },
 ];
 
-interface CommunityFeedItem {
-  feedbackId?: string;
-  id?: string;
-  status?: string;
-}
-
 export default function CommunityFeedScreen() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('latest');
   const [searchText, setSearchText] = useState('');
 
+  const feedParams = {
+    pageNumber: 1,
+    pageSize: 12,
+    status: activeFilter === 'resolved' ? 'resolved' : undefined,
+    search: searchText || undefined,
+  };
+
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['community-feed-mobile', activeFilter, searchText],
-    queryFn: () =>
-      communityApi.getFeed({
-        pageNumber: 1,
-        pageSize: 12,
-        status: activeFilter === 'resolved' ? 'resolved' : undefined,
-        search: searchText || undefined,
-      }),
+    queryKey: communityKeys.feed(feedParams),
+    queryFn: () => communityApi.getFeed(feedParams),
   });
 
   const items = (data?.items ?? []) as CommunityFeedItem[];

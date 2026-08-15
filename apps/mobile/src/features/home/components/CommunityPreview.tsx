@@ -3,12 +3,12 @@ import { Image, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/Feather';
 import * as Haptics from 'expo-haptics';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { Text } from '@/components/ui/Text';
+import { SkeletonCard } from '@/components/shared';
+import { Text } from '@/components/ui';
 import { colors } from '@/constants/theme';
 import type { RouterLike } from '../types';
 import { useQuery } from '@tanstack/react-query';
-import { communityApi } from '@/services/api/communityApi';
+import { communityApi, communityKeys } from '@/features/community/api';
 import { styles } from '../homeStyles';
 
 type Props = {
@@ -22,9 +22,10 @@ const COMMUNITY_IMAGES = [
 ];
 
 export function CommunityPreview({ router }: Props) {
+  const feedParams = { pageNumber: 1, pageSize: 8 };
   const { data, isLoading } = useQuery({
-    queryKey: ['community-feed-preview'],
-    queryFn: () => communityApi.getFeed({ pageNumber: 1, pageSize: 8 }),
+    queryKey: communityKeys.feed(feedParams),
+    queryFn: () => communityApi.getFeed(feedParams),
     staleTime: 1000 * 60,
     refetchOnWindowFocus: false,
   });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Redirect } from 'expo-router';
-import { useAuthStore } from '@/features/auth/auth.store';
+import { useAuthStore } from '@/features/auth';
 import { APP_ROLES } from '@urbanmind/shared-types';
 
 /**

@@ -1,10 +1,13 @@
 import Constants from 'expo-constants';
 import {
   setApiBaseUrl,
+  setUnauthorizedHandler,
   setTokenStorage,
   setRefreshTokenStorage,
 } from '@urbanmind/shared-api';
 import { AsyncStorageService } from '@/services/storage/asyncStorage';
+import { queryClient } from '@/config/query-client';
+import { useAuthStore } from '@/features/auth/auth.store';
 
 let isInitialized = false;
 
@@ -25,7 +28,6 @@ export const initApi = () => {
 
   const apiUrl = getEffectiveApiUrl();
   setApiBaseUrl(apiUrl);
-  console.log('[API Init] Base URL set to:', apiUrl);
 
   setTokenStorage(
     async () => {
@@ -38,7 +40,6 @@ export const initApi = () => {
       await AsyncStorageService.removeItem('urbanmind_auth_token');
     }
   );
-  console.log('[API Init] Token storage configured with AsyncStorage');
 
   setRefreshTokenStorage(
     async () => {
@@ -51,7 +52,12 @@ export const initApi = () => {
       await AsyncStorageService.removeItem('urbanmind_refresh_token');
     }
   );
-  console.log('[API Init] Refresh token storage configured with AsyncStorage');
+
+  setUnauthorizedHandler(async () => {
+    queryClient.clear();
+    useAuthStore.getState().setUser(null);
+    useAuthStore.getState().clearError();
+  });
 
   isInitialized = true;
 };

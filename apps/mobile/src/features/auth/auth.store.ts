@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { AsyncStorageService } from '@/services/storage/asyncStorage';
-import { AuthService } from '@/features/auth/auth.service';
-import { User } from '@/types/auth.types';
+import { AuthService } from './auth.service';
+import type { User } from '@/types';
 import { extractApiErrorMessage } from '@urbanmind/shared-api';
+import { queryClient } from '@/config/query-client';
 
 interface RegisterData {
   fullName: string;
@@ -28,6 +29,11 @@ interface AuthState {
   setUser: (user: User | null) => void;
 }
 
+type ApiErrorDetails = Error & {
+  code?: unknown;
+  status?: unknown;
+};
+
 const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<T> => {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -35,7 +41,9 @@ const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<
     timeoutId = setTimeout(() => {
       const timeoutError = new Error(`timeout of ${timeoutMs}ms exceeded`);
       (timeoutError as Error & { code?: string }).code = 'ECONNABORTED';
-      console.warn('[Auth request timeout]', { timeoutMs, message: timeoutError.message });
+      if (__DEV__) {
+        console.warn('[Auth request timeout]', { timeoutMs });
+      }
       reject(timeoutError);
     }, timeoutMs);
   });
@@ -58,30 +66,28 @@ const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<
 export const useAuthStore = create<AuthState>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set, _get) => ({
         user: null,
         isLoading: false,
         error: null,
         hasHydrated: false,
 
         login: async (email: string, password: string) => {
-          console.log('[Auth login] start', { email });
           set({ isLoading: true, error: null });
           try {
-            console.log('[Auth login] invoking AuthService.login');
             const user = await withRequestTimeout(AuthService.login(email, password));
-            console.log('[Auth login] completed', { userId: user?.id, email: user?.email, role: user?.role });
             set({ user, isLoading: false });
             return user;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng nhập thất bại');
-            console.error('[Auth login failed]', {
-              code: err?.code || null,
-              message: err?.message || null,
-              status: err?.status || null,
-              response: err?.response || null,
-              stack: err?.stack || null,
-            });
+            const details = err as ApiErrorDetails;
+            if (__DEV__) {
+              console.error('[Auth login failed]', {
+                code: details?.code || null,
+                message: details?.message || null,
+                status: details?.status || null,
+              });
+            }
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {
@@ -90,22 +96,21 @@ export const useAuthStore = create<AuthState>()(
         },
 
         googleLogin: async (idToken: string) => {
-          console.log('[Auth googleLogin] start');
           set({ isLoading: true, error: null });
           try {
             const user = await withRequestTimeout(AuthService.googleLogin(idToken));
-            console.log('[Auth googleLogin] completed', { userId: user?.id, email: user?.email, role: user?.role });
             set({ user, isLoading: false });
             return user;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng nhập bằng Google thất bại');
-            console.error('[Auth googleLogin failed]', {
-              code: err?.code || null,
-              message: err?.message || null,
-              status: err?.status || null,
-              response: err?.response || null,
-              stack: err?.stack || null,
-            });
+            const details = err as ApiErrorDetails;
+            if (__DEV__) {
+              console.error('[Auth googleLogin failed]', {
+                code: details?.code || null,
+                message: details?.message || null,
+                status: details?.status || null,
+              });
+            }
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {
@@ -119,7 +124,7 @@ export const useAuthStore = create<AuthState>()(
             const user = await withRequestTimeout(AuthService.register(data));
             set({ user, isLoading: false });
             return user;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng ký thất bại');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
@@ -133,7 +138,7 @@ export const useAuthStore = create<AuthState>()(
           try {
             await withRequestTimeout(AuthService.sendOtp());
             set({ isLoading: false });
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Gửi mã OTP thất bại');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
@@ -150,7 +155,7 @@ export const useAuthStore = create<AuthState>()(
             const updatedUser = { ...user, isVerified: true };
             set({ user: updatedUser, isLoading: false });
             return updatedUser;
-          } catch (err: any) {
+          } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Mã OTP không chính xác');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
@@ -165,6 +170,7 @@ export const useAuthStore = create<AuthState>()(
           } catch {
             /* silent */
           }
+          queryClient.clear();
           set({ user: null, error: null });
         },
 
@@ -181,7 +187,9 @@ export const useAuthStore = create<AuthState>()(
             AsyncStorageService.setItem<string>(key, JSON.stringify(value)),
           removeItem: (key) => AsyncStorageService.removeItem(key),
         },
-        partialize: (state) => ({ user: state.user }) as AuthState,
+        partialize: (state) => ({
+          user: state.user ? { ...state.user, token: '' } : null,
+        }) as AuthState,
         onRehydrateStorage: () => (state) => {
           if (state) {
             state.hasHydrated = true;

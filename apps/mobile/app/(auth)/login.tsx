@@ -14,12 +14,12 @@ import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import Constants from 'expo-constants';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppButton } from '@/components/ui/AppButton';
-import { AppInput } from '@/components/ui/AppInput';
-import { PasswordInput } from '@/components/ui/PasswordInput';
-import { useAuthStore } from '@/features/auth/auth.store';
-import { useToast } from '@/components/ui/Toast';
+import { Text } from '@/components/ui';
+import { AppButton } from '@/components/ui';
+import { AppInput } from '@/components/ui';
+import { PasswordInput } from '@/components/shared';
+import { useAuthStore } from '@/features/auth';
+import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 import UrbanHeroBackground from '@/components/auth/UrbanHeroBackground';
 

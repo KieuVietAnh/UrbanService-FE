@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { View, ScrollView, RefreshControl, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthStore } from '@/features/auth/auth.store';
+import { useAuthStore } from '@/features/auth';
 import {
   HomeHeader,
   HeroCard,
