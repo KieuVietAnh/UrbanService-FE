@@ -64,6 +64,8 @@ const D = {
   springStiffness: 240,
 } as const;
 
+const INITIAL_CONTENT_REVEAL_DELAY_MS = 520;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 // ─── Image URL Resolver ───────────────────────────────────────────────────────
@@ -785,8 +787,23 @@ export default function InboxScreen() {
   const isInboxLoading = !isInboxReady;
   const isInitialLoad = Boolean(isAuthBooting || !aiFetched || !supportFetched);
   const hasHistoricData = aiConversations.length > 0 || supportFeedbacks.length > 0;
-  const isInitialInboxLoad = isInboxLoading && !hasHistoricData;
+  const isInitialInboxLoad = isInitialLoad;
   const isRefetchingWithData = !isInitialLoad && (aiFetching || supportFetching) && hasHistoricData;
+  const [isInitialOverlayVisible, setIsInitialOverlayVisible] = useState(isInitialInboxLoad);
+
+  useEffect(() => {
+    if (isInitialInboxLoad) {
+      setIsInitialOverlayVisible(true);
+      return;
+    }
+
+    const revealTimer = setTimeout(
+      () => setIsInitialOverlayVisible(false),
+      INITIAL_CONTENT_REVEAL_DELAY_MS
+    );
+
+    return () => clearTimeout(revealTimer);
+  }, [isInitialInboxLoad]);
 
   console.log('[Inbox] render', {
     activeTab,
@@ -858,16 +875,6 @@ export default function InboxScreen() {
     () => <SupportEmptyState onPress={handleSelectFeedback} />,
     [handleSelectFeedback]
   );
-
-  if (isInitialInboxLoad) {
-    return (
-      <SafeAreaView style={rootStyles.safe} edges={['top']}>
-        <View style={rootStyles.initialLoadingRoot}>
-          <ActivityIndicator size="large" color={D.aiPrimary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={rootStyles.safe} edges={['top']}>
@@ -1009,6 +1016,12 @@ export default function InboxScreen() {
           </View>
         </View>
       )}
+
+      {isInitialOverlayVisible && (
+        <View style={tabContentStyles.initialOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color={D.aiPrimary} />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1032,12 +1045,6 @@ const rootStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-  },
-  initialLoadingRoot: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: D.appBg,
   },
   eyebrowRow: {
     flexDirection: 'row',
