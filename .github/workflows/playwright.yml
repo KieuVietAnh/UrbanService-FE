@@ -11,6 +11,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/playwright.yml'
+      - '.github/workflows/deploy-web.yml'
   pull_request:
     paths:
       - 'apps/web/**'
@@ -19,6 +20,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/playwright.yml'
+      - '.github/workflows/deploy-web.yml'
 
 concurrency:
   group: ci-${{ github.ref_name }}
@@ -29,7 +31,7 @@ permissions:
 
 jobs:
   ci:
-    name: CI - install, lint, build, test
+    name: CI - install, lint, build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -57,23 +59,3 @@ jobs:
 
       - name: Build web application
         run: pnpm --dir apps/web build
-
-      - name: Install Playwright browsers
-        run: pnpm --dir apps/web exec playwright install --with-deps
-
-      - name: Run Playwright E2E smoke tests
-        working-directory: apps/web
-        env:
-          BASE_URL: https://urbanservice.me
-        run: pnpm exec playwright test --project=smoke
-
-      - name: Ensure Playwright report path exists
-        if: always()
-        run: mkdir -p apps/web/tests/results/html
-
-      - name: Upload Playwright report on failure
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: apps/web/tests/results/html

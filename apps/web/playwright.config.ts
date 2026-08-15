@@ -15,10 +15,9 @@ export default defineConfig({
     ['html', { outputFolder: 'tests/results/html', open: 'never' }],
   ],
   use: {
-    // Default to local dev when running manually and production when running in CI.
-    baseURL:
-      process.env.BASE_URL ||
-      (process.env.CI ? 'https://urbanservice.me/' : 'http://127.0.0.1:4174'),
+    // CI smoke tests exercise the deployed production site. Local runs can
+    // override this explicitly with BASE_URL when another target is needed.
+    baseURL: process.env.BASE_URL || 'https://urbanservice.me/',
     actionTimeout: 10000,
     navigationTimeout: 30000,
     trace: 'retain-on-failure',

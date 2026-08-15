@@ -18,8 +18,12 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    name: Build and deploy React web
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main')
+    name: Build, deploy, and smoke test React web
     runs-on: ubuntu-latest
 
     environment:
@@ -29,6 +33,8 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -131,6 +137,26 @@ jobs:
               sudo nginx -t && sudo systemctl reload nginx
             fi
           '
+
+      - name: Install Playwright browsers
+        run: pnpm --dir apps/web exec playwright install --with-deps
+
+      - name: Run Playwright smoke tests against production
+        working-directory: apps/web
+        env:
+          BASE_URL: https://urbanservice.me/
+        run: pnpm exec playwright test --project=smoke
+
+      - name: Ensure Playwright report path exists
+        if: always()
+        run: mkdir -p apps/web/tests/results/html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-production-report
+          path: apps/web/tests/results/html
 
       - name: Deployment completed
         run: |
