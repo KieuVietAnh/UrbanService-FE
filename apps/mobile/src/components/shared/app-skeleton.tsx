@@ -54,10 +54,6 @@ export function SkeletonCard() {
   );
 }
 
-export function SkeletonLine({ width = '100%', height = 14 }: { width?: any; height?: number }) {
-  return <Skeleton width={width} height={height} />;
-}
-
 const styles = StyleSheet.create({
   skeleton: {
     backgroundColor: '#E2E8F0',

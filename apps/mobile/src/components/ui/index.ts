@@ -3,7 +3,6 @@ export { AppButton } from './AppButton';
 export { AppCard } from './AppCard';
 export { AppHeader } from './AppHeader';
 export { AppInput } from './AppInput';
-export { CommunicationHub } from './CommunicationHub';
 export { FloatingChatMenu, type FloatingChatMenuProps } from './FloatingChatMenu';
 export { Text } from './Text';
 export { TicketStatusBadge } from './TicketStatusBadge';
