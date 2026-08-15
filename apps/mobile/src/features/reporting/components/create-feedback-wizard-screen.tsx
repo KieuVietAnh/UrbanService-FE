@@ -62,7 +62,6 @@ const normalizePriority = (value?: string) => {
 
 // Helper accessors for inconsistent API shapes
 const getCategoryId = (category: any) => String(category?.categoryId ?? category?.id ?? '');
-const getCategoryName = (category: any) => category?.categoryName ?? category?.name ?? category?.displayName ?? 'Chưa phân loại';
 const getAreaId = (area: any) => String(area?.areaId ?? area?.id ?? '');
 const getAreaName = (area: any) => area?.areaName ?? area?.name ?? area?.displayName ?? 'Khu vực';
 const isVideoFile = (file: any) => {
@@ -80,21 +79,17 @@ function StepDescription({
   description,
   onTitleChange,
   onDescChange,
-  onNext,
   titleError,
   descriptionError,
   loading,
-  canProceed,
 }: {
   title: string;
   description: string;
   onTitleChange: (v: string) => void;
   onDescChange: (v: string) => void;
-  onNext: () => void;
   titleError?: string;
   descriptionError?: string;
   loading?: boolean;
-  canProceed?: boolean;
 }) {
   return (
     <View style={styles.stepBody}>
@@ -1077,8 +1072,6 @@ export default function CreateFeedbackWizardScreen() {
             <StepDescription
               title={title}
               description={description}
-                onNext={goToNext}
-                canProceed={isStepValid}
               onTitleChange={(value) => {
                 setTitle(value);
                 clearFieldError('title');

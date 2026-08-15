@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { radius } from '@/theme/radius';
 import { spacing } from '@/theme/spacing';
 import { fontSizes, fonts } from '@/theme/typography';

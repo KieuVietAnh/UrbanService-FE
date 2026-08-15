@@ -11,7 +11,7 @@ import { communityApi } from '@/features/community/api';
 import { colors } from '@/constants/theme';
 
 export default function CommunityMapWeb() {
-  const { data, isLoading } = useQuery({
+  const { isLoading } = useQuery({
     queryKey: ['community-map'],
     queryFn: () => communityApi.getFeed({ pageNumber: 1, pageSize: 50 }),
   });

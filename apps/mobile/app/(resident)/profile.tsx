@@ -122,7 +122,7 @@ export default function ProfileScreen() {
   // Update Profile Mutation via userApi
   const updateProfileMutation = useMutation({
     mutationFn: (data: { fullName: string; phone?: string }) => userApi.updateProfile(data),
-    onSuccess: (updated) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userProfile'] });
       if (user) {
         setUser({

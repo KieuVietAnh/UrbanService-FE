@@ -5,7 +5,6 @@ import {
   StyleSheet,
   NativeSyntheticEvent,
   TextInputKeyPressEventData,
-  Clipboard,
 } from 'react-native';
 import { colors } from '@/constants/theme';
 

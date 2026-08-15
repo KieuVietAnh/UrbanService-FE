@@ -58,7 +58,7 @@ const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<
 export const useAuthStore = create<AuthState>()(
   devtools(
     persist(
-      (set, get) => ({
+      (set, _get) => ({
         user: null,
         isLoading: false,
         error: null,

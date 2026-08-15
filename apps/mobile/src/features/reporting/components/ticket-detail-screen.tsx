@@ -35,7 +35,6 @@ import { feedbackApi } from '@/features/reporting/api';
 // Feedback chat moved to its own screen: /tickets/[id]/chat
 import { semantics } from '@/theme/semantics';
 import { managementTypes } from '@urbanmind/shared-types';
-import { FloatingChatMenu } from '@/components/ui';
 import { axiosClient } from '@urbanmind/shared-api';
 import TicketLocationMap from './ticket-location-map';
 

@@ -17,8 +17,6 @@ import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { FloatingChatMenu } from '@/components/ui';
-import { useToast } from '@/components/shared';
-import { axiosClient } from '@urbanmind/shared-api';
 import { colors } from '@/constants/theme';
 
 type NavItem = {
@@ -146,7 +144,6 @@ export default function ResidentLayout() {
   const hideBottomNav = normalizedPath === '/create-feedback' || normalizedPath === '/create-feedback-wizard' || normalizedPath.startsWith('/create-feedback');
   const tabBarHeight = 64 + insets.bottom;
 
-  const toast = useToast();
   const handleFloatingSelect = async (id: 'ai' | 'staff' | 'inbox') => {
     if (id === 'ai') {
       router.push('/(resident)/ai/ai-assistant');

@@ -18,7 +18,6 @@ import { AppEmptyState } from '@/components/shared';
 import { AppErrorState } from '@/components/shared';
 import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
-import { FloatingChatMenu } from '@/components/ui';
 import type { NotificationItem } from '../types/notification.types';
 
 export type { NotificationItem } from '../types/notification.types';

@@ -35,9 +35,7 @@ const DEFAULT_REGION = {
 };
 
 const LIST_SHEET_HEIGHT = Dimensions.get('window').height * 0.55;
-const ITEM_HEIGHT = 96;
 const OVERLAP = 22; // how much each item overlaps the previous
-const SNAP_INTERVAL = ITEM_HEIGHT - OVERLAP;
 
 const getAreaId = (area: any) => String(area?.areaId ?? area?.id ?? '');
 const getAreaName = (area: any) => area?.areaName ?? area?.name ?? area?.displayName ?? 'Khu vực chưa xác định';
@@ -259,7 +257,6 @@ export default function CommunityMapNative() {
   const handleCloseFeedbackExplorer = () => setFeedbackListVisible(false);
   const [locating, setLocating] = useState(false);
 
-  const scrollY = useRef(null);
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems && viewableItems.length > 0) {
