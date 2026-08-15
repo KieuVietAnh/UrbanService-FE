@@ -6,23 +6,32 @@ on:
       - main
       - develop
 
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
 
-      - run: npm install -g eas-cli
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - run: pnpm install
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
 
       - name: Setup Gradle properties
         run: |
@@ -30,9 +39,109 @@ jobs:
           echo "org.gradle.jvmargs=-Xmx4096m" >> ~/.gradle/gradle.properties
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
 
-      - name: Build Android app
+      - name: Build Android APK
+        id: eas_build
         working-directory: apps/mobile
-        run: eas build --platform android --profile preview --non-interactive
+        shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           NODE_ENV: production
+        run: |
+          set -euo pipefail
+
+          eas build \
+            --platform android \
+            --profile preview \
+            --non-interactive \
+            --wait \
+            --json > eas-build.json
+
+          BUILD_ID=$(node -e "
+            const result = require('./eas-build.json');
+            const build = Array.isArray(result) ? result[0] : result;
+
+            if (!build?.id) {
+              console.error('Cannot determine EAS build ID');
+              process.exit(1);
+            }
+
+            process.stdout.write(build.id);
+          ")
+
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+
+      # Chỉ tạo GitHub Release khi push main
+      - name: Download APK
+        if: github.ref == 'refs/heads/main'
+        working-directory: apps/mobile
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          BUILD_ID="${{ steps.eas_build.outputs.build_id }}"
+
+          eas build:view "$BUILD_ID" --json > eas-build-view.json
+
+          APK_URL=$(node -e "
+            const build = require('./eas-build-view.json');
+
+            const url = build?.artifacts?.applicationArchiveUrl;
+
+            if (!url) {
+              console.error('APK URL not found');
+              process.exit(1);
+            }
+
+            process.stdout.write(url);
+          ")
+
+          VERSION=$(node -p "require('./app.json').expo.version")
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          APK_NAME="UrbanMind-v${VERSION}-${SHORT_SHA}.apk"
+
+          curl \
+            --fail \
+            --location \
+            --retry 3 \
+            "$APK_URL" \
+            --output "$APK_NAME"
+
+          test -s "$APK_NAME"
+
+          echo "APK_FILE=apps/mobile/$APK_NAME" >> "$GITHUB_ENV"
+          echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="android-${SHORT_SHA}"
+
+          gh release create "$TAG" \
+            "$APK_FILE" \
+            --target "$GITHUB_SHA" \
+            --title "UrbanMind v${APP_VERSION} Android Preview" \
+            --prerelease \
+            --notes "Automated Android preview build.
+
+          Version: v${APP_VERSION}
+          Commit: ${GITHUB_SHA}
+          EAS profile: preview"
+
+      - name: Build Summary
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "## UrbanMind Android APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: v${APP_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${SHORT_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- APK: ${APK_NAME}" >> "$GITHUB_STEP_SUMMARY"
