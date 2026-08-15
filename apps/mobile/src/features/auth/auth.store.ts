@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { AsyncStorageService } from '@/services/storage/asyncStorage';
-import { AuthService } from '@/features/auth/auth.service';
-import { User } from '@/types/auth.types';
+import { AuthService } from './auth.service';
+import type { User } from '@/types';
 import { extractApiErrorMessage } from '@urbanmind/shared-api';
 
 interface RegisterData {

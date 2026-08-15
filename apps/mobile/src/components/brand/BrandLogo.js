@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../../constants/theme';
+import { rawColors as colors } from '@/theme/colors';
 
 export default function BrandLogo({
   size = 'md',

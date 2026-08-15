@@ -4,64 +4,24 @@ import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppCard } from '@/components/ui/AppCard';
-import { AppHeader } from '@/components/ui/AppHeader';
-import { AppButton } from '@/components/ui/AppButton';
-import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { AppErrorState } from '@/components/ui/AppErrorState';
-import { AppEmptyState } from '@/components/ui/AppEmptyState';
-import { useToast } from '@/components/ui/Toast';
-import { communityApi } from '@/services/api/communityApi';
-import { feedbackApi } from '@/services/api/feedbackApi';
+import { Text } from '@/components/ui';
+import { AppCard } from '@/components/ui';
+import { AppHeader } from '@/components/ui';
+import { AppButton } from '@/components/ui';
+import { TicketStatusBadge } from '@/components/ui';
+import { SkeletonCard } from '@/components/shared';
+import { AppErrorState } from '@/components/shared';
+import { AppEmptyState } from '@/components/shared';
+import { useToast } from '@/components/shared';
+import { communityApi } from '@/features/community/api';
+import { feedbackApi } from '@/features/reporting/api';
 import { semantics } from '@/theme/semantics';
-
-interface CommentItem {
-  id: string;
-  senderName: string;
-  content: string;
-  createdAt: string;
-}
-
-type RawComment = {
-  commentId?: string | number;
-  id?: string | number;
-  authorName?: string;
-  userName?: string;
-  userFullName?: string;
-  content?: string;
-  text?: string;
-  createdAt?: string;
-};
-
-interface CommunityFeedbackDetail {
-  feedbackId?: string;
-  id?: string;
-  authorName?: string;
-  userName?: string;
-  status?: string;
-  categoryName?: string;
-  locationText?: string;
-  title?: string;
-  description?: string;
-  createdAt?: string | null;
-  attachments?: Array<{ fileUrl?: string } | null>;
-  comments?: RawComment[];
-  commentList?: RawComment[];
-  supportCount?: number;
-  commentCount?: number;
-  isSupported?: boolean;
-}
-
-type CommunityFeedCache = {
-  items?: Array<{
-    feedbackId?: string;
-    id?: string;
-    supportCount?: number;
-    isSupported?: boolean;
-  }>;
-};
+import type {
+  CommentItem,
+  CommunityFeedbackDetail,
+  CommunityFeedCache,
+  RawComment,
+} from '@/features/community/types';
 
 export default function CommunityDetailScreen() {
   const { id, focusComment, autoFocusComment } = useLocalSearchParams<{ id: string; focusComment?: string; autoFocusComment?: string }>();

@@ -1,10 +1,10 @@
 import React from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useToast } from '@/components/ui/Toast';
+import { useToast } from '@/components/shared';
 import { axiosClient } from '@urbanmind/shared-api';
 import { styles } from '../homeStyles';
-import FloatingChatMenu from '@/components/ui/FloatingChatMenu';
+import { FloatingChatMenu } from '@/components/ui';
 
 type Props = {
   isOpen: boolean;

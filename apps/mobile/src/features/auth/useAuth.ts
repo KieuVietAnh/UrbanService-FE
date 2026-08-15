@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/features/auth/auth.store';
+import { useAuthStore } from './auth.store';
 
 export const useAuth = () => {
   const { user, isLoading, error, login, logout, clearError } = useAuthStore();

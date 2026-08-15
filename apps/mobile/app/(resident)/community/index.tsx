@@ -4,12 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppCard } from '@/components/ui/AppCard';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { AppEmptyState } from '@/components/ui/AppEmptyState';
-import { CommunityFeedCard } from '@/components/community/CommunityFeedCard';
-import { communityApi } from '@/services/api/communityApi';
+import { Text } from '@/components/ui';
+import { AppCard } from '@/components/ui';
+import { SkeletonCard } from '@/components/shared';
+import { AppEmptyState } from '@/components/shared';
+import { CommunityFeedCard } from '@/features/community';
+import { communityApi } from '@/features/community/api';
+import type { CommunityFeedItem } from '@/features/community/types';
 import { colors } from '@/constants/theme';
 
 const FILTERS = [
@@ -17,12 +18,6 @@ const FILTERS = [
   { key: 'resolved', label: 'Đã xử lý' },
   { key: 'trending', label: 'Phổ biến' },
 ];
-
-interface CommunityFeedItem {
-  feedbackId?: string;
-  id?: string;
-  status?: string;
-}
 
 export default function CommunityFeedScreen() {
   const router = useRouter();

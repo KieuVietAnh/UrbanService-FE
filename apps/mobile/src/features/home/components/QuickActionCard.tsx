@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
+import { Text } from '@/components/ui';
 import type { QuickAction, RouterLike } from '../types';
 import { styles } from '../homeStyles';
 

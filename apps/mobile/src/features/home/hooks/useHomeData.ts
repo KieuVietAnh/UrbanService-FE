@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { feedbackApi } from '@/services/api/feedbackApi';
+import { feedbackApi } from '@/features/reporting/api';
 import type { TicketLike } from '../types';
 
 export function useHomeData() {

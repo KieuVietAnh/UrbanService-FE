@@ -17,8 +17,8 @@ import {
   Geist_900Black,
 } from '@expo-google-fonts/geist';
 import { initApi } from '@/config/api';
-import { ToastProvider } from '@/components/ui/Toast';
-import { useAuthGuard } from '@/features/auth/useAuthGuard';
+import { ToastProvider } from '@/components/shared';
+import { useAuthGuard } from '@/features/auth';
 
 import '../global.css';
 

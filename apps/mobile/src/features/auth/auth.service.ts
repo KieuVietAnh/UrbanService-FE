@@ -5,7 +5,7 @@ import {
   clearAuthTokens,
 } from '@urbanmind/shared-api';
 import { getInternalRole } from '@urbanmind/shared-types';
-import { User } from '@/types/auth.types';
+import type { User } from '@/types';
 
 const extractData = (response: any) => {
   if (typeof response === 'string') {

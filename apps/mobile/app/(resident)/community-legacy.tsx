@@ -4,11 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppCard } from '@/components/ui/AppCard';
-import { TicketStatusBadge } from '@/components/ui/TicketStatusBadge';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { feedbackApi } from '@/services/api/feedbackApi';
+import { Text } from '@/components/ui';
+import { AppCard } from '@/components/ui';
+import { TicketStatusBadge } from '@/components/ui';
+import { SkeletonCard } from '@/components/shared';
+import { feedbackApi } from '@/features/reporting/api';
 import { colors } from '@/constants/theme';
 
 const COMMUNITY_STATS = [

@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import BrandLogo from '../../components/brand/BrandLogo';
-import { colors } from '../../constants/theme';
+import BrandLogo from '@/components/brand/BrandLogo';
+import { rawColors as colors } from '@/theme/colors';
 
 export default function SplashScreen() {
   return (

@@ -3,12 +3,12 @@ import { Image, Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Icon from '@expo/vector-icons/Feather';
 import * as Haptics from 'expo-haptics';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { Text } from '@/components/ui/Text';
+import { SkeletonCard } from '@/components/shared';
+import { Text } from '@/components/ui';
 import { colors } from '@/constants/theme';
 import type { RouterLike } from '../types';
 import { useQuery } from '@tanstack/react-query';
-import { communityApi } from '@/services/api/communityApi';
+import { communityApi } from '@/features/community/api';
 import { styles } from '../homeStyles';
 
 type Props = {

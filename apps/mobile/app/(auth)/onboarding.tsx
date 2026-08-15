@@ -9,8 +9,8 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppButton } from '@/components/ui/AppButton';
+import { Text } from '@/components/ui';
+import { AppButton } from '@/components/ui';
 import { colors } from '@/constants/theme';
 import { semantics } from '@/theme/semantics';
 

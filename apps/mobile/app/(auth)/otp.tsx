@@ -8,11 +8,11 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { AppButton } from '@/components/ui/AppButton';
-import { OTPInput } from '@/components/ui/OTPInput';
-import { useAuthStore } from '@/features/auth/auth.store';
-import { useToast } from '@/components/ui/Toast';
+import { Text } from '@/components/ui';
+import { AppButton } from '@/components/ui';
+import { OTPInput } from '@/components/shared';
+import { useAuthStore } from '@/features/auth';
+import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 
 const RESEND_COOLDOWN_SECONDS = 60;

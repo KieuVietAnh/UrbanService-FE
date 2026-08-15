@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from './Text';
 import { semantics } from '@/theme/semantics';
-import { useToast } from './Toast';
+import { useToast } from '@/components/shared/toast';
 
 export interface FloatingChatMenuProps {
   bottomOffset?: number;

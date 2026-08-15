@@ -14,14 +14,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { userApi } from '@urbanmind/shared-api';
 import { getRoleLabel, managementTypes } from '@urbanmind/shared-types';
-import { Text } from '@/components/ui/Text';
-import { AppButton } from '@/components/ui/AppButton';
-import AppInput from '@/components/ui/AppInput';
-import { SkeletonCard } from '@/components/ui/AppSkeleton';
-import { AppErrorState } from '@/components/ui/AppErrorState';
-import { useAuthStore } from '@/features/auth/auth.store';
-import { feedbackApi } from '@/services/api/feedbackApi';
-import { useToast } from '@/components/ui/Toast';
+import { Text } from '@/components/ui';
+import { AppButton } from '@/components/ui';
+import { AppInput } from '@/components/ui';
+import { SkeletonCard } from '@/components/shared';
+import { AppErrorState } from '@/components/shared';
+import { useAuthStore } from '@/features/auth';
+import { feedbackApi } from '@/features/reporting/api';
+import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 
 interface SettingRow {

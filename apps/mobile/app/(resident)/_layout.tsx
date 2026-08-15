@@ -15,9 +15,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui/Text';
-import { FloatingChatMenu } from '@/components/ui/FloatingChatMenu';
-import { useToast } from '@/components/ui/Toast';
+import { Text } from '@/components/ui';
+import { FloatingChatMenu } from '@/components/ui';
+import { useToast } from '@/components/shared';
 import { axiosClient } from '@urbanmind/shared-api';
 import { colors } from '@/constants/theme';
 
