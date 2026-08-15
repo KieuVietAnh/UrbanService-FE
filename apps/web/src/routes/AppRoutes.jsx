@@ -52,7 +52,6 @@ const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspac
 const SLAAnalytics = lazy(() => import('../pages/analytics/SLAAnalytics').then((m) => ({ default: m.SLAAnalytics })));
 const SentimentDashboard = lazy(() => import('../pages/analytics/SentimentDashboard').then((m) => ({ default: m.SentimentDashboard })));
 const HeatmapDashboard = lazy(() => import('../pages/analytics/HeatmapDashboard').then((m) => ({ default: m.HeatmapDashboard })));
-const AboutPage = lazy(() => import('../pages/AboutPage').then((m) => ({ default: m.AboutPage })));
 const InteractionHistoryMonitoring = lazy(() => import('../pages/analytics/InteractionHistoryMonitoring').then((m) => ({ default: m.InteractionHistoryMonitoring })));
 const InteractionApprovalInboxPage = lazy(() => import('../pages/manager/InteractionApprovalInboxPage').then((m) => ({ default: m.InteractionApprovalInboxPage })));
 const InteractionApprovalDetailPage = lazy(() => import('../pages/manager/InteractionApprovalDetailPage').then((m) => ({ default: m.InteractionApprovalDetailPage })));
@@ -201,7 +200,6 @@ export const AppRoutes = () => {
       />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/verify-email" element={isAuthenticated ? <VerifyEmailPage /> : <Navigate to="/login" replace />} />
-      <Route path="/about" element={<AboutPage />} />
 
       {/* Protected Pages (All Auth Roles) */}
       <Route path="/dashboard" element={
