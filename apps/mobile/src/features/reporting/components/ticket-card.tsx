@@ -1,90 +1,160 @@
-import React from 'react';
-import { View, Image, StyleSheet, StyleProp, ViewStyle, Pressable } from 'react-native';
-import { Text } from '@/components/ui';
-import { AppBadge } from '@/components/ui';
-import { semantics } from '@/theme/semantics';
+import Icon from '@expo/vector-icons/Feather';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppCard, Text, TicketStatusBadge } from '@/components/ui';
+import { colors } from '@/constants/theme';
+import { radius } from '@/theme/radius';
+import { spacing } from '@/theme/spacing';
+import { fontSizes, fonts } from '@/theme/typography';
 
-interface TicketCardProps {
-  title: string;
-  subtitle?: string;
-  status: string;
-  imageUrl?: string;
-  onPress?: () => void;
-  style?: StyleProp<ViewStyle>;
+export interface TicketCardProps {
+  ticket: any;
+  onPress: () => void;
 }
 
-export const TicketCard = ({
-  title,
-  subtitle,
-  status,
-  imageUrl,
-  onPress,
-  style,
-}: TicketCardProps) => {
+export function TicketCard({ ticket, onPress }: TicketCardProps) {
+  const createdAt = ticket.createdAt
+    ? new Date(ticket.createdAt).toLocaleDateString('vi-VN')
+    : '';
+
+  const priority = String(ticket.priority ?? 'Medium').toLowerCase();
+  const priorityMap: Record<string, { label: string; color: string; bg: string }> = {
+    urgent: { label: 'Khẩn cấp', color: '#DC2626', bg: '#FEE2E2' },
+    high: { label: 'Cao', color: '#EA580C', bg: '#FED7AA' },
+    medium: { label: 'Trung bình', color: '#B45309', bg: '#FDE68A' },
+    low: { label: 'Thấp', color: '#047857', bg: '#A7F3D0' },
+  };
+  const priorityInfo = priorityMap[priority] ?? {
+    label: 'Trung bình',
+    color: '#B45309',
+    bg: '#FDE68A',
+  };
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={!onPress}
-      style={[styles.container, style]}
-    >
-      {imageUrl && (
-        <Image source={{ uri: imageUrl }} style={styles.image} />
-      )}
-      <View style={styles.content}>
-        <View style={styles.headerRow}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          <AppBadge status={status} size="sm" />
+    <Pressable onPress={onPress} style={styles.ticketListItem}>
+      <AppCard shadow="sm">
+        <View style={styles.ticketCardContent}>
+          <View style={styles.ticketTopRow}>
+            <Text style={styles.ticketTitle} numberOfLines={2}>
+              {ticket.title ?? 'Chưa có tiêu đề'}
+            </Text>
+            <TicketStatusBadge status={ticket.status ?? 'PENDING'} size="sm" />
+          </View>
+
+          {ticket.categoryName && (
+            <View style={styles.categoryRow}>
+              <Icon name="tag" size={12} color={colors.muted} />
+              <Text style={styles.categoryText}>{ticket.categoryName}</Text>
+            </View>
+          )}
+
+          <View style={styles.locationRow}>
+            <Icon name="map-pin" size={12} color={colors.muted} />
+            <Text style={styles.locationText} numberOfLines={1}>
+              {ticket.locationText ?? 'Không có địa chỉ'}
+            </Text>
+          </View>
+
+          <View style={styles.cardFooter}>
+            <View style={styles.dateRow}>
+              <Icon name="calendar" size={11} color={colors.lightMuted} />
+              <Text style={styles.dateText}>{createdAt}</Text>
+            </View>
+            <View style={styles.priorityRow}>
+              <View style={[styles.priorityDot, { backgroundColor: priorityInfo.color }]} />
+              <View style={[styles.priorityPill, { backgroundColor: priorityInfo.bg }]}>
+                <Text style={[styles.priorityText, { color: priorityInfo.color }]}>
+                  {priorityInfo.label}
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={14} color={colors.primary} />
+            </View>
+          </View>
         </View>
-        {subtitle && (
-          <Text style={styles.subtitle} numberOfLines={2}>
-            {subtitle}
-          </Text>
-        )}
-      </View>
+      </AppCard>
     </Pressable>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
+  ticketListItem: {
+    marginBottom: spacing['3'],
+    marginHorizontal: spacing['5'],
+  },
+  ticketCardContent: {
+    padding: spacing['3.5'],
+  },
+  ticketTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: semantics.bg.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: semantics.border.default,
-  },
-  image: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
-    marginRight: 12,
-    backgroundColor: semantics.bg.surfaceSubtle,
-  },
-  content: {
-    flex: 1,
-  },
-  headerRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
+    marginBottom: spacing['2'],
   },
-  title: {
-    fontSize: 15,
-    fontFamily: 'Geist-SemiBold',
-    color: semantics.text.primary,
+  ticketTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+    marginBottom: spacing['2'],
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['1.5'],
+    marginBottom: 9,
+  },
+  categoryText: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    color: colors.muted,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['1.5'],
+    marginBottom: spacing['2.5'],
+  },
+  locationText: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.muted,
     flex: 1,
   },
-  subtitle: {
-    fontSize: 13,
-    fontFamily: 'Geist-Regular',
-    color: semantics.text.muted,
-    marginTop: 4,
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    paddingTop: spacing['2.5'],
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['1'],
+  },
+  dateText: {
+    fontFamily: fonts.medium,
+    fontSize: fontSizes['2xs'],
+    color: colors.lightMuted,
+  },
+  priorityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['1.5'],
+  },
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius['pill'],
+  },
+  priorityPill: {
+    borderRadius: radius['pill'],
+    paddingHorizontal: spacing['2'],
+    paddingVertical: spacing['1'],
+  },
+  priorityText: {
+    fontFamily: fonts.semibold,
+    fontSize: fontSizes['2xs'],
   },
 });
 
