@@ -7,6 +7,7 @@ export interface Notification {
   createdAt: string;
   relatedId?: string;
   relatedType?: string;
+  targetUrl?: string;
 }
 
 export interface NotificationItem {
@@ -19,6 +20,7 @@ export interface NotificationItem {
   createdAt: string;
   relatedId?: string;
   relatedType?: string;
+  targetUrl?: string;
 }
 
 export interface NotificationPage {

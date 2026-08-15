@@ -766,9 +766,7 @@ export default function CreateFeedbackWizardScreen() {
     }
 
     if (stepId === 3) {
-      if (attachments.length === 0) {
-        errors.attachments = 'Vui lòng thêm ít nhất một hình ảnh hoặc video minh chứng.';
-      } else if (attachments.length > MAX_ATTACHMENT_COUNT || totalAttachmentSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES) {
+      if (attachments.length > MAX_ATTACHMENT_COUNT || totalAttachmentSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES) {
         errors.attachments = `Tối đa ${MAX_ATTACHMENT_COUNT} tệp và tổng dung lượng không quá ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`;
       }
     }

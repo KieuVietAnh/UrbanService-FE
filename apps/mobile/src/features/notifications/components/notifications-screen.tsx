@@ -43,6 +43,20 @@ function getPriorityLabel(type?: string) {
   return 'Thông tin';
 }
 
+function getTicketIdFromTargetUrl(targetUrl: unknown): string | undefined {
+  if (typeof targetUrl !== 'string') return undefined;
+
+  const path = targetUrl.split(/[?#]/, 1)[0];
+  const match = path.match(/(?:^|\/)tickets\/([^/]+)\/?$/i);
+  if (!match?.[1]) return undefined;
+
+  try {
+    return decodeURIComponent(match[1]).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function groupByDay(items: NotificationItem[]) {
   const today = new Date().toDateString();
   const yesterday = new Date(Date.now() - 86400000).toDateString();
@@ -149,8 +163,9 @@ export default function NotificationsScreen() {
     type: n.type ?? 'DEFAULT',
     isRead: Boolean(n.isRead),
     createdAt: n.createdAt ?? new Date().toISOString(),
-    relatedId: n.relatedId ?? n.feedbackId,
+    relatedId: n.relatedId ?? n.feedbackId ?? getTicketIdFromTargetUrl(n.targetUrl),
     relatedType: n.relatedType ?? 'FEEDBACK',
+    targetUrl: n.targetUrl,
   }));
 
   const groups = groupByDay(notifications);
