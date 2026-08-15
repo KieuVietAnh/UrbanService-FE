@@ -167,9 +167,10 @@ test.describe('Service User smoke tests', () => {
     await page.goto(profileRoute);
     await page.waitForLoadState('domcontentloaded');
 
-    // The page shows a small label "Hồ sơ tài khoản" (not necessarily an h1). Match by text instead.
-    await expect(page.getByText(/Hồ sơ tài khoản/i)).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('.avatar, .profile-page, .profile-card')).toBeVisible({ timeout: 15000 });
+    // The profile page renders a dedicated hero section and a real h1; assert against the actual page shell
+    // instead of stale CSS classes that no longer exist in the current UI.
+    await expect(page.getByText(/Hồ sơ tài khoản/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.profile-hero-surface, h1').first()).toBeVisible({ timeout: 15000 });
     await assertNoErrors(monitor, 'Profile page');
   });
 });
