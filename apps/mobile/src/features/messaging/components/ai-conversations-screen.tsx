@@ -10,18 +10,17 @@ export default function AiConversationRedirectScreen() {
   const {
     data,
     isLoading,
-    isError,
   } = useAiConversationsQuery();
 
   const conversations = useMemo(() => Array.isArray(data) ? data : [], [data]);
 
   useEffect(() => {
     if (isLoading) return;
-    const target = isError || conversations.length === 0
+    const target = conversations.length === 0
       ? '/(resident)/ai/ai-assistant'
       : `/(resident)/ai/${conversations[0].id}`;
     router.replace(target as Href);
-  }, [isLoading, isError, conversations, router]);
+  }, [isLoading, conversations, router]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>

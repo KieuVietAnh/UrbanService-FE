@@ -6,6 +6,7 @@ import {
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -148,6 +149,9 @@ export default function AiConversationDetailScreen() {
       return messagingApi.sendAiMessage({ conversationId, message: messageText });
     },
     onMutate: async (messageText: string) => {
+      await queryClient.cancelQueries({
+        queryKey: messagingKeys.aiMessages(conversationId ?? ''),
+      });
       const tempId = `temp-${Date.now()}`;
       const optimistic: AiMessage = {
         id: tempId,
@@ -171,8 +175,22 @@ export default function AiConversationDetailScreen() {
         }
         return arr;
       });
-      queryClient.invalidateQueries({ queryKey: messagingKeys.aiConversations() });
+      void queryClient.invalidateQueries({
+        queryKey: messagingKeys.aiConversations(),
+        refetchType: 'none',
+      });
       if (reply.conversationId && reply.conversationId !== conversationId) {
+        const optimisticHistory = queryClient.getQueryData<AiMessage[]>(
+          messagingKeys.aiMessages(conversationId ?? '')
+        );
+        queryClient.setQueryData(
+          messagingKeys.aiMessages(reply.conversationId),
+          optimisticHistory
+        );
+        void queryClient.invalidateQueries({
+          queryKey: messagingKeys.aiMessages(reply.conversationId),
+          refetchType: 'none',
+        });
         router.replace(`/(resident)/ai/${reply.conversationId}`);
       }
       scrollToBottom(true);
@@ -185,7 +203,11 @@ export default function AiConversationDetailScreen() {
 
   const handleSend = async (text: string) => {
     if (!text.trim() || !conversationId) return;
-    await sendMutation.mutateAsync(text);
+    try {
+      await sendMutation.mutateAsync(text);
+    } catch {
+      // Error state and user feedback are handled by the mutation callback.
+    }
   };
 
   const renderMessage = ({ item }: { item: AiMessage }) => {
@@ -211,7 +233,7 @@ export default function AiConversationDetailScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <AppHeader showBack title="AI Assistant" subtitle="Câu chuyện của bạn" />
 
-      {isError ? (
+      {isError && messages.length === 0 ? (
         <AppErrorState onRetry={refetch}>
           {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
         </AppErrorState>
@@ -244,7 +266,11 @@ export default function AiConversationDetailScreen() {
                   tintColor={semantics.text.brand}
                 />
               }
-              ListEmptyComponent={() => (
+              ListEmptyComponent={isLoading ? (
+                <View style={styles.initialLoading}>
+                  <ActivityIndicator size="large" color={semantics.text.brand} />
+                </View>
+              ) : (
                 <AppEmptyState
                   icon={<Icon name="cpu" size={40} color={semantics.text.lightMuted} />}
                 >
@@ -258,7 +284,7 @@ export default function AiConversationDetailScreen() {
               <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
               <MessageComposer
                 onSend={handleSend}
-                sending={sendMutation.isPending}
+                sending={sendMutation.isPending || isLoading}
                 onFocus={() => scrollToBottom(true)}
                 onHeightChange={(height) => setComposerHeight(height)}
               />
@@ -287,6 +313,12 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+  },
+  initialLoading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
   },
   messageList: {
     paddingTop: 16,

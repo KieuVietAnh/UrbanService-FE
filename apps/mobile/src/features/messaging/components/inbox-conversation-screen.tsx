@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -72,12 +73,13 @@ export default function InboxConversationScreen() {
         role: item.role ?? item.senderRole ?? 'assistant',
       }));
     },
-    enabled: Boolean(conversationId),
+    enabled: Boolean(conversationId) && !isPlaceholder,
     retry: false,
     staleTime: 1000 * 60 * 3,
   });
 
   const messages = Array.isArray(data) ? data : [];
+  const isInitialLoading = isLoading && messages.length === 0;
 
   const renderMessage = (message: ConversationMessage) => {
     const isOwn = message.role === 'user';
@@ -110,7 +112,7 @@ export default function InboxConversationScreen() {
   }, [isAiAssistant]);
 
   const sendAiMessage = async (text: string) => {
-    if (!text) return;
+    if (!text || aiLoading) return;
     const userMsg: ConversationMessage = {
       id: `u-${Date.now()}`,
       senderName: 'Bạn',
@@ -173,10 +175,14 @@ export default function InboxConversationScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader showBack title={threadMeta.title} />
 
-      {isError ? (
+      {isError && messages.length === 0 ? (
         <AppErrorState onRetry={refetch}>
           {(error as any)?.message || 'Không thể tải nội dung hội thoại.'}
         </AppErrorState>
+      ) : isInitialLoading ? (
+        <View style={styles.initialLoading}>
+          <ActivityIndicator size="large" color={semantics.text.brand} />
+        </View>
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -291,6 +297,11 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 120,
+  },
+  initialLoading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   threadHeader: {
     flexDirection: 'row',

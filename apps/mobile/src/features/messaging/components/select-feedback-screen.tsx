@@ -6,14 +6,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Text } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { TicketStatusBadge } from '@/components/ui';
-import { SkeletonCard } from '@/components/shared';
+import { AppErrorState, SkeletonCard } from '@/components/shared';
 import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import { colors } from '@/constants/theme';
 
 export default function SelectFeedbackScreen() {
   const router = useRouter();
 
-  const { data, isLoading, isError, isFetching, refetch } = useQuery({
+  const { data, isLoading, isError, isRefetching, refetch } = useQuery({
     queryKey: reportingKeys.list({ pageSize: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
     queryFn: () =>
       feedbackApi.list({ pageSize: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
@@ -47,7 +47,9 @@ export default function SelectFeedbackScreen() {
     );
   };
 
-  const renderEmpty = () => (
+  const renderEmpty = () => isError ? (
+    <AppErrorState onRetry={refetch}>Không thể tải danh sách phản ánh.</AppErrorState>
+  ) : (
     <View style={styles.emptyWrap}>
       <View style={styles.emptyIconCircle}>
         <Text style={styles.emptyIcon}>📄</Text>
@@ -82,7 +84,7 @@ export default function SelectFeedbackScreen() {
         ListEmptyComponent={!isLoading ? renderEmpty : null}
         showsVerticalScrollIndicator={false}
         onRefresh={refetch}
-        refreshing={isFetching}
+        refreshing={isRefetching}
       />
     </SafeAreaView>
   );

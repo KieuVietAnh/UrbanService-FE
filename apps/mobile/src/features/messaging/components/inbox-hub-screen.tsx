@@ -37,9 +37,9 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import { Text } from '@/components/ui';
-import { Skeleton } from '@/components/shared';
+import { AppErrorState } from '@/components/shared';
 import { AppBadge } from '@/components/ui';
 import { semantics } from '@/theme/semantics';
 import { useAuthStore } from '@/features/auth';
@@ -243,37 +243,6 @@ function useFadeUp(delay = 0) {
     ]).start();
   }, []);
   return { translateY, opacity };
-}
-
-// ─── Skeleton Components ───────────────────────────────────────────────────────
-
-function AiRowSkeleton({ index = 0 }: { index?: number }) {
-  return (
-    <View style={[skStyles.aiRow, { opacity: 1 - index * 0.18 }]}>
-      <Skeleton width={44} height={44} radius={16} />
-      <View style={skStyles.aiBody}>
-        <Skeleton width="56%" height={12} radius={6} />
-        <View style={{ height: 7 }} />
-        <Skeleton width="82%" height={10} radius={5} />
-      </View>
-      <Skeleton width={30} height={10} radius={5} />
-    </View>
-  );
-}
-
-function SupportRowSkeleton({ index = 0 }: { index?: number }) {
-  return (
-    <View style={[skStyles.supportRow, { opacity: 1 - index * 0.22 }]}>
-      <Skeleton width={72} height={72} radius={18} />
-      <View style={skStyles.supportBody}>
-        <Skeleton width="66%" height={13} radius={6} />
-        <View style={{ height: 6 }} />
-        <Skeleton width="38%" height={10} radius={5} />
-        <View style={{ height: 9 }} />
-        <Skeleton width="50%" height={10} radius={5} />
-      </View>
-    </View>
-  );
 }
 
 // ─── AI Hero Card — display + embedded CTA button ────────────────────────────
@@ -592,6 +561,11 @@ function AiEmptyHint({ onPress }: { onPress: () => void }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 type TabKey = 'ai' | 'support';
+const SUPPORT_FEEDBACK_FILTERS = {
+  pageSize: 15,
+  sortBy: 'updatedAt',
+  sortOrder: 'desc' as const,
+};
 
 export default function InboxScreen() {
   const router = useRouter();
@@ -610,8 +584,7 @@ export default function InboxScreen() {
   const {
     data: aiData,
     isLoading: aiLoading,
-    isFetching: aiFetching,
-    isFetched: aiFetched,
+    isError: aiError,
     refetch: refetchAi,
     isRefetching: aiRefetching,
   } = useAiConversationsQuery(authReady && !!user);
@@ -622,8 +595,7 @@ export default function InboxScreen() {
   const {
     data: supportThreads,
     isLoading: supportLoading,
-    isFetching: supportFetching,
-    isFetched: supportFetched,
+    isError: supportError,
     refetch: refetchSupport,
     isRefetching: supportRefetching,
   } = useQuery<SupportThread[]>({
@@ -631,23 +603,39 @@ export default function InboxScreen() {
     queryFn: async (): Promise<SupportThread[]> => {
       // Step 1: fetch all citizen feedbacks (list API — NO attachment data)
       // Capped at 15 items for inbox preview to minimize concurrent checking load
-      const raw = await feedbackApi.list({ pageSize: 15, sortBy: 'updatedAt', sortOrder: 'desc' });
+      const raw = await queryClient.fetchQuery({
+        queryKey: reportingKeys.list(SUPPORT_FEEDBACK_FILTERS),
+        queryFn: () => feedbackApi.list(SUPPORT_FEEDBACK_FILTERS),
+        staleTime: 1000 * 60 * 5,
+      });
       const items: any[] = Array.isArray(raw) ? raw : (raw?.items ?? []);
 
       // Step 2: check messages for each feedback in parallel
+      let messageProbeCount = 0;
+      let messageProbeFailures = 0;
       const checked = await Promise.all(
         items.map(async (item) => {
           const feedbackId = String(item?.feedbackId ?? item?.id ?? '');
           if (!feedbackId) return null;
+          messageProbeCount += 1;
           try {
-            const msgs = await messagingApi.getFeedbackMessages(feedbackId);
+            const msgs = await queryClient.fetchQuery({
+              queryKey: messagingKeys.feedbackMessages(feedbackId),
+              queryFn: () => messagingApi.getFeedbackMessages(feedbackId),
+              staleTime: 1000 * 60 * 5,
+            });
             if (msgs.length === 0) return null; // skip feedbacks with no conversation
             return { item, feedbackId, msgs };
           } catch {
+            messageProbeFailures += 1;
             return null;
           }
         })
       );
+
+      if (messageProbeCount > 0 && messageProbeFailures === messageProbeCount) {
+        throw new Error('Unable to load support conversations');
+      }
 
       const withMsgs = checked.filter(Boolean) as Array<{ item: any; feedbackId: string; msgs: any[] }>;
 
@@ -682,7 +670,11 @@ export default function InboxScreen() {
 
           let imageUris: string[] = [];
           try {
-            const detail = await feedbackApi.getById(feedbackId);
+            const detail = await queryClient.fetchQuery({
+              queryKey: reportingKeys.detail(feedbackId),
+              queryFn: () => feedbackApi.getById(feedbackId),
+              staleTime: 1000 * 60 * 5,
+            });
             imageUris = getAllFeedbackImages(detail);
           } catch {
             imageUris = [];
@@ -706,12 +698,10 @@ export default function InboxScreen() {
     retry: false,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes to avoid redundant fetches
     gcTime: 1000 * 60 * 30,
-    enabled: authReady && !!user,
+    enabled: authReady && !!user && activeTab === 'support',
   });
 
   const hasFocusedOnce = useRef(false);
-  const fetchState = useRef({ aiFetching, supportFetching });
-  fetchState.current = { aiFetching, supportFetching };
 
   useFocusEffect(
     useCallback(() => {
@@ -721,43 +711,25 @@ export default function InboxScreen() {
         return;
       }
 
-      const refreshes: Array<Promise<unknown>> = [];
-      const now = Date.now();
-      const aiState = queryClient.getQueryState(messagingKeys.aiConversations());
-      const supportState = queryClient.getQueryState(messagingKeys.supportThreads());
-      const aiIsStale = !aiState?.dataUpdatedAt || aiState.isInvalidated || now - aiState.dataUpdatedAt >= 1000 * 60 * 2;
-      const supportIsStale = !supportState?.dataUpdatedAt || supportState.isInvalidated || now - supportState.dataUpdatedAt >= 1000 * 60 * 5;
-
-      if (!fetchState.current.aiFetching && aiIsStale) refreshes.push(refetchAi());
-      if (!fetchState.current.supportFetching && supportIsStale) refreshes.push(refetchSupport());
-      void Promise.allSettled(refreshes);
-    }, [authReady, queryClient, refetchAi, refetchSupport, user])
+      void Promise.allSettled([
+        queryClient.refetchQueries(
+          { queryKey: messagingKeys.aiConversations(), type: 'active', stale: true },
+          { cancelRefetch: false }
+        ),
+        queryClient.refetchQueries(
+          { queryKey: messagingKeys.supportThreads(), type: 'active', stale: true },
+          { cancelRefetch: false }
+        ),
+      ]);
+    }, [authReady, queryClient, user])
   );
 
   const aiConversations = useMemo(() => (Array.isArray(aiData) ? aiData : []), [aiData]);
   const supportFeedbacks = useMemo(() => (Array.isArray(supportThreads) ? supportThreads : []), [supportThreads]);
 
   const isAuthBooting = !authReady || !user;
-  const isAiInitiallyLoading = isAuthBooting || (!aiFetched && (aiFetching || aiLoading));
-  const isSupportInitiallyLoading = isAuthBooting || (!supportFetched && (supportFetching || supportLoading));
-
-  const isInitialInboxLoad = Boolean(isAuthBooting || !aiFetched);
-  const isInboxLoading = isInitialInboxLoad;
-
-  // ── Skeleton data ──────────────────────────────────────────────────────────
-  const aiSkeletonData = useMemo(
-    () => aiLoading
-      ? Array.from({ length: 4 }, (_, i) => ({ id: `sk-${i}`, _skeleton: true, _index: i }))
-      : aiConversations,
-    [aiLoading, aiConversations]
-  );
-
-  const supportSkeletonData = useMemo(
-    () => isSupportInitiallyLoading
-      ? Array.from({ length: 3 }, (_, i) => ({ feedbackId: `sk-${i}`, _skeleton: true, _index: i }))
-      : supportFeedbacks,
-    [isSupportInitiallyLoading, supportFeedbacks]
-  );
+  const isInitialInboxLoad = isAuthBooting || (aiLoading && aiConversations.length === 0);
+  const isSupportInitiallyLoading = supportLoading && supportFeedbacks.length === 0;
 
   const handleTabPress = useCallback(
     (tab: TabKey) => {
@@ -793,6 +765,16 @@ export default function InboxScreen() {
     () => <SupportEmptyState onPress={handleSelectFeedback} />,
     [handleSelectFeedback]
   );
+
+  if (isInitialInboxLoad) {
+    return (
+      <SafeAreaView style={rootStyles.safe} edges={['top']}>
+        <View style={tabContentStyles.initialLoading}>
+          <ActivityIndicator size="large" color={D.aiPrimary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={rootStyles.safe} edges={['top']}>
@@ -850,48 +832,43 @@ export default function InboxScreen() {
       {/* ── Tab Content ─────────────────────────────────────────────────────── */}
       <View style={{ flex: 1, position: 'relative' }}>
         <View style={[tabContentStyles.tabPane, activeTab === 'ai' ? tabContentStyles.tabVisible : tabContentStyles.tabHidden]}>
-          {isAiInitiallyLoading ? (
-            <View style={tabContentStyles.loadingRoot}>
-              <ActivityIndicator size={"large"} color={D.aiPrimary} />
-              <Text style={tabContentStyles.loadingText}>Đang tải hộp thư AI…</Text>
+          <>
+            <View style={tabContentStyles.aiHeaderWrap}>
+              <AIHeroCard onPress={handleNewAi} />
+              {aiConversations.length > 0 && (
+                <View style={tabContentStyles.sectionLabelRow}>
+                  <View style={tabContentStyles.sectionLine} />
+                  <Text style={tabContentStyles.sectionLabel}>Lịch sử</Text>
+                  <View style={tabContentStyles.sectionLine} />
+                </View>
+              )}
             </View>
-          ) : (
-            <>
-              <View style={tabContentStyles.aiHeaderWrap}>
-                <AIHeroCard onPress={handleNewAi} />
-                {aiConversations.length > 0 && !aiLoading && (
-                  <View style={tabContentStyles.sectionLabelRow}>
-                    <View style={tabContentStyles.sectionLine} />
-                    <Text style={tabContentStyles.sectionLabel}>Lịch sử</Text>
-                    <View style={tabContentStyles.sectionLine} />
-                  </View>
-                )}
-              </View>
 
-              <FlatList
-                key="ai"
-                style={{ flex: 1 }}
-                ref={aiListRef}
-                extraData={[isInboxLoading, isAuthBooting, aiConversations.length]}
-                data={aiSkeletonData as any[]}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={[
-                  tabContentStyles.listContent,
-                  aiConversations.length === 0 && !aiLoading && tabContentStyles.flexGrow,
-                ]}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                  <RefreshControl refreshing={aiRefetching} onRefresh={refetchAi} tintColor={D.aiPrimary} />
-                }
-                ListEmptyComponent={!aiLoading ? <AiEmptyHint onPress={handleNewAi} /> : null}
-                renderItem={({ item, index }: { item: any; index: number }) => {
-                  if (item._skeleton) return <AiRowSkeleton index={item._index ?? index} />;
-                  return <AiConversationRow item={item} index={index} onPress={() => handleAiItemPress(item)} />;
-                }}
-                ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
-              />
-            </>
-          )}
+            <FlatList
+              key="ai"
+              style={{ flex: 1 }}
+              ref={aiListRef}
+              data={aiConversations}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={[
+                tabContentStyles.listContent,
+                aiConversations.length === 0 && tabContentStyles.flexGrow,
+              ]}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl refreshing={aiRefetching} onRefresh={refetchAi} tintColor={D.aiPrimary} />
+              }
+              ListEmptyComponent={aiError ? (
+                <AppErrorState onRetry={refetchAi}>Không thể tải lịch sử hội thoại AI.</AppErrorState>
+              ) : (
+                <AiEmptyHint onPress={handleNewAi} />
+              )}
+              renderItem={({ item, index }) => (
+                <AiConversationRow item={item} index={index} onPress={() => handleAiItemPress(item)} />
+              )}
+              ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
+            />
+          </>
         </View>
 
         <View style={[tabContentStyles.tabPane, activeTab === 'support' ? tabContentStyles.tabVisible : tabContentStyles.tabHidden]}>
@@ -900,13 +877,16 @@ export default function InboxScreen() {
               <ActivityIndicator size="large" color={D.aiPrimary} />
               <Text style={tabContentStyles.loadingText}>Đang tải hộp thư hỗ trợ…</Text>
             </View>
+          ) : supportError && supportFeedbacks.length === 0 ? (
+            <View style={tabContentStyles.loadingRoot}>
+              <AppErrorState onRetry={refetchSupport}>Không thể tải hội thoại hỗ trợ.</AppErrorState>
+            </View>
           ) : (
             <FlatList
               key="support"
               style={{ flex: 1 }}
               ref={supportListRef}
-              extraData={[isInboxLoading, isAuthBooting, supportFeedbacks.length]}
-              data={supportSkeletonData as any[]}
+              data={supportFeedbacks}
               keyExtractor={(item, i) => String(item?.feedbackId ?? i)}
               contentContainerStyle={[
                 tabContentStyles.listContent,
@@ -917,21 +897,15 @@ export default function InboxScreen() {
                 <RefreshControl refreshing={supportRefetching} onRefresh={refetchSupport} tintColor={D.aiPrimary} />
               }
               ListEmptyComponent={!isSupportInitiallyLoading ? <SupportEmpty /> : null}
-              renderItem={({ item, index }: { item: any; index: number }) => {
-                if (item._skeleton) return <SupportRowSkeleton index={item._index ?? index} />;
-                return <SupportFeedbackCard item={item} index={index} onPress={() => handleSupportPress(item)} />;
-              }}
+              renderItem={({ item, index }) => (
+                <SupportFeedbackCard item={item} index={index} onPress={() => handleSupportPress(item)} />
+              )}
               ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
             />
           )}
         </View>
       </View>
 
-      {isInitialInboxLoad && (
-        <View style={tabContentStyles.initialOverlay} pointerEvents="none">
-          <ActivityIndicator size="large" color={D.aiPrimary} />
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -1078,12 +1052,10 @@ const tabContentStyles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  initialOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: D.appBg,
+  initialLoading: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 10,
   },
   loadingText: {
     marginTop: 18,
@@ -1558,23 +1530,4 @@ const aiEmptyStyles = StyleSheet.create({
     fontSize: 13,
     color: D.aiPrimary,
   },
-});
-
-// ─── Skeleton Styles ──────────────────────────────────────────────────────────
-
-const skStyles = StyleSheet.create({
-  aiRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 13,
-  },
-  aiBody: { flex: 1, gap: 7 },
-  supportRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: 13,
-  },
-  supportBody: { flex: 1, gap: 4 },
 });

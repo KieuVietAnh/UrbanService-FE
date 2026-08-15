@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { View, FlatList, StyleSheet, Text, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, FlatList, StyleSheet, Text, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import MessageBubble, { ChatMessage } from './feedback-message-bubble';
 import MessageComposer from './message-composer';
-import { useToast } from '@/components/shared';
+import { AppErrorState, useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 import { messagingApi, messagingKeys } from '../api';
 
@@ -18,9 +18,15 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
     ? (insets.bottom || 0) + 24
     : 0;
 
-  const { data: messages = [] } = useQuery<ChatMessage[]>({
+  const {
+    data: messages = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery<ChatMessage[]>({
     queryKey: messagingKeys.feedbackMessages(feedbackId),
     queryFn: () => messagingApi.getFeedbackMessages(feedbackId),
+    enabled: Boolean(feedbackId),
     staleTime: 1000 * 10,
   });
 
@@ -29,6 +35,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
       return messagingApi.sendFeedbackMessage(feedbackId, messageText);
     },
     onMutate: async (text: string) => {
+      await qc.cancelQueries({ queryKey: messagingKeys.feedbackMessages(feedbackId) });
       const tempId = `temp-${Date.now()}`;
       const optimistic: ChatMessage = { id: tempId, feedbackId, senderName: 'Bạn', senderType: 'ServiceUser', messageText: text, createdAt: new Date().toISOString() };
       qc.setQueryData<ChatMessage[]>(messagingKeys.feedbackMessages(feedbackId), (old) => {
@@ -38,8 +45,11 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
       return { tempId };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: messagingKeys.feedbackMessages(feedbackId) });
-      qc.invalidateQueries({ queryKey: messagingKeys.supportThreads() });
+      void qc.invalidateQueries({ queryKey: messagingKeys.feedbackMessages(feedbackId) });
+      void qc.invalidateQueries({
+        queryKey: messagingKeys.supportThreads(),
+        refetchType: 'none',
+      });
       // scroll to bottom after small delay
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
     },
@@ -50,7 +60,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
   });
 
   const handleSend = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || !feedbackId) return;
     try {
       await sendMutation.mutateAsync(text);
     } catch (e) {
@@ -78,7 +88,13 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
                 String(m?.id ?? m?.messageId ?? m?.tempId ?? `${m?.createdAt ?? ''}-${i}`)
               }
               renderItem={({ item }) => <MessageBubble msg={item} />}
-              ListEmptyComponent={() => (
+              ListEmptyComponent={isLoading ? (
+                <View style={styles.initialLoading}>
+                  <ActivityIndicator size="large" color={semantics.text.brand} />
+                </View>
+              ) : isError ? (
+                <AppErrorState onRetry={refetch}>Unable to load this conversation.</AppErrorState>
+              ) : (
                 <View style={styles.empty}> 
                   <Text style={styles.emptyTitle}>No conversation yet</Text>
                   <Text style={styles.emptySub}>You can ask staff about this feedback.</Text>
@@ -94,7 +110,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
           <View style={styles.composerWrap}>
             <MessageComposer
               onSend={handleSend}
-              sending={sendMutation.isPending}
+              sending={!feedbackId || sendMutation.isPending || isLoading}
               onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80)}
               onHeightChange={(h: number) => setComposerHeight(h)}
             />
@@ -110,6 +126,7 @@ const styles = StyleSheet.create({
   chatBody: { flex: 1, justifyContent: 'space-between' },
   listWrap: { flex: 1 },
   list: { flex: 1 },
+  initialLoading: { paddingVertical: 48, alignItems: 'center', justifyContent: 'center' },
   composerWrap: { width: '100%', zIndex: 20, backgroundColor: semantics.bg.surface, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'stretch', marginBottom: 24 },
   headerRow: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6 },
   sectionTitle: { fontSize: 12, fontFamily: 'Geist-SemiBold', color: semantics.text.lightMuted, textTransform: 'uppercase', letterSpacing: 0.6 },
