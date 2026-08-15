@@ -381,17 +381,23 @@ export const CommunityMapPage = () => {
         </div>
 
         <div className="relative px-5 py-6 sm:px-7 sm:py-7">
-          <header className="max-w-3xl">
-
-            <h1
-              id="community-map-title"
-              className="mt-4 text-3xl font-bold tracking-tight text-base-content sm:text-4xl"
-            >
-              Bản đồ sự cố đô thị
-            </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-base-content/60">
-              Theo dõi vị trí các phản ánh công khai và quan sát tình hình sự cố đô thị theo từng khu vực.
-            </p>
+          <header className="max-w-4xl">
+            <div className="flex items-start gap-3.5">
+              <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]">
+                <Lucide.MapPinned size={21} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h1
+                  id="community-map-title"
+                  className="text-3xl font-bold tracking-tight text-base-content sm:text-4xl"
+                >
+                  Bản đồ sự cố đô thị
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-base-content/60">
+                  Theo dõi phản ánh công khai trên bản đồ và tình hình sự cố theo từng khu vực.
+                </p>
+              </div>
+            </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success">
