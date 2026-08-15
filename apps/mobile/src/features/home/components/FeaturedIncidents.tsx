@@ -9,7 +9,7 @@ import { SkeletonCard } from '@/components/shared';
 import { TicketStatusBadge } from '@/components/ui';
 import { Text } from '@/components/ui';
 import { colors } from '@/constants/theme';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import type { RouterLike, TicketLike } from '../types';
 import { styles } from '../homeStyles';
 import { SectionHeader } from './SectionHeader';
@@ -144,7 +144,7 @@ export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
     queries: items.slice(0, 5).map((item) => {
       const id = item.feedbackId ?? item.id;
       return {
-        queryKey: ['feedback', 'featured-media', id],
+        queryKey: reportingKeys.detail(String(id ?? '')),
         queryFn: () => feedbackApi.getById(String(id)),
         enabled: Boolean(id) && getIncidentImages(item).length === 0,
         staleTime: 1000 * 60 * 5,

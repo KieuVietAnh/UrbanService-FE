@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SplashScreen from 'expo-splash-screen';
@@ -17,6 +17,7 @@ import {
   Geist_900Black,
 } from '@expo-google-fonts/geist';
 import { initApi } from '@/config/api';
+import { queryClient } from '@/config/query-client';
 import { ToastProvider } from '@/components/shared';
 import { useAuthGuard } from '@/features/auth';
 
@@ -26,15 +27,6 @@ SplashScreen.preventAutoHideAsync();
 
 // Ensure API is configured before any child component or data fetch runs.
 initApi();
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 1000 * 60 * 2, // 2 min
-    },
-  },
-});
 
 function RootNavigation() {
   useAuthGuard();

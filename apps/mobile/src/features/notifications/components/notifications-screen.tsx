@@ -10,7 +10,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { notificationApi } from '@urbanmind/shared-api';
 import { Text } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
@@ -19,6 +18,7 @@ import { AppErrorState } from '@/components/shared';
 import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 import type { NotificationItem } from '../types/notification.types';
+import { notificationApi, notificationKeys } from '../api';
 
 export type { NotificationItem } from '../types/notification.types';
 
@@ -126,14 +126,14 @@ export default function NotificationsScreen() {
   const [filterUnread, setFilterUnread] = useState(false);
 
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
-    queryKey: ['notifications', filterUnread],
-    queryFn: () => notificationApi.getNotifications(1, 50, filterUnread ? false : undefined),
+    queryKey: notificationKeys.list(filterUnread),
+    queryFn: () => notificationApi.list(1, 50, filterUnread ? false : undefined),
   });
 
   const markAllMutation = useMutation({
-    mutationFn: () => notificationApi.markAllNotificationsAsRead(),
+    mutationFn: () => notificationApi.markAllRead(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
       toast.success('Đã đánh dấu tất cả là đã đọc');
     },
     onError: (err: any) => {
@@ -159,8 +159,8 @@ export default function NotificationsScreen() {
   const handleNotifPress = async (item: NotificationItem) => {
     if (!item.isRead) {
       try {
-        await notificationApi.markNotificationAsRead(item.notificationId);
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        await notificationApi.markRead(item.notificationId);
+        queryClient.invalidateQueries({ queryKey: notificationKeys.all });
       } catch {
         /* silent */
       }

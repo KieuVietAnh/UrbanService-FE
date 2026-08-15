@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AppHeader } from '@/components/ui';
 import { Text } from '@/components/ui';
 import FeedbackChatSection from './feedback-chat-section';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import { semantics } from '@/theme/semantics';
 
 export default function FeedbackChatScreen() {
@@ -15,7 +15,7 @@ export default function FeedbackChatScreen() {
   const feedbackId = id || '';
 
   const { data: ticket } = useQuery({
-    queryKey: ['feedback', feedbackId],
+    queryKey: reportingKeys.detail(feedbackId),
     queryFn: () => feedbackApi.getById(feedbackId),
     enabled: Boolean(feedbackId),
     staleTime: 1000 * 30,

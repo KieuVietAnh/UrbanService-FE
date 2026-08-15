@@ -7,14 +7,14 @@ import { Text } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { TicketStatusBadge } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import { colors } from '@/constants/theme';
 
 export default function SelectFeedbackScreen() {
   const router = useRouter();
 
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
-    queryKey: ['support-feedbacks'],
+    queryKey: reportingKeys.list({ pageSize: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
     queryFn: () =>
       feedbackApi.list({ pageSize: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
     staleTime: 1000 * 30,

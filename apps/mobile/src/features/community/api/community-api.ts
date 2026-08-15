@@ -1,4 +1,4 @@
-import { axiosClient } from '@urbanmind/shared-api';
+import { axiosClient, toolsApi } from '@urbanmind/shared-api';
 import type { CommunityFeedItem, CommunityFeedParams, CommunityFeedResponse } from '../types/community.types';
 
 type ApiRecord = Record<string, unknown>;
@@ -190,6 +190,10 @@ const resolveFeedItemImages = async (item: CommunityFeedItem) => {
 };
 
 export const communityApi = {
+  async getAreas() {
+    return toolsApi.getAreas({}, { throwOnError: true });
+  },
+
   async getFeed(params: CommunityFeedParams = {}) {
     const normalizedParams = normalizeFeedParams(params);
     const response = await axiosClient.get('/api/user/feedbacks/feed', {

@@ -23,8 +23,7 @@ import { AppCard } from '@/components/ui';
 import { AppButton } from '@/components/ui';
 import { BottomSheet } from '@/components/shared';
 import { feedbackApi } from '@/features/reporting/api';
-import { communityApi } from '@/features/community/api';
-import { toolsApi } from '@urbanmind/shared-api';
+import { communityApi, communityKeys } from '@/features/community/api';
 import { colors } from '@/constants/theme';
 
 const DEFAULT_REGION = {
@@ -122,9 +121,9 @@ export default function CommunityMapNative() {
     isError: areasError,
     error: areasFetchError,
   } = useQuery<any[], Error>({
-    queryKey: ['community-areas'],
+    queryKey: communityKeys.areas(),
     queryFn: async () => {
-      const result = await toolsApi.getAreas({}, { throwOnError: true });
+      const result = await communityApi.getAreas();
       return result;
     },
     retry: 1,
@@ -145,7 +144,7 @@ export default function CommunityMapNative() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['community-feed'],
+    queryKey: communityKeys.mapFeed(),
     queryFn: async ({ pageParam = 1 }: { pageParam?: number }) => {
       return await communityApi.getFeed({ pageNumber: pageParam, pageSize: PAGE_SIZE });
     },

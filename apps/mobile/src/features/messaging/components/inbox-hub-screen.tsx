@@ -4,9 +4,9 @@
  * Vibe: Light Premium SaaS + Z-Axis Cascade layout.
  *
  * PRESERVED (DO NOT MODIFY):
- *  - toolsApi.getAiConversations()       → AI tab
+ *  - messagingApi.getAiConversations()   → AI tab
  *  - feedbackApi.list()                  → Support tab (fetch all)
- *  - axiosClient GET /api/feedbacks/{id}/messages → filter has-conversation
+ *  - messagingApi.getFeedbackMessages()  → filter has-conversation
  *  - /(resident)/ai/[id]                 navigation
  *  - /(resident)/tickets/[id]/chat       navigation
  *  - /(resident)/ai                      new AI
@@ -31,10 +31,10 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { axiosClient, toolsApi } from '@urbanmind/shared-api';
+import { axiosClient } from '@urbanmind/shared-api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
 import { feedbackApi } from '@/features/reporting/api';
@@ -44,6 +44,8 @@ import { AppBadge } from '@/components/ui';
 import { semantics } from '@/theme/semantics';
 import { useAuthStore } from '@/features/auth';
 import type { AiConversationItem, SupportThread } from '../types/messaging.types';
+import { messagingApi, messagingKeys } from '../api';
+import { useAiConversationsQuery } from '../hooks';
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const D = {
@@ -63,8 +65,6 @@ const D = {
   springDamping: 18,
   springStiffness: 240,
 } as const;
-
-const INITIAL_CONTENT_REVEAL_DELAY_MS = 520;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,24 +212,6 @@ const getMessageTimestamp = (message: any): number => {
   }
 
   return 0;
-};
-
-const normalizeAiConversation = (raw: any): AiConversationItem | null => {
-  if (!raw) return null;
-  const id = String(raw.conversationId ?? raw.id ?? raw.uuid ?? raw.key ?? '');
-  if (!id) return null;
-  return {
-    id,
-    title: String(raw.title ?? raw.name ?? 'Cuộc trò chuyện AI'),
-    preview: String(
-      raw.lastMessage ?? raw.preview ?? raw.snippet ??
-      raw.summary ?? raw.description ?? 'Bắt đầu hội thoại với trợ lý AI.'
-    ),
-    updatedAt: String(
-      raw.lastMessageAt ?? raw.lastMessageAtUtc ?? raw.lastUpdatedAt ?? raw.updatedAt ??
-      raw.lastUpdated ?? raw.createdAt ?? new Date().toISOString()
-    ),
-  };
 };
 
 // ─── Pulse Orb Hook (GPU-safe: only transform + opacity) ─────────────────────
@@ -613,6 +595,7 @@ type TabKey = 'ai' | 'support';
 
 export default function InboxScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>('ai');
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
   const aiListRef = useRef<any>(null);
@@ -631,19 +614,7 @@ export default function InboxScreen() {
     isFetched: aiFetched,
     refetch: refetchAi,
     isRefetching: aiRefetching,
-  } = useQuery<AiConversationItem[]>({
-    queryKey: ['ai-conversations'],
-    queryFn: async () => {
-      const raw = await toolsApi.getAiConversations();
-      if (!Array.isArray(raw)) return [];
-      return raw.map(normalizeAiConversation).filter((c): c is AiConversationItem => Boolean(c));
-    },
-    retry: false,
-    staleTime: 1000 * 60 * 2,
-    gcTime: 1000 * 60 * 30,
-    initialData: [],
-    enabled: authReady && !!user,
-  });
+  } = useAiConversationsQuery(authReady && !!user);
 
 
   // ── API: Support threads — fetch feedbacks then filter those with messages ──
@@ -656,7 +627,7 @@ export default function InboxScreen() {
     refetch: refetchSupport,
     isRefetching: supportRefetching,
   } = useQuery<SupportThread[]>({
-    queryKey: ['support-threads-with-messages'],
+    queryKey: messagingKeys.supportThreads(),
     queryFn: async (): Promise<SupportThread[]> => {
       // Step 1: fetch all citizen feedbacks (list API — NO attachment data)
       // Capped at 15 items for inbox preview to minimize concurrent checking load
@@ -669,17 +640,7 @@ export default function InboxScreen() {
           const feedbackId = String(item?.feedbackId ?? item?.id ?? '');
           if (!feedbackId) return null;
           try {
-            const res = await (axiosClient as any).get(
-              `/api/feedbacks/${feedbackId}/messages`,
-              { params: { includeInternal: false } }
-            );
-            const msgs: any[] = Array.isArray(res?.data)
-              ? res.data
-              : Array.isArray(res?.data?.items)
-              ? res.data.items
-              : Array.isArray(res)
-              ? res
-              : [];
+            const msgs = await messagingApi.getFeedbackMessages(feedbackId);
             if (msgs.length === 0) return null; // skip feedbacks with no conversation
             return { item, feedbackId, msgs };
           } catch {
@@ -745,85 +706,43 @@ export default function InboxScreen() {
     retry: false,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes to avoid redundant fetches
     gcTime: 1000 * 60 * 30,
-    initialData: [],
     enabled: authReady && !!user,
   });
 
+  const hasFocusedOnce = useRef(false);
+  const fetchState = useRef({ aiFetching, supportFetching });
+  fetchState.current = { aiFetching, supportFetching };
+
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      (async () => {
-        try {
-          console.log('[Inbox] focus refetch start', { authReady, user: !!user, time: Date.now() });
-          await Promise.all([refetchAi?.(), refetchSupport?.()]);
-          console.log('[Inbox] focus refetch done', {
-            aiFetched: !!(refetchAi as any)?._result || aiFetched,
-            supportFetched: !!(refetchSupport as any)?._result || supportFetched,
-            aiLen: Array.isArray(aiData) ? aiData.length : 0,
-            supportLen: Array.isArray(supportThreads) ? supportThreads.length : 0,
-            aiFetching,
-            supportFetching,
-            time: Date.now(),
-          });
-        } catch (err) {
-          console.log('[Inbox] focus refetch error', err);
-        }
-        if (!mounted) return;
-      })();
-      return () => { mounted = false; };
-    }, [refetchAi, refetchSupport])
+      if (!authReady || !user) return;
+      if (!hasFocusedOnce.current) {
+        hasFocusedOnce.current = true;
+        return;
+      }
+
+      const refreshes: Array<Promise<unknown>> = [];
+      const now = Date.now();
+      const aiState = queryClient.getQueryState(messagingKeys.aiConversations());
+      const supportState = queryClient.getQueryState(messagingKeys.supportThreads());
+      const aiIsStale = !aiState?.dataUpdatedAt || aiState.isInvalidated || now - aiState.dataUpdatedAt >= 1000 * 60 * 2;
+      const supportIsStale = !supportState?.dataUpdatedAt || supportState.isInvalidated || now - supportState.dataUpdatedAt >= 1000 * 60 * 5;
+
+      if (!fetchState.current.aiFetching && aiIsStale) refreshes.push(refetchAi());
+      if (!fetchState.current.supportFetching && supportIsStale) refreshes.push(refetchSupport());
+      void Promise.allSettled(refreshes);
+    }, [authReady, queryClient, refetchAi, refetchSupport, user])
   );
 
   const aiConversations = useMemo(() => (Array.isArray(aiData) ? aiData : []), [aiData]);
-  console.log('[Inbox] useMemo aiConversations recalculated', { len: Array.isArray(aiConversations) ? aiConversations.length : 0, time: Date.now() });
   const supportFeedbacks = useMemo(() => (Array.isArray(supportThreads) ? supportThreads : []), [supportThreads]);
-  console.log('[Inbox] useMemo supportFeedbacks recalculated', { len: Array.isArray(supportFeedbacks) ? supportFeedbacks.length : 0, time: Date.now() });
 
   const isAuthBooting = !authReady || !user;
   const isAiInitiallyLoading = isAuthBooting || (!aiFetched && (aiFetching || aiLoading));
   const isSupportInitiallyLoading = isAuthBooting || (!supportFetched && (supportFetching || supportLoading));
 
-  const isInboxReady = Boolean(authReady && user && aiFetched && supportFetched);
-  const isInboxLoading = !isInboxReady;
-  const isInitialLoad = Boolean(isAuthBooting || !aiFetched || !supportFetched);
-  const hasHistoricData = aiConversations.length > 0 || supportFeedbacks.length > 0;
-  const isInitialInboxLoad = isInitialLoad;
-  const isRefetchingWithData = !isInitialLoad && (aiFetching || supportFetching) && hasHistoricData;
-  const [isInitialOverlayVisible, setIsInitialOverlayVisible] = useState(isInitialInboxLoad);
-
-  useEffect(() => {
-    if (isInitialInboxLoad) {
-      setIsInitialOverlayVisible(true);
-      return;
-    }
-
-    const revealTimer = setTimeout(
-      () => setIsInitialOverlayVisible(false),
-      INITIAL_CONTENT_REVEAL_DELAY_MS
-    );
-
-    return () => clearTimeout(revealTimer);
-  }, [isInitialInboxLoad]);
-
-  console.log('[Inbox] render', {
-    activeTab,
-    isInboxReady,
-    isInboxLoading,
-    isInitialLoad,
-    isInitialInboxLoad,
-    isRefetchingWithData,
-    authReady,
-    user: !!user,
-    aiLoading,
-    aiFetching,
-    aiFetched,
-    aiLen: Array.isArray(aiConversations) ? aiConversations.length : 0,
-    supportLoading,
-    supportFetching,
-    supportFetched,
-    supportLen: Array.isArray(supportFeedbacks) ? supportFeedbacks.length : 0,
-    time: Date.now(),
-  });
+  const isInitialInboxLoad = Boolean(isAuthBooting || !aiFetched);
+  const isInboxLoading = isInitialInboxLoad;
 
   // ── Skeleton data ──────────────────────────────────────────────────────────
   const aiSkeletonData = useMemo(
@@ -832,7 +751,6 @@ export default function InboxScreen() {
       : aiConversations,
     [aiLoading, aiConversations]
   );
-  console.log('[Inbox] useMemo aiSkeletonData recalculated', { len: Array.isArray(aiSkeletonData) ? aiSkeletonData.length : 0, aiLoading, time: Date.now() });
 
   const supportSkeletonData = useMemo(
     () => isSupportInitiallyLoading
@@ -1009,15 +927,7 @@ export default function InboxScreen() {
         </View>
       </View>
 
-      {isRefetchingWithData && (
-        <View style={tabContentStyles.refetchOverlay} pointerEvents="none">
-          <View style={tabContentStyles.refetchOverlayCard}>
-            <ActivityIndicator size="large" color={D.aiPrimary} />
-          </View>
-        </View>
-      )}
-
-      {isInitialOverlayVisible && (
+      {isInitialInboxLoad && (
         <View style={tabContentStyles.initialOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color={D.aiPrimary} />
         </View>
@@ -1170,30 +1080,10 @@ const tabContentStyles = StyleSheet.create({
   },
   initialOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: D.appBg,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-  },
-  refetchOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  refetchOverlayCard: {
-    width: 92,
-    height: 92,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.08,
-    shadowRadius: 22,
-    elevation: 8,
   },
   loadingText: {
     marginTop: 18,

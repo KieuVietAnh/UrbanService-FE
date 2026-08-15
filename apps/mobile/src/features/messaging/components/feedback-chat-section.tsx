@@ -2,11 +2,11 @@ import React, { useRef, useState } from 'react';
 import { View, FlatList, StyleSheet, Text, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { axiosClient } from '@urbanmind/shared-api';
 import MessageBubble, { ChatMessage } from './feedback-message-bubble';
 import MessageComposer from './message-composer';
 import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
+import { messagingApi, messagingKeys } from '../api';
 
 export default function FeedbackChatSection({ feedbackId }: { feedbackId: string }) {
   const qc = useQueryClient();
@@ -18,33 +18,28 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
     ? (insets.bottom || 0) + 24
     : 0;
 
-  const { data: messages = [], isLoading, refetch } = useQuery<ChatMessage[]>({
-    queryKey: ['feedback-messages', feedbackId],
-    queryFn: async () => {
-      const res = await axiosClient.get(`/api/feedbacks/${feedbackId}/messages`, { params: { includeInternal: false } });
-      const data = res?.data ?? res;
-      return Array.isArray(data) ? data : (data?.items ?? []);
-    },
+  const { data: messages = [] } = useQuery<ChatMessage[]>({
+    queryKey: messagingKeys.feedbackMessages(feedbackId),
+    queryFn: () => messagingApi.getFeedbackMessages(feedbackId),
     staleTime: 1000 * 10,
   });
 
   const sendMutation = useMutation({
     mutationFn: async (messageText: string) => {
-      const res = await axiosClient.post(`/api/feedbacks/${feedbackId}/messages`, { messageText, isInternal: false });
-      return res?.data ?? res;
+      return messagingApi.sendFeedbackMessage(feedbackId, messageText);
     },
     onMutate: async (text: string) => {
       const tempId = `temp-${Date.now()}`;
       const optimistic: ChatMessage = { id: tempId, feedbackId, senderName: 'Bạn', senderType: 'ServiceUser', messageText: text, createdAt: new Date().toISOString() };
-      qc.setQueryData<ChatMessage[]>(['feedback-messages', feedbackId], (old) => {
+      qc.setQueryData<ChatMessage[]>(messagingKeys.feedbackMessages(feedbackId), (old) => {
         const arr = Array.isArray(old) ? old : [];
         return [...arr, optimistic];
       });
       return { tempId };
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['feedback-messages', feedbackId] });
-      refetch();
+      qc.invalidateQueries({ queryKey: messagingKeys.feedbackMessages(feedbackId) });
+      qc.invalidateQueries({ queryKey: messagingKeys.supportThreads() });
       // scroll to bottom after small delay
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
     },
@@ -99,7 +94,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
           <View style={styles.composerWrap}>
             <MessageComposer
               onSend={handleSend}
-              sending={(sendMutation as any).isLoading}
+              sending={sendMutation.isPending}
               onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80)}
               onHeightChange={(h: number) => setComposerHeight(h)}
             />

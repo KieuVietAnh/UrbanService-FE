@@ -4,6 +4,7 @@ import { AsyncStorageService } from '@/services/storage/asyncStorage';
 import { AuthService } from './auth.service';
 import type { User } from '@/types';
 import { extractApiErrorMessage } from '@urbanmind/shared-api';
+import { queryClient } from '@/config/query-client';
 
 interface RegisterData {
   fullName: string;
@@ -173,6 +174,7 @@ export const useAuthStore = create<AuthState>()(
           } catch {
             /* silent */
           }
+          queryClient.clear();
           set({ user: null, error: null });
         },
 

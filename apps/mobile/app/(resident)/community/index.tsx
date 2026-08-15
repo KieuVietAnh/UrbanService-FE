@@ -9,7 +9,7 @@ import { AppCard } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
 import { AppEmptyState } from '@/components/shared';
 import { CommunityFeedCard } from '@/features/community';
-import { communityApi } from '@/features/community/api';
+import { communityApi, communityKeys } from '@/features/community/api';
 import type { CommunityFeedItem } from '@/features/community/types';
 import { colors } from '@/constants/theme';
 
@@ -24,15 +24,16 @@ export default function CommunityFeedScreen() {
   const [activeFilter, setActiveFilter] = useState('latest');
   const [searchText, setSearchText] = useState('');
 
+  const feedParams = {
+    pageNumber: 1,
+    pageSize: 12,
+    status: activeFilter === 'resolved' ? 'resolved' : undefined,
+    search: searchText || undefined,
+  };
+
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['community-feed-mobile', activeFilter, searchText],
-    queryFn: () =>
-      communityApi.getFeed({
-        pageNumber: 1,
-        pageSize: 12,
-        status: activeFilter === 'resolved' ? 'resolved' : undefined,
-        search: searchText || undefined,
-      }),
+    queryKey: communityKeys.feed(feedParams),
+    queryFn: () => communityApi.getFeed(feedParams),
   });
 
   const items = (data?.items ?? []) as CommunityFeedItem[];

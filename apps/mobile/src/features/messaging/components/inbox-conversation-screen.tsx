@@ -10,7 +10,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { toolsApi } from '@urbanmind/shared-api';
 import { Text } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
 import { AppEmptyState } from '@/components/shared';
@@ -18,6 +17,7 @@ import { AppErrorState } from '@/components/shared';
 import { AppButton } from '@/components/ui';
 import { semantics } from '@/theme/semantics';
 import type { ConversationMessage } from '../types/messaging.types';
+import { messagingApi, messagingKeys } from '../api';
 
 const STATIC_THREAD_META: Record<string, { title: string; subtitle: string; description: string }> = {
   'ai-assistant': {
@@ -59,10 +59,10 @@ export default function InboxConversationScreen() {
     refetch,
     isRefetching,
   } = useQuery<ConversationMessage[]>({
-    queryKey: ['ai-conversation-messages', conversationId],
+    queryKey: messagingKeys.inboxConversation(conversationId ?? ''),
     queryFn: async () => {
       if (!conversationId || isPlaceholder) return [];
-      const raw = await toolsApi.getAiConversationMessages(conversationId);
+      const raw = await messagingApi.getAiConversationMessages(conversationId);
       if (!Array.isArray(raw)) return [];
       return raw.map((item: any) => ({
         id: String(item.messageId ?? item.id ?? item.uuid ?? Math.random()),
@@ -90,7 +90,7 @@ export default function InboxConversationScreen() {
     );
   };
 
-  // AI Assistant local chat (UI-only, calls toolsApi.getAiChatReply)
+  // AI Assistant local chat (UI-only, delegates the existing AI endpoint through messagingApi)
   const isAiAssistant = conversationId === 'ai-assistant';
   const [aiMessages, setAiMessages] = React.useState<ConversationMessage[]>([]);
   const [aiLoading, setAiLoading] = React.useState(false);
@@ -121,7 +121,7 @@ export default function InboxConversationScreen() {
     setAiMessages((s) => [...s, userMsg]);
     setAiLoading(true);
     try {
-      const reply = await toolsApi.getAiChatReply({ message: text });
+      const reply = await messagingApi.sendAiMessage({ message: text });
       const aiMsg: ConversationMessage = {
         id: `ai-${Date.now()}`,
         senderName: 'AI Assistant',

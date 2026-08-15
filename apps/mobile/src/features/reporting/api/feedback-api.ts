@@ -1,4 +1,4 @@
-import { ticketApi } from '@urbanmind/shared-api';
+import { ticketApi, toolsApi } from '@urbanmind/shared-api';
 import type { CreateFeedbackPayload, FeedbackFilters } from '../types/reporting.types';
 
 export type { CreateFeedbackPayload, FeedbackFilters } from '../types/reporting.types';
@@ -10,6 +10,15 @@ const CITIZEN_OPTS = { role: 'service-user' };
  * All citizen calls use role: 'service-user'.
  */
 export const feedbackApi = {
+  /** Reporting form reference data */
+  getAreas: () => toolsApi.getAreas(),
+  getCategories: () => toolsApi.getCategories(),
+
+  /** Existing AI classification and duplicate-check contracts */
+  classify: (title: string, description: string) => toolsApi.aiClassify(title, description),
+  checkDuplicates: (categoryId: number, latitude: number, longitude: number) =>
+    toolsApi.checkDuplicates(categoryId, latitude, longitude),
+
   /** List feedbacks with filters, search, pagination */
   async list(filters: FeedbackFilters = {}) {
     const params: Record<string, string | number> = {

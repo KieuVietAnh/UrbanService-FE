@@ -9,6 +9,7 @@ import { Text } from '@/components/ui';
 import { feedbackApi } from '@/features/reporting/api';
 import { colors } from '@/constants/theme';
 import type { CommunityFeedCache, CommunityFeedCardProps, CommunityFeedItem } from '../types/community.types';
+import { communityKeys } from '../api';
 
 export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFeedCardProps) {
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
@@ -25,7 +26,7 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFe
 
   const syncSupportCache = (supported: boolean) => {
     queryClient.setQueriesData({
-      predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'community-feed-mobile',
+      queryKey: communityKeys.feeds(),
     }, (data) => {
       if (!data || typeof data !== 'object' || !Array.isArray((data as CommunityFeedCache).items)) {
         return data;
@@ -46,7 +47,7 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFe
       };
     });
 
-    queryClient.setQueryData<CommunityFeedItem | null>(['community-detail', feedbackId], (prev) => {
+    queryClient.setQueryData<CommunityFeedItem | null>(communityKeys.detail(feedbackId), (prev) => {
       if (!prev) return prev;
       return {
         ...prev,

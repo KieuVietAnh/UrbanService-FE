@@ -11,7 +11,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { toolsApi } from '@urbanmind/shared-api';
 import { Text } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
 import { AppEmptyState } from '@/components/shared';
@@ -20,6 +19,7 @@ import MessageComposer from './message-composer';
 import { semantics } from '@/theme/semantics';
 import { useToast } from '@/components/shared';
 import type { AiMessage } from '../types/messaging.types';
+import { messagingApi, messagingKeys } from '../api';
 
 type ApiRecord = Record<string, unknown>;
 
@@ -109,7 +109,7 @@ export default function AiConversationDetailScreen() {
     refetch,
     isRefetching,
   } = useQuery<AiMessage[]>({
-    queryKey: ['ai-conversation-messages', conversationId],
+    queryKey: messagingKeys.aiMessages(conversationId ?? ''),
     queryFn: async () => {
       if (!conversationId) return [];
       if (isPlaceholderConversation) {
@@ -122,7 +122,7 @@ export default function AiConversationDetailScreen() {
           },
         ];
       }
-      const raw = await toolsApi.getAiConversationMessages(conversationId);
+      const raw = await messagingApi.getAiConversationMessages(conversationId);
       if (!Array.isArray(raw)) return [];
       return raw
         .map(normalizeMessage)
@@ -143,9 +143,9 @@ export default function AiConversationDetailScreen() {
   const sendMutation = useMutation({
     mutationFn: async (messageText: string) => {
       if (isPlaceholderConversation) {
-        return toolsApi.getAiChatReply({ message: messageText });
+        return messagingApi.sendAiMessage({ message: messageText });
       }
-      return toolsApi.getAiChatReply({ conversationId, message: messageText });
+      return messagingApi.sendAiMessage({ conversationId, message: messageText });
     },
     onMutate: async (messageText: string) => {
       const tempId = `temp-${Date.now()}`;
@@ -155,7 +155,7 @@ export default function AiConversationDetailScreen() {
         sender: 'user',
         createdAt: new Date().toISOString(),
       };
-      queryClient.setQueryData<AiMessage[]>(['ai-conversation-messages', conversationId], (old) => {
+      queryClient.setQueryData<AiMessage[]>(messagingKeys.aiMessages(conversationId ?? ''), (old) => {
         const arr = Array.isArray(old) ? old : [];
         return [...arr, optimistic];
       });
@@ -164,14 +164,14 @@ export default function AiConversationDetailScreen() {
     },
     onSuccess: (response) => {
       const reply = normalizeChatReply(response);
-      queryClient.setQueryData<AiMessage[]>(['ai-conversation-messages', conversationId], (old) => {
+      queryClient.setQueryData<AiMessage[]>(messagingKeys.aiMessages(conversationId ?? ''), (old) => {
         const arr = Array.isArray(old) ? old : [];
         if (reply.message) {
           return [...arr, { id: `ai-${Date.now()}`, content: reply.message, sender: 'assistant', createdAt: reply.createdAt }];
         }
         return arr;
       });
-      queryClient.invalidateQueries({ queryKey: ['ai-conversations'] });
+      queryClient.invalidateQueries({ queryKey: messagingKeys.aiConversations() });
       if (reply.conversationId && reply.conversationId !== conversationId) {
         router.replace(`/(resident)/ai/${reply.conversationId}`);
       }
@@ -258,7 +258,7 @@ export default function AiConversationDetailScreen() {
               <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
               <MessageComposer
                 onSend={handleSend}
-                sending={(sendMutation as any).isLoading}
+                sending={sendMutation.isPending}
                 onFocus={() => scrollToBottom(true)}
                 onHeightChange={(height) => setComposerHeight(height)}
               />

@@ -19,7 +19,6 @@ import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { toolsApi } from '@urbanmind/shared-api';
 import { Text } from '@/components/ui';
 import { AppButton } from '@/components/ui';
 import { AppInput } from '@/components/ui';
@@ -27,7 +26,8 @@ import { AppTextArea } from '@/components/shared';
 import { AppHeader } from '@/components/ui';
 import { AppStepBar } from '@/components/shared';
 import { useToast } from '@/components/shared';
-import { feedbackApi, type CreateFeedbackPayload } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys, type CreateFeedbackPayload } from '@/features/reporting/api';
+import { communityKeys } from '@/features/community/api';
 import { colors } from '@/constants/theme';
 import FeedbackLocationPicker from './feedback-location-picker';
 
@@ -670,7 +670,10 @@ export default function CreateFeedbackWizardScreen() {
     let active = true;
     const loadOptions = async () => {
       setAreasLoading(true);
-      const [areasResult, categoriesResult] = await Promise.allSettled([toolsApi.getAreas(), toolsApi.getCategories()]);
+      const [areasResult, categoriesResult] = await Promise.allSettled([
+        feedbackApi.getAreas(),
+        feedbackApi.getCategories(),
+      ]);
       if (!active) return;
       
       const loadedAreas = areasResult.status === 'fulfilled' && Array.isArray(areasResult.value) ? areasResult.value : [];
@@ -836,7 +839,7 @@ export default function CreateFeedbackWizardScreen() {
     setSubmitError('');
     setClassificationLoading(true);
     try {
-      const analysis = await toolsApi.aiClassify(title.trim(), description.trim());
+      const analysis = await feedbackApi.classify(title.trim(), description.trim());
       if (analysis?.categoryId) setCategoryId(String(analysis.categoryId));
       if (analysis?.urgencyLevel) setPriority(normalizePriority(analysis.urgencyLevel));
     } catch (error) {
@@ -861,7 +864,7 @@ export default function CreateFeedbackWizardScreen() {
     }
 
     try {
-      const matches = await toolsApi.checkDuplicates(Number(categoryId || 0), latitude, longitude);
+      const matches = await feedbackApi.checkDuplicates(Number(categoryId || 0), latitude, longitude);
       setDuplicates(Array.isArray(matches) ? matches : []);
       setShowDuplicateWarning(Array.isArray(matches) ? matches.length > 0 : false);
     } catch (error) {
@@ -883,7 +886,11 @@ export default function CreateFeedbackWizardScreen() {
       setLongitude(result.coords.longitude);
       setLocationText((current) => current || 'Vị trí hiện tại');
       clearFieldError('location');
-      const matches = await toolsApi.checkDuplicates(Number(categoryId || 0), result.coords.latitude, result.coords.longitude);
+      const matches = await feedbackApi.checkDuplicates(
+        Number(categoryId || 0),
+        result.coords.latitude,
+        result.coords.longitude
+      );
       setDuplicates(Array.isArray(matches) ? matches : []);
       setShowDuplicateWarning(Array.isArray(matches) ? matches.length > 0 : false);
     } catch (error) {
@@ -964,20 +971,12 @@ export default function CreateFeedbackWizardScreen() {
       
       await AsyncStorage.removeItem(`${DRAFT_STORAGE_PREFIX}:mobile`);
       // Invalidate all feedback-related queries so lists refresh (tickets, stats, feeds)
-      qc.invalidateQueries({ predicate: (query) => {
-        try {
-          const k = query.queryKey;
-          if (!k) return false;
-          const first = Array.isArray(k) ? k[0] : k;
-          return first === 'feedbacks' || first === 'myFeedbacks' || first === 'feedbacks_feed';
-        } catch (e) {
-          return false;
-        }
-      } });
+      qc.invalidateQueries({ queryKey: reportingKeys.lists() });
+      qc.invalidateQueries({ queryKey: communityKeys.feeds() });
       
       // Pre-populate query cache with newly created feedback so detail screen loads instantly
       if (newFeedbackId && createdFeedback) {
-        qc.setQueryData(['feedback', String(newFeedbackId)], createdFeedback);
+        qc.setQueryData(reportingKeys.detail(String(newFeedbackId)), createdFeedback);
       }
       
       toast.success('Phản ánh đã được gửi thành công!');
@@ -1005,18 +1004,12 @@ export default function CreateFeedbackWizardScreen() {
           const fallbackFeedbackId = extractFeedbackId(fallbackResponse);
           
           await AsyncStorage.removeItem(`${DRAFT_STORAGE_PREFIX}:mobile`);
-          qc.invalidateQueries({ predicate: (query) => {
-            try {
-              const k = query.queryKey;
-              if (!k) return false;
-              const first = Array.isArray(k) ? k[0] : k;
-              return first === 'feedbacks' || first === 'myFeedbacks' || first === 'feedbacks_feed';
-            } catch (e) { return false; }
-          } });
+          qc.invalidateQueries({ queryKey: reportingKeys.lists() });
+          qc.invalidateQueries({ queryKey: communityKeys.feeds() });
           
           // Pre-populate query cache with newly created feedback
           if (fallbackFeedbackId && fallbackCreatedFeedback) {
-            qc.setQueryData(['feedback', String(fallbackFeedbackId)], fallbackCreatedFeedback);
+            qc.setQueryData(reportingKeys.detail(String(fallbackFeedbackId)), fallbackCreatedFeedback);
           }
           
           toast.success('Phản ánh đã được gửi (không kèm khu vực do lỗi hình dạng).');

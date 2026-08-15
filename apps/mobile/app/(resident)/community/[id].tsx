@@ -13,7 +13,7 @@ import { SkeletonCard } from '@/components/shared';
 import { AppErrorState } from '@/components/shared';
 import { AppEmptyState } from '@/components/shared';
 import { useToast } from '@/components/shared';
-import { communityApi } from '@/features/community/api';
+import { communityApi, communityKeys } from '@/features/community/api';
 import { feedbackApi } from '@/features/reporting/api';
 import { semantics } from '@/theme/semantics';
 import type {
@@ -104,7 +104,7 @@ export default function CommunityDetailScreen() {
     refetch,
     isRefetching,
   } = useQuery<CommunityFeedbackDetail | null>({
-    queryKey: ['community-detail', feedbackId],
+    queryKey: communityKeys.detail(feedbackId),
     queryFn: () => communityApi.getFeedDetail(feedbackId),
     enabled: Boolean(feedbackId),
   });
@@ -136,7 +136,7 @@ export default function CommunityDetailScreen() {
     },
     onSuccess: (result) => {
       queryClient.setQueriesData<CommunityFeedCache>({
-        predicate: (query) => Array.isArray(query.queryKey) && query.queryKey[0] === 'community-feed-mobile',
+        queryKey: communityKeys.feeds(),
       }, (data) => {
         if (!data || !Array.isArray(data.items)) return data;
         return {
@@ -153,7 +153,7 @@ export default function CommunityDetailScreen() {
         };
       });
 
-      queryClient.setQueryData<CommunityFeedbackDetail | null>(['community-detail', feedbackId], (prev) => {
+      queryClient.setQueryData<CommunityFeedbackDetail | null>(communityKeys.detail(feedbackId), (prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -170,10 +170,7 @@ export default function CommunityDetailScreen() {
     mutationFn: (content: string) => feedbackApi.addComment(feedbackId, content),
     onSuccess: async () => {
       setCommentInput('');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['community-detail', feedbackId] }),
-        queryClient.refetchQueries({ queryKey: ['community-detail', feedbackId] }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: communityKeys.detail(feedbackId) });
       toast.success('Đã gửi bình luận');
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể gửi bình luận'),

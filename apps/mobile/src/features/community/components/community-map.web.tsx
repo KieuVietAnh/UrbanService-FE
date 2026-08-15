@@ -7,12 +7,12 @@ import { Text } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
-import { communityApi } from '@/features/community/api';
+import { communityApi, communityKeys } from '@/features/community/api';
 import { colors } from '@/constants/theme';
 
 export default function CommunityMapWeb() {
   const { isLoading } = useQuery({
-    queryKey: ['community-map'],
+    queryKey: communityKeys.webMapFeed(),
     queryFn: () => communityApi.getFeed({ pageNumber: 1, pageSize: 50 }),
   });
 

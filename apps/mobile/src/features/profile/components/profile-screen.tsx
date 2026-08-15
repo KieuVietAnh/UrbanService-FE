@@ -12,15 +12,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { userApi } from '@urbanmind/shared-api';
 import { getRoleLabel, managementTypes } from '@urbanmind/shared-types';
 import { AppButton, AppInput, Text } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
 import { AppErrorState } from '@/components/shared';
 import { useAuthStore } from '@/features/auth';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys, type FeedbackFilters } from '@/features/reporting/api';
 import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
+import { profileApi, profileKeys } from '../api';
+
+const PROFILE_FEEDBACK_FILTERS: FeedbackFilters = {
+  pageSize: 100,
+  sortBy: 'createdAt',
+  sortOrder: 'desc',
+};
 
 interface SettingRow {
   icon: keyof typeof Icon.glyphMap;
@@ -81,7 +87,7 @@ export default function ProfileScreen() {
     refetch: refetchProfile,
     isRefetching,
   } = useQuery({
-    queryKey: ['userProfile'],
+    queryKey: profileKeys.detail(),
     queryFn: async () => {
       const formatError = (err: any) => {
         try {
@@ -95,7 +101,7 @@ export default function ProfileScreen() {
       };
 
       try {
-        return await userApi.getProfile();
+        return await profileApi.getProfile();
       } catch (e) {
         console.debug('[userProfile] fetch failed, returning null', { userId, error: formatError(e) });
         return null;
@@ -107,21 +113,16 @@ export default function ProfileScreen() {
 
   // Fetch Feedback Stats
   const { data: myFeedbacksData, isLoading: isFeedbackLoading } = useQuery({
-    queryKey: ['myFeedbacks', 'stats'],
-    queryFn: () =>
-      feedbackApi.list({
-        pageSize: 100,
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-      }),
+    queryKey: reportingKeys.list(PROFILE_FEEDBACK_FILTERS),
+    queryFn: () => feedbackApi.list(PROFILE_FEEDBACK_FILTERS),
     enabled: Boolean(userId),
   });
 
   // Update Profile Mutation via userApi
   const updateProfileMutation = useMutation({
-    mutationFn: (data: { fullName: string; phone?: string }) => userApi.updateProfile(data),
+    mutationFn: profileApi.updateProfile,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userProfile'] });
+      queryClient.invalidateQueries({ queryKey: profileKeys.detail() });
       if (user) {
         setUser({
           ...user,

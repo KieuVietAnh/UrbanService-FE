@@ -13,7 +13,7 @@ import { AppHeader } from '@/components/ui';
 import { AppButton } from '@/components/ui';
 import { AppTextArea } from '@/components/shared';
 import { useToast } from '@/components/shared';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import { colors } from '@/constants/theme';
 
 const STARS = [1, 2, 3, 4, 5];
@@ -37,7 +37,7 @@ export default function ReviewScreen() {
     mutationFn: () =>
       feedbackApi.submitReview(id!, rating, isSatisfied ?? true, comment.trim()),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['feedback', id] });
+      qc.invalidateQueries({ queryKey: reportingKeys.detail(id ?? '') });
       toast.success('Cảm ơn bạn đã đánh giá!');
       router.back();
     },

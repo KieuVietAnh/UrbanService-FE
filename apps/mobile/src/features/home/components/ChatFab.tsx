@@ -2,9 +2,9 @@ import React from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useToast } from '@/components/shared';
-import { axiosClient } from '@urbanmind/shared-api';
 import { styles } from '../homeStyles';
 import { FloatingChatMenu } from '@/components/ui';
+import { messagingApi } from '@/features/messaging/api';
 
 type Props = {
   isOpen: boolean;
@@ -31,14 +31,11 @@ export function ChatFab({ isOpen, onToggle }: Props) {
     if (id === 'staff') {
       toast.info('Đang kết nối Cán bộ hỗ trợ...');
       try {
-        const res = await axiosClient.get('/api/inbox/conversations');
-        const data = res?.data ?? res;
-        const items = Array.isArray(data) ? data : (data?.items ?? []);
+        const items = await messagingApi.getInboxConversations();
         const staffConv = items.find((c: any) => c?.type === 'staff');
         let conversationId = staffConv?.id;
         if (!conversationId) {
-          const createRes = await axiosClient.post('/api/inbox/conversations', { type: 'staff' });
-          const created = createRes?.data ?? createRes;
+          const created = await messagingApi.createInboxConversation('staff');
           conversationId = created?.id;
         }
         if (conversationId) {

@@ -31,7 +31,7 @@ import { SkeletonCard, Skeleton } from '@/components/shared';
 import { AppErrorState } from '@/components/shared';
 import { AppEmptyState } from '@/components/shared';
 import { useToast } from '@/components/shared';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 // Feedback chat moved to its own screen: /tickets/[id]/chat
 import { semantics } from '@/theme/semantics';
 import { managementTypes } from '@urbanmind/shared-types';
@@ -181,14 +181,14 @@ export default function TicketDetailScreen() {
     refetch,
     isRefetching,
   } = useQuery({
-    queryKey: ['feedback', feedbackId],
+    queryKey: reportingKeys.detail(feedbackId),
     queryFn: () => feedbackApi.getById(feedbackId),
     enabled: Boolean(feedbackId),
   });
 
   // Fetch Comments for both the preview card and the bottom discussion sheet.
   const { data: comments = [] } = useQuery<CommentItem[]>({
-    queryKey: ['feedback-comments', feedbackId],
+    queryKey: reportingKeys.comments(feedbackId),
     queryFn: async () => {
       const res = await feedbackApi.getComments(feedbackId);
       const items = Array.isArray(res) ? res : res?.items || [];
@@ -210,9 +210,8 @@ export default function TicketDetailScreen() {
     onSuccess: async () => {
       setCommentInput('');
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feedback', feedbackId] }),
-        queryClient.invalidateQueries({ queryKey: ['feedback-comments', feedbackId] }),
-        queryClient.refetchQueries({ queryKey: ['feedback-comments', feedbackId] }),
+        queryClient.invalidateQueries({ queryKey: reportingKeys.detail(feedbackId) }),
+        queryClient.invalidateQueries({ queryKey: reportingKeys.comments(feedbackId) }),
       ]);
       toast.success('Đã gửi trao đổi');
     },

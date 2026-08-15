@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import { colors } from '@/constants/theme';
 import { managementTypes } from '@urbanmind/shared-types';
 import { TicketCard } from './ticket-card';
@@ -48,16 +48,17 @@ export default function TicketsScreen() {
     searchTimer.current = setTimeout(() => setDebouncedSearch(text), 400);
   };
 
+  const filters = {
+    pageSize: 20,
+    status: activeFilter || undefined,
+    search: debouncedSearch || undefined,
+    sortBy: 'createdAt',
+    sortOrder: 'desc' as const,
+  };
+
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['feedbacks', 'list', activeFilter, debouncedSearch],
-    queryFn: () =>
-      feedbackApi.list({
-        pageSize: 20,
-        status: activeFilter || undefined,
-        search: debouncedSearch || undefined,
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-      }),
+    queryKey: reportingKeys.list(filters),
+    queryFn: () => feedbackApi.list(filters),
   });
 
   const tickets = Array.isArray(data)

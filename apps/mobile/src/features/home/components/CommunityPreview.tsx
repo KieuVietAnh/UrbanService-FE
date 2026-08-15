@@ -8,7 +8,7 @@ import { Text } from '@/components/ui';
 import { colors } from '@/constants/theme';
 import type { RouterLike } from '../types';
 import { useQuery } from '@tanstack/react-query';
-import { communityApi } from '@/features/community/api';
+import { communityApi, communityKeys } from '@/features/community/api';
 import { styles } from '../homeStyles';
 
 type Props = {
@@ -22,9 +22,10 @@ const COMMUNITY_IMAGES = [
 ];
 
 export function CommunityPreview({ router }: Props) {
+  const feedParams = { pageNumber: 1, pageSize: 8 };
   const { data, isLoading } = useQuery({
-    queryKey: ['community-feed-preview'],
-    queryFn: () => communityApi.getFeed({ pageNumber: 1, pageSize: 8 }),
+    queryKey: communityKeys.feed(feedParams),
+    queryFn: () => communityApi.getFeed(feedParams),
     staleTime: 1000 * 60,
     refetchOnWindowFocus: false,
   });

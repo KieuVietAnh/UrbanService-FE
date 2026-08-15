@@ -1,29 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
-import { feedbackApi } from '@/features/reporting/api';
+import { feedbackApi, reportingKeys, type FeedbackFilters } from '@/features/reporting/api';
 import type { TicketLike } from '../types';
 
 export function useHomeData() {
+  const filters: FeedbackFilters = { pageSize: 5, sortBy: 'createdAt', sortOrder: 'desc' };
   const { data: page, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['feedbacks', 'home'],
-    queryFn: () => feedbackApi.list({ pageSize: 5, sortBy: 'createdAt', sortOrder: 'desc' }),
+    queryKey: reportingKeys.list(filters),
+    queryFn: () => feedbackApi.list(filters),
     staleTime: 0,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
 
-  const { data: nearbyPage, isLoading: nearbyLoading } = useQuery({
-    queryKey: ['feedbacks', 'nearby'],
-    queryFn: () => feedbackApi.list({ pageSize: 3, sortBy: 'createdAt', sortOrder: 'desc' }),
-    staleTime: 0,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
-  });
+  const tickets = (Array.isArray(page) ? page : (page?.items ?? [])) as TicketLike[];
 
   return {
-    tickets: (Array.isArray(page) ? page : (page?.items ?? [])) as TicketLike[],
-    nearby: (Array.isArray(nearbyPage) ? nearbyPage : (nearbyPage?.items ?? [])) as TicketLike[],
+    tickets,
+    nearby: tickets.slice(0, 3),
     isLoading,
-    nearbyLoading,
+    nearbyLoading: isLoading,
     refetch,
     isRefetching,
   };
