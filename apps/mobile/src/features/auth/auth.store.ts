@@ -32,7 +32,6 @@ interface AuthState {
 type ApiErrorDetails = Error & {
   code?: unknown;
   status?: unknown;
-  response?: unknown;
 };
 
 const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<T> => {
@@ -42,7 +41,9 @@ const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<
     timeoutId = setTimeout(() => {
       const timeoutError = new Error(`timeout of ${timeoutMs}ms exceeded`);
       (timeoutError as Error & { code?: string }).code = 'ECONNABORTED';
-      console.warn('[Auth request timeout]', { timeoutMs, message: timeoutError.message });
+      if (__DEV__) {
+        console.warn('[Auth request timeout]', { timeoutMs });
+      }
       reject(timeoutError);
     }, timeoutMs);
   });
@@ -72,24 +73,21 @@ export const useAuthStore = create<AuthState>()(
         hasHydrated: false,
 
         login: async (email: string, password: string) => {
-          console.log('[Auth login] start', { email });
           set({ isLoading: true, error: null });
           try {
-            console.log('[Auth login] invoking AuthService.login');
             const user = await withRequestTimeout(AuthService.login(email, password));
-            console.log('[Auth login] completed', { userId: user?.id, email: user?.email, role: user?.role });
             set({ user, isLoading: false });
             return user;
           } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng nhập thất bại');
             const details = err as ApiErrorDetails;
-            console.error('[Auth login failed]', {
-              code: details?.code || null,
-              message: details?.message || null,
-              status: details?.status || null,
-              response: details?.response || null,
-              stack: details?.stack || null,
-            });
+            if (__DEV__) {
+              console.error('[Auth login failed]', {
+                code: details?.code || null,
+                message: details?.message || null,
+                status: details?.status || null,
+              });
+            }
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {
@@ -98,23 +96,21 @@ export const useAuthStore = create<AuthState>()(
         },
 
         googleLogin: async (idToken: string) => {
-          console.log('[Auth googleLogin] start');
           set({ isLoading: true, error: null });
           try {
             const user = await withRequestTimeout(AuthService.googleLogin(idToken));
-            console.log('[Auth googleLogin] completed', { userId: user?.id, email: user?.email, role: user?.role });
             set({ user, isLoading: false });
             return user;
           } catch (err: unknown) {
             const msg = extractApiErrorMessage(err, 'Đăng nhập bằng Google thất bại');
             const details = err as ApiErrorDetails;
-            console.error('[Auth googleLogin failed]', {
-              code: details?.code || null,
-              message: details?.message || null,
-              status: details?.status || null,
-              response: details?.response || null,
-              stack: details?.stack || null,
-            });
+            if (__DEV__) {
+              console.error('[Auth googleLogin failed]', {
+                code: details?.code || null,
+                message: details?.message || null,
+                status: details?.status || null,
+              });
+            }
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {
@@ -191,7 +187,9 @@ export const useAuthStore = create<AuthState>()(
             AsyncStorageService.setItem<string>(key, JSON.stringify(value)),
           removeItem: (key) => AsyncStorageService.removeItem(key),
         },
-        partialize: (state) => ({ user: state.user }) as AuthState,
+        partialize: (state) => ({
+          user: state.user ? { ...state.user, token: '' } : null,
+        }) as AuthState,
         onRehydrateStorage: () => (state) => {
           if (state) {
             state.hasHydrated = true;

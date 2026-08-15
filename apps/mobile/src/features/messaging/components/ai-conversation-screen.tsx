@@ -195,8 +195,8 @@ export default function AiConversationDetailScreen() {
       }
       scrollToBottom(true);
     },
-    onError: (err: unknown) => {
-      console.warn('AI send failed', err);
+    onError: () => {
+      if (__DEV__) console.warn('AI message send failed');
       toast.error('Gửi tin nhắn AI thất bại. Vui lòng thử lại.');
     },
   });

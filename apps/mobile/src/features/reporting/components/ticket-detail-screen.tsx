@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { radius } from '@/theme/radius';
 import { spacing } from '@/theme/spacing';
 import { fontSizes, fonts } from '@/theme/typography';
@@ -184,35 +184,31 @@ export default function TicketDetailScreen() {
     queryKey: reportingKeys.detail(feedbackId),
     queryFn: () => feedbackApi.getById(feedbackId),
     enabled: Boolean(feedbackId),
+    refetchInterval: 6000,
   });
 
-  // Fetch Comments for both the preview card and the bottom discussion sheet.
-  const { data: comments = [] } = useQuery<CommentItem[]>({
-    queryKey: reportingKeys.comments(feedbackId),
-    queryFn: async () => {
-      const res = await feedbackApi.getComments(feedbackId);
-      const items = Array.isArray(res) ? res : res?.items || [];
-      return items.map((c: any) => ({
-        id: String(c.commentId ?? c.id ?? Math.random()),
+  // The detail contract already includes comments. Reuse the polled detail response
+  // instead of issuing a second GET to the same endpoint on every interval.
+  const comments = useMemo<CommentItem[]>(() => {
+    const items = Array.isArray(ticket?.comments) ? ticket.comments : [];
+    return items.map((c: any, index: number) => {
+      const createdAt = c.createdAt ?? new Date().toISOString();
+      return {
+        id: String(c.commentId ?? c.id ?? `comment-${index}`),
         senderName: c.authorName ?? c.userName ?? c.userFullName ?? 'Hệ thống',
         senderRole: c.authorRole ?? c.userRole ?? 'SERVICE_USER',
         content: c.content ?? c.text ?? '',
-        createdAt: c.createdAt ?? new Date().toISOString(),
-      }));
-    },
-    enabled: Boolean(feedbackId),
-    refetchInterval: 6000,
-  });
+        createdAt,
+      };
+    });
+  }, [ticket?.comments]);
 
   // Post Comment Mutation
   const addCommentMutation = useMutation({
     mutationFn: (content: string) => feedbackApi.addComment(feedbackId, content),
     onSuccess: async () => {
       setCommentInput('');
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: reportingKeys.detail(feedbackId) }),
-        queryClient.invalidateQueries({ queryKey: reportingKeys.comments(feedbackId) }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: reportingKeys.detail(feedbackId) });
       toast.success('Đã gửi trao đổi');
     },
     onError: (err: any) => toast.error(err.message || 'Không thể gửi bình luận'),

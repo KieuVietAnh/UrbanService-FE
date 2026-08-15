@@ -53,8 +53,8 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
       // scroll to bottom after small delay
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 120);
     },
-    onError: (err: unknown) => {
-      console.warn('send failed', err);
+    onError: () => {
+      if (__DEV__) console.warn('Feedback message send failed');
       toast.error('Unable to send message');
     },
   });
@@ -63,7 +63,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
     if (!text.trim() || !feedbackId) return;
     try {
       await sendMutation.mutateAsync(text);
-    } catch (e) {
+    } catch {
       // keep composer text; error toast handled in onError
     }
   };

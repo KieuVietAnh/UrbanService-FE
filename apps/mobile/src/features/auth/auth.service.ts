@@ -78,22 +78,16 @@ const extractRefreshToken = (response: unknown): string | null => {
 
 export class AuthService {
   static async login(email: string, password: string): Promise<User> {
-    console.log('[AuthService login] before authApi.login', { email });
     const response = await authApi.login(email, password);
-    console.log('[AuthService login] authApi.login resolved', { responseType: typeof response, hasData: !!response });
     const user = buildUser(response);
     const refreshToken = extractRefreshToken(response);
 
     if (user.token) {
-      console.log('[AuthService login] saving auth token');
       await setAuthToken(user.token);
-      console.log('[AuthService login] auth token saved');
     }
 
     if (refreshToken) {
-      console.log('[AuthService login] saving refresh token');
       await setAuthRefreshToken(refreshToken);
-      console.log('[AuthService login] refresh token saved');
     }
 
     return user;

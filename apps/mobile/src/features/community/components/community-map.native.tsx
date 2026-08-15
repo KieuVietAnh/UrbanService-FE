@@ -525,7 +525,7 @@ export default function CommunityMapNative() {
                   );
                 }
               } catch (e) {
-                console.warn('locate error', e);
+                if (__DEV__) console.warn('Unable to resolve current location');
               } finally {
                 setLocating(false);
               }
@@ -607,10 +607,8 @@ export default function CommunityMapNative() {
               viewabilityConfig={viewabilityConfig}
               onViewableItemsChanged={onViewableItemsChanged}
               onEndReached={() => {
-                console.log('feed: onEndReached');
-                if (typeof fetchNextPage === 'function' && hasNextPage) {
-                  console.log('feed: fetchNextPage called');
-                  fetchNextPage();
+                if (typeof fetchNextPage === 'function' && hasNextPage && !isFetchingNextPage) {
+                  void fetchNextPage();
                 }
               }}
               onEndReachedThreshold={0.5}

@@ -103,7 +103,9 @@ export default function ProfileScreen() {
       try {
         return await profileApi.getProfile();
       } catch (e) {
-        console.debug('[userProfile] fetch failed, returning null', { userId, error: formatError(e) });
+        if (__DEV__) {
+          console.debug('[userProfile] fetch failed, returning null', { error: formatError(e) });
+        }
         return null;
       }
     },

@@ -44,7 +44,7 @@ export function ChatFab({ isOpen, onToggle }: Props) {
           toast.error('Không thể tạo phiên trò chuyện với cán bộ. Vui lòng thử lại sau.');
         }
       } catch (e) {
-        console.warn('staff chat open failed', e);
+        if (__DEV__) console.warn('Staff chat open failed');
         toast.error('Không thể kết nối tới cán bộ. Vui lòng thử lại sau.');
       }
     }

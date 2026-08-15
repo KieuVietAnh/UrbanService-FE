@@ -255,7 +255,7 @@ function StepLocation({
           return;
         }
       } catch (err) {
-        console.warn('Failed to parse area boundary', err);
+        if (__DEV__) console.warn('Failed to parse area boundary');
         toast.error('Không thể tải hình dạng khu vực. Vui lòng thử lại.');
         return;
       }
@@ -284,7 +284,7 @@ function StepLocation({
         longitudeDelta: 0.02,
       }, 600);
     } catch (e) {
-      console.warn('Failed to focus current location on map', e);
+      if (__DEV__) console.warn('Failed to focus current location on map');
     }
   }, [latitude, longitude, mapRef]);
 
@@ -682,11 +682,8 @@ export default function CreateFeedbackWizardScreen() {
       setAreas(loadedAreas);
       setCategories(loadedCategories);
       
-      // Log areas loading status
-      if (loadedAreas.length === 0) {
-        console.warn('No areas loaded from API. areasResult:', areasResult);
-      } else {
-        console.log(`Loaded ${loadedAreas.length} areas`);
+      if (__DEV__ && loadedAreas.length === 0) {
+        console.warn('No areas loaded from API');
       }
       
       setAreasLoading(false);
@@ -841,7 +838,7 @@ export default function CreateFeedbackWizardScreen() {
       if (analysis?.categoryId) setCategoryId(String(analysis.categoryId));
       if (analysis?.urgencyLevel) setPriority(normalizePriority(analysis.urgencyLevel));
     } catch (error) {
-      console.warn('Automatic classification unavailable', error);
+      if (__DEV__) console.warn('Automatic classification unavailable');
     } finally {
       setClassificationLoading(false);
     }
@@ -866,7 +863,7 @@ export default function CreateFeedbackWizardScreen() {
       setDuplicates(Array.isArray(matches) ? matches : []);
       setShowDuplicateWarning(Array.isArray(matches) ? matches.length > 0 : false);
     } catch (error) {
-      console.warn('Duplicate check unavailable', error);
+      if (__DEV__) console.warn('Duplicate check unavailable');
     }
 
     setStep(3);
@@ -986,7 +983,7 @@ export default function CreateFeedbackWizardScreen() {
         router.replace('/(resident)/tickets');
       }
     } catch (error) {
-      console.warn('Create feedback failed', error);
+      if (__DEV__) console.warn('Create feedback failed');
       const resp = (error as any)?.response;
       const serverMessage = resp?.data?.message || (error as any)?.message || '';
       if (resp?.status === 413) {
@@ -1019,7 +1016,7 @@ export default function CreateFeedbackWizardScreen() {
             router.replace('/(resident)/tickets');
           }
         } catch (err2) {
-          console.warn('Fallback submit without area failed', err2);
+          if (__DEV__) console.warn('Fallback submit without area failed');
           toast.error('Khu vực được chọn chứa dữ liệu hình dạng không hợp lệ. Vui lòng chọn khu vực khác hoặc liên hệ quản trị viên.');
         }
       } else {

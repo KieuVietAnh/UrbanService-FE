@@ -661,9 +661,7 @@ export default function InboxScreen() {
 
           const resolvedUpdatedAt = lastMessageAt || fallbackThreadTime;
 
-          const finalLastMsg = orderedMsgs.reduce((latest, current) => {
-            return getMessageTimestamp(current) >= getMessageTimestamp(latest) ? current : latest;
-          }, msgs[0]);
+          const finalLastMsg = lastMsg ?? msgs[0];
           const unreadCount = msgs.filter(
             (m: any) => m?.senderType === 'Staff' || m?.senderRole === 'Staff'
           ).length;

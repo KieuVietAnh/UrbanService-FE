@@ -41,7 +41,9 @@ export default function CommunityDetailScreen() {
   const shouldFocusComposer = normalizeFlag(focusComment) || normalizeFlag(autoFocusComment);
 
   const debugLog = (...args: Array<unknown>) => {
-    console.log('[CommunityDetailScreen]', ...args);
+    if (__DEV__) {
+      console.log('[CommunityDetailScreen]', ...args);
+    }
   };
 
   const focusComposer = () => {
