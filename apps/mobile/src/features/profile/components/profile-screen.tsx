@@ -252,7 +252,7 @@ export default function ProfileScreen() {
 
   const SUPPORT_ROWS: SettingRow[] = [
     { icon: 'help-circle', label: 'Trung tâm trợ giúp', onPress: () => toast.info('Tổng đài CSKH: 1900 8888') },
-    { icon: 'shield', label: 'Điều khoản & Chính sách bảo mật', onPress: () => toast.info('UrbanMind v2.5.0 Policy') },
+    { icon: 'shield', label: 'Điều khoản & Chính sách bảo mật', onPress: () => toast.info('UrbanMind v1.0.0 Policy') },
   ];
 
   return (
