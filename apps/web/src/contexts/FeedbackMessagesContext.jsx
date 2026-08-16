@@ -8,14 +8,13 @@ const normalizeMessages = (messages = []) => {
     : [];
 };
 
-export const FeedbackMessagesProvider = ({ feedbackId, children }) => {
+export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, children }) => {
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState('');
   const [messageSubmitting, setMessageSubmitting] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncStatus, setSyncStatus] = useState('idle');
-  const includeInternal = true;
 
   const loadMessages = useCallback(
     async ({ keepMessagesOnError = false } = {}) => {
