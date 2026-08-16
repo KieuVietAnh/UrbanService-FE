@@ -385,7 +385,7 @@ export default function ProfileScreen() {
               </View>
 
               <View style={styles.footer}>
-                <Text style={styles.footerTitle}>UrbanMind Mobile v2.5.0</Text>
+                <Text style={styles.footerTitle}>UrbanMind Mobile v1.0.0</Text>
                 <Text style={styles.footerSub}>Cổng Dịch vụ Công Đô thị Thông minh</Text>
               </View>
             </>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, Platform, RefreshControl, Modal } from 'react-native';
+import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, Platform, RefreshControl, Modal, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -223,7 +223,10 @@ export default function CommunityDetailScreen() {
   const evidenceImages = attachments.map((attachment) => attachment.fileUrl).filter(Boolean) as string[];
 
   return (
-    <View style={{ flex: 1, backgroundColor: semantics.bg.app }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: semantics.bg.app }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <AppHeader showBack title="Chi tiết cộng đồng" />
 
@@ -394,7 +397,7 @@ export default function CommunityDetailScreen() {
           {selectedImage ? <Image source={{ uri: selectedImage }} style={styles.fullImage} resizeMode="contain" /> : null}
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

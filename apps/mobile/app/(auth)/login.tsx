@@ -6,6 +6,7 @@ import {
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -238,6 +239,14 @@ export default function LoginScreen() {
               }}
               error={errors.password}
             />
+
+            <Pressable
+              onPress={() => router.push('/(auth)/forgot-password')}
+              style={styles.forgotPasswordContainer}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
+            </Pressable>
 
             {authError ? (
               <View style={styles.errorBox}>
@@ -539,6 +548,17 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   footerLink: {
+    fontFamily: 'Geist-SemiBold',
+    color: semantics.text.brand,
+  },
+  forgotPasswordContainer: {
+    alignSelf: 'flex-end',
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingLeft: 12,
+  },
+  forgotPasswordText: {
+    fontSize: 13,
     fontFamily: 'Geist-SemiBold',
     color: semantics.text.brand,
   },

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, StyleSheet, Text, Platform, ActivityIndicator } from 'react-native';
+import { View, FlatList, StyleSheet, Text, Platform, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import MessageBubble, { ChatMessage } from './feedback-message-bubble';
@@ -78,7 +78,10 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: semantics.bg.surface }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: semantics.bg.surface }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <View style={[styles.wrap, { flex: 1 }]}>
           <View style={styles.headerRow}>
@@ -106,7 +109,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
                     <Text style={styles.emptySub}>You can ask staff about this feedback.</Text>
                   </View>
                 )}
-                contentContainerStyle={{ paddingVertical: 10, paddingBottom: (composerHeight || 72) + 24 + (insets.bottom || 0) }}
+                contentContainerStyle={{ paddingVertical: 10, paddingBottom: (composerHeight || 72) + 16 }}
                 nestedScrollEnabled
                 keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => setTimeout(() => scrollToBottom(true), 50)}
@@ -127,7 +130,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
           />
         </View>
       </SafeAreaView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
