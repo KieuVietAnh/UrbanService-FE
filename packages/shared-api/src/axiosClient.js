@@ -83,18 +83,22 @@ const logResponseErrorDetails = (error, req = {}) => {
   const url = requestUrl || `${req.baseURL || apiBaseUrl}${req.url || ''}`;
   const requestData = sanitizeRequestData(req?.data || error?.config?.data);
 
-  console.warn('[API resp error]', {
-    method,
-    url,
-    status,
-    code: error?.code || null,
-    message: error?.message || null,
-    statusText: error?.response?.statusText || null,
-    responseData: sanitizeRequestData(data),
-    requestData,
-    timeout: req?.timeout || error?.config?.timeout || null,
-    stack: error?.stack || null,
-  });
+  console.warn(`[API resp error] ${method} ${url} - Status: ${status} - Error: ${error?.message || ''}`);
+  try {
+    console.warn('[API resp error details]', JSON.stringify({
+      method,
+      url,
+      status,
+      code: error?.code || null,
+      message: error?.message || null,
+      statusText: error?.response?.statusText || null,
+      responseData: sanitizeRequestData(data),
+      requestData,
+      timeout: req?.timeout || error?.config?.timeout || null,
+    }, null, 2));
+  } catch (logErr) {
+    console.warn('[API resp error details logging failed]', logErr);
+  }
 };
 
 const extractAccessToken = (value) => {

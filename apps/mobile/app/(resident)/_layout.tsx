@@ -1,4 +1,5 @@
 import React from 'react';
+import '../../global.css';
 import { Stack, usePathname, useRouter, type Href } from 'expo-router';
 import {
   View,
@@ -143,7 +144,14 @@ export default function ResidentLayout() {
   };
 
   const isHomePath = normalizedPath === '/' || normalizedPath === '' || normalizedPath === '/index';
-  const hideBottomNav = normalizedPath === '/create-feedback' || normalizedPath === '/create-feedback-wizard' || normalizedPath.startsWith('/create-feedback');
+  const hideBottomNav =
+    normalizedPath === '/create-feedback' ||
+    normalizedPath === '/create-feedback-wizard' ||
+    normalizedPath.startsWith('/create-feedback') ||
+    normalizedPath.startsWith('/ai') ||
+    normalizedPath.includes('/chat') ||
+    normalizedPath.startsWith('/community/') ||
+    normalizedPath.startsWith('/support/select-feedback');
   const tabBarHeight = RESIDENT_TAB_BAR_HEIGHT + insets.bottom;
 
   const handleFloatingSelect = async (id: 'ai' | 'staff' | 'inbox') => {

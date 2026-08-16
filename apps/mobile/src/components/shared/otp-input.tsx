@@ -17,42 +17,54 @@ interface OTPInputProps {
 
 export function OTPInput({ length = 6, value, onChange, error = false }: OTPInputProps) {
   const inputs = useRef<(TextInput | null)[]>([]);
-  const digits = value.padEnd(length, '').split('').slice(0, length);
+  const digits = Array.from({ length }, (_, i) => value[i] || '');
 
   const focusNext = (index: number) => {
     if (index < length - 1) {
-      inputs.current[index + 1]?.focus();
+      setTimeout(() => {
+        inputs.current[index + 1]?.focus();
+      }, 30);
     }
   };
 
   const focusPrev = (index: number) => {
     if (index > 0) {
-      inputs.current[index - 1]?.focus();
+      setTimeout(() => {
+        inputs.current[index - 1]?.focus();
+      }, 30);
     }
   };
 
   const handleChange = (text: string, index: number) => {
-    // Handle paste
-    if (text.length > 1) {
-      const cleaned = text.replace(/\D/g, '').slice(0, length);
+    const cleanedText = text.replace(/\D/g, '');
+    
+    // Handle paste (if text length is 5 or more)
+    if (cleanedText.length >= 5) {
+      const cleaned = cleanedText.slice(0, length);
       onChange(cleaned);
       inputs.current[Math.min(cleaned.length, length - 1)]?.focus();
       return;
     }
 
-    const char = text.replace(/\D/g, '');
-    const next = digits.map((d, i) => (i === index ? char : d)).join('').replace(/ /g, '');
+    // Get the last typed character
+    const char = cleanedText.charAt(cleanedText.length - 1);
+    const next = Array.from({ length }, (_, i) => {
+      if (i === index) return char;
+      return value[i] || '';
+    }).join('');
     onChange(next);
 
-    if (char) focusNext(index);
+    if (char) {
+      focusNext(index);
+    }
   };
 
   const handleKeyPress = (
     { nativeEvent: { key } }: NativeSyntheticEvent<TextInputKeyPressEventData>,
     index: number
   ) => {
-    if (key === 'Backspace' && !digits[index]) {
-      const next = digits.map((d, i) => (i === index - 1 ? '' : d)).join('');
+    if (key === 'Backspace' && !value[index]) {
+      const next = value.slice(0, Math.max(0, index - 1)) + value.slice(index);
       onChange(next);
       focusPrev(index);
     }
@@ -66,7 +78,6 @@ export function OTPInput({ length = 6, value, onChange, error = false }: OTPInpu
     <View style={styles.row}>
       {Array.from({ length }).map((_, i) => {
         const filled = Boolean(digits[i]);
-        const isFocused = !filled && digits.slice(0, i).every(Boolean);
 
         return (
           <TextInput
@@ -77,11 +88,11 @@ export function OTPInput({ length = 6, value, onChange, error = false }: OTPInpu
               filled && styles.cellFilled,
               error && styles.cellError,
             ]}
-            value={digits[i] === ' ' ? '' : digits[i]}
+            value={digits[i]}
             onChangeText={(t) => handleChange(t, i)}
             onKeyPress={(e) => handleKeyPress(e, i)}
             keyboardType="number-pad"
-            maxLength={i === 0 ? length : 1}
+            maxLength={i === 0 ? length : 2}
             selectTextOnFocus
             textAlign="center"
             textContentType="oneTimeCode"

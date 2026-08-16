@@ -99,7 +99,6 @@ export default function AiConversationDetailScreen() {
   const listRef = useRef<FlatList<AiMessage> | null>(null);
   const queryClient = useQueryClient();
   const [composerHeight, setComposerHeight] = useState(72);
-  const keyboardOffset = Platform.OS === 'ios' ? (insets.top || 0) - 120 : 0;
   const isPlaceholderConversation = conversationId === 'ai-assistant';
 
   const {
@@ -241,63 +240,68 @@ export default function AiConversationDetailScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <AppHeader showBack title="AI Assistant" subtitle="Câu chuyện của bạn" />
 
-        {isError && messages.length === 0 ? (
-          <AppErrorState onRetry={refetch}>
-            {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
-          </AppErrorState>
-        ) : (
-          <View style={styles.container}>
-            <View style={styles.chatBody}>
-              <FlatList
-                ref={listRef}
-                data={messages}
-                keyExtractor={(item) => item.id}
-                renderItem={renderMessage}
-                contentContainerStyle={{
-                  paddingVertical: 10,
-                  paddingHorizontal: 0,
-                  paddingBottom: (composerHeight || 72) + 24 + (insets.bottom || 0),
-                  flexGrow: 1,
-                }}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                onContentSizeChange={() => setTimeout(() => scrollToBottom(true), 60)}
-                onLayout={() => setTimeout(() => scrollToBottom(true), 60)}
-                style={styles.list}
-                refreshControl={
-                <RefreshControl
-                  refreshing={isRefetching}
-                  onRefresh={refetch}
-                  tintColor={semantics.text.brand}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          {isError && messages.length === 0 ? (
+            <AppErrorState onRetry={refetch}>
+              {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
+            </AppErrorState>
+          ) : (
+            <View style={styles.container}>
+              <View style={styles.chatBody}>
+                <FlatList
+                  ref={listRef}
+                  data={messages}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderMessage}
+                  contentContainerStyle={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 0,
+                    paddingBottom: (composerHeight || 72) + 16,
+                    flexGrow: 1,
+                  }}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  onContentSizeChange={() => setTimeout(() => scrollToBottom(true), 60)}
+                  onLayout={() => setTimeout(() => scrollToBottom(true), 60)}
+                  style={styles.list}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={isRefetching}
+                      onRefresh={refetch}
+                      tintColor={semantics.text.brand}
+                    />
+                  }
+                  ListEmptyComponent={isLoading ? (
+                    <View style={styles.initialLoading}>
+                      <ActivityIndicator size="large" color={semantics.text.brand} />
+                    </View>
+                  ) : (
+                    <AppEmptyState
+                      icon={<Icon name="cpu" size={40} color={semantics.text.lightMuted} />}
+                    >
+                      Chưa có tin nhắn nào trong hội thoại này. Gửi tin nhắn để bắt đầu.
+                    </AppEmptyState>
+                  )}
                 />
-              }
-              ListEmptyComponent={isLoading ? (
-                <View style={styles.initialLoading}>
-                  <ActivityIndicator size="large" color={semantics.text.brand} />
-                </View>
-              ) : (
-                <AppEmptyState
-                  icon={<Icon name="cpu" size={40} color={semantics.text.lightMuted} />}
-                >
-                  Chưa có tin nhắn nào trong hội thoại này. Gửi tin nhắn để bắt đầu.
-                </AppEmptyState>
-              )}
-            />
-            </View>
-          </View>
-        )}
-      </SafeAreaView>
+              </View>
 
-      <SafeAreaView style={styles.composerContainer} edges={['bottom']}>
-        <View style={styles.composerWrap}>
-          <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
-          <MessageComposer
-            onSend={handleSend}
-            sending={sendMutation.isPending || isLoading}
-            onFocus={() => scrollToBottom(true)}
-            onHeightChange={(height) => setComposerHeight(height)}
-          />
-        </View>
+              <SafeAreaView style={styles.composerContainer} edges={['bottom']}>
+                <View style={styles.composerWrap}>
+                  <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
+                  <MessageComposer
+                    onSend={handleSend}
+                    sending={sendMutation.isPending || isLoading}
+                    onFocus={() => scrollToBottom(true)}
+                    onHeightChange={(height) => setComposerHeight(height)}
+                  />
+                </View>
+              </SafeAreaView>
+            </View>
+          )}
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );

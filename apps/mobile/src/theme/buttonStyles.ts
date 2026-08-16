@@ -20,7 +20,7 @@ export const buttonStyles = StyleSheet.create({
     borderColor: semantics.interactive.secondaryBorder,
   },
   outline: {
-    backgroundColor: 'transparent',
+    backgroundColor: semantics.bg.surface,
     borderColor: semantics.border.default,
   },
   ghost: {

@@ -10,8 +10,6 @@ dist/
 .expo/
 .expo-shared/
 web-build/
-android/
-ios/
 
 # Logs and temporary output
 *.log
@@ -55,8 +53,15 @@ test-results/
 !assets/adaptive-icon.png
 !assets/favicon.png
 !app.json
+!app.config.js
 !eas.json
 !package.json
 !tsconfig.json
+!babel.config.js
+!metro.config.js
+!tailwind.config.js
+!global.css
 !app/
 !src/
+!plugins/
+!android/
