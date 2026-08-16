@@ -45,6 +45,7 @@ jobs:
         shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
           NODE_ENV: production
         run: |
           set -euo pipefail
