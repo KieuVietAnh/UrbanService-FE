@@ -7,6 +7,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { authApi } from '../../services/api/authApi';
 import { useGoogleIdentity } from '../../hooks/useGoogleIdentity';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { AuthLayout } from '../../components/auth/AuthLayout';
@@ -130,6 +131,14 @@ export const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotStep, setForgotStep] = useState('request');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotPassword, setForgotPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotMessage, setForgotMessage] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const resolveRedirect = (role) => (
     getSafeInternalPath(searchParams.get('redirect')) ||
@@ -168,6 +177,17 @@ export const LoginPage = () => {
     setError('');
   };
 
+  const openForgotPassword = () => { setForgotMode(true); setForgotStep('request'); setForgotError(''); setForgotMessage(''); };
+  const closeForgotPassword = () => { setForgotMode(false); setForgotError(''); setForgotMessage(''); };
+  const handleForgotPassword = async (event) => {
+    event.preventDefault(); const normalizedEmail = email.trim(); setForgotError(''); setForgotMessage('');
+    if (!normalizedEmail) { setForgotError('Vui lòng nhập email tài khoản.'); return; }
+    if (forgotStep === 'request') { setForgotLoading(true); try { await authApi.requestForgotPasswordOtp(normalizedEmail); setForgotStep('reset'); setForgotMessage('Nếu email hợp lệ, mã OTP đã được gửi. Mã có hiệu lực trong 5 phút.'); } catch (err) { setForgotError(err.message || 'Không thể gửi mã OTP. Vui lòng thử lại.'); } finally { setForgotLoading(false); } return; }
+    if (!/^\d{6}$/.test(forgotOtp.trim())) { setForgotError('Mã OTP phải gồm 6 chữ số.'); return; }
+    if (forgotPassword.length < 6) { setForgotError('Mật khẩu mới phải có ít nhất 6 ký tự.'); return; }
+    if (forgotPassword !== forgotConfirmPassword) { setForgotError('Mật khẩu xác nhận không khớp.'); return; }
+    setForgotLoading(true); try { await authApi.resetForgottenPassword(normalizedEmail, forgotOtp.trim(), forgotPassword); setForgotMessage('Đổi mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.'); setForgotStep('request'); setForgotOtp(''); setForgotPassword(''); setForgotConfirmPassword(''); } catch (err) { setForgotError(err.message || 'Không thể đổi mật khẩu. Vui lòng kiểm tra mã OTP.'); } finally { setForgotLoading(false); }
+  };
   const handleGoogleLoginCallback = useCallback(
     async (response) => {
       try {
@@ -396,8 +416,19 @@ export const LoginPage = () => {
               </>
             )}
           </button>
+          <button type="button" onClick={openForgotPassword} className="w-full text-center text-xs font-semibold text-blue-700 hover:underline dark:text-blue-300">
+            Quên mật khẩu?
+          </button>
         </form>
 
+        {forgotMode ? (
+          <section className="relative z-10 mt-5 rounded-2xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="forgot-password-title">
+            <div className="flex items-start justify-between gap-3"><div><h2 id="forgot-password-title" className="text-sm font-bold text-slate-900">Quên mật khẩu</h2><p className="mt-1 text-xs leading-5 text-slate-600">Nhận mã OTP qua email rồi đặt mật khẩu mới.</p></div><button type="button" onClick={closeForgotPassword} className="text-xs font-semibold text-slate-500">Đóng</button></div>
+            {forgotError ? <p role="alert" className="mt-3 rounded-xl bg-red-100 px-3 py-2 text-xs text-red-700">{forgotError}</p> : null}
+            {forgotMessage ? <p role="status" className="mt-3 rounded-xl bg-emerald-100 px-3 py-2 text-xs text-emerald-700">{forgotMessage}</p> : null}
+            <form onSubmit={handleForgotPassword} className="mt-4 space-y-3"><input aria-label="Email khôi phục" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@email.com" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" />{forgotStep === 'reset' ? <><input aria-label="Mã OTP" inputMode="numeric" maxLength={6} value={forgotOtp} onChange={(event) => setForgotOtp(event.target.value.replace(/\D/g, ''))} placeholder="Mã OTP 6 số" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /><input aria-label="Mật khẩu mới" type="password" value={forgotPassword} onChange={(event) => setForgotPassword(event.target.value)} placeholder="Mật khẩu mới" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /><input aria-label="Xác nhận mật khẩu mới" type="password" value={forgotConfirmPassword} onChange={(event) => setForgotConfirmPassword(event.target.value)} placeholder="Xác nhận mật khẩu mới" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /></> : null}<button type="submit" disabled={forgotLoading} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-60">{forgotLoading ? 'Đang xử lý...' : forgotStep === 'request' ? 'Gửi mã OTP' : 'Đổi mật khẩu'}</button>{forgotStep === 'reset' ? <button type="button" onClick={() => { setForgotStep('request'); setForgotMessage(''); setForgotError(''); }} className="w-full text-center text-xs font-semibold text-blue-700 hover:underline">Gửi lại mã / đổi email</button> : null}</form>
+          </section>
+        ) : null}
         <div className="auth-login-divider relative z-10 my-5 flex items-center gap-3" aria-hidden="true">
           <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
           <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Hoặc</span>

@@ -79,6 +79,16 @@ export const authApi = {
     return saveUserSession(response);
   },
 
+  async requestForgotPasswordOtp(email) {
+    await sharedAuthApi.sendForgotPasswordOtp(email);
+    return { success: true };
+  },
+
+  async resetForgottenPassword(email, otp, newPassword) {
+    await sharedAuthApi.resetForgottenPassword(email, otp, newPassword);
+    return { success: true };
+  },
+
   async sendOTP() {
     await sharedAuthApi.sendOtp();
     return { success: true };
