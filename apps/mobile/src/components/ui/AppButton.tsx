@@ -112,12 +112,30 @@ export function AppButton({
     shadowStyle,
     style,
     buttonStyles.base,
+    variant === 'primary' && buttonStyles.primary,
+    variant === 'secondary' && buttonStyles.secondary,
+    variant === 'outline' && buttonStyles.outline,
+    variant === 'ghost' && buttonStyles.ghost,
+    variant === 'danger' && buttonStyles.danger,
     variant === 'primary' && styles.primaryButton,
     variant === 'secondary' && styles.secondaryButton,
     variant === 'outline' && styles.outlineButton,
     variant === 'ghost' && styles.ghostButton,
     variant === 'danger' && styles.dangerButton,
   ].filter(Boolean);
+
+  const textColorMap = {
+    primary: '#FFFFFF',
+    secondary: semantics.interactive.secondaryText,
+    outline: semantics.text.primary,
+    ghost: semantics.interactive.secondaryText,
+    danger: '#FFFFFF',
+  } as const;
+
+  const textStyle = {
+    color: textColorMap[variant],
+    fontWeight: '600' as const,
+  };
 
   return (
     <AnimatedPressable
@@ -145,11 +163,11 @@ export function AppButton({
         <>
           {leftIcon}
           <Text
-            className={[
-              'font-sans-semibold text-center',
-              TEXT_CLASSES[variant],
-              TEXT_SIZE_CLASSES[size],
-            ].join(' ')}
+            style={[
+              textStyle,
+              { fontSize: size === 'sm' ? 12 : size === 'lg' ? 16 : 14 },
+              { textAlign: 'center' },
+            ]}
           >
             {children}
           </Text>
