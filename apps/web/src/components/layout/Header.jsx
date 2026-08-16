@@ -317,7 +317,7 @@ export const Header = ({ onMenuToggle }) => {
       tasks: 'Nhiệm vụ được giao',
       tickets: 'Phản ánh',
       create: 'Gửi phản ánh mới',
-      queue: 'Hàng chờ kiểm duyệt',
+      queue: 'Hàng chờ kiểm duyệt AI',
       conversations: 'Quản lý trao đổi',
       duplicates: 'Hộp thư trùng lặp',
       review: 'Duyệt kết quả',
