@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   FlatList,
@@ -141,6 +141,12 @@ export default function AiConversationDetailScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!messages.length) return undefined;
+    const timer = setTimeout(() => scrollToBottom(true), 150);
+    return () => clearTimeout(timer);
+  }, [messages.length, scrollToBottom]);
+
   const sendMutation = useMutation({
     mutationFn: async (messageText: string) => {
       if (isPlaceholderConversation) {
@@ -163,7 +169,7 @@ export default function AiConversationDetailScreen() {
         const arr = Array.isArray(old) ? old : [];
         return [...arr, optimistic];
       });
-      scrollToBottom(true);
+      setTimeout(() => scrollToBottom(true), 80);
       return { tempId };
     },
     onSuccess: (response) => {
@@ -194,6 +200,7 @@ export default function AiConversationDetailScreen() {
         router.replace(`/(resident)/ai/${reply.conversationId}`);
       }
       scrollToBottom(true);
+      setTimeout(() => scrollToBottom(true), 200);
     },
     onError: () => {
       if (__DEV__) console.warn('AI message send failed');
@@ -230,20 +237,16 @@ export default function AiConversationDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <AppHeader showBack title="AI Assistant" subtitle="Câu chuyện của bạn" />
+    <View style={styles.safe}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <AppHeader showBack title="AI Assistant" subtitle="Câu chuyện của bạn" />
 
-      {isError && messages.length === 0 ? (
-        <AppErrorState onRetry={refetch}>
-          {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
-        </AppErrorState>
-      ) : (
-        <KeyboardAvoidingView
-          style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={keyboardOffset}
-        >
-          <View style={[styles.container, { paddingBottom: insets.bottom || 0 }]}> 
+        {isError && messages.length === 0 ? (
+          <AppErrorState onRetry={refetch}>
+            {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
+          </AppErrorState>
+        ) : (
+          <View style={styles.container}>
             <View style={styles.chatBody}>
               <FlatList
                 ref={listRef}
@@ -258,6 +261,8 @@ export default function AiConversationDetailScreen() {
                 }}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                onContentSizeChange={() => setTimeout(() => scrollToBottom(true), 60)}
+                onLayout={() => setTimeout(() => scrollToBottom(true), 60)}
                 style={styles.list}
                 refreshControl={
                 <RefreshControl
@@ -279,20 +284,22 @@ export default function AiConversationDetailScreen() {
               )}
             />
             </View>
-
-            <View style={[styles.composerWrap, { paddingBottom: insets.bottom || 0, position: 'absolute', left: 0, right: 0, bottom: 40 }]}> 
-              <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
-              <MessageComposer
-                onSend={handleSend}
-                sending={sendMutation.isPending || isLoading}
-                onFocus={() => scrollToBottom(true)}
-                onHeightChange={(height) => setComposerHeight(height)}
-              />
-            </View>
           </View>
-        </KeyboardAvoidingView>
-      )}
-    </SafeAreaView>
+        )}
+      </SafeAreaView>
+
+      <SafeAreaView style={styles.composerContainer} edges={['bottom']}>
+        <View style={styles.composerWrap}>
+          <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
+          <MessageComposer
+            onSend={handleSend}
+            sending={sendMutation.isPending || isLoading}
+            onFocus={() => scrollToBottom(true)}
+            onHeightChange={(height) => setComposerHeight(height)}
+          />
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -306,6 +313,11 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  composerContainer: {
+    borderTopWidth: 1,
+    borderTopColor: semantics.border.default,
+    backgroundColor: semantics.bg.surface,
   },
   chatBody: {
     flex: 1,
