@@ -32,11 +32,13 @@
     },
     "web": {},
     "plugins": [
+      "./plugins/withGoogleMapsAndroidManifest.js",
       "expo-router"
     ],
     "extra": {
       "EXPO_PUBLIC_API_URL": "https://api.urbanservice.me",
       "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "963656240959-f0o3tpedl2i169mrb6k3h4eagq74kq38.apps.googleusercontent.com",
+      "GOOGLE_MAPS_API_KEY": "${GOOGLE_MAPS_API_KEY}",
       "router": {},
       "eas": {
         "projectId": "34fad211-1fae-4e82-ac99-11700199868e"

@@ -29,12 +29,31 @@ const getErrorContext = (error) => {
   return { status, data, requestUrl };
 };
 
-const sanitizeRequestData = (data) => {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
-  if ('password' in data) {
-    return { ...data, password: '[REDACTED]' };
+const redactSensitiveValues = (value) => {
+  if (!value || typeof value !== 'object') return value;
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveValues(item));
   }
-  return data;
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entryValue]) => {
+      if (/token|refreshToken|accessToken|authorization|password|secret|cookie/i.test(key)) {
+        return [key, '[REDACTED]'];
+      }
+
+      if (entryValue && typeof entryValue === 'object') {
+        return [key, redactSensitiveValues(entryValue)];
+      }
+
+      return [key, entryValue];
+    }),
+  );
+};
+
+const sanitizeRequestData = (data) => {
+  if (!data || typeof data !== 'object') return data;
+  return redactSensitiveValues(data);
 };
 
 const logRequestDetails = (config) => {
@@ -69,7 +88,7 @@ const logResponseErrorDetails = (error, req = {}) => {
     code: error?.code || null,
     message: error?.message || null,
     statusText: error?.response?.statusText || null,
-    responseData: data,
+    responseData: sanitizeRequestData(data),
     requestData,
     timeout: req?.timeout || error?.config?.timeout || null,
     stack: error?.stack || null,
@@ -358,13 +377,7 @@ axiosClient.interceptors.request.use(
     } catch (e) {
       /* ignore logging errors */
     }
-    console.log('[API req start]', {
-      url: `${config.baseURL || apiBaseUrl}${config.url || ''}`,
-      method: (config?.method || 'unknown').toUpperCase(),
-      timeout: config?.timeout || null,
-    });
     const token = await getToken();
-    console.log('[API req token]', { tokenPresent: Boolean(token) });
     if (config.headers) {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -388,8 +401,6 @@ axiosClient.interceptors.response.use(
         url: response?.config?.url || null,
         status: response?.status || null,
       });
-      // Also log the response body for debugging list responses
-      console.log('[API resp body]', { url: response?.config?.url || null, body: response?.data ?? null });
     } catch (e) {
       /* ignore logging errors */
     }
