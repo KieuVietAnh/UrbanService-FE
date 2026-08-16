@@ -13,6 +13,8 @@ import useTicketDetail from '../../hooks/useTicketDetail';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
+import { FeedbackMessagesProvider } from '../../contexts/FeedbackMessagesContext';
+import CitizenTicketConversation from '../../components/tickets/CitizenTicketConversation';
 
 const CATEGORY_LABELS = {
   Drainage: 'Thoát nước',
@@ -2638,6 +2640,12 @@ export const TicketDetailPage = () => {
               </div>
             </section>
           </section>
+
+          {isServiceUser ? (
+            <FeedbackMessagesProvider feedbackId={feedbackId} includeInternal={false}>
+              <CitizenTicketConversation currentUserId={snapshotUserId} />
+            </FeedbackMessagesProvider>
+          ) : null}
         </main>
       </TicketDetailShell>
 
