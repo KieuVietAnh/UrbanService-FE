@@ -13,6 +13,7 @@ const citizenNavigation = [
   { label: 'Phản ánh của tôi', to: '/tickets', end: true },
   { label: 'Bảng tin', to: '/community/feed' },
   { label: 'Bản đồ sự cố', to: '/community/map' },
+  { label: 'Cảnh báo', to: '/area-alerts' },
 ];
 
 const isCitizenNavigationActive = (targetPath, pathname) => {

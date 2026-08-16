@@ -9,8 +9,9 @@ import { useAuth } from '../contexts/AuthContext';
 
 const PUBLIC_CREATE_FEEDBACK_URL = '/login?redirect=/tickets/create&intent=create-feedback';
 const PUBLIC_MY_FEEDBACKS_URL = '/login?redirect=/tickets&intent=my-feedbacks';
+const PUBLIC_AREA_ALERTS_URL = '/login?redirect=/area-alerts&intent=area-alerts';
 
-const getQuickAccessItems = ({ createFeedbackUrl, myFeedbacksUrl }) => [
+const getQuickAccessItems = ({ createFeedbackUrl, myFeedbacksUrl, areaAlertsUrl }) => [
   {
     title: 'Gửi phản ánh mới',
     description: 'Ghi nhận vấn đề bằng hình ảnh, vị trí và mô tả rõ ràng.',
@@ -31,6 +32,13 @@ const getQuickAccessItems = ({ createFeedbackUrl, myFeedbacksUrl }) => [
     to: '/community/map',
     icon: Lucide.Map,
     iconClassName: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
+  },
+  {
+    title: 'Cảnh báo khu vực',
+    description: 'Theo dõi phường quan tâm và nhận cảnh báo đô thị liên quan.',
+    to: areaAlertsUrl,
+    icon: Lucide.BellRing,
+    iconClassName: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
   },
 ];
 
@@ -59,7 +67,8 @@ export const LandingPage = () => {
   const { isAuthenticated } = useAuth();
   const createFeedbackUrl = isAuthenticated ? '/tickets/create' : PUBLIC_CREATE_FEEDBACK_URL;
   const myFeedbacksUrl = isAuthenticated ? '/tickets' : PUBLIC_MY_FEEDBACKS_URL;
-  const quickAccessItems = getQuickAccessItems({ createFeedbackUrl, myFeedbacksUrl });
+  const areaAlertsUrl = isAuthenticated ? '/area-alerts' : PUBLIC_AREA_ALERTS_URL;
+  const quickAccessItems = getQuickAccessItems({ createFeedbackUrl, myFeedbacksUrl, areaAlertsUrl });
 
   const {
     items,
@@ -158,7 +167,7 @@ export const LandingPage = () => {
               <path d="M-30 156C198 102 344 178 560 126C776 73 929 170 1150 112C1282 77 1382 81 1480 118" stroke="currentColor" strokeWidth="1" strokeDasharray="7 10" />
             </svg>
           </div>
-          <div className="mx-auto grid w-full max-w-[1680px] gap-4 px-4 py-7 sm:px-6 md:grid-cols-3 lg:px-8 2xl:px-12">
+          <div className="mx-auto grid w-full max-w-[1680px] gap-4 px-4 py-7 sm:px-6 md:grid-cols-2 lg:px-8 xl:grid-cols-4 2xl:px-12">
             {quickAccessItems.map(({ title, description, to, icon: Icon, iconClassName }) => (
               <Link
                 key={title}

@@ -6,12 +6,14 @@ import { NotificationBell } from '../notifications/NotificationBell';
 
 const CREATE_FEEDBACK_URL = '/login?redirect=/tickets/create&intent=create-feedback';
 const MY_FEEDBACKS_URL = '/login?redirect=/tickets&intent=my-feedbacks';
+const AREA_ALERTS_URL = '/login?redirect=/area-alerts&intent=area-alerts';
 
-const getNavigationItems = ({ isAuthenticated, myFeedbacksUrl }) => [
+const getNavigationItems = ({ isAuthenticated, myFeedbacksUrl, areaAlertsUrl }) => [
   { label: 'Trang chủ', to: '/' },
   ...(isAuthenticated ? [{ label: 'Phản ánh của tôi', to: myFeedbacksUrl }] : []),
   { label: 'Bảng tin', to: '/community/feed' },
   { label: 'Bản đồ sự cố', to: '/community/map' },
+  { label: 'Cảnh báo', to: areaAlertsUrl },
 ];
 
 const isNavigationItemActive = (pathname, item) => {
@@ -53,8 +55,9 @@ export const PublicHeader = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const createFeedbackUrl = isAuthenticated ? '/tickets/create' : CREATE_FEEDBACK_URL;
   const myFeedbacksUrl = isAuthenticated ? '/tickets' : MY_FEEDBACKS_URL;
+  const areaAlertsUrl = isAuthenticated ? '/area-alerts' : AREA_ALERTS_URL;
   const displayName = user?.fullName || user?.name || 'Tài khoản';
-  const navigationItems = getNavigationItems({ isAuthenticated, myFeedbacksUrl });
+  const navigationItems = getNavigationItems({ isAuthenticated, myFeedbacksUrl, areaAlertsUrl });
 
   const handleLogout = async () => {
     await logout();

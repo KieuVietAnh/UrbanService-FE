@@ -27,6 +27,7 @@ const CommunityMapPage = lazy(() => import('../pages/community/CommunityMapPage'
 const NotificationCenterPage = lazy(() => import('../pages/notifications/NotificationCenterPage').then((m) => ({ default: m.NotificationCenterPage })));
 const ProfilePage = lazy(() => import('../pages/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const SettingsPage = lazy(() => import('../pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const ResidentAreaAlertsPage = lazy(() => import('../pages/alerts/ResidentAreaAlertsPage').then((m) => ({ default: m.ResidentAreaAlertsPage })));
 
 const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then((m) => ({ default: m.AIReviewDetail })));
 const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
@@ -296,6 +297,15 @@ export const AppRoutes = () => {
           <DashboardLayout>
             <SettingsPage />
           </DashboardLayout>
+        </ProtectedRoute>
+      } />
+      <Route path="/area-alerts" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SERVICE_USER]}>
+            <DashboardLayout>
+              <ResidentAreaAlertsPage />
+            </DashboardLayout>
+          </RoleGuard>
         </ProtectedRoute>
       } />
 
