@@ -110,7 +110,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       key={item.name}
       to={item.path}
       onClick={onClose}
-      title={compact ? item.name : undefined}
+      title={compact ? (item.label || item.name) : undefined}
       className={`group relative flex items-center rounded-xl border px-2.5 py-2 text-[13px] font-semibold transition-colors duration-150 focus:outline-none focus-visible:outline-none active:outline-none ${compact ? 'justify-center px-2.5 py-2' : 'gap-3 px-2.5 py-2'} ${isActive
         ? 'admin-sidebar-link-active border-blue-200/70 bg-blue-50 text-blue-700 shadow-sm shadow-blue-100/70'
         : 'admin-sidebar-link border-transparent text-slate-600 hover:border-slate-200/80 hover:bg-white/75 hover:text-slate-950 hover:shadow-sm hover:shadow-blue-100/40'
@@ -123,7 +123,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       <span className={`admin-sidebar-link-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-transparent text-slate-400 group-hover:bg-slate-100 group-hover:text-slate-700'}`}>
         {renderIcon(item.icon, 'h-[18px] w-[18px]')}
       </span>
-      {!compact && <span className="min-w-0 truncate">{item.name}</span>}
+      {!compact && <span className="min-w-0 truncate">{item.label || item.name}</span>}
     </NavLink>
   );
 

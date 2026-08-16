@@ -318,6 +318,7 @@ export const Header = ({ onMenuToggle }) => {
       tickets: 'Phản ánh',
       create: 'Gửi phản ánh mới',
       queue: 'Hàng chờ kiểm duyệt',
+      conversations: 'Quản lý trao đổi',
       duplicates: 'Hộp thư trùng lặp',
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
