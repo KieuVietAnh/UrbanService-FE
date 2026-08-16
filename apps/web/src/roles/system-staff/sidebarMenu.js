@@ -2,18 +2,21 @@
 const menuItems = [
   {
     name: 'Không Gian Làm Việc',
+    label: 'Không gian làm việc',
     path: '/dashboard',
     icon: 'LayoutDashboard',
     activePatterns: ['/staff/workspace', '/staff/dashboard', '/dashboard']
   },
   {
     name: 'Hàng Chờ Kiểm Duyệt AI',
+    label: 'Hàng chờ kiểm duyệt AI',
     path: '/staff/queue',
     icon: 'Cpu',
     activePatterns: ['/staff/queue', '/staff/ai-review']
   },
   {
     name: 'Quản Lý Phản Ánh',
+    label: 'Quản lý phản ánh',
     path: '/staff/feedbacks',
     icon: 'MessageSquareText',
     activePatterns: [
@@ -26,12 +29,14 @@ const menuItems = [
   },
   {
     name: 'Quản lý Conversation',
+    label: 'Quản lý trao đổi',
     path: '/staff/conversations',
     icon: 'MessageSquare',
     activePatterns: ['/staff/conversations']
   },
   {
     name: 'Quản Lý Cảnh Báo Khu Vực',
+    label: 'Quản lý cảnh báo khu vực',
     path: '/staff/area-alerts',
     icon: 'AlertTriangle',
     activePatterns: ['/staff/area-alerts', '/staff/alerts', '/staff/area-alerts-management']
@@ -39,30 +44,35 @@ const menuItems = [
  
   {
     name: 'Danh bạ Điều phối viên',
+    label: 'Danh bạ điều phối viên',
     path: '/staff/coordinators',
     icon: 'Users',
     activePatterns: ['/staff/coordinators', '/staff/service-providers']
   },
   {
     name: 'Kiểm tra ứng viên nhà cung cấp',
+    label: 'Kiểm tra ứng viên nhà cung cấp',
     path: '/staff/provider-candidates-checker',
     icon: 'Search',
     activePatterns: ['/staff/provider-candidates', '/staff/provider-check', '/staff/provider-candidates-checker']
   },
   {
     name: 'Xử Lý Trùng Lặp',
+    label: 'Xử lý trùng lặp',
     path: '/staff/duplicates',
     icon: 'Copy',
     activePatterns: ['/staff/duplicates', '/staff/duplicate-detection', '/staff/linked-feedbacks']
   },
   {
     name: 'Trang Cá Nhân',
+    label: 'Trang cá nhân',
     path: '/profile',
     icon: 'User',
     activePatterns: ['/profile', '/staff/profile']
   },
   {
     name: 'Cài Đặt',
+    label: 'Cài đặt',
     path: '/settings',
     icon: 'Settings',
     activePatterns: ['/settings', '/staff/settings']
@@ -72,12 +82,12 @@ const menuItems = [
 export const systemStaffSidebarSections = [
   {
     id: 'workspace',
-    title: 'Không Gian Làm Việc',
+    title: 'Không gian làm việc',
     items: menuItems.filter((item) => ['Không Gian Làm Việc', 'Hàng Chờ Kiểm Duyệt AI', 'Quản Lý Phản Ánh'].includes(item.name))
   },
   {
     id: 'coordination',
-    title: 'Điều phối & Giám Sát',
+    title: 'Điều phối & giám sát',
     items: menuItems.filter((item) => ['Quản lý Conversation', 'Quản Lý Cảnh Báo Khu Vực', 'Danh bạ Điều phối viên', 'Xử Lý Trùng Lặp'].includes(item.name))
   },
   {
