@@ -39,10 +39,6 @@ export default function LoginScreen() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const submitLockRef = useRef(false);
 
-  const googleClientId =
-    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
-    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
-    '';
   const googleIosClientId =
     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
     Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
@@ -56,14 +52,26 @@ export default function LoginScreen() {
     Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
     '';
 
+  const redirectUri = makeRedirectUri({
+    scheme: Constants.expoConfig?.scheme || Constants.manifest?.scheme || 'urbanmind',
+  });
+
+  console.log('[GoogleOAuth] debug', {
+    packageName: Constants.expoConfig?.android?.package || Constants.manifest?.android?.package || 'unknown',
+    hasIosClientId: Boolean(googleIosClientId),
+    hasAndroidClientId: Boolean(googleAndroidClientId),
+    hasWebClientId: Boolean(googleWebClientId),
+    iosClientIdPresent: !!googleIosClientId,
+    androidClientIdPresent: !!googleAndroidClientId,
+    webClientIdPresent: !!googleWebClientId,
+    redirectUri,
+  });
+
   const [request, , promptAsync] = Google.useAuthRequest({
-    clientId: googleClientId,
     iosClientId: googleIosClientId,
     androidClientId: googleAndroidClientId,
     webClientId: googleWebClientId,
-    redirectUri: makeRedirectUri({
-      scheme: Constants.expoConfig?.scheme || Constants.manifest?.scheme || 'urbanmind',
-    }),
+    redirectUri,
     scopes: ['profile', 'email'],
   });
 
@@ -112,6 +120,22 @@ export default function LoginScreen() {
 
     try {
       const result = await promptAsync();
+      if (result.type === 'success') {
+        console.log('[GoogleOAuth] result', {
+          type: result.type,
+          hasAuthentication: Boolean(result.authentication),
+          hasIdToken: Boolean(result.authentication?.idToken),
+        });
+      } else {
+        console.log('[GoogleOAuth] result', {
+          type: result.type,
+          error: 'error' in result ? result.error : undefined,
+          errorCode: 'errorCode' in result ? result.errorCode : undefined,
+          errorDescription: 'errorDescription' in result ? result.errorDescription : undefined,
+          params: 'params' in result ? Object.keys(result.params || {}) : [],
+        });
+      }
+
       if (result.type !== 'success' || !result.authentication?.idToken) {
         const errorMessage = result.type === 'dismiss'
           ? 'Google login đã bị hủy'

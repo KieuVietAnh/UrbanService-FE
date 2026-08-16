@@ -231,17 +231,21 @@ function usePulseOrb() {
   return anim;
 }
 
-// ─── FadeUp entrance (translate-y + opacity, GPU-safe) ───────────────────────
+// ─── FadeUp entrance (keep content visible; animate translation only) ───────
 
 function useFadeUp(delay = 0) {
-  const translateY = useRef(new Animated.Value(12)).current;
-  const opacity    = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(translateY, { toValue: 0, duration: 480, delay, useNativeDriver: true }),
-      Animated.timing(opacity,    { toValue: 1, duration: 480, delay, useNativeDriver: true }),
-    ]).start();
-  }, []);
+    Animated.timing(translateY, {
+      toValue: 0,
+      duration: 320,
+      delay,
+      useNativeDriver: true,
+    }).start();
+  }, [delay, translateY]);
+
   return { translateY, opacity };
 }
 
@@ -584,6 +588,7 @@ export default function InboxScreen() {
   const {
     data: aiData,
     isLoading: aiLoading,
+    isFetching: aiFetching,
     isError: aiError,
     refetch: refetchAi,
     isRefetching: aiRefetching,
@@ -595,6 +600,7 @@ export default function InboxScreen() {
   const {
     data: supportThreads,
     isLoading: supportLoading,
+    isFetching: supportFetching,
     isError: supportError,
     refetch: refetchSupport,
     isRefetching: supportRefetching,
@@ -722,12 +728,12 @@ export default function InboxScreen() {
     }, [authReady, queryClient, user])
   );
 
-  const aiConversations = useMemo(() => (Array.isArray(aiData) ? aiData : []), [aiData]);
-  const supportFeedbacks = useMemo(() => (Array.isArray(supportThreads) ? supportThreads : []), [supportThreads]);
+  const aiConversations: AiConversationItem[] = Array.isArray(aiData) ? aiData : [];
+  const supportFeedbacks: SupportThread[] = Array.isArray(supportThreads) ? supportThreads : [];
 
   const isAuthBooting = !authReady || !user;
-  const isInitialInboxLoad = isAuthBooting || (aiLoading && aiConversations.length === 0);
-  const isSupportInitiallyLoading = supportLoading && supportFeedbacks.length === 0;
+  const showAiInitialLoading = activeTab === 'ai' && aiLoading && aiData === undefined;
+  const showSupportInitialLoading = activeTab === 'support' && supportLoading && supportThreads === undefined;
 
   const handleTabPress = useCallback(
     (tab: TabKey) => {
@@ -763,16 +769,6 @@ export default function InboxScreen() {
     () => <SupportEmptyState onPress={handleSelectFeedback} />,
     [handleSelectFeedback]
   );
-
-  if (isInitialInboxLoad) {
-    return (
-      <SafeAreaView style={rootStyles.safe} edges={['top']}>
-        <View style={tabContentStyles.initialLoading}>
-          <ActivityIndicator size="large" color={D.aiPrimary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={rootStyles.safe} edges={['top']}>
@@ -828,9 +824,9 @@ export default function InboxScreen() {
       </View>
 
       {/* ── Tab Content ─────────────────────────────────────────────────────── */}
-      <View style={{ flex: 1, position: 'relative' }}>
-        <View style={[tabContentStyles.tabPane, activeTab === 'ai' ? tabContentStyles.tabVisible : tabContentStyles.tabHidden]}>
-          <>
+      <View style={tabContentStyles.contentRoot}>
+        {activeTab === 'ai' ? (
+          <View style={tabContentStyles.tabPane}>
             <View style={tabContentStyles.aiHeaderWrap}>
               <AIHeroCard onPress={handleNewAi} />
               {aiConversations.length > 0 && (
@@ -842,66 +838,77 @@ export default function InboxScreen() {
               )}
             </View>
 
-            <FlatList
-              key="ai"
-              style={{ flex: 1 }}
-              ref={aiListRef}
-              data={aiConversations}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={[
-                tabContentStyles.listContent,
-                aiConversations.length === 0 && tabContentStyles.flexGrow,
-              ]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={aiRefetching} onRefresh={refetchAi} tintColor={D.aiPrimary} />
-              }
-              ListEmptyComponent={aiError ? (
-                <AppErrorState onRetry={refetchAi}>Không thể tải lịch sử hội thoại AI.</AppErrorState>
-              ) : (
-                <AiEmptyHint onPress={handleNewAi} />
-              )}
-              renderItem={({ item, index }) => (
-                <AiConversationRow item={item} index={index} onPress={() => handleAiItemPress(item)} />
-              )}
-              ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
-            />
-          </>
-        </View>
-
-        <View style={[tabContentStyles.tabPane, activeTab === 'support' ? tabContentStyles.tabVisible : tabContentStyles.tabHidden]}>
-          {isSupportInitiallyLoading ? (
-            <View style={tabContentStyles.loadingRoot}>
-              <ActivityIndicator size="large" color={D.aiPrimary} />
-              <Text style={tabContentStyles.loadingText}>Đang tải hộp thư hỗ trợ…</Text>
-            </View>
-          ) : supportError && supportFeedbacks.length === 0 ? (
-            <View style={tabContentStyles.loadingRoot}>
-              <AppErrorState onRetry={refetchSupport}>Không thể tải hội thoại hỗ trợ.</AppErrorState>
-            </View>
-          ) : (
-            <FlatList
-              key="support"
-              style={{ flex: 1 }}
-              ref={supportListRef}
-              data={supportFeedbacks}
-              keyExtractor={(item, i) => String(item?.feedbackId ?? i)}
-              contentContainerStyle={[
-                tabContentStyles.listContent,
-                supportFeedbacks.length === 0 && tabContentStyles.flexGrow,
-              ]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={supportRefetching} onRefresh={refetchSupport} tintColor={D.aiPrimary} />
-              }
-              ListEmptyComponent={!isSupportInitiallyLoading ? <SupportEmpty /> : null}
-              renderItem={({ item, index }) => (
-                <SupportFeedbackCard item={item} index={index} onPress={() => handleSupportPress(item)} />
-              )}
-              ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
-            />
-          )}
-        </View>
+            {showAiInitialLoading ? (
+              <View style={tabContentStyles.loadingRoot}>
+                <ActivityIndicator size="large" color={D.aiPrimary} />
+                <Text style={tabContentStyles.loadingText}>Đang tải hộp thư AI…</Text>
+              </View>
+            ) : (
+              <View style={{ flex: 1 }}>
+                <FlatList
+                  key="ai"
+                  style={{ flex: 1 }}
+                  ref={aiListRef}
+                  data={aiConversations}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={[
+                    tabContentStyles.listContent,
+                    aiConversations.length === 0 && tabContentStyles.flexGrow,
+                  ]}
+                  showsVerticalScrollIndicator={false}
+                  refreshControl={
+                    <RefreshControl refreshing={aiRefetching} onRefresh={refetchAi} tintColor={D.aiPrimary} />
+                  }
+                  ListEmptyComponent={aiError ? (
+                    <AppErrorState onRetry={refetchAi}>Không thể tải lịch sử hội thoại AI.</AppErrorState>
+                  ) : (
+                    <AiEmptyHint onPress={handleNewAi} />
+                  )}
+                  renderItem={({ item, index }) => (
+                    <AiConversationRow item={item} index={index} onPress={() => handleAiItemPress(item)} />
+                  )}
+                  ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
+                />
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={tabContentStyles.tabPane}>
+            {showSupportInitialLoading ? (
+              <View style={tabContentStyles.loadingRoot}>
+                <ActivityIndicator size="large" color={D.aiPrimary} />
+                <Text style={tabContentStyles.loadingText}>Đang tải hộp thư hỗ trợ…</Text>
+              </View>
+            ) : supportError && supportFeedbacks.length === 0 ? (
+              <View style={tabContentStyles.loadingRoot}>
+                <AppErrorState onRetry={refetchSupport}>Không thể tải hội thoại hỗ trợ.</AppErrorState>
+              </View>
+            ) : (
+              <View style={{ flex: 1 }}>
+                <FlatList
+                  key="support"
+                  style={{ flex: 1 }}
+                  ref={supportListRef}
+                  data={supportFeedbacks}
+                  keyExtractor={(item, i) => String(item?.feedbackId ?? i)}
+                  contentContainerStyle={[
+                    tabContentStyles.listContent,
+                    supportFeedbacks.length === 0 && tabContentStyles.flexGrow,
+                  ]}
+                  showsVerticalScrollIndicator={false}
+                  refreshControl={
+                    <RefreshControl refreshing={supportRefetching} onRefresh={refetchSupport} tintColor={D.aiPrimary} />
+                  }
+                  ListEmptyComponent={!showSupportInitialLoading ? <SupportEmpty /> : null}
+                  renderItem={({ item, index }) => (
+                    <SupportFeedbackCard item={item} index={index} onPress={() => handleSupportPress(item)} />
+                  )}
+                  ItemSeparatorComponent={() => <View style={tabContentStyles.separator} />}
+                />
+              </View>
+            )}
+          </View>
+        )}
       </View>
 
     </SafeAreaView>
@@ -1021,6 +1028,9 @@ const tabStyles = StyleSheet.create({
 });
 
 const tabContentStyles = StyleSheet.create({
+  contentRoot: {
+    flex: 1,
+  },
   listContent: {
     paddingHorizontal: 20,
     paddingBottom: 124,
@@ -1029,20 +1039,6 @@ const tabContentStyles = StyleSheet.create({
   flexGrow: { flexGrow: 1 },
   tabPane: {
     flex: 1,
-  },
-  tabVisible: {
-    opacity: 1,
-    position: 'relative',
-    pointerEvents: 'auto',
-  },
-  tabHidden: {
-    opacity: 0,
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    pointerEvents: 'none',
   },
   loadingRoot: {
     flex: 1,

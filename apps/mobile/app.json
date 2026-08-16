@@ -37,7 +37,9 @@
     ],
     "extra": {
       "EXPO_PUBLIC_API_URL": "https://api.urbanservice.me",
-      "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "963656240959-f0o3tpedl2i169mrb6k3h4eagq74kq38.apps.googleusercontent.com",
+      
+      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "353963599123-7vtdpcp0okkrhrr2va9q4p4lbsndl6si.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "353963599123-ofbl3aoivkest6llsjh68qqrimp8p6eg.apps.googleusercontent.com",
       "GOOGLE_MAPS_API_KEY": "${GOOGLE_MAPS_API_KEY}",
       "router": {},
       "eas": {

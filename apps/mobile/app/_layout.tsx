@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { View, Text } from 'react-native';
 import { Stack } from 'expo-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -13,8 +14,6 @@ import { initApi } from '@/config/api';
 import { queryClient } from '@/config/query-client';
 import { ToastProvider } from '@/components/shared';
 import { useAuthGuard } from '@/features/auth';
-
-import '../global.css';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -36,16 +35,25 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
+    console.log('[RootLayout] initApi');
     initApi();
   }, []);
 
   useEffect(() => {
+    console.log('[RootLayout] fontsLoaded', fontsLoaded);
     if (fontsLoaded) {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded) {
+    console.log('[RootLayout] waiting for fonts to load');
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff' }}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>Loading UrbanMind...</Text>
+      </View>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

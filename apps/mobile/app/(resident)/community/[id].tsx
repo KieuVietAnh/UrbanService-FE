@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, KeyboardAvoidingView, Platform, RefreshControl, Modal } from 'react-native';
+import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, Platform, RefreshControl, Modal } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -174,6 +174,10 @@ export default function CommunityDetailScreen() {
       setCommentInput('');
       await queryClient.invalidateQueries({ queryKey: communityKeys.detail(feedbackId) });
       toast.success('Đã gửi bình luận');
+      // Auto-scroll to latest comment
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 300);
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể gửi bình luận'),
   });
@@ -219,15 +223,25 @@ export default function CommunityDetailScreen() {
   const evidenceImages = attachments.map((attachment) => attachment.fileUrl).filter(Boolean) as string[];
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <AppHeader showBack title="Chi tiết cộng đồng" />
+    <View style={{ flex: 1, backgroundColor: semantics.bg.app }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <AppHeader showBack title="Chi tiết cộng đồng" />
 
-      <ScrollView
-        ref={scrollViewRef}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={semantics.text.brand} />}
-      >
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            ref={scrollViewRef}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            scrollEnabled={true}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+            onContentSizeChange={() => {
+              setTimeout(() => {
+                scrollViewRef.current?.scrollToEnd({ animated: true });
+              }, 80);
+            }}
+            refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={semantics.text.brand} />}
+          >
         <AppCard shadow="sm" className="mt-4 mx-4">
           <View style={styles.heroTop}>
             <View style={styles.heroBadgeRow}>
@@ -339,14 +353,14 @@ export default function CommunityDetailScreen() {
           )}
         </View>
       </ScrollView>
+        </View>
+      </SafeAreaView>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        style={styles.composerHost}
-        onLayout={handleComposerLayout}
-      >
-        <View style={styles.composer}>
+      <SafeAreaView style={styles.composerHost} edges={['bottom']}>
+        <View
+          style={styles.composer}
+          onLayout={handleComposerLayout}
+        >
           <TextInput
             ref={(node) => {
               commentInputRef.current = node;
@@ -370,7 +384,7 @@ export default function CommunityDetailScreen() {
             <Icon name="send" size={18} color="#FFFFFF" />
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </SafeAreaView>
 
       <Modal visible={Boolean(selectedImage)} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
@@ -380,7 +394,7 @@ export default function CommunityDetailScreen() {
           {selectedImage ? <Image source={{ uri: selectedImage }} style={styles.fullImage} resizeMode="contain" /> : null}
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -425,7 +439,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   scrollContent: {
-    paddingBottom: 160,
+    paddingBottom: 20,
   },
   heroTop: {
     padding: 20,
@@ -599,21 +613,17 @@ const styles = StyleSheet.create({
     color: semantics.text.primary,
   },
   composerHost: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 100,
-    zIndex: 2,
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: semantics.border.default,
+    backgroundColor: semantics.bg.surface,
   },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: semantics.border.default,
-    backgroundColor: semantics.bg.surface,
+    paddingVertical: 10,
   },
   input: {
     flex: 1,
