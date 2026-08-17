@@ -1,10 +1,12 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { duplicateManagementApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import Badge from '../../components/design-system/Badge';
 import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
 import * as Lucide from 'lucide-react';
+import Button from '../../components/design-system/Button';
+import { ManagerPageHeader } from '../../components/manager/ManagerPageElements';
 import { normalizeDuplicateCandidatePayload, extractImageUrls } from './duplicateDetailUtils';
 
 // formatDate removed from this file; other pages use their own helpers
@@ -133,7 +135,6 @@ export const DuplicateDetailPage = () => {
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [rejectLoading, setRejectLoading] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
 
   const loadCandidate = useCallback(async () => {
@@ -147,11 +148,10 @@ export const DuplicateDetailPage = () => {
     setError('');
     try {
       const response = await duplicateManagementApi.getDuplicateById(duplicateCandidateId);
-      console.debug('Raw detail response', response);
+
       const normalizedCandidate = normalizeDuplicateCandidatePayload(response || null);
-      console.debug('Loaded candidate', normalizedCandidate);
-      console.debug('Primary images (loaded):', normalizedCandidate?.primaryFeedback?.images || []);
-      console.debug('Duplicate images (loaded):', normalizedCandidate?.duplicateFeedback?.images || []);
+
+
 
       // If attachments are stored on the referenced feedback resources, fetch them by id
       const fbId = response?.feedbackId || response?.feedback?.feedbackId || response?.feedback?.id || response?.feedback?.feedback_id || null;
@@ -159,33 +159,19 @@ export const DuplicateDetailPage = () => {
 
       let fetchedFb = null;
       let fetchedParent = null;
-      try {
-        const promises = [];
-        if (fbId) promises.push(managementFeedbackApi.getFeedbackById(fbId));
-        if (parentId) promises.push(managementFeedbackApi.getFeedbackById(parentId));
-        const settled = await Promise.allSettled(promises);
-        if (fbId) fetchedFb = settled.shift()?.status === 'fulfilled' ? settled[0]?.value ?? null : null; // handled below
-        // Note: shifting above mutated array; instead map by index
-      } catch {
-        // ignore fetch errors
-      }
 
-      // Simpler: fetch individually to ensure correct mapping
-      try {
-        if (fbId) fetchedFb = await managementFeedbackApi.getFeedbackById(fbId);
-      } catch {
-        fetchedFb = null;
-      }
-      try {
-        if (parentId) fetchedParent = await managementFeedbackApi.getFeedbackById(parentId);
-      } catch {
-        fetchedParent = null;
-      }
+      const detailRequests = [
+        fbId ? managementFeedbackApi.getFeedbackById(fbId) : Promise.resolve(null),
+        parentId ? managementFeedbackApi.getFeedbackById(parentId) : Promise.resolve(null),
+      ];
+      const [feedbackResult, parentResult] = await Promise.allSettled(detailRequests);
+
+      fetchedFb = feedbackResult.status === 'fulfilled' ? feedbackResult.value : null;
+      fetchedParent = parentResult.status === 'fulfilled' ? parentResult.value : null;
 
       const fbUrls = extractImageUrls(fetchedFb || response?.feedback || {});
       const parentUrls = extractImageUrls(fetchedParent || response?.potentialParentFeedback || {});
-      console.debug('Fetched feedback attachments (A):', fbUrls);
-      console.debug('Fetched parent attachments (B):', parentUrls);
+
 
       // If normalized images empty, populate each side from the corresponding fetched resource
       const hasPrimaryImages = normalizedCandidate?.primaryFeedback?.images?.length;
@@ -361,19 +347,18 @@ export const DuplicateDetailPage = () => {
   };
 
   const handleRejectDuplicate = async () => {
-    if (!duplicateCandidateId || !rejectReason.trim()) return;
+    if (!duplicateCandidateId) return;
 
     setRejectLoading(true);
     setPageMessage({ type: '', text: '' });
 
     try {
-      await duplicateManagementApi.rejectDuplicateCandidate(duplicateCandidateId, rejectReason.trim());
+      await duplicateManagementApi.rejectDuplicateCandidate(duplicateCandidateId);
       setRejectModalOpen(false);
-      setRejectReason('');
       navigate('/staff/duplicates', {
         replace: true,
         state: {
-          successMessage: 'Đã từ chối candidate trùng lặp và loại khỏi hàng chờ thành công.',
+          successMessage: 'Đã xác định hai phản ánh không trùng và loại khỏi hàng chờ.',
         },
       });
     } catch (err) {
@@ -388,7 +373,7 @@ export const DuplicateDetailPage = () => {
   };
 
   return (
-    <div className="space-y-6 pb-40">
+    <div className="admin-page-shell space-y-6 pb-6">
       {pageMessage.type === 'success' && (
         <SuccessAlert message={pageMessage.text} onClose={() => setPageMessage({ type: '', text: '' })} />
       )}
@@ -396,30 +381,24 @@ export const DuplicateDetailPage = () => {
         <ErrorAlert message={pageMessage.text} onClose={() => setPageMessage({ type: '', text: '' })} />
       )}
 
-      <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-400">
-        <button type="button" onClick={() => navigate('/staff/duplicates')} className="hover:text-slate-600">
-          Xử lý trùng lặp
-        </button>
-        <Lucide.ChevronRight size={12} />
-        <span className="text-[#0052CC]">Chi tiết candidate</span>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-black">Chi tiết candidate trùng lặp</h2>
-          <p className="text-xs text-slate-500 font-semibold">Hỗ trợ staff đưa ra kết luận dựa trên AI, hình ảnh và so sánh chi tiết.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
-            ID: {duplicateCandidateId || '—'}
-          </div>
-        </div>
-      </div>
+      <ManagerPageHeader
+        title="Chi tiết trường hợp nghi trùng"
+        description="So sánh hai phản ánh, kiểm tra bằng chứng AI và đưa ra kết luận cuối cùng."
+        icon={Lucide.ScanSearch}
+        statusLabel="MÃ ĐỀ XUẤT"
+        statusValue={duplicateCandidateId ? `${String(duplicateCandidateId).slice(0, 8)}…` : '—'}
+        actions={(
+          <Button type="button" onClick={() => navigate('/staff/duplicates')} variant="ghost" size="sm">
+            <Lucide.ArrowLeft size={16} />
+            Quay lại danh sách
+          </Button>
+        )}
+      />
 
       {loading ? (
         <div className="card bg-white border border-slate-200 rounded-3xl p-10 text-center text-sm text-slate-500">
           <span className="loading loading-spinner loading-sm mr-2" />
-          Đang tải chi tiết candidate trùng lặp...
+          Đang tải chi tiết trường hợp nghi trùng...
         </div>
       ) : error ? (
         <div className="card bg-rose-50 border border-rose-200 rounded-3xl p-10 text-center text-sm text-rose-700">
@@ -427,20 +406,20 @@ export const DuplicateDetailPage = () => {
         </div>
       ) : !candidate ? (
         <div className="card bg-white border border-slate-200 rounded-3xl p-10 text-center text-sm text-slate-500">
-          Không tìm thấy dữ liệu cho candidate này.
+          Không tìm thấy dữ liệu cho trường hợp này.
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="admin-panel p-4">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Độ tương đồng</div>
-              <div className="mt-3 text-3xl font-black text-slate-900">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</div>
+              <div className="mt-1.5 text-2xl font-semibold text-slate-950">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</div>
             </div>
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="admin-panel p-4">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Mức tin cậy</div>
-              <div className="mt-3 text-3xl font-black text-slate-900">{confidenceLabel}</div>
+              <div className="mt-1.5 text-2xl font-semibold text-slate-950">{confidenceLabel}</div>
             </div>
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="admin-panel p-4">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Trạng thái</div>
               <div className="mt-3">
                 <Badge intent={getBadgeIntent(candidate?.status)} className={`${getStatusClass(candidate?.status)} px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]`}>
@@ -462,132 +441,120 @@ export const DuplicateDetailPage = () => {
             </div>
           )}
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
+          <section className="admin-panel overflow-hidden">
+            <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/30 px-5 py-4 sm:px-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Feedback A</div>
-                  <div className="mt-2 text-lg font-semibold text-slate-900">{getTextValue(primaryFeedback?.title, '—')}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Đối chiếu phản ánh</div>
+                  <h2 className="mt-1 text-lg font-semibold text-slate-950">So sánh hai phản ánh</h2>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge intent="neutral" className="rounded-full px-3 py-1 text-[11px] font-semibold">
-                    A
-                  </Badge>
-                </div>
+                <div className="text-xs font-medium text-slate-500">Giống / Khác được tính theo dữ liệu hiện tại</div>
               </div>
+            </div>
 
-              <div className="mt-5 space-y-4">
-                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100">
+            <div className="grid gap-0 xl:grid-cols-2 xl:divide-x xl:divide-slate-200">
+              <article className="p-5 sm:p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-500">Phản ánh mới</div>
+                    <h3 className="mt-1 line-clamp-2 text-base font-semibold text-slate-950">
+                      {getTextValue(primaryFeedback?.title, '—')}
+                    </h3>
+                  </div>
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-blue-50 px-2 text-xs font-semibold text-blue-700">A</span>
+                </div>
+
+                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
                   {primaryImages.length ? (
-                    <img src={primaryImages[0]} alt="Feedback A" className="h-72 w-full object-cover" />
+                    <img src={primaryImages[0]} alt="Phản ánh mới" className="h-56 w-full object-cover" />
                   ) : (
-                    <div className="flex h-72 items-center justify-center text-slate-500">
-                      <div className="text-center">
-                        <Lucide.ImageOff size={28} className="mx-auto mb-2 text-slate-400" />
+                    <div className="flex h-56 items-center justify-center text-slate-500">
+                      <div className="text-center text-sm">
+                        <Lucide.ImageOff size={26} className="mx-auto mb-2 text-slate-400" />
                         Không có ảnh
                       </div>
                     </div>
                   )}
                 </div>
+              </article>
 
-                {primaryImages.length > 1 && (
-                  <div className="grid grid-cols-4 gap-3">
-                    {primaryImages.slice(0, 4).map((src, index) => (
-                      <div key={`${src}-${index}`} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
-                        <img src={src} alt={`A ${index + 1}`} className="h-20 w-full object-cover" />
-                      </div>
-                    ))}
+              <article className="border-t border-slate-200 p-5 sm:p-6 xl:border-t-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Phản ánh nghi là chính</div>
+                    <h3 className="mt-1 line-clamp-2 text-base font-semibold text-slate-950">
+                      {getTextValue(duplicateFeedback?.title, '—')}
+                    </h3>
                   </div>
-                )}
-
-                <div className="grid gap-3">
-                  {comparisonRows.map((row) => (
-                    <div key={`A-${row.label}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-900">{row.label}</div>
-                        <Badge
-                          intent={row.match === 'same' ? 'success' : row.match === 'similar' ? 'info' : 'neutral'}
-                          className="rounded-full px-2 py-1 text-[11px] font-semibold whitespace-nowrap"
-                        >
-                          {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 text-sm text-slate-700">{row.a}</div>
-                    </div>
-                  ))}
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-emerald-50 px-2 text-xs font-semibold text-emerald-700">B</span>
                 </div>
-              </div>
-            </div>
 
-            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Feedback B</div>
-                  <div className="mt-2 text-lg font-semibold text-slate-900">{getTextValue(duplicateFeedback?.title, '—')}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge intent="neutral" className="rounded-full px-3 py-1 text-[11px] font-semibold">
-                    B
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-4">
-                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100">
+                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
                   {duplicateImages.length ? (
-                    <img src={duplicateImages[0]} alt="Feedback B" className="h-72 w-full object-cover" />
+                    <img src={duplicateImages[0]} alt="Phản ánh nghi là chính" className="h-56 w-full object-cover" />
                   ) : (
-                    <div className="flex h-72 items-center justify-center text-slate-500">
-                      <div className="text-center">
-                        <Lucide.ImageOff size={28} className="mx-auto mb-2 text-slate-400" />
+                    <div className="flex h-56 items-center justify-center text-slate-500">
+                      <div className="text-center text-sm">
+                        <Lucide.ImageOff size={26} className="mx-auto mb-2 text-slate-400" />
                         Không có ảnh
                       </div>
                     </div>
                   )}
                 </div>
+              </article>
+            </div>
 
-                {duplicateImages.length > 1 && (
-                  <div className="grid grid-cols-4 gap-3">
-                    {duplicateImages.slice(0, 4).map((src, index) => (
-                      <div key={`${src}-${index}`} className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
-                        <img src={src} alt={`B ${index + 1}`} className="h-20 w-full object-cover" />
-                      </div>
+            <div className="border-t border-slate-200">
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-[16%]" />
+                    <col className="w-[34%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[34%]" />
+                  </colgroup>
+                  <thead className="bg-slate-50/85">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Thuộc tính</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Phản ánh mới</th>
+                      <th className="px-5 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">So sánh</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Phản ánh chính</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {comparisonRows.map((row) => (
+                      <tr key={row.label} className="transition-colors hover:bg-slate-50/70">
+                        <td className="px-5 py-3.5 font-semibold text-slate-800">{row.label}</td>
+                        <td className="px-5 py-3.5 text-slate-600">{row.a}</td>
+                        <td className="px-5 py-3.5 text-center">
+                          <Badge
+                            intent={row.match === 'same' ? 'success' : row.match === 'similar' ? 'info' : 'neutral'}
+                            className="whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                          >
+                            {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
+                          </Badge>
+                        </td>
+                        <td className="px-5 py-3.5 text-slate-600">{row.b}</td>
+                      </tr>
                     ))}
-                  </div>
-                )}
-
-                <div className="grid gap-3">
-                  {comparisonRows.map((row) => (
-                    <div key={`B-${row.label}`} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-slate-900">{row.label}</div>
-                        <Badge
-                          intent={row.match === 'same' ? 'success' : row.match === 'similar' ? 'info' : 'neutral'}
-                          className="rounded-full px-2 py-1 text-[11px] font-semibold whitespace-nowrap"
-                        >
-                          {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 text-sm text-slate-700">{row.b}</div>
-                    </div>
-                  ))}
-                </div>
+                  </tbody>
+                </table>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-[32px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <section className="admin-panel overflow-hidden">
+            <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-4 md:flex-row md:items-center md:justify-between sm:px-6">
               <div>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">AI evidence</div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Bằng chứng AI</div>
                 <div className="mt-2 text-lg font-semibold text-slate-900">Bằng chứng hỗ trợ</div>
               </div>
               <div className="text-sm text-slate-500">AI là dữ liệu tham khảo, cần kiểm định bởi staff.</div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
               {evidenceItems.slice(0, 4).map((item) => (
-                <div key={item.title} className="rounded-3xl border border-slate-200 bg-white p-4">
+                <div key={item.title} className="rounded-2xl border border-slate-200 bg-white p-3.5">
                   <div className="flex items-center gap-3">
                     <div className={`flex h-9 w-9 items-center justify-center rounded-2xl ${item.active ? 'status-success' : 'status-neutral'}`}>
                       <Lucide.CheckCircle2 size={18} />
@@ -600,7 +567,7 @@ export const DuplicateDetailPage = () => {
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         </>
       )}
 
@@ -614,7 +581,7 @@ export const DuplicateDetailPage = () => {
               <div className="space-y-2">
                 <h3 className="text-lg font-black text-slate-900">Xác nhận phản ánh trùng lặp?</h3>
                 <p className="text-sm text-slate-600">
-                  Hành động này sẽ đánh dấu candidate này là trùng lặp và loại khỏi hàng chờ Pending của hệ thống.
+                  Hành động này sẽ đánh dấu đề xuất này là trùng lặp và loại khỏi hàng chờ Pending của hệ thống.
                 </p>
               </div>
             </div>
@@ -649,34 +616,17 @@ export const DuplicateDetailPage = () => {
                 <Lucide.XCircle size={18} />
               </div>
               <div className="space-y-2">
-                <h3 className="text-lg font-black text-slate-900">Từ chối candidate trùng lặp?</h3>
-                <p className="text-sm text-slate-600">
-                  Vui lòng nhập lý do từ chối để hoàn tất hành động này.
+                <h3 className="text-lg font-black text-slate-900">Xác định hai phản ánh không trùng?</h3>
+                <p className="text-sm leading-6 text-slate-600">
+                  Hệ thống sẽ đánh dấu đề xuất này là <strong>Đã từ chối</strong>. Hai phản ánh vẫn được giữ độc lập và không được gộp.
                 </p>
               </div>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              <label htmlFor="reject-reason" className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                Lý do từ chối <span className="text-rose-600">*</span>
-              </label>
-              <textarea
-                id="reject-reason"
-                rows={4}
-                value={rejectReason}
-                onChange={(event) => setRejectReason(event.target.value)}
-                placeholder="Ví dụ: Đây không phải phản ánh trùng lặp, vì nội dung khác nhau..."
-                className="textarea textarea-bordered w-full text-sm rounded-2xl"
-              />
             </div>
 
             <div className="mt-6 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setRejectModalOpen(false);
-                  setRejectReason('');
-                }}
+                onClick={() => setRejectModalOpen(false)}
                 className="btn btn-sm btn-ghost rounded-lg"
               >
                 Hủy
@@ -684,7 +634,7 @@ export const DuplicateDetailPage = () => {
               <button
                 type="button"
                 onClick={handleRejectDuplicate}
-                disabled={rejectLoading || !rejectReason.trim()}
+                disabled={rejectLoading}
                 className="btn btn-sm bg-rose-600 hover:bg-rose-700 text-white border-none rounded-lg"
               >
                 {rejectLoading ? <span className="loading loading-spinner loading-xs" /> : <Lucide.XCircle size={14} />}
@@ -695,34 +645,53 @@ export const DuplicateDetailPage = () => {
         </div>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-4 py-4 shadow-[0_-20px_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1360px] flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-2">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">AI Confidence</div>
-            <div className="text-lg font-black text-slate-900">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</div>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={handleConfirmDuplicate}
-              disabled={!canConfirmDuplicate || confirmLoading}
-              title={!canConfirmDuplicate ? confirmBlockedMessage : undefined}
-              className="btn btn-primary rounded-2xl px-5 py-3 shadow-lg shadow-blue-500/15"
-            >
-              <Lucide.CheckCircle2 size={16} className="mr-2" />
-              Xác nhận trùng lặp
-            </button>
-            <button
-              type="button"
-              onClick={() => setRejectModalOpen(true)}
-              className="btn btn-outline rounded-2xl px-5 py-3"
-            >
-              <Lucide.XCircle size={16} className="mr-2" />
-              Không trùng lặp
-            </button>
+      {candidateIsPending ? (
+        <div className="sticky bottom-4 z-30 rounded-[22px] border border-slate-200 bg-white/95 px-4 py-3.5 shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Kết luận của Staff</div>
+              <div className="mt-1 text-sm font-medium text-slate-600">
+                AI đề xuất độ tương đồng <strong className="text-slate-900">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</strong>. Hãy kiểm tra dữ liệu trước khi quyết định.
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRejectModalOpen(true)}
+                className="btn btn-outline min-h-0 rounded-xl px-4 py-2.5"
+              >
+                <Lucide.XCircle size={15} className="mr-1.5" />
+                Không trùng lặp
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmModalOpen(true)}
+                disabled={!canConfirmDuplicate || confirmLoading}
+                title={!canConfirmDuplicate ? confirmBlockedMessage : undefined}
+                className="btn btn-primary min-h-0 rounded-xl px-4 py-2.5 shadow-md shadow-blue-500/15"
+              >
+                <Lucide.CheckCircle2 size={15} className="mr-1.5" />
+                Xác nhận trùng lặp
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="admin-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${candidate?.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+              {candidate?.status === 'Confirmed' ? <Lucide.BadgeCheck size={18} /> : <Lucide.XCircle size={18} />}
+            </span>
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Trường hợp đã được xử lý</div>
+              <div className="mt-0.5 text-xs text-slate-500">Không còn hành động xử lý nào cho đề xuất này.</div>
+            </div>
+          </div>
+          <Badge intent={getBadgeIntent(candidate?.status)} className={`${getStatusClass(candidate?.status)} px-3 py-1 text-[11px] font-semibold`}>
+            {statusLabel}
+          </Badge>
+        </div>
+      )}
     </div>
   );
 };

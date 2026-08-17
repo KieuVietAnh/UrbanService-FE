@@ -320,7 +320,7 @@ export const Header = ({ onMenuToggle }) => {
       queue: 'Hàng chờ kiểm duyệt AI',
       conversations: 'Quản lý trao đổi',
       'area-alerts': 'Quản lý cảnh báo khu vực',
-      duplicates: 'Hộp thư trùng lặp',
+      duplicates: 'Xử lý trùng lặp',
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
       feed: 'Bảng tin',
@@ -358,8 +358,10 @@ export const Header = ({ onMenuToggle }) => {
 
           const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
           const isCoordinatorId = /^\d+$/.test(path) && (location.pathname.startsWith('/management/coordinators/') || location.pathname.startsWith('/staff/coordinators/'));
-          const segmentName = isFeedbackId
-            ? 'Chi tiết phản ánh'
+          const segmentName = index > 0 && location.pathname.startsWith('/staff/duplicates/')
+            ? 'Chi tiết trường hợp nghi trùng'
+            : isFeedbackId
+              ? 'Chi tiết phản ánh'
             : isCoordinatorId
               ? 'Chi tiết điều phối viên'
             : path === 'feedbacks' && location.state?.fromStaffConversations
@@ -379,6 +381,7 @@ export const Header = ({ onMenuToggle }) => {
             settings: '/settings',
             coordinators: location.pathname.startsWith('/staff/coordinators') ? '/staff/coordinators' : '/management/coordinators',
             'area-alerts': '/staff/area-alerts',
+            duplicates: '/staff/duplicates',
           };
 
           const breadcrumbLink = path === 'feedbacks' && location.state?.fromStaffConversations
