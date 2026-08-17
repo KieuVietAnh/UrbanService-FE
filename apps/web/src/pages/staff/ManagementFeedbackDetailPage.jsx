@@ -156,7 +156,8 @@ export const ManagementFeedbackDetailPage = () => {
   const [composerMode, setComposerMode] = useState('public');
   const messageViewportRef = useRef(null);
   const exchangeSectionRef = useRef(null);
-  const [activeViewTab, setActiveViewTab] = useState('detail');
+  const initialExchangeFocusHandledRef = useRef(false);
+  const [activeViewTab, setActiveViewTab] = useState(() => location.state?.focusExchange ? 'exchange' : 'detail');
 
   const {
     messages,
@@ -692,6 +693,28 @@ export const ManagementFeedbackDetailPage = () => {
     });
   }, [activeViewTab, messages.length]);
 
+  useEffect(() => {
+    if (
+      loading
+      || activeViewTab !== 'exchange'
+      || !location.state?.focusExchange
+      || initialExchangeFocusHandledRef.current
+    ) {
+      return;
+    }
+
+    initialExchangeFocusHandledRef.current = true;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        exchangeSectionRef.current?.scrollIntoView({
+          behavior: 'auto',
+          block: 'start',
+        });
+      });
+    });
+  }, [activeViewTab, loading, location.state]);
+
   const handleViewTabChange = (tabId) => {
     setActiveViewTab(tabId);
 
@@ -1078,7 +1101,7 @@ export const ManagementFeedbackDetailPage = () => {
   };
 
   const returnToFeedbackList = useCallback(() => {
-    if (location.state?.fromStaffFeedbackList) {
+    if (location.state?.fromStaffConversations || location.state?.fromStaffFeedbackList) {
       navigate(-1);
       return;
     }
@@ -1089,6 +1112,10 @@ export const ManagementFeedbackDetailPage = () => {
       },
     });
   }, [location.state, navigate, feedbackId]);
+
+  const detailParentLabel = location.state?.fromStaffConversations
+    ? 'Quản lý trao đổi'
+    : 'Quản lý phản ánh';
 
   if (loading) {
     return (
@@ -1162,9 +1189,9 @@ export const ManagementFeedbackDetailPage = () => {
           type="button"
           onClick={returnToFeedbackList}
           className="inline-flex items-center gap-1 text-slate-500 transition hover:text-blue-600"
-          aria-label="Quay lại quản lý phản ánh"
+          aria-label={`Quay lại ${detailParentLabel.toLowerCase()}`}
         >
-          Quản lý phản ánh
+          {detailParentLabel}
         </button>
         <Lucide.ChevronRight size={12} />
         <span className="min-w-0 truncate font-semibold text-slate-800">{feedback.title}</span>
@@ -2418,7 +2445,7 @@ export const ManagementFeedbackDetailPage = () => {
       ) : null}
 
       {activeViewTab === 'exchange' ? (
-        <section ref={exchangeSectionRef} className="admin-panel scroll-mt-28 overflow-hidden">
+        <section ref={exchangeSectionRef} className="admin-panel scroll-mt-5 overflow-hidden">
           <div className="border-b border-slate-200 px-6 py-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>

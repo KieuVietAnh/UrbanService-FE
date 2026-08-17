@@ -361,6 +361,8 @@ export const Header = ({ onMenuToggle }) => {
             ? 'Chi tiết phản ánh'
             : isCoordinatorId
               ? 'Chi tiết điều phối viên'
+            : path === 'feedbacks' && location.state?.fromStaffConversations
+              ? 'Quản lý trao đổi'
             : path === 'sla' && location.pathname.startsWith('/analytics/')
               ? 'Phân tích SLA'
               : labelMap[path] || path;
@@ -375,9 +377,11 @@ export const Header = ({ onMenuToggle }) => {
             coordinators: '/management/coordinators',
           };
 
-          const breadcrumbLink = path === 'sla' && location.pathname.startsWith('/analytics/')
-            ? '/analytics/sla'
-            : breadcrumbLinkMap[path];
+          const breadcrumbLink = path === 'feedbacks' && location.state?.fromStaffConversations
+            ? '/staff/conversations'
+            : path === 'sla' && location.pathname.startsWith('/analytics/')
+              ? '/analytics/sla'
+              : breadcrumbLinkMap[path];
 
           return (
             <span key={`${path}-${index}`} className="flex items-center gap-1.5">

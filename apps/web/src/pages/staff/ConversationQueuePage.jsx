@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { EmptyState, LoadingSpinner } from '@urbanmind/shared-ui';
 import Badge from '../../components/design-system/Badge';
@@ -48,6 +48,17 @@ const formatActivityDate = (value) => {
   };
 };
 
+const STAFF_CONVERSATION_RETURN_KEY = 'staff-conversation-return';
+
+const readConversationReturnSnapshot = () => {
+  try {
+    const raw = sessionStorage.getItem(STAFF_CONVERSATION_RETURN_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 const formatFeedbackId = (value) => {
   const id = String(value || '');
   if (id.length <= 18) return id || '—';
@@ -56,10 +67,17 @@ const formatFeedbackId = (value) => {
 
 export default function ConversationQueuePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [initialReturnSnapshot] = useState(() => readConversationReturnSnapshot());
+  const rowRefs = useRef(new Map());
+  const restoreHandledRef = useRef(false);
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Number(initialReturnSnapshot?.page) || 1);
+  const [systemTotal, setSystemTotal] = useState(0);
+  const [conversationFilter, setConversationFilter] = useState('all');
   const pageSize = 10;
 
   const getStatusClass = (s) => {
@@ -106,32 +124,72 @@ export default function ConversationQueuePage() {
     const loadConversations = async () => {
       setLoading(true);
       setError('');
+
       try {
-        const response = await managementFeedbackApi.getFeedbacks({ pageIndex: 0, pageSize: 50 });
-        const feedbacks = Array.isArray(response?.items) ? response.items : [];
+        const firstResponse = await managementFeedbackApi.getFeedbacks({
+          pageNumber: 1,
+          pageSize: 50,
+        });
+
+        const firstItems = Array.isArray(firstResponse?.items) ? firstResponse.items : [];
+        const totalItems = Number(firstResponse?.totalItems ?? firstResponse?.totalCount ?? firstItems.length) || 0;
+        const totalPages = Math.max(
+          1,
+          Number(firstResponse?.totalPages) || Math.ceil(totalItems / 50)
+        );
+
+        const remainingResponses = totalPages > 1
+          ? await Promise.all(
+              Array.from({ length: totalPages - 1 }, (_, index) => (
+                managementFeedbackApi.getFeedbacks({
+                  pageNumber: index + 2,
+                  pageSize: 50,
+                })
+              ))
+            )
+          : [];
+
+        if (!active) return;
+
+        const feedbacks = [
+          ...firstItems,
+          ...remainingResponses.flatMap((response) => (
+            Array.isArray(response?.items) ? response.items : []
+          )),
+        ];
+
         const initialItems = feedbacks.map((item) => ({
           feedbackId: item?.feedbackId || item?.id,
           title: item?.title || 'Không có tiêu đề',
           citizenName: item?.userName || item?.reporterName || 'Không rõ',
-          messageCount: Number(item?.commentCount ?? item?.messageCount ?? item?.interactionMessageCount ?? 0),
+          messageCount: Number(
+            item?.interactionMessageCount
+            ?? item?.messageCount
+            ?? item?.commentCount
+            ?? 0
+          ),
           lastActivity: item?.updatedAt || item?.createdAt || null,
           status: item?.status || '',
         }));
-        if (!active) return;
 
+        setSystemTotal(totalItems || initialItems.length);
         setItems(initialItems);
 
-        const resolvedCounts = await Promise.allSettled(initialItems.map(async (item) => {
-          if (Number(item.messageCount) > 0) {
-            return item.messageCount;
-          }
-          try {
-            const messages = await managementFeedbackApi.getFeedbackMessages(item.feedbackId, { includeInternal: true });
-            return Array.isArray(messages) ? messages.length : 0;
-          } catch {
-            return item.messageCount ?? 0;
-          }
-        }));
+        const resolvedCounts = await Promise.allSettled(
+          initialItems.map(async (item) => {
+            if (Number(item.messageCount) > 0) return item.messageCount;
+
+            try {
+              const messages = await managementFeedbackApi.getFeedbackMessages(
+                item.feedbackId,
+                { includeInternal: true }
+              );
+              return Array.isArray(messages) ? messages.length : 0;
+            } catch {
+              return item.messageCount ?? 0;
+            }
+          })
+        );
 
         if (!active) return;
 
@@ -146,29 +204,132 @@ export default function ConversationQueuePage() {
       } catch (err) {
         if (!active) return;
         console.error('Failed to load conversation queue', err);
-        setError('Không thể tải hàng đợi trao đổi. Vui lòng thử lại.');
+        setError('Không thể tải danh sách trao đổi. Vui lòng thử lại.');
         setItems([]);
+        setSystemTotal(0);
       } finally {
         if (active) setLoading(false);
       }
     };
 
     loadConversations();
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const summary = useMemo(() => ({
-    total: items.length,
-    withMessages: items.filter((item) => Number(item.messageCount) > 0).length,
-  }), [items]);
 
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const summary = useMemo(() => ({
+    total: systemTotal || items.length,
+    withMessages: items.filter((item) => Number(item.messageCount) > 0).length,
+  }), [items, systemTotal]);
+
+  const filteredItems = useMemo(
+    () => (
+      conversationFilter === 'with-messages'
+        ? items.filter((item) => Number(item.messageCount) > 0)
+        : items
+    ),
+    [conversationFilter, items]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const currentPage = Math.min(page, totalPages);
+  const openConversationFeedback = useCallback((item) => {
+    const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+    const feedbackId = String(item?.feedbackId || '');
+
+    sessionStorage.setItem(
+      STAFF_CONVERSATION_RETURN_KEY,
+      JSON.stringify({
+        feedbackId,
+        page: currentPage,
+        scrollY: scrollContainer?.scrollTop || 0,
+      })
+    );
+
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: {
+        ...(location.state || {}),
+        restoreConversationFeedbackId: feedbackId,
+        preserveScrollOnEnter: true,
+      },
+    });
+
+    navigate(`/staff/feedbacks/${feedbackId}`, {
+      state: {
+        fromStaffConversations: true,
+        feedbackId,
+        feedbackTitle: item?.title || '',
+        focusExchange: true,
+      },
+    });
+  }, [
+    currentPage,
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ]);
+
   const pageStart = (currentPage - 1) * pageSize;
   const paginatedItems = useMemo(
-    () => items.slice(pageStart, pageStart + pageSize),
-    [items, pageStart]
+    () => filteredItems.slice(pageStart, pageStart + pageSize),
+    [filteredItems, pageStart]
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [conversationFilter]);
+
+  useEffect(() => {
+    if (loading || restoreHandledRef.current) return undefined;
+
+    const targetFeedbackId = String(
+      location.state?.restoreConversationFeedbackId
+      || initialReturnSnapshot?.feedbackId
+      || ''
+    );
+
+    if (!targetFeedbackId) {
+      restoreHandledRef.current = true;
+      return undefined;
+    }
+
+    const targetRow = rowRefs.current.get(targetFeedbackId);
+    const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+
+    if (!targetRow || !scrollContainer) return undefined;
+
+    restoreHandledRef.current = true;
+
+    requestAnimationFrame(() => {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const rowRect = targetRow.getBoundingClientRect();
+      const rowTop = scrollContainer.scrollTop + rowRect.top - containerRect.top;
+      const centeredTop = Math.max(
+        0,
+        rowTop - Math.max(24, (scrollContainer.clientHeight - targetRow.offsetHeight) / 2)
+      );
+
+      scrollContainer.scrollTo({
+        top: centeredTop,
+        left: 0,
+        behavior: 'auto',
+      });
+
+      targetRow.classList.add('bg-blue-50');
+      window.setTimeout(() => {
+        targetRow.classList.remove('bg-blue-50');
+      }, 2200);
+    });
+
+    sessionStorage.removeItem(STAFF_CONVERSATION_RETURN_KEY);
+    return undefined;
+  }, [initialReturnSnapshot, loading, location.state, paginatedItems]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -212,24 +373,54 @@ export default function ConversationQueuePage() {
       />
 
       <section className="grid gap-4 md:grid-cols-2" aria-label="Tổng quan trao đổi">
-        <ManagerMetricCard
-          label="Tổng phản ánh"
-          value={summary.total}
-          description="Số hồ sơ đang có trong hàng đợi trao đổi."
-          icon={Lucide.Files}
-          toneClass="bg-blue-50 text-blue-700"
-        />
-        <ManagerMetricCard
-          label="Có trao đổi"
-          value={summary.withMessages}
-          description="Phản ánh đã phát sinh ít nhất một tin nhắn."
-          icon={Lucide.MessageSquareText}
-          toneClass="bg-emerald-50 text-emerald-700"
-        />
+        <button
+          type="button"
+          onClick={() => setConversationFilter('all')}
+          aria-pressed={conversationFilter === 'all'}
+          className={`rounded-[1.4rem] text-left transition-all duration-200 ${
+            conversationFilter === 'all'
+              ? 'ring-2 ring-blue-200 ring-offset-2 ring-offset-transparent'
+              : 'hover:-translate-y-0.5'
+          }`}
+        >
+          <ManagerMetricCard
+            label="Tổng phản ánh"
+            value={summary.total}
+            description="Hiển thị toàn bộ phản ánh trong danh sách."
+            icon={Lucide.Files}
+            toneClass="bg-blue-50 text-blue-700"
+          />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setConversationFilter((current) => (
+            current === 'with-messages' ? 'all' : 'with-messages'
+          ))}
+          aria-pressed={conversationFilter === 'with-messages'}
+          className={`rounded-[1.4rem] text-left transition-all duration-200 ${
+            conversationFilter === 'with-messages'
+              ? 'ring-2 ring-emerald-200 ring-offset-2 ring-offset-transparent'
+              : 'hover:-translate-y-0.5'
+          }`}
+        >
+          <ManagerMetricCard
+            label="Có trao đổi"
+            value={summary.withMessages}
+            description="Chỉ hiển thị phản ánh đã phát sinh ít nhất một tin nhắn."
+            icon={Lucide.MessageSquareText}
+            toneClass="bg-emerald-50 text-emerald-700"
+          />
+        </button>
       </section>
 
-      {items.length === 0 ? (
-        <EmptyState title="Chưa có trao đổi nào" description="Các phản ánh sẽ xuất hiện ở đây khi có hoạt động trao đổi." />
+      {filteredItems.length === 0 ? (
+        <EmptyState
+          title={conversationFilter === 'with-messages' ? 'Chưa có phản ánh có trao đổi' : 'Chưa có phản ánh nào'}
+          description={conversationFilter === 'with-messages'
+            ? 'Chưa có phản ánh nào phát sinh tin nhắn.'
+            : 'Danh sách hiện chưa có dữ liệu phản ánh.'}
+        />
       ) : (
         <section className="admin-panel overflow-hidden" aria-labelledby="conversation-list-title">
           <ManagerSectionHeader
@@ -268,8 +459,13 @@ export default function ConversationQueuePage() {
                   return (
                     <tr
                       key={item.feedbackId}
-                      className="group cursor-pointer transition-colors hover:bg-blue-50/35"
-                      onClick={() => navigate(`/staff/feedbacks/${item.feedbackId}`)}
+                      ref={(node) => {
+                        const key = String(item.feedbackId);
+                        if (node) rowRefs.current.set(key, node);
+                        else rowRefs.current.delete(key);
+                      }}
+                      className="group cursor-pointer transition-colors duration-500 hover:bg-blue-50/35"
+                      onClick={() => openConversationFeedback(item)}
                     >
                       <td className="px-5 py-4 align-middle">
                         <span
@@ -310,7 +506,7 @@ export default function ConversationQueuePage() {
                           className="btn btn-sm btn-outline inline-flex min-h-0 whitespace-nowrap rounded-xl border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                           onClick={(event) => {
                             event.stopPropagation();
-                            navigate(`/staff/feedbacks/${item.feedbackId}`);
+                            openConversationFeedback(item);
                           }}
                         >
                           Mở hồ sơ
@@ -326,8 +522,8 @@ export default function ConversationQueuePage() {
 
           <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/55 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
-              Hiển thị <span className="font-semibold text-slate-700">{items.length === 0 ? 0 : pageStart + 1}–{Math.min(pageStart + pageSize, items.length)}</span> trong tổng số{' '}
-              <span className="font-semibold text-slate-700">{items.length}</span> phản ánh
+              Hiển thị <span className="font-semibold text-slate-700">{filteredItems.length === 0 ? 0 : pageStart + 1}–{Math.min(pageStart + pageSize, filteredItems.length)}</span> trong tổng số{' '}
+              <span className="font-semibold text-slate-700">{filteredItems.length}</span> phản ánh
             </p>
 
             <nav className="flex items-center gap-1.5" aria-label="Phân trang danh sách trao đổi">
