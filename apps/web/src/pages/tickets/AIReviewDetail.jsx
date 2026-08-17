@@ -190,9 +190,14 @@ export const AIReviewDetail = () => {
             </div>
           </div>
 
-          <div className="admin-inset-panel min-w-[210px] px-4 py-3">
-            <div className="admin-section-description uppercase tracking-[0.22em]">Đang chờ kiểm duyệt</div>
-            <div className="mt-1 text-2xl font-bold tracking-[-0.025em] text-slate-950">{displayedTickets.length} phản ánh</div>
+          <div className="min-w-[240px] rounded-[24px] border border-emerald-200 bg-emerald-50/90 px-5 py-4 shadow-[0_10px_28px_rgba(16,185,129,0.08)]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+              Đang chờ kiểm duyệt
+            </div>
+            <div className="mt-2 text-[28px] font-bold leading-none tracking-[-0.03em] text-slate-950">
+              {displayedTickets.length}
+              <span className="ml-2 text-base font-semibold tracking-normal text-slate-700">phản ánh</span>
+            </div>
           </div>
         </div>
       </section>

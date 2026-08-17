@@ -697,9 +697,14 @@ export default function ManagementFeedbackListPage() {
             </div>
           </div>
 
-          <div className="admin-inset-panel min-w-[150px] px-4 py-3">
-            <div className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Tổng phản ánh</div>
-            <div className="mt-1 text-2xl font-semibold text-slate-900">{systemTotalCount}</div>
+          <div className="min-w-[220px] rounded-[24px] border border-emerald-200 bg-emerald-50/90 px-5 py-4 shadow-[0_10px_28px_rgba(16,185,129,0.08)]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+              Tổng phản ánh
+            </div>
+            <div className="mt-2 text-[28px] font-bold leading-none tracking-[-0.03em] text-slate-950">
+              {systemTotalCount}
+              <span className="ml-2 text-base font-semibold tracking-normal text-slate-700">phản ánh</span>
+            </div>
           </div>
         </div>
       </section>
