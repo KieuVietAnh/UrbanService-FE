@@ -100,9 +100,11 @@ export default function ManagementFeedbackListPage() {
   const restoreHandledRef = useRef(false);
   const skipInitialFilterResetRef = useRef(Boolean(initialReturnSnapshot));
 
-  const [feedbacks, setFeedbacks] = useState([]);
+  const [feedbacks, setFeedbacks] = useState(() => (
+    Array.isArray(initialReturnSnapshot?.feedbacks) ? initialReturnSnapshot.feedbacks : []
+  ));
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !Array.isArray(initialReturnSnapshot?.feedbacks));
   const [error, setError] = useState('');
 
   // Filters
@@ -123,9 +125,13 @@ export default function ManagementFeedbackListPage() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(() => Number(initialReturnSnapshot?.currentPage) || 1);
   const [pageSize] = useState(10);
-  const [totalCount, setTotalCount] = useState(0);
-  const [workflowTotals, setWorkflowTotals] = useState({});
-  const [workflowTotalsLoading, setWorkflowTotalsLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(() => Number(initialReturnSnapshot?.totalCount) || 0);
+  const [workflowTotals, setWorkflowTotals] = useState(() => (
+    initialReturnSnapshot?.workflowTotals && typeof initialReturnSnapshot.workflowTotals === 'object'
+      ? initialReturnSnapshot.workflowTotals
+      : {}
+  ));
+  const [workflowTotalsLoading, setWorkflowTotalsLoading] = useState(() => !initialReturnSnapshot?.workflowTotals);
   const [restoredFeedbackId, setRestoredFeedbackId] = useState('');
   const [openFilterMenu, setOpenFilterMenu] = useState(null);
 
@@ -183,9 +189,9 @@ export default function ManagementFeedbackListPage() {
       setTotalCount(Number(response?.totalItems ?? response?.totalCount ?? filteredItems.length) || 0);
     } catch (err) {
       console.error('Failed to fetch feedbacks', err);
-      setError('Không thể tải danh sách phản ánh. Vui lòng thử lại.');
-      setFeedbacks([]);
-      setTotalCount(0);
+      setError('Không thể làm mới danh sách phản ánh. Vui lòng thử lại.');
+      setFeedbacks((current) => (current.length > 0 ? current : []));
+      setTotalCount((current) => current || 0);
     } finally {
       setLoading(false);
     }
@@ -514,6 +520,9 @@ export default function ManagementFeedbackListPage() {
       status,
       categoryId,
       scrollY: scrollContainer?.scrollTop || 0,
+      feedbacks,
+      totalCount,
+      workflowTotals,
     };
 
     sessionStorage.setItem(STAFF_FEEDBACK_LIST_RETURN_KEY, JSON.stringify(snapshot));
@@ -536,7 +545,20 @@ export default function ManagementFeedbackListPage() {
         feedbackId: String(feedbackId),
       },
     });
-  }, [navigate, location.pathname, location.search, location.hash, location.state, currentPage, search, status, categoryId]);
+  }, [
+    navigate,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.state,
+    currentPage,
+    search,
+    status,
+    categoryId,
+    feedbacks,
+    totalCount,
+    workflowTotals,
+  ]);
 
   useEffect(() => {
     if (loading || restoreHandledRef.current) return undefined;
@@ -657,7 +679,7 @@ export default function ManagementFeedbackListPage() {
     );
   }
 
-  if (error) {
+  if (error && feedbacks.length === 0) {
     return (
       <div className="space-y-4">
         <ErrorAlert 
@@ -680,6 +702,12 @@ export default function ManagementFeedbackListPage() {
 
   return (
     <div className="admin-page-shell space-y-6">
+      {loading && feedbacks.length > 0 ? (
+        <div className="pointer-events-none fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur">
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+          Đang làm mới
+        </div>
+      ) : null}
       <section className="admin-page-hero">
         <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/70 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 right-32 h-44 w-44 rounded-full bg-cyan-100/50 blur-3xl" />
