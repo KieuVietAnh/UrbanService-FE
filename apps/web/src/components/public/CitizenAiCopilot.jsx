@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
-import { toolsApi } from '@urbanmind/shared-api';
+import { ticketApi, toolsApi } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
@@ -282,12 +282,56 @@ const selectConversation = async (conversationId) => {
     ]);
   };
 
-  const buildReflectionText = (title = draftTitle, description = draftDescription) => (
+  const buildReflectionText = (
+    title = draftTitle,
+    description = draftDescription,
+    locationValue = locationText
+  ) => (
     [
       title.trim() ? `Tiêu đề: ${title.trim()}` : '',
       description.trim() ? `Mô tả: ${description.trim()}` : '',
+      locationValue.trim() ? `Vị trí: ${locationValue.trim()}` : '',
     ].filter(Boolean).join('\n')
   );
+
+  const getEntityId = (entity, primaryKey) => (
+    entity?.[primaryKey] ?? entity?.id ?? entity?.value ?? null
+  );
+
+  const resolveFeedbackRequiredIds = async (draft) => {
+    const [areasResult, categoriesResult] = await Promise.allSettled([
+      toolsApi.getAreas(),
+      toolsApi.getCategories(),
+    ]);
+
+    const areas = areasResult.status === 'fulfilled' && Array.isArray(areasResult.value)
+      ? areasResult.value
+      : [];
+    const categories = categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value)
+      ? categoriesResult.value
+      : [];
+
+    const normalize = (value) => String(value ?? '').trim().toLowerCase();
+    const suggestedArea = normalize(draft?.areaId || draft?.suggestedArea || draft?.areaName || draft?.location);
+    const suggestedCategory = normalize(draft?.categoryId || draft?.suggestedCategory || draft?.categoryName);
+
+    const matchedArea = areas.find((area) => {
+      const areaId = normalize(getEntityId(area, 'areaId'));
+      const areaName = normalize(area?.areaName || area?.name || area?.displayName);
+      return suggestedArea && (areaId === suggestedArea || areaName === suggestedArea || suggestedArea.includes(areaName));
+    });
+
+    const matchedCategory = categories.find((category) => {
+      const categoryId = normalize(getEntityId(category, 'categoryId'));
+      const categoryName = normalize(category?.categoryName || category?.name || category?.displayName);
+      return suggestedCategory && (categoryId === suggestedCategory || categoryName === suggestedCategory || suggestedCategory.includes(categoryName));
+    });
+
+    return {
+      areaId: getEntityId(matchedArea, 'areaId') ?? getEntityId(areas[0], 'areaId'),
+      categoryId: getEntityId(matchedCategory, 'categoryId') ?? getEntityId(categories[0], 'categoryId'),
+    };
+  };
 
   const startNewConversation = () => {
     setActiveConversationId(null);
@@ -466,7 +510,10 @@ const selectConversation = async (conversationId) => {
   };
 
   const handleCreateDraft = async () => {
-    const text = (reflection.trim() || buildReflectionText().trim() || inputVal.trim());
+    const collectedTitle = draftTitle.trim();
+    const collectedDescription = draftDescription.trim() || reflection.trim() || inputVal.trim();
+    const collectedLocation = locationText.trim();
+    const text = buildReflectionText(collectedTitle, collectedDescription, collectedLocation).trim() || inputVal.trim();
     if (!text || creatingDraft) {
       setChatMessages((current) => [
         ...current,
@@ -481,23 +528,77 @@ const selectConversation = async (conversationId) => {
       const base64Images = await Promise.all(selectedImages.map(fileToBase64));
       const draft = await toolsApi.createAiFeedbackDraft({
         reflection: text,
-        location: locationText.trim(),
+        location: collectedLocation,
         latitude: latitude === '' ? null : Number(latitude),
         longitude: longitude === '' ? null : Number(longitude),
         imageUrls: [],
         base64Images,
       });
 
-      navigate('/tickets/create', {
-        state: {
-          aiDraft: draft,
-          aiDraftSource: {
-            reflection: text,
-            imageNames: selectedImages.map((file) => file.name),
+      const normalizedDraft = draft?.data ?? draft?.draft ?? draft ?? {};
+      const finalDraft = {
+        ...normalizedDraft,
+        title: collectedTitle || normalizedDraft.title || normalizedDraft.summary || 'Phản ánh đô thị từ AI',
+        description: collectedDescription || normalizedDraft.description || normalizedDraft.summary || text,
+        location: collectedLocation || normalizedDraft.location || '',
+        latitude: latitude === '' ? normalizedDraft.latitude ?? null : Number(latitude),
+        longitude: longitude === '' ? normalizedDraft.longitude ?? null : Number(longitude),
+        imageUrls: Array.isArray(normalizedDraft.imageUrls) ? normalizedDraft.imageUrls : [],
+        confirmationMessage: 'Đã lấy thông tin bạn cung cấp để tạo phản ánh. Vui lòng kiểm tra lại và bấm gửi phản ánh.',
+      };
+
+      const resolvedIds = await resolveFeedbackRequiredIds(finalDraft);
+      const latitudeNumber = Number(finalDraft.latitude);
+      const longitudeNumber = Number(finalDraft.longitude);
+      const hasCoordinates = Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber);
+
+      if (!resolvedIds.areaId || !resolvedIds.categoryId || !hasCoordinates) {
+        navigate('/tickets/create', {
+          state: {
+            aiDraft: finalDraft,
+            aiDraftSource: {
+              reflection: text,
+              title: finalDraft.title,
+              description: finalDraft.description,
+              location: finalDraft.location,
+              imageNames: selectedImages.map((file) => file.name),
+              createAttempted: true,
+            },
           },
+        });
+        setChatOpen(false);
+        return;
+      }
+
+      const response = await ticketApi.createTicket(
+        user?.userId,
+        user?.fullName || user?.name,
+        {
+          areaId: Number(resolvedIds.areaId),
+          categoryId: Number(resolvedIds.categoryId),
+          title: finalDraft.title,
+          description: finalDraft.description,
+          priority: normalizedDraft.urgencyLevel || normalizedDraft.priority || 'Medium',
+          locationText: finalDraft.location || collectedLocation || `Vị trí GPS: ${latitudeNumber.toFixed(6)}, ${longitudeNumber.toFixed(6)}`,
+          latitude: latitudeNumber,
+          longitude: longitudeNumber,
+          attachments: selectedImages,
         },
-      });
-      setChatOpen(false);
+        { role: user?.role || APP_ROLES.SERVICE_USER }
+      );
+
+      const createdFeedbackId = response?.data?.feedbackId || response?.data?.id || response?.feedbackId || response?.id;
+      setChatMessages((current) => [
+        ...current,
+        {
+          sender: 'ai',
+          text: createdFeedbackId
+            ? `Đã tạo phản ánh thành công (#${createdFeedbackId}). Bạn có thể theo dõi trong mục “Phản ánh của tôi”.`
+            : 'Đã tạo phản ánh thành công. Bạn có thể theo dõi trong mục “Phản ánh của tôi”.',
+        },
+      ]);
+      resetDraftFlow();
+      loadConversations();
     } catch (error) {
       setChatMessages((current) => [
         ...current,
