@@ -190,6 +190,34 @@ export const AIReviewDetail = () => {
   const selectedParentFeedbackId = selectedTicket?.parentTicketId || selectedTicket?.parentFeedbackId || null;
   const selectedIsConfirmedDuplicate = Boolean(selectedParentFeedbackId);
 
+  const handleDeny = async () => {
+    if (!selectedTicket || selectedIsConfirmedDuplicate) return;
+
+    const confirmed = window.confirm('Bạn có chắc muốn không chấp nhận phản ánh này? Trạng thái sẽ chuyển sang Denied/Bị từ chối.');
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
+      await managementFeedbackApi.updateStatus(selectedTicket.feedbackId, {
+        status: managementTypes.feedbackStatus.REJECTED,
+        note: 'Staff denied from AI review queue',
+      });
+      sessionStorage.removeItem(AI_QUEUE_CACHE_KEY);
+      try {
+        signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, managementTypes.feedbackStatus.REJECTED, user);
+      } catch (e) {
+        console.warn('SignalR notify failed', e);
+      }
+
+      setTickets((current) => current.filter((ticket) => ticket.feedbackId !== selectedTicket.feedbackId));
+      setSelectedTicket(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleApprove = async () => {
     if (!selectedTicket || selectedIsConfirmedDuplicate) return;
     setLoading(true);
@@ -546,15 +574,26 @@ export const AIReviewDetail = () => {
                         Phản ánh trùng lặp không cần duyệt hoặc phân công riêng.
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={handleApprove}
-                        disabled={loading}
-                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(37,99,235,0.20)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.CheckCircle2 size={18} aria-hidden="true" />}
-                        {loading ? 'Đang xác nhận...' : 'Xác nhận và chuyển phân công'}
-                      </button>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={handleDeny}
+                          disabled={loading}
+                          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 text-sm font-bold text-red-700 shadow-[0_12px_28px_rgba(239,68,68,0.12)] transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.XCircle size={18} aria-hidden="true" />}
+                          Không chấp nhận
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleApprove}
+                          disabled={loading}
+                          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(37,99,235,0.20)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.CheckCircle2 size={18} aria-hidden="true" />}
+                          {loading ? 'Đang xử lý...' : 'Xác nhận và chuyển phân công'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </section>

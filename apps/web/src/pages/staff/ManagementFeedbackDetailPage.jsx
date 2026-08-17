@@ -131,6 +131,7 @@ export const ManagementFeedbackDetailPage = () => {
 
   // Verify
   const [verifyLoading, setVerifyLoading] = useState(false);
+  const [denyLoading, setDenyLoading] = useState(false);
 
   // Assignment
   const [assignModal, setAssignModal] = useState(false);
@@ -352,6 +353,32 @@ export const ManagementFeedbackDetailPage = () => {
       setPageMessage({ type: 'error', text: err?.message || 'Không thể xác minh phản ánh.' });
     } finally {
       setVerifyLoading(false);
+    }
+  };
+
+  // Handle deny
+  const handleDeny = async () => {
+    const confirmed = window.confirm('Bạn có chắc muốn không chấp nhận phản ánh này? Trạng thái sẽ chuyển sang Denied/Bị từ chối.');
+    if (!confirmed) return;
+
+    setDenyLoading(true);
+    try {
+      await managementFeedbackApi.updateStatus(feedbackId, {
+        status: managementTypes.feedbackStatus.REJECTED,
+        note: 'Staff denied this feedback',
+      });
+      setFeedback(prev => ({ ...prev, status: managementTypes.feedbackStatus.REJECTED }));
+      try {
+        signalrService.notifyStatusChanged(feedbackId, feedback?.status, managementTypes.feedbackStatus.REJECTED, user);
+      } catch {
+        console.warn('SignalR notify failed');
+      }
+      setPageMessage({ type: 'success', text: 'Đã chuyển phản ánh sang trạng thái không chấp nhận.' });
+    } catch (err) {
+      console.error('Failed to deny feedback', err);
+      setPageMessage({ type: 'error', text: err?.message || 'Không thể từ chối phản ánh.' });
+    } finally {
+      setDenyLoading(false);
     }
   };
 
@@ -646,6 +673,11 @@ export const ManagementFeedbackDetailPage = () => {
   const isConfirmedDuplicate = Boolean(parentFeedbackId);
   const isMasterTicket = Boolean(feedback?.isMasterTicket);
   const canVerify = !isConfirmedDuplicate && [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED].includes(feedback?.status);
+  const canDeny = !isConfirmedDuplicate && [
+    managementTypes.feedbackStatus.SUBMITTED,
+    managementTypes.feedbackStatus.AI_REVIEWED,
+    managementTypes.feedbackStatus.VERIFIED,
+  ].includes(feedback?.status);
   const canAssign = !isConfirmedDuplicate && feedback?.status === managementTypes.feedbackStatus.VERIFIED;
   const canUpdateStatus = !isConfirmedDuplicate && nextStatusOptions.length > 0;
 
@@ -1284,6 +1316,19 @@ export const ManagementFeedbackDetailPage = () => {
                   >
                     {verifyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Check size={14} />}
                     Xác minh
+                  </Button>
+                )}
+                {canDeny && (
+                  <Button
+                    type="button"
+                    onClick={handleDeny}
+                    disabled={denyLoading}
+                    variant="outline"
+                    size="sm"
+                    className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                  >
+                    {denyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.XCircle size={14} />}
+                    Không chấp nhận
                   </Button>
                 )}
                 {/* area alert button moved to map section for better context */}
@@ -2360,6 +2405,19 @@ export const ManagementFeedbackDetailPage = () => {
                   Xác minh phản ánh
                 </Button>
               )}
+              {canDeny && (
+                <Button
+                  type="button"
+                  onClick={handleDeny}
+                  disabled={denyLoading}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                >
+                  {denyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.XCircle size={14} />}
+                  Không chấp nhận
+                </Button>
+              )}
               {canAssign && (
                 <Button
                   type="button"
@@ -2420,6 +2478,7 @@ export const ManagementFeedbackDetailPage = () => {
               )}
               {!
                 canVerify &&
+                !canDeny &&
                 !canAssign &&
                 nextStatusOptions.length === 0 && (
                   <div className="admin-inset-panel p-4 text-sm text-slate-600">
