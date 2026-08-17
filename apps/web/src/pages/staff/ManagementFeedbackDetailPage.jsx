@@ -2636,6 +2636,16 @@ export const ManagementFeedbackDetailPage = () => {
                   <textarea
                     value={messageDraft}
                     onChange={(event) => setMessageDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' || event.shiftKey) return;
+                      if (event.nativeEvent?.isComposing) return;
+
+                      event.preventDefault();
+
+                      if (!messageSubmitting && messageDraft.trim()) {
+                        handleMessageSend();
+                      }
+                    }}
                     rows={2}
                     placeholder={
                       composerMode === 'internal'

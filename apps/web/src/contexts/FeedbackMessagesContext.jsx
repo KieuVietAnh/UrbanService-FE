@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { managementFeedbackApi } from '../services/api/managementFeedbackApi';
 import { FeedbackMessagesContext } from './FeedbackMessagesContextBase';
+
+const MESSAGE_POLL_INTERVAL_MS = 2000;
 
 const normalizeMessages = (messages = []) => {
   return Array.isArray(messages)
@@ -15,17 +17,26 @@ export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, c
   const [messageSubmitting, setMessageSubmitting] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncStatus, setSyncStatus] = useState('idle');
+  const syncInFlightRef = useRef(false);
 
   const loadMessages = useCallback(
-    async ({ keepMessagesOnError = false } = {}) => {
+    async ({ keepMessagesOnError = false, silent = false } = {}) => {
       if (!feedbackId) {
         setMessages([]);
         setMessagesError('');
         return false;
       }
 
-      setMessagesLoading(true);
-      setMessagesError('');
+      if (syncInFlightRef.current) {
+        return false;
+      }
+
+      syncInFlightRef.current = true;
+
+      if (!silent) {
+        setMessagesLoading(true);
+        setMessagesError('');
+      }
 
       try {
         const nextMessages = await managementFeedbackApi.getFeedbackMessages(feedbackId, {
@@ -33,20 +44,40 @@ export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, c
         });
 
         const sortedMessages = normalizeMessages(nextMessages);
-        setMessages(sortedMessages);
+
+        setMessages((currentMessages) => {
+          const currentLast = currentMessages[currentMessages.length - 1];
+          const nextLast = sortedMessages[sortedMessages.length - 1];
+
+          const unchanged =
+            currentMessages.length === sortedMessages.length
+            && String(currentLast?.interactionMessageId || currentLast?.id || '')
+              === String(nextLast?.interactionMessageId || nextLast?.id || '');
+
+          return unchanged ? currentMessages : sortedMessages;
+        });
+
         setLastSyncedAt(new Date());
         setSyncStatus('synced');
+        if (!silent) {
+          setMessagesError('');
+        }
         return true;
       } catch (error) {
         console.error('Failed to load feedback messages', error);
-        if (!keepMessagesOnError) {
-          setMessages([]);
+        if (!silent) {
+          if (!keepMessagesOnError) {
+            setMessages([]);
+          }
+          setMessagesError(error?.message || 'Không thể tải trao đổi.');
+          setSyncStatus('warning');
         }
-        setMessagesError(error?.message || 'Không thể tải trao đổi.');
-        setSyncStatus('warning');
         return false;
       } finally {
-        setMessagesLoading(false);
+        syncInFlightRef.current = false;
+        if (!silent) {
+          setMessagesLoading(false);
+        }
       }
     },
     [feedbackId, includeInternal]
@@ -89,10 +120,33 @@ export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, c
       setMessagesError('');
       setLastSyncedAt(null);
       setSyncStatus('idle');
-      return;
+      return undefined;
     }
 
     loadMessages({ keepMessagesOnError: true });
+
+    const pollMessages = () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      loadMessages({ keepMessagesOnError: true, silent: true });
+    };
+
+    const intervalId = window.setInterval(pollMessages, MESSAGE_POLL_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadMessages({ keepMessagesOnError: true, silent: true });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [feedbackId, loadMessages]);
 
   const value = useMemo(
@@ -113,4 +167,3 @@ export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, c
 
   return <FeedbackMessagesContext.Provider value={value}>{children}</FeedbackMessagesContext.Provider>;
 };
-
