@@ -23,6 +23,21 @@ const readStaffFeedbackListReturn = () => {
   }
 };
 
+
+const getFeedbackAreaName = (item) => (
+  item?.areaName ||
+  item?.wardName ||
+  item?.area?.areaName ||
+  item?.area?.name ||
+  ''
+);
+
+const getFeedbackLocationText = (item) => (
+  item?.locationText ||
+  getFeedbackAreaName(item) ||
+  ''
+);
+
 const FilterDropdown = ({
   menuId,
   value,
@@ -960,12 +975,22 @@ export default function ManagementFeedbackListPage() {
                         >
                           {item.title || 'Không có tiêu đề'}
                         </p>
-                        <p
-                          className="mt-1 truncate text-xs text-slate-500"
-                          title={item.locationText || item.description || ''}
-                        >
-                          {item.locationText || item.description || 'Chưa có mô tả'}
-                        </p>
+                        <div className="mt-1 min-w-0 text-xs text-slate-500">
+                          <p
+                            className="truncate"
+                            title={getFeedbackLocationText(item) || item.description || ''}
+                          >
+                            {getFeedbackLocationText(item) || item.description || 'Chưa xác định vị trí'}
+                          </p>
+                          {item.locationText && getFeedbackAreaName(item) ? (
+                            <p
+                              className="mt-0.5 truncate text-[11px] text-slate-400"
+                              title={getFeedbackAreaName(item)}
+                            >
+                              {getFeedbackAreaName(item)}
+                            </p>
+                          ) : null}
+                        </div>
                       </td>
 
                       <td className="px-4 py-[18px] text-slate-600">

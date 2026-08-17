@@ -5,6 +5,7 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import { ManagerEmptyState, ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
 import { getStatusLabel, managementTypes, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
+import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
 
 const normalizeProviderReports = (value) => {
   if (Array.isArray(value)) return value;
@@ -285,6 +286,12 @@ export const InteractionApprovalDetailPage = () => {
   const [reworkReason, setReworkReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState(null);
+  const resolvedLocationText = useResolvedLocationText({
+    locationText: feedback?.locationText,
+    areaName: feedback?.areaName || feedback?.wardName,
+    latitude: feedback?.latitude,
+    longitude: feedback?.longitude,
+  });
 
   const loadFeedback = useCallback(async () => {
     setLoading(true);
@@ -543,7 +550,12 @@ export const InteractionApprovalDetailPage = () => {
               <MetaItem label="Thời điểm gửi">{formatDateTime(feedback.createdAt)}</MetaItem>
               <MetaItem label="Khu vực">{feedback.areaName || 'Chưa xác định'}</MetaItem>
               <MetaItem label="Danh mục">{feedback.categoryName || 'Chưa phân loại'}</MetaItem>
-              <MetaItem label="Vị trí" wide><address className="not-italic">{feedback.locationText || 'Chưa có địa chỉ'}</address></MetaItem>
+              <MetaItem label="Vị trí" wide>
+                <address className="not-italic">{resolvedLocationText}</address>
+                {feedback.areaName ? (
+                  <span className="mt-1 block text-xs text-slate-400 dark:text-slate-500">{feedback.areaName}</span>
+                ) : null}
+              </MetaItem>
               <MetaItem label="Mã phản ánh" wide><code className="break-all text-xs text-blue-700 dark:text-blue-300">{feedback.feedbackId}</code></MetaItem>
             </dl>
           </section>

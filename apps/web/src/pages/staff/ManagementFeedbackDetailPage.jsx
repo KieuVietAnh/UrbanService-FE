@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
 import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
@@ -82,6 +83,13 @@ export const ManagementFeedbackDetailPage = () => {
   const [relatedFeedbacks, setRelatedFeedbacks] = useState([]);
   const [relatedFeedbacksLoading, setRelatedFeedbacksLoading] = useState(false);
   const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
+
+  const resolvedLocationText = useResolvedLocationText({
+    locationText: feedback?.locationText,
+    areaName: feedback?.areaName || feedback?.wardName || feedback?.area?.name,
+    latitude: feedback?.latitude,
+    longitude: feedback?.longitude,
+  });
 
   const getUrgencyLevel = (currentFeedback) => {
     const urgency = currentFeedback?.priority || currentFeedback?.analysisResult?.urgencyLevel || currentFeedback?.urgencyLevel || currentFeedback?.urgency || '';
@@ -1701,7 +1709,12 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
             <div className="admin-inset-panel p-4">
               <div className="admin-section-description uppercase tracking-[0.18em]">Địa điểm</div>
-              <div className="mt-2 text-sm font-semibold leading-6 text-slate-900">{feedback.locationText || '-'}</div>
+              <div className="mt-2 text-sm font-semibold leading-6 text-slate-900">{resolvedLocationText}</div>
+              {feedback?.areaName || feedback?.wardName || feedback?.area?.name ? (
+                <div className="mt-1 text-xs text-slate-500">
+                  {feedback?.areaName || feedback?.wardName || feedback?.area?.name}
+                </div>
+              ) : null}
             </div>
             <div className="admin-inset-panel p-4">
               <div className="admin-section-description uppercase tracking-[0.18em]">Ngày hạn</div>
