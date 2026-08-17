@@ -12,6 +12,37 @@ const AI_MIN_TOP = 96;
 const AI_CITIZEN_BOTTOM_GAP = 112;
 const AI_DRAG_THRESHOLD = 6;
 
+const DRAFT_STEPS = {
+  IDLE: 'idle',
+  TITLE: 'title',
+  DESCRIPTION: 'description',
+  LOCATION: 'location',
+  EVIDENCE: 'evidence',
+  READY: 'ready',
+};
+
+const DRAFT_INTENT_REGEX = /(tạo|tao|lập|lap|gửi|gui).*(phản ánh|phan anh|feedback|ticket)|phản ánh|phan anh/i;
+
+const getDraftQuestion = (step) => {
+  if (step === DRAFT_STEPS.TITLE) {
+    return 'Bạn muốn đặt tiêu đề phản ánh là gì? Ví dụ: “Đường hư hỏng trước nhà”.';
+  }
+
+  if (step === DRAFT_STEPS.DESCRIPTION) {
+    return 'Bạn mô tả chi tiết sự việc giúp tôi nhé: vấn đề là gì, mức độ ảnh hưởng/khẩn cấp ra sao?';
+  }
+
+  if (step === DRAFT_STEPS.LOCATION) {
+    return 'Vị trí cụ thể ở đâu? Bạn có thể nhập địa chỉ hoặc bấm nút GPS bên dưới.';
+  }
+
+  if (step === DRAFT_STEPS.EVIDENCE) {
+    return 'Bạn có ảnh minh chứng không? Nếu có hãy bấm nút “Ảnh” bên dưới để chọn ảnh, hoặc nhắn “không có” để bỏ qua.';
+  }
+
+  return 'Đã đủ thông tin cơ bản. Bạn bấm “Tạo bản nháp” để tôi tạo phản ánh cho bạn.';
+};
+
 const getAiMessageText = (payload) => (
   payload?.message ||
   payload?.messageText ||
@@ -81,6 +112,9 @@ export const CitizenAiCopilot = () => {
     },
   ]);
   const [inputVal, setInputVal] = useState('');
+  const [draftStep, setDraftStep] = useState(DRAFT_STEPS.IDLE);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
   const [reflection, setReflection] = useState('');
   const [locationText, setLocationText] = useState('');
   const [latitude, setLatitude] = useState('');
@@ -228,27 +262,117 @@ const selectConversation = async (conversationId) => {
     }
   };
 
+  const resetDraftFlow = () => {
+    setDraftStep(DRAFT_STEPS.IDLE);
+    setDraftTitle('');
+    setDraftDescription('');
+    setReflection('');
+    setLocationText('');
+    setLatitude('');
+    setLongitude('');
+    setSelectedImages([]);
+  };
+
+  const startDraftFlow = () => {
+    setActiveConversationId(null);
+    setDraftStep(DRAFT_STEPS.TITLE);
+    setChatMessages((current) => [
+      ...current,
+      { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.TITLE) },
+    ]);
+  };
+
+  const buildReflectionText = (title = draftTitle, description = draftDescription) => (
+    [
+      title.trim() ? `Tiêu đề: ${title.trim()}` : '',
+      description.trim() ? `Mô tả: ${description.trim()}` : '',
+    ].filter(Boolean).join('\n')
+  );
+
   const startNewConversation = () => {
     setActiveConversationId(null);
+    resetDraftFlow();
     setChatMessages([
       {
         sender: 'ai',
         text: routeFeedbackId
           ? `Bạn đang chat theo ngữ cảnh phản ánh #${routeFeedbackId}. Hãy nhập câu hỏi cần AI hỗ trợ.`
-          : 'Chào bạn! Tôi là UrbanMind Assist — trợ giúp bạn điều hướng quy trình phản ánh và giám sát vận hành đô thị. Bạn cần hỗ trợ gì hôm nay?',
+          : 'Chào bạn! Nếu muốn tạo phản ánh, hãy nhắn “tạo phản ánh”, tôi sẽ hỏi từng thông tin một.',
       },
     ]);
   };
 
   const toggleChat = () => setChatOpen((current) => !current);
 
+  const handleDraftStepMessage = (userMsg) => {
+    if (draftStep === DRAFT_STEPS.TITLE) {
+      setDraftTitle(userMsg);
+      setDraftStep(DRAFT_STEPS.DESCRIPTION);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.DESCRIPTION) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.DESCRIPTION) {
+      setDraftDescription(userMsg);
+      const nextReflection = buildReflectionText(draftTitle, userMsg);
+      setReflection(nextReflection);
+      setDraftStep(DRAFT_STEPS.LOCATION);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.LOCATION) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.LOCATION) {
+      setLocationText(userMsg);
+      setDraftStep(DRAFT_STEPS.EVIDENCE);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.EVIDENCE) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.EVIDENCE) {
+      setDraftStep(DRAFT_STEPS.READY);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.READY) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.READY) {
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: 'Thông tin đã sẵn sàng. Bạn bấm “Tạo bản nháp” để tôi tạo phản ánh.' },
+      ]);
+      return true;
+    }
+
+    return false;
+  };
+
   const handleSendMessage = async () => {
     if (!inputVal.trim() || loadingReply) return;
 
     const userMsg = inputVal.trim();
     setInputVal('');
-    setReflection((current) => (current ? `${current}\n${userMsg}` : userMsg));
     setChatMessages((current) => [...current, { sender: 'user', text: userMsg }]);
+
+    if (draftStep !== DRAFT_STEPS.IDLE && handleDraftStepMessage(userMsg)) {
+      return;
+    }
+
+    if (DRAFT_INTENT_REGEX.test(userMsg)) {
+      startDraftFlow();
+      return;
+    }
+
     setLoadingReply(true);
 
     try {
@@ -298,11 +422,16 @@ const selectConversation = async (conversationId) => {
         setLatitude(String(nextLatitude));
         setLongitude(String(nextLongitude));
         setLocationText((current) => current || `Vị trí GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}`);
+        if (draftStep === DRAFT_STEPS.LOCATION) {
+          setDraftStep(DRAFT_STEPS.EVIDENCE);
+        }
         setChatMessages((current) => [
           ...current,
           {
             sender: 'ai',
-            text: `Đã lấy GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}. Bạn có thể tiếp tục mô tả phản ánh hoặc bấm “Tạo bản nháp”.`,
+            text: draftStep === DRAFT_STEPS.LOCATION
+              ? `Đã lấy GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}. ${getDraftQuestion(DRAFT_STEPS.EVIDENCE)}`
+              : `Đã lấy GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}.`,
           },
         ]);
       },
@@ -321,18 +450,23 @@ const selectConversation = async (conversationId) => {
     const nextImages = files.slice(0, 5);
     setSelectedImages(nextImages);
     if (nextImages.length > 0) {
+      if (draftStep === DRAFT_STEPS.EVIDENCE) {
+        setDraftStep(DRAFT_STEPS.READY);
+      }
       setChatMessages((current) => [
         ...current,
         {
           sender: 'ai',
-          text: `Đã đính kèm ${nextImages.length} ảnh minh chứng: ${nextImages.map((file) => file.name).join(', ')}.`,
+          text: draftStep === DRAFT_STEPS.EVIDENCE
+            ? `Đã đính kèm ${nextImages.length} ảnh minh chứng: ${nextImages.map((file) => file.name).join(', ')}. ${getDraftQuestion(DRAFT_STEPS.READY)}`
+            : `Đã đính kèm ${nextImages.length} ảnh minh chứng: ${nextImages.map((file) => file.name).join(', ')}.`,
         },
       ]);
     }
   };
 
   const handleCreateDraft = async () => {
-    const text = reflection.trim() || inputVal.trim();
+    const text = (reflection.trim() || buildReflectionText().trim() || inputVal.trim());
     if (!text || creatingDraft) {
       setChatMessages((current) => [
         ...current,
@@ -539,12 +673,12 @@ const selectConversation = async (conversationId) => {
             <div className="mb-2 flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleCreateDraft}
+                onClick={draftStep === DRAFT_STEPS.IDLE ? startDraftFlow : handleCreateDraft}
                 disabled={creatingDraft}
                 className="btn btn-primary btn-sm flex-1 rounded-xl"
               >
                 {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={14} />}
-                Tạo bản nháp
+                {draftStep === DRAFT_STEPS.IDLE ? 'Tạo phản ánh' : 'Tạo bản nháp'}
               </button>
               <button
                 type="button"
@@ -584,7 +718,7 @@ const selectConversation = async (conversationId) => {
           <div className="flex gap-2 border-t border-base-300 bg-base-100 p-4">
             <input
               type="text"
-              placeholder="Nhập từng câu như Messenger..."
+              placeholder={draftStep === DRAFT_STEPS.IDLE ? 'Nhắn với AI hoặc nhập “tạo phản ánh”...' : 'Trả lời câu hỏi hiện tại...'}
               aria-label="Nhắn với AI"
               value={inputVal}
               onChange={(event) => setInputVal(event.target.value)}
