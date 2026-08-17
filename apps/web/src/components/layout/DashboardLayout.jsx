@@ -133,6 +133,9 @@ export const DashboardLayout = ({ children }) => {
   const isStaffFeedbackDetailRoute =
     /^\/staff\/feedbacks\/[^/]+\/?$/.test(location.pathname);
 
+  const isStaffAssignmentRoute =
+    /^\/tickets\/assign\/[^/]+\/?$/.test(location.pathname);
+
   const staffDetailFeedbackId = isStaffFeedbackDetailRoute
     ? location.pathname.split('/').filter(Boolean).pop()
     : null;
@@ -147,7 +150,9 @@ export const DashboardLayout = ({ children }) => {
       className={`min-h-0 flex-1 overflow-y-scroll overflow-x-hidden ${
         isCitizen
           ? 'bg-transparent'
-          : 'bg-slate-50 dark:bg-slate-950'
+          : isStaffAssignmentRoute
+            ? 'staff-assignment-workspace bg-transparent dark:bg-slate-950'
+            : 'bg-slate-50 dark:bg-slate-950'
       }`}
     >
       <div className="flex min-h-full flex-col">
@@ -192,7 +197,9 @@ export const DashboardLayout = ({ children }) => {
           className={`flex min-w-0 w-full flex-1 flex-col overflow-hidden ${
             isCitizen
               ? 'bg-transparent'
-              : 'bg-slate-50 dark:bg-slate-950'
+              : isStaffAssignmentRoute
+                ? 'bg-transparent dark:bg-slate-950'
+                : 'bg-slate-50 dark:bg-slate-950'
           }`}
         >
           <Header onMenuToggle={toggleSidebar} />
