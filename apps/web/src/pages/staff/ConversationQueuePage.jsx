@@ -49,6 +49,36 @@ const formatActivityDate = (value) => {
 };
 
 const STAFF_CONVERSATION_RETURN_KEY = 'staff-conversation-return';
+const STAFF_CONVERSATION_COUNT_CACHE_KEY = 'staff-conversation-count-cache';
+const STAFF_CONVERSATION_COUNT_DIRTY_KEY = 'staff-conversation-count-dirty';
+
+const readConversationCountCache = () => {
+  try {
+    const raw = sessionStorage.getItem(STAFF_CONVERSATION_COUNT_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeConversationCountCache = (items) => {
+  try {
+    sessionStorage.setItem(
+      STAFF_CONVERSATION_COUNT_CACHE_KEY,
+      JSON.stringify({
+        items,
+        savedAt: Date.now(),
+      })
+    );
+    sessionStorage.removeItem(STAFF_CONVERSATION_COUNT_DIRTY_KEY);
+  } catch {
+    // Ignore storage failures and keep the page functional.
+  }
+};
+
+const isConversationCountCacheDirty = () => (
+  sessionStorage.getItem(STAFF_CONVERSATION_COUNT_DIRTY_KEY) === '1'
+);
 
 const readConversationReturnSnapshot = () => {
   try {
@@ -69,15 +99,29 @@ export default function ConversationQueuePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [initialReturnSnapshot] = useState(() => readConversationReturnSnapshot());
-  const rowRefs = useRef(new Map());
-  const restoreHandledRef = useRef(false);
+  const [initialCountCache] = useState(() => readConversationCountCache());
+  const filterInitializedRef = useRef(false);
 
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState(() => (
+    Array.isArray(initialReturnSnapshot?.items)
+      ? initialReturnSnapshot.items
+      : (Array.isArray(initialCountCache?.items) ? initialCountCache.items : [])
+  ));
+  const [loading, setLoading] = useState(
+    () => !Array.isArray(initialReturnSnapshot?.items) && !Array.isArray(initialCountCache?.items)
+  );
   const [error, setError] = useState('');
   const [page, setPage] = useState(() => Number(initialReturnSnapshot?.page) || 1);
-  const [systemTotal, setSystemTotal] = useState(0);
-  const [conversationFilter, setConversationFilter] = useState('all');
+  const [systemTotal, setSystemTotal] = useState(() => Number(initialReturnSnapshot?.systemTotal) || 0);
+  const [conversationFilter, setConversationFilter] = useState(
+    () => initialReturnSnapshot?.conversationFilter || 'all'
+  );
+  const [messageCountsReady, setMessageCountsReady] = useState(
+    () => Boolean(
+      initialReturnSnapshot?.messageCountsReady
+      || (Array.isArray(initialCountCache?.items) && !isConversationCountCacheDirty())
+    )
+  );
   const pageSize = 10;
 
   const getStatusClass = (s) => {
@@ -173,40 +217,89 @@ export default function ConversationQueuePage() {
         }));
 
         setSystemTotal(totalItems || initialItems.length);
-        setItems(initialItems);
 
-        const resolvedCounts = await Promise.allSettled(
-          initialItems.map(async (item) => {
-            if (Number(item.messageCount) > 0) return item.messageCount;
+        const countCacheDirty = isConversationCountCacheDirty();
+        const cachedCountItems = Array.isArray(initialCountCache?.items)
+          ? initialCountCache.items
+          : [];
+        const cachedCountsById = new Map(
+          cachedCountItems.map((item) => [String(item.feedbackId), Number(item.messageCount) || 0])
+        );
+        const canReuseCountCache = !countCacheDirty && cachedCountItems.length > 0;
+
+        if (canReuseCountCache) {
+          const mergedItems = initialItems.map((item) => ({
+            ...item,
+            messageCount: cachedCountsById.has(String(item.feedbackId))
+              ? cachedCountsById.get(String(item.feedbackId))
+              : item.messageCount,
+          }));
+
+          setItems(mergedItems);
+          setMessageCountsReady(true);
+          writeConversationCountCache(mergedItems);
+          return;
+        }
+
+        setItems(initialItems);
+        setMessageCountsReady(false);
+
+        const unresolvedIndexes = initialItems
+          .map((item, index) => ({ item, index }))
+          .filter(({ item }) => Number(item.messageCount) <= 0);
+
+        const resolvedMessageCounts = new Map();
+        let nextUnresolvedIndex = 0;
+        const workerCount = Math.min(4, unresolvedIndexes.length);
+
+        const resolveMessageCounts = async () => {
+          while (active) {
+            const workIndex = nextUnresolvedIndex;
+            nextUnresolvedIndex += 1;
+
+            if (workIndex >= unresolvedIndexes.length) return;
+
+            const { item, index } = unresolvedIndexes[workIndex];
 
             try {
               const messages = await managementFeedbackApi.getFeedbackMessages(
                 item.feedbackId,
                 { includeInternal: true }
               );
-              return Array.isArray(messages) ? messages.length : 0;
+
+              if (!active) return;
+
+              resolvedMessageCounts.set(index, Array.isArray(messages) ? messages.length : 0);
             } catch {
-              return item.messageCount ?? 0;
+              // Keep the count already supplied by the list API.
             }
-          })
-        );
+          }
+        };
+
+        if (workerCount > 0) {
+          await Promise.all(
+            Array.from({ length: workerCount }, () => resolveMessageCounts())
+          );
+        }
 
         if (!active) return;
 
-        setItems(initialItems.map((item, index) => ({
+        const resolvedItems = initialItems.map((item, index) => ({
           ...item,
-          messageCount: Number(
-            resolvedCounts[index]?.status === 'fulfilled'
-              ? resolvedCounts[index].value
-              : item.messageCount
-          ),
-        })));
+          messageCount: resolvedMessageCounts.has(index)
+            ? resolvedMessageCounts.get(index)
+            : item.messageCount,
+        }));
+
+        setItems(resolvedItems);
+        setMessageCountsReady(true);
+        writeConversationCountCache(resolvedItems);
       } catch (err) {
         if (!active) return;
         console.error('Failed to load conversation queue', err);
-        setError('Không thể tải danh sách trao đổi. Vui lòng thử lại.');
-        setItems([]);
-        setSystemTotal(0);
+        setError('Không thể tải hoặc làm mới danh sách trao đổi. Vui lòng thử lại.');
+        setItems((current) => (current.length > 0 ? current : []));
+        setSystemTotal((current) => current || 0);
       } finally {
         if (active) setLoading(false);
       }
@@ -217,7 +310,7 @@ export default function ConversationQueuePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialCountCache?.items]);
 
 
   const summary = useMemo(() => ({
@@ -246,6 +339,10 @@ export default function ConversationQueuePage() {
         feedbackId,
         page: currentPage,
         scrollY: scrollContainer?.scrollTop || 0,
+        conversationFilter,
+        items,
+        systemTotal,
+        messageCountsReady,
       })
     );
 
@@ -253,8 +350,6 @@ export default function ConversationQueuePage() {
       replace: true,
       state: {
         ...(location.state || {}),
-        restoreConversationFeedbackId: feedbackId,
-        preserveScrollOnEnter: true,
       },
     });
 
@@ -268,11 +363,15 @@ export default function ConversationQueuePage() {
     });
   }, [
     currentPage,
+    conversationFilter,
+    items,
     location.hash,
     location.pathname,
     location.search,
     location.state,
+    messageCountsReady,
     navigate,
+    systemTotal,
   ]);
 
   const pageStart = (currentPage - 1) * pageSize;
@@ -282,54 +381,14 @@ export default function ConversationQueuePage() {
   );
 
   useEffect(() => {
+    if (!filterInitializedRef.current) {
+      filterInitializedRef.current = true;
+      return;
+    }
     setPage(1);
   }, [conversationFilter]);
 
-  useEffect(() => {
-    if (loading || restoreHandledRef.current) return undefined;
 
-    const targetFeedbackId = String(
-      location.state?.restoreConversationFeedbackId
-      || initialReturnSnapshot?.feedbackId
-      || ''
-    );
-
-    if (!targetFeedbackId) {
-      restoreHandledRef.current = true;
-      return undefined;
-    }
-
-    const targetRow = rowRefs.current.get(targetFeedbackId);
-    const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
-
-    if (!targetRow || !scrollContainer) return undefined;
-
-    restoreHandledRef.current = true;
-
-    requestAnimationFrame(() => {
-      const containerRect = scrollContainer.getBoundingClientRect();
-      const rowRect = targetRow.getBoundingClientRect();
-      const rowTop = scrollContainer.scrollTop + rowRect.top - containerRect.top;
-      const centeredTop = Math.max(
-        0,
-        rowTop - Math.max(24, (scrollContainer.clientHeight - targetRow.offsetHeight) / 2)
-      );
-
-      scrollContainer.scrollTo({
-        top: centeredTop,
-        left: 0,
-        behavior: 'auto',
-      });
-
-      targetRow.classList.add('bg-blue-50');
-      window.setTimeout(() => {
-        targetRow.classList.remove('bg-blue-50');
-      }, 2200);
-    });
-
-    sessionStorage.removeItem(STAFF_CONVERSATION_RETURN_KEY);
-    return undefined;
-  }, [initialReturnSnapshot, loading, location.state, paginatedItems]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -346,7 +405,7 @@ export default function ConversationQueuePage() {
     return Array.from({ length: 5 }, (_, index) => start + index);
   }, [currentPage, totalPages]);
 
-  if (loading) {
+  if (loading && items.length === 0) {
     return (
       <div className="flex justify-center py-12">
         <LoadingSpinner />
@@ -354,7 +413,7 @@ export default function ConversationQueuePage() {
     );
   }
 
-  if (error) {
+  if (error && items.length === 0) {
     return (
       <div className="space-y-4">
         <div className="rounded-[1.4rem] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
@@ -364,6 +423,18 @@ export default function ConversationQueuePage() {
 
   return (
     <div className="page-container space-y-6 text-slate-800">
+      {loading && items.length > 0 ? (
+        <div className="pointer-events-none fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-600 shadow-lg backdrop-blur">
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+          Đang làm mới
+        </div>
+      ) : null}
+
+      {error && items.length > 0 ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {error}
+        </div>
+      ) : null}
       <ManagerPageHeader
         title="Quản lý trao đổi"
         description="Theo dõi các phản ánh có hoạt động trao đổi và mở nhanh hồ sơ để tiếp tục xử lý."
@@ -394,11 +465,15 @@ export default function ConversationQueuePage() {
 
         <button
           type="button"
-          onClick={() => setConversationFilter((current) => (
-            current === 'with-messages' ? 'all' : 'with-messages'
-          ))}
+          onClick={() => {
+            if (!messageCountsReady) return;
+            setConversationFilter((current) => (
+              current === 'with-messages' ? 'all' : 'with-messages'
+            ));
+          }}
+          disabled={!messageCountsReady}
           aria-pressed={conversationFilter === 'with-messages'}
-          className={`rounded-[1.4rem] text-left transition-all duration-200 ${
+          className={`rounded-[1.4rem] text-left transition-all duration-200 disabled:cursor-wait disabled:opacity-70 ${
             conversationFilter === 'with-messages'
               ? 'ring-2 ring-emerald-200 ring-offset-2 ring-offset-transparent'
               : 'hover:-translate-y-0.5'
@@ -406,8 +481,10 @@ export default function ConversationQueuePage() {
         >
           <ManagerMetricCard
             label="Có trao đổi"
-            value={summary.withMessages}
-            description="Chỉ hiển thị phản ánh đã phát sinh ít nhất một tin nhắn."
+            value={messageCountsReady ? summary.withMessages : '…'}
+            description={messageCountsReady
+              ? 'Chỉ hiển thị phản ánh đã phát sinh ít nhất một tin nhắn.'
+              : 'Đang xác định các phản ánh đã phát sinh trao đổi.'}
             icon={Lucide.MessageSquareText}
             toneClass="bg-emerald-50 text-emerald-700"
           />
@@ -459,11 +536,6 @@ export default function ConversationQueuePage() {
                   return (
                     <tr
                       key={item.feedbackId}
-                      ref={(node) => {
-                        const key = String(item.feedbackId);
-                        if (node) rowRefs.current.set(key, node);
-                        else rowRefs.current.delete(key);
-                      }}
                       className="group cursor-pointer transition-colors duration-500 hover:bg-blue-50/35"
                       onClick={() => openConversationFeedback(item)}
                     >

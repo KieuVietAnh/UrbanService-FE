@@ -178,6 +178,12 @@ export const ManagementFeedbackDetailPage = () => {
       setCandidatesLoadError('');
       try {
         const feedbackRes = await managementFeedbackApi.getFeedbackById(feedbackId);
+
+        if (!active) return;
+
+        setFeedback(feedbackRes);
+        setLoading(false);
+
         const linkedFeedbackId = feedbackRes?.feedbackId || feedbackId;
         const [categoriesRes, candidatesRes] = await Promise.allSettled([
           toolsApi.getCategories(),
@@ -186,7 +192,11 @@ export const ManagementFeedbackDetailPage = () => {
 
         if (!active) return;
 
-        setCategories(Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
+        setCategories(
+          categoriesRes.status === 'fulfilled' && Array.isArray(categoriesRes.value)
+            ? categoriesRes.value
+            : []
+        );
         if (candidatesRes.status === 'fulfilled') {
           setCandidates(Array.isArray(candidatesRes.value) ? candidatesRes.value : []);
         } else {
@@ -194,7 +204,6 @@ export const ManagementFeedbackDetailPage = () => {
           setCandidatesLoadError(candidatesRes.reason?.message || 'Không thể tải danh sách đơn vị xử lý.');
         }
 
-        setFeedback(feedbackRes);
         // Debug: log urgency-related fields so we can see why the button may be hidden
         try {
           const dbg = {
@@ -274,6 +283,7 @@ export const ManagementFeedbackDetailPage = () => {
       });
 
       if (refreshed) {
+        sessionStorage.setItem('staff-conversation-count-dirty', '1');
         setMessageDraft('');
         setPageMessage({ type: '', text: '' });
       } else {
