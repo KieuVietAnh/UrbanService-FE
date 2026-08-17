@@ -398,7 +398,7 @@ export const DuplicateDetection = () => {
       </section>
 
       <section className="admin-panel overflow-hidden border-slate-200/90 bg-white/95 shadow-[0_14px_34px_rgba(15,23,42,0.06)]">
-        <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/35 px-5 py-4 sm:px-6">
+        <div className="staff-dark-surface-header border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/35 px-5 py-4 sm:px-6">
           <ManagerSectionHeader
             title={`Danh sách · ${currentFilterLabel}`}
             description="Mở một trường hợp để so sánh hai phản ánh, xem độ tin cậy và lý do AI."
