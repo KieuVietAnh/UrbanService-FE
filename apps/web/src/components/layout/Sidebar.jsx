@@ -137,14 +137,15 @@ export const Sidebar = ({ isOpen, onClose }) => {
         {/* Logo Section */}
         <div className="admin-sidebar-logo flex items-center justify-between border-b border-slate-200/70 bg-sky-50/55 px-4 py-3 backdrop-blur">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-sky-500 text-white shadow-lg shadow-blue-600/20 ring-1 ring-white/40">
-              <Lucide.Cpu size={22} className="drop-shadow-sm" />
+            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.26)]">
+              <Lucide.MapPinned size={20} aria-hidden="true" />
+              <span className="absolute -bottom-3 -right-3 h-8 w-8 rounded-full bg-white/15" aria-hidden="true" />
             </div>
             <div>
-              <h1 className="text-base font-bold tracking-tight text-slate-950">
+              <h1 className="text-base font-bold tracking-[-0.025em] text-slate-950">
                 UrbanMind
               </h1>
-              <p className="text-xs font-semibold text-slate-500">Smart City</p>
+              <p className="text-[11px] font-medium text-slate-500">Cổng phản ánh đô thị</p>
             </div>
           </div>
           <button onClick={onClose} aria-label="Đóng thanh điều hướng" title="Đóng menu" className="btn btn-sm btn-ghost lg:hidden">

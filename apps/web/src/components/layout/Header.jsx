@@ -319,6 +319,7 @@ export const Header = ({ onMenuToggle }) => {
       create: 'Gửi phản ánh mới',
       queue: 'Hàng chờ kiểm duyệt AI',
       conversations: 'Quản lý trao đổi',
+      'area-alerts': 'Quản lý cảnh báo khu vực',
       duplicates: 'Hộp thư trùng lặp',
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
@@ -363,6 +364,8 @@ export const Header = ({ onMenuToggle }) => {
               ? 'Chi tiết điều phối viên'
             : path === 'feedbacks' && location.state?.fromStaffConversations
               ? 'Quản lý trao đổi'
+            : path === 'create' && location.pathname.startsWith('/staff/area-alerts/')
+              ? 'Tạo cảnh báo'
             : path === 'sla' && location.pathname.startsWith('/analytics/')
               ? 'Phân tích SLA'
               : labelMap[path] || path;
@@ -375,6 +378,7 @@ export const Header = ({ onMenuToggle }) => {
             sentiment: '/analytics/sentiment',
             settings: '/settings',
             coordinators: '/management/coordinators',
+            'area-alerts': '/staff/area-alerts',
           };
 
           const breadcrumbLink = path === 'feedbacks' && location.state?.fromStaffConversations
