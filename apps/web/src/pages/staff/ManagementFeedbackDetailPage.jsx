@@ -1,7 +1,7 @@
 // src/pages/staff/ManagementFeedbackDetailPage.jsx
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
@@ -65,6 +65,7 @@ const CITIZEN_NOTIFICATION_TEMPLATES = [
 export const ManagementFeedbackDetailPage = () => {
   const { feedbackId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const [feedback, setFeedback] = useState(null);
@@ -1076,6 +1077,19 @@ export const ManagementFeedbackDetailPage = () => {
     return 'Trạng thái';
   };
 
+  const returnToFeedbackList = useCallback(() => {
+    if (location.state?.fromStaffFeedbackList) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/staff/feedbacks', {
+      state: {
+        restoreFeedbackId: String(feedbackId || ''),
+      },
+    });
+  }, [location.state, navigate, feedbackId]);
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -1093,7 +1107,7 @@ export const ManagementFeedbackDetailPage = () => {
         />
         <Button
           type="button"
-          onClick={() => navigate('/staff/feedbacks')}
+          onClick={returnToFeedbackList}
           variant="outline"
           size="sm"
         >
@@ -1146,7 +1160,7 @@ export const ManagementFeedbackDetailPage = () => {
       <div className="flex items-center gap-2 px-1 text-sm font-medium text-slate-500">
         <button
           type="button"
-          onClick={() => navigate('/staff/feedbacks')}
+          onClick={returnToFeedbackList}
           className="inline-flex items-center gap-1 text-slate-500 transition hover:text-blue-600"
           aria-label="Quay lại quản lý phản ánh"
         >
@@ -2404,7 +2418,7 @@ export const ManagementFeedbackDetailPage = () => {
       ) : null}
 
       {activeViewTab === 'exchange' ? (
-        <section ref={exchangeSectionRef} className="admin-panel scroll-mt-5 overflow-hidden">
+        <section ref={exchangeSectionRef} className="admin-panel scroll-mt-28 overflow-hidden">
           <div className="border-b border-slate-200 px-6 py-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
