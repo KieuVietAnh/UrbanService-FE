@@ -9,6 +9,7 @@ import { Header } from './Header';
 import { Footer } from './Footer';
 import PageTransition from '../motion/PageTransition';
 import { PublicThemeStyles } from '../public/PublicLayout';
+import CitizenFeedbackInbox from '../tickets/CitizenFeedbackInbox';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { normalizeRole } from '../../utils/roleMap';
 import { useAuth } from '../../contexts/AuthContext';
@@ -175,6 +176,7 @@ export const DashboardLayout = ({ children }) => {
       }`}
     >
       {isCitizen ? <PublicThemeStyles /> : null}
+      {isCitizen ? <CitizenFeedbackInbox /> : null}
 
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}
