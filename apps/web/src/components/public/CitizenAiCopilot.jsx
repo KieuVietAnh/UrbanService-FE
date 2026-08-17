@@ -51,7 +51,11 @@ const normalizeAiMessage = (message, index = 0) => ({
 
 const fileToBase64 = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onload = () => {
+    const result = String(reader.result || '');
+    const [, rawBase64 = result] = result.split(',');
+    resolve(rawBase64);
+  };
   reader.onerror = reject;
   reader.readAsDataURL(file);
 });
@@ -84,7 +88,6 @@ export const CitizenAiCopilot = () => {
   const [selectedImages, setSelectedImages] = useState([]);
   const [loadingReply, setLoadingReply] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
-  const [showAiDraftForm, setShowAiDraftForm] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => (
     typeof window !== 'undefined' ? window.innerHeight : 900
   ));
@@ -244,7 +247,7 @@ const selectConversation = async (conversationId) => {
 
     const userMsg = inputVal.trim();
     setInputVal('');
-    setReflection((current) => current || userMsg);
+    setReflection((current) => (current ? `${current}\n${userMsg}` : userMsg));
     setChatMessages((current) => [...current, { sender: 'user', text: userMsg }]);
     setLoadingReply(true);
 
@@ -295,6 +298,13 @@ const selectConversation = async (conversationId) => {
         setLatitude(String(nextLatitude));
         setLongitude(String(nextLongitude));
         setLocationText((current) => current || `Vị trí GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}`);
+        setChatMessages((current) => [
+          ...current,
+          {
+            sender: 'ai',
+            text: `Đã lấy GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}. Bạn có thể tiếp tục mô tả phản ánh hoặc bấm “Tạo bản nháp”.`,
+          },
+        ]);
       },
       () => {
         setChatMessages((current) => [
@@ -308,7 +318,17 @@ const selectConversation = async (conversationId) => {
 
   const handleImageSelect = (event) => {
     const files = Array.from(event.target.files || []).filter((file) => file.type.startsWith('image/'));
-    setSelectedImages(files.slice(0, 5));
+    const nextImages = files.slice(0, 5);
+    setSelectedImages(nextImages);
+    if (nextImages.length > 0) {
+      setChatMessages((current) => [
+        ...current,
+        {
+          sender: 'ai',
+          text: `Đã đính kèm ${nextImages.length} ảnh minh chứng: ${nextImages.map((file) => file.name).join(', ')}.`,
+        },
+      ]);
+    }
   };
 
   const handleCreateDraft = async () => {
@@ -516,84 +536,56 @@ const selectConversation = async (conversationId) => {
           </div>
 
           <div className="border-t border-base-300 bg-base-100 px-4 py-3">
-            <button
-              type="button"
-              onClick={() => setShowAiDraftForm((current) => !current)}
-              className="btn btn-outline btn-sm w-full rounded-xl"
-              aria-expanded={showAiDraftForm}
-            >
-              <Lucide.FilePlus2 size={14} />
-              Tạo phản ánh bằng AI
-              {showAiDraftForm ? <Lucide.ChevronDown size={14} /> : <Lucide.ChevronUp size={14} />}
-            </button>
-
-            {showAiDraftForm ? (
-              <div className="mt-3 space-y-2">
-                <textarea
-                  value={reflection}
-                  onChange={(event) => setReflection(event.target.value)}
-                  placeholder="Mô tả phản ánh tự nhiên, ví dụ: Đường trước nhà tôi có ổ gà lớn..."
-                  className="textarea textarea-bordered textarea-xs min-h-16 w-full rounded-xl text-xs"
-                />
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCreateDraft}
+                disabled={creatingDraft}
+                className="btn btn-primary btn-sm flex-1 rounded-xl"
+              >
+                {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={14} />}
+                Tạo bản nháp
+              </button>
+              <button
+                type="button"
+                onClick={handleUseBrowserLocation}
+                className="btn btn-outline btn-sm rounded-xl"
+                title="Lấy GPS"
+              >
+                <Lucide.MapPin size={14} />
+                GPS
+              </button>
+              <label className="btn btn-outline btn-sm rounded-xl" title="Đính kèm ảnh">
+                <Lucide.ImagePlus size={14} />
+                Ảnh
                 <input
-                  type="text"
-                  value={locationText}
-                  onChange={(event) => setLocationText(event.target.value)}
-                  placeholder="Vị trí dạng text"
-                  className="input input-bordered input-xs w-full rounded-xl text-xs"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageSelect}
+                  className="hidden"
                 />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    value={latitude}
-                    onChange={(event) => setLatitude(event.target.value)}
-                    placeholder="Latitude"
-                    className="input input-bordered input-xs rounded-xl text-xs"
-                  />
-                  <input
-                    type="number"
-                    value={longitude}
-                    onChange={(event) => setLongitude(event.target.value)}
-                    placeholder="Longitude"
-                    className="input input-bordered input-xs rounded-xl text-xs"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={handleUseBrowserLocation} className="btn btn-xs btn-outline rounded-xl">
-                    <Lucide.MapPin size={12} />
-                    GPS
-                  </button>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageSelect}
-                    className="file-input file-input-bordered file-input-xs min-w-0 flex-1 rounded-xl text-xs"
-                  />
-                </div>
-                {selectedImages.length > 0 ? (
-                  <p className="text-[10px] text-base-content/60">
-                    Đã chọn {selectedImages.length} ảnh: {selectedImages.map((file) => file.name).join(', ')}
-                  </p>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handleCreateDraft}
-                  disabled={creatingDraft}
-                  className="btn btn-primary btn-sm w-full rounded-xl"
-                >
-                  {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={14} />}
-                  Tạo bản nháp phản ánh
-                </button>
-              </div>
+              </label>
+            </div>
+            <input
+              type="text"
+              value={locationText}
+              onChange={(event) => setLocationText(event.target.value)}
+              placeholder="Vị trí phản ánh (có thể nhập sau khi chat)"
+              className="input input-bordered input-xs w-full rounded-xl text-xs"
+            />
+            {selectedImages.length > 0 ? (
+              <p className="mt-1 text-[10px] text-base-content/60">
+                Đã chọn {selectedImages.length} ảnh: {selectedImages.map((file) => file.name).join(', ')}
+              </p>
             ) : null}
           </div>
 
           <div className="flex gap-2 border-t border-base-300 bg-base-100 p-4">
             <input
               type="text"
-              placeholder="Hỏi AI về luật, thủ tục phản ánh..."
-              aria-label="Hỏi AI"
+              placeholder="Nhập từng câu như Messenger..."
+              aria-label="Nhắn với AI"
               value={inputVal}
               onChange={(event) => setInputVal(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && handleSendMessage()}
