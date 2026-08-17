@@ -303,7 +303,7 @@ export const Header = ({ onMenuToggle }) => {
       admin: 'Quản trị hệ thống',
       management: 'Quản trị vận hành',
       users: 'Quản lý người dùng',
-      coordinators: 'Điều phối viên',
+      coordinators: 'Danh bạ điều phối viên',
       feedbacks: 'Quản lý phản ánh',
       categories: 'Danh mục phản ánh',
       sla: 'Chính sách SLA',
@@ -357,7 +357,7 @@ export const Header = ({ onMenuToggle }) => {
           if (index === 0 && path === 'dashboard') return null;
 
           const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
-          const isCoordinatorId = /^\d+$/.test(path) && location.pathname.startsWith('/management/coordinators/');
+          const isCoordinatorId = /^\d+$/.test(path) && (location.pathname.startsWith('/management/coordinators/') || location.pathname.startsWith('/staff/coordinators/'));
           const segmentName = isFeedbackId
             ? 'Chi tiết phản ánh'
             : isCoordinatorId
@@ -377,7 +377,7 @@ export const Header = ({ onMenuToggle }) => {
             heatmap: '/analytics/heatmap',
             sentiment: '/analytics/sentiment',
             settings: '/settings',
-            coordinators: '/management/coordinators',
+            coordinators: location.pathname.startsWith('/staff/coordinators') ? '/staff/coordinators' : '/management/coordinators',
             'area-alerts': '/staff/area-alerts',
           };
 

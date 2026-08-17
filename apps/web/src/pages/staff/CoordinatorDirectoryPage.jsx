@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
@@ -7,6 +7,12 @@ import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import * as Lucide from 'lucide-react';
+import { ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
+
+const PAGE_SIZE = 10;
+
+const getAreaLabel = (area) => area?.name || area?.areaName || area?.displayName || `Khu vực ${area?.id || area?.areaId || ''}`;
+const getCategoryLabel = (category) => category?.name || category?.categoryName || category?.categoryType || `Danh mục ${category?.id || category?.categoryId || ''}`;
 
 export default function CoordinatorDirectoryPage() {
   const navigate = useNavigate();
@@ -17,44 +23,44 @@ export default function CoordinatorDirectoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filters
   const [search, setSearch] = useState('');
   const [areaId, setAreaId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
-
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(10);
-  const [totalCount, setTotalCount] = useState(0);
 
   useEffect(() => {
+    let active = true;
+
     const loadLookups = async () => {
-      try {
-        const [aRes, cRes] = await Promise.allSettled([toolsApi.getAreas(), toolsApi.getCategories()]);
-        setAreas(aRes.status === 'fulfilled' && Array.isArray(aRes.value) ? aRes.value : []);
-        setCategories(cRes.status === 'fulfilled' && Array.isArray(cRes.value) ? cRes.value : []);
-      } catch (err) {
-        console.error('Failed to load lookups', err);
-      }
+      const [aRes, cRes] = await Promise.allSettled([
+        toolsApi.getAreas(),
+        toolsApi.getCategories(),
+      ]);
+
+      if (!active) return;
+
+      setAreas(aRes.status === 'fulfilled' && Array.isArray(aRes.value) ? aRes.value : []);
+      setCategories(cRes.status === 'fulfilled' && Array.isArray(cRes.value) ? cRes.value : []);
     };
+
     loadLookups();
+    return () => { active = false; };
   }, []);
 
   const fetchCoordinators = useCallback(async () => {
     setLoading(true);
     setError('');
-    try {
-      const params = {
-        search: search || undefined,
-        areaId: areaId || undefined,
-        categoryId: categoryId || undefined,
-        includeInactive: includeInactive ? true : undefined,
-        page: currentPage,
-        pageSize,
-      };
 
-      const response = await managementFeedbackApi.getServiceProviders(params);
+    try {
+      // Swagger: endpoint này trả về toàn bộ mảng kết quả và chỉ nhận 4 filter dưới đây.
+      const response = await managementFeedbackApi.getServiceProviders({
+        search: search.trim() || undefined,
+        areaId: areaId ? Number(areaId) : undefined,
+        categoryId: categoryId ? Number(categoryId) : undefined,
+        includeInactive,
+      });
+
       const itemsArr = Array.isArray(response)
         ? response
         : Array.isArray(response?.items)
@@ -64,37 +70,54 @@ export default function CoordinatorDirectoryPage() {
             : [];
 
       setItems(itemsArr);
-      const total = response?.totalCount ?? response?.total ?? response?.totalItems ?? itemsArr.length ?? 0;
-      setTotalCount(total);
     } catch (err) {
       console.error('Failed to fetch coordinators', err);
       setError('Không thể tải danh sách điều phối viên. Vui lòng thử lại.');
       setItems([]);
-      setTotalCount(0);
     } finally {
       setLoading(false);
     }
-  }, [search, areaId, categoryId, includeInactive, currentPage, pageSize]);
+  }, [search, areaId, categoryId, includeInactive]);
 
-  useEffect(() => { fetchCoordinators(); }, [fetchCoordinators]);
+  useEffect(() => {
+    fetchCoordinators();
+  }, [fetchCoordinators]);
 
-  useEffect(() => { setCurrentPage(1); }, [search, areaId, categoryId, includeInactive]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, areaId, categoryId, includeInactive]);
 
-  const totalPages = Math.ceil(totalCount / pageSize);
+  const totalCount = items.length;
+  const activeCount = useMemo(() => items.filter((item) => item?.isActive !== false).length, [items]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const paginatedItems = useMemo(
+    () => items.slice(pageStart, pageStart + PAGE_SIZE),
+    [items, pageStart]
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const hasFilters = Boolean(search.trim() || areaId || categoryId || includeInactive);
+  const clearFilters = () => {
+    setSearch('');
+    setAreaId('');
+    setCategoryId('');
+    setIncludeInactive(false);
+  };
 
   if (loading && items.length === 0) {
-    return (
-      <div className="flex justify-center py-12">
-        <LoadingSpinner />
-      </div>
-    );
+    return <div className="flex justify-center py-12"><LoadingSpinner /></div>;
   }
 
-  if (error) {
+  if (error && items.length === 0) {
     return (
       <div className="space-y-4">
         <ErrorAlert title="Lỗi tải danh bạ" message={error} />
-        <Button onClick={fetchCoordinators} variant="primary" size="sm" className="rounded-[1rem]">
+        <Button onClick={fetchCoordinators} variant="primary" size="sm">
           <Lucide.RefreshCw size={16} /> Thử lại
         </Button>
       </div>
@@ -102,87 +125,189 @@ export default function CoordinatorDirectoryPage() {
   }
 
   return (
-    <div className="admin-page-shell space-y-6 p-4">
-      <div className="admin-page-hero p-5 sm:p-6">
-        <div className="flex items-center justify-between">
+    <div className="admin-page-shell space-y-6">
+      <ManagerPageHeader
+        title="Danh bạ điều phối viên"
+        description="Tra cứu đầu mối điều phối theo đơn vị cung cấp dịch vụ, khu vực và danh mục phụ trách."
+        icon={Lucide.ContactRound}
+        statusLabel="TỔNG ĐIỀU PHỐI VIÊN"
+        statusValue={`${totalCount} người`}
+      />
+
+      {error ? <ErrorAlert title="Không thể làm mới danh bạ" message={error} /> : null}
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="admin-panel flex items-center justify-between gap-4 p-5">
           <div>
-            <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
-              <Lucide.Users size={14} /> Danh bạ Điều phối viên
-            </Badge>
-            <h1 className="admin-hero-title mt-3">Danh bạ Điều phối viên</h1>
-            <p className="admin-hero-description mt-2">Tìm kiếm và quản lý danh sách điều phối viên theo khu vực và danh mục.</p>
+            <p className="text-sm font-semibold text-slate-500">Đang hoạt động</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-950">{activeCount}</p>
+            <p className="mt-2 text-sm text-slate-500">Điều phối viên đang sẵn sàng trong kết quả hiện tại.</p>
           </div>
-          <div className="text-sm text-slate-600">Tổng: <span className="font-semibold text-slate-900">{totalCount}</span></div>
-        </div>
-      </div>
-
-      <div className="admin-panel p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="input input-bordered flex items-center gap-2 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-            <Lucide.Search size={16} className="text-slate-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm tên, email hoặc điện thoại" className="grow bg-transparent text-sm" />
-          </label>
-
-          <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="select select-bordered rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-            <option value="">Tất cả khu vực</option>
-            {areas.map((a) => (<option key={a.id || a.areaId} value={a.id || a.areaId}>{a.name || a.areaName}</option>))}
-          </select>
-
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="select select-bordered rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-            <option value="">Tất cả danh mục</option>
-            {categories.map((c) => (<option key={c.id || c.categoryId} value={c.id || c.categoryId}>{c.name || c.categoryName}</option>))}
-          </select>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={includeInactive} onChange={(e) => setIncludeInactive(Boolean(e.target.checked))} />
-            Bao gồm đã tắt
-          </label>
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <Lucide.UserCheck size={20} />
+          </span>
         </div>
 
-        <div className="admin-table-wrap mt-4 overflow-x-auto">
-          {items.length === 0 ? (
-            <EmptyState title="Chưa có điều phối viên" description="Không có dữ liệu phù hợp với bộ lọc hiện tại." />
-          ) : (
-            <table className="table table-zebra w-full text-sm">
-              <thead>
-                <tr>
-                  <th>Coordinator ID</th>
-                  <th>Provider</th>
-                  <th>Coordinator</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Active</th>
-                  <th>Coverage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((it) => (
-                  <tr key={it.coordinatorId || it.id} onClick={() => navigate(`/staff/coordinators/${it.coordinatorId || it.id}`)} className="cursor-pointer">
-                    <td className="font-semibold">{it.coordinatorId || it.id || '—'}</td>
-                    <td>{it.providerName || it.provider?.name || '—'}</td>
-                    <td>{it.coordinatorName || it.name || it.fullName || '—'}</td>
-                    <td>{it.phoneNumber || it.phone || '—'}</td>
-                    <td>{it.email || '—'}</td>
-                    <td>{it.isActive ? 'Yes' : 'No'}</td>
-                    <td>{it.coverageCount ?? it.coverage?.length ?? 0}</td>
+        <div className="admin-panel flex items-center justify-between gap-4 p-5">
+          <div>
+            <p className="text-sm font-semibold text-slate-500">Kết quả hiện tại</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-950">{totalCount}</p>
+            <p className="mt-2 text-sm text-slate-500">Số điều phối viên phù hợp với bộ lọc đang chọn.</p>
+          </div>
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+            <Lucide.Users size={20} />
+          </span>
+        </div>
+      </section>
+
+      <section className="admin-panel overflow-hidden">
+        <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
+          <ManagerSectionHeader
+            title="Tra cứu điều phối viên"
+            description="Tìm theo tên, email hoặc số điện thoại; có thể thu hẹp theo khu vực và danh mục."
+            icon={Lucide.Search}
+            actions={hasFilters ? (
+              <Button type="button" onClick={clearFilters} variant="ghost" size="sm">
+                <Lucide.RotateCcw size={15} /> Xóa bộ lọc
+              </Button>
+            ) : null}
+          />
+        </div>
+
+        <div className="border-b border-slate-200 bg-slate-50/55 px-5 py-4 sm:px-6">
+          <div className="grid gap-3 xl:grid-cols-[minmax(260px,1.4fr)_minmax(190px,0.7fr)_minmax(190px,0.7fr)_auto] xl:items-center">
+            <label className="relative block">
+              <Lucide.Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tìm tên, email hoặc số điện thoại"
+                className="input h-11 w-full rounded-xl border-slate-200 bg-white pl-9 text-sm shadow-sm"
+              />
+            </label>
+
+            <select
+              value={areaId}
+              onChange={(event) => setAreaId(event.target.value)}
+              className="select h-11 w-full rounded-xl border-slate-200 !bg-white text-sm text-slate-800 shadow-sm [color-scheme:light]"
+              style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+            >
+              <option value="" style={{ backgroundColor: '#ffffff' }}>Tất cả khu vực</option>
+              {areas.map((area) => (
+                <option key={area.id || area.areaId} value={area.id || area.areaId} style={{ backgroundColor: '#ffffff' }}>
+                  {getAreaLabel(area)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={categoryId}
+              onChange={(event) => setCategoryId(event.target.value)}
+              className="select h-11 w-full rounded-xl border-slate-200 !bg-white text-sm text-slate-800 shadow-sm [color-scheme:light]"
+              style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
+            >
+              <option value="" style={{ backgroundColor: '#ffffff' }}>Tất cả danh mục</option>
+              {categories.map((category) => (
+                <option key={category.id || category.categoryId} value={category.id || category.categoryId} style={{ backgroundColor: '#ffffff' }}>
+                  {getCategoryLabel(category)}
+                </option>
+              ))}
+            </select>
+
+            <label className="flex h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm">
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(event) => setIncludeInactive(Boolean(event.target.checked))}
+                className="checkbox checkbox-sm border-slate-300"
+              />
+              Bao gồm đã ngừng hoạt động
+            </label>
+          </div>
+        </div>
+
+        {paginatedItems.length === 0 ? (
+          <div className="px-6 py-12">
+            <EmptyState
+              title="Không có điều phối viên phù hợp"
+              description="Thử thay đổi từ khóa hoặc bỏ bớt bộ lọc để xem thêm kết quả."
+            />
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed divide-y divide-slate-200 text-sm">
+                <colgroup>
+                  <col className="w-[25%]" />
+                  <col className="w-[19%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
+                <thead className="bg-slate-50/80">
+                  <tr>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Điều phối viên</th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Đơn vị</th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Điện thoại</th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Email</th>
+                    <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Vùng phủ</th>
+                    <th className="px-5 py-3.5 text-right text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Trạng thái</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {totalPages > 1 && (
-          <div className="mt-5 flex items-center justify-between">
-            <div className="text-sm text-slate-500">Hiển thị trang {currentPage} trên {totalPages}</div>
-            <div className="flex items-center gap-2">
-              <Button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} variant="outline" size="sm" className="rounded-2xl">Trước</Button>
-              <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-700">{currentPage}/{totalPages}</span>
-              <Button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} variant="outline" size="sm" className="rounded-2xl">Sau</Button>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {paginatedItems.map((item) => {
+                    const id = item.coordinatorId || item.id;
+                    const name = item.coordinatorName || item.name || item.fullName || 'Chưa có tên';
+                    return (
+                      <tr
+                        key={id}
+                        onClick={() => navigate(`/staff/coordinators/${id}`)}
+                        className="cursor-pointer transition-colors hover:bg-blue-50/35"
+                      >
+                        <td className="px-5 py-4 align-middle">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-semibold text-blue-700">
+                              {String(name).trim().charAt(0).toUpperCase() || 'Đ'}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-900" title={name}>{name}</div>
+                              <div className="mt-0.5 truncate text-xs text-slate-400">ID #{id}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-middle text-slate-600"><div className="line-clamp-2">{item.providerName || item.provider?.name || '—'}</div></td>
+                        <td className="px-5 py-4 align-middle whitespace-nowrap text-slate-600">{item.phoneNumber || item.phone || '—'}</td>
+                        <td className="px-5 py-4 align-middle"><div className="truncate text-slate-600" title={item.email || ''}>{item.email || '—'}</div></td>
+                        <td className="px-5 py-4 text-center align-middle"><span className="inline-flex min-w-8 items-center justify-center rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{item.coverageCount ?? item.coverage?.length ?? 0}</span></td>
+                        <td className="px-5 py-4 text-right align-middle">
+                          <Badge intent={item.isActive === false ? 'neutral' : 'success'} className="whitespace-nowrap px-2.5 py-1 text-[11px] font-semibold">
+                            {item.isActive === false ? 'Ngừng hoạt động' : 'Đang hoạt động'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
+
+            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/55 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500">
+                Hiển thị <span className="font-semibold text-slate-700">{pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, totalCount)}</span> trong tổng số <span className="font-semibold text-slate-700">{totalCount}</span> điều phối viên
+              </p>
+
+              {totalPages > 1 ? (
+                <div className="flex items-center gap-2">
+                  <Button onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={safePage === 1} variant="outline" size="sm">Trước</Button>
+                  <span className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">{safePage}/{totalPages}</span>
+                  <Button onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={safePage === totalPages} variant="outline" size="sm">Sau</Button>
+                </div>
+              ) : null}
+            </div>
+          </>
         )}
-      </div>
+      </section>
     </div>
   );
 }
