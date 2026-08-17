@@ -552,7 +552,7 @@ const selectConversation = async (conversationId) => {
       const longitudeNumber = Number(finalDraft.longitude);
       const hasCoordinates = Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber);
 
-      if (!resolvedIds.areaId || !resolvedIds.categoryId || !hasCoordinates) {
+      if (!resolvedIds.areaId) {
         navigate('/tickets/create', {
           state: {
             aiDraft: finalDraft,
@@ -575,13 +575,13 @@ const selectConversation = async (conversationId) => {
         user?.fullName || user?.name,
         {
           areaId: Number(resolvedIds.areaId),
-          categoryId: Number(resolvedIds.categoryId),
+          categoryId: resolvedIds.categoryId ? Number(resolvedIds.categoryId) : undefined,
           title: finalDraft.title,
           description: finalDraft.description,
           priority: normalizedDraft.urgencyLevel || normalizedDraft.priority || 'Medium',
-          locationText: finalDraft.location || collectedLocation || `Vị trí GPS: ${latitudeNumber.toFixed(6)}, ${longitudeNumber.toFixed(6)}`,
-          latitude: latitudeNumber,
-          longitude: longitudeNumber,
+          locationText: finalDraft.location || collectedLocation || (hasCoordinates ? `Vị trí GPS: ${latitudeNumber.toFixed(6)}, ${longitudeNumber.toFixed(6)}` : 'Chưa cung cấp vị trí chi tiết'),
+          latitude: hasCoordinates ? latitudeNumber : undefined,
+          longitude: hasCoordinates ? longitudeNumber : undefined,
           attachments: selectedImages,
         },
         { role: user?.role || APP_ROLES.SERVICE_USER }
