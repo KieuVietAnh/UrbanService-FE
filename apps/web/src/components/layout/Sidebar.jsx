@@ -184,8 +184,11 @@ export const Sidebar = ({ isOpen, onClose }) => {
         <nav className="admin-sidebar-nav min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden px-2.5 py-2">
           {currentRole === APP_ROLES.SYSTEM_STAFF ? (
             systemStaffSidebarSections.map((section) => {
-              const isSectionActive = section.items.some((item) => isSystemStaffMenuItemActive(item, currentPathname));
+              const visibleItems = section.items.filter((item) => item.path !== '/profile');
+              const isSectionActive = visibleItems.some((item) => isSystemStaffMenuItemActive(item, currentPathname));
               const isExpanded = expandedSections[section.id] ?? true;
+
+              if (visibleItems.length === 0) return null;
 
               return (
                 <div key={section.id} className="rounded-xl border border-transparent px-1 py-1">
@@ -200,14 +203,14 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
                   {isExpanded ? (
                     <div className="mt-1 space-y-1">
-                      {section.items.map((item) => {
+                      {visibleItems.map((item) => {
                         const isActive = isSystemStaffMenuItemActive(item, currentPathname);
                         return renderSidebarLink(item, isActive);
                       })}
                     </div>
                   ) : (
                     <div className="mt-1 flex flex-col gap-1">
-                      {section.items.map((item) => {
+                      {visibleItems.map((item) => {
                         const isActive = isSystemStaffMenuItemActive(item, currentPathname);
                         return renderSidebarLink(item, isActive, true);
                       })}
