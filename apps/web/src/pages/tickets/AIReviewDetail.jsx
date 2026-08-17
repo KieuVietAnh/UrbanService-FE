@@ -318,8 +318,8 @@ export const AIReviewDetail = () => {
         </div>
       ) : (
         <div className="grid items-start gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="admin-panel xl:sticky xl:top-24">
-            <div className="border-b border-slate-200/80 p-5">
+          <aside className="admin-panel flex min-h-0 flex-col overflow-hidden xl:sticky xl:top-[calc((100vh-625px)/2)] xl:h-[560px] xl:max-h-[calc(100vh-8rem)]">
+            <div className="shrink-0 border-b border-slate-200/80 p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="admin-section-title">Phản ánh chờ kiểm duyệt</h2>
@@ -361,7 +361,7 @@ export const AIReviewDetail = () => {
               ) : null}
             </div>
 
-            <div className="max-h-[calc(100vh-15.5rem)] space-y-2 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-3">
               {displayedTickets.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
                   Không có phản ánh phù hợp với bộ lọc.

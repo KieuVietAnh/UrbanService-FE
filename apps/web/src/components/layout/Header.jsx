@@ -334,6 +334,22 @@ export const Header = ({ onMenuToggle }) => {
       return <span className="font-semibold text-slate-950">Tổng quan hệ thống</span>;
     }
 
+    if (location.pathname.startsWith('/tickets/assign/')) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Link to="/dashboard" className="font-medium text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
+            Tổng quan hệ thống
+          </Link>
+          <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
+          <Link to="/staff/queue" className="font-semibold text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
+            Hàng chờ kiểm duyệt AI
+          </Link>
+          <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
+          <span className="font-semibold text-slate-950 dark:text-slate-100">Phân công xử lý</span>
+        </div>
+      );
+    }
+
     const hiddenBreadcrumbSegments = new Set([
       'admin',
       'management',

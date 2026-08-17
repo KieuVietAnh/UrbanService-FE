@@ -24,6 +24,8 @@ const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-area-filter-v2';
 const DASHBOARD_SNAPSHOT_STORAGE_KEY =
   'urbanmind-service-user-dashboard-snapshot';
+const STAFF_DASHBOARD_SNAPSHOT_STORAGE_KEY =
+  'urbanmind-staff-dashboard-snapshot-v1';
 
 const readDashboardSnapshot = () => {
   if (typeof window === 'undefined') return null;
@@ -50,6 +52,41 @@ const writeDashboardSnapshot = (snapshot) => {
     window.sessionStorage.setItem(
       DASHBOARD_SNAPSHOT_STORAGE_KEY,
       JSON.stringify(snapshot)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+
+const readStaffDashboardSnapshot = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawSnapshot = window.sessionStorage.getItem(
+      STAFF_DASHBOARD_SNAPSHOT_STORAGE_KEY
+    );
+    if (!rawSnapshot) return null;
+
+    const parsedSnapshot = JSON.parse(rawSnapshot);
+    return parsedSnapshot && typeof parsedSnapshot === 'object'
+      ? parsedSnapshot
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeStaffDashboardSnapshot = (snapshot) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      STAFF_DASHBOARD_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        ...snapshot,
+        updatedAt: Date.now(),
+      })
     );
   } catch {
     // Storage can be unavailable in private mode.
@@ -596,11 +633,17 @@ export const Dashboard = () => {
   const currentRole = normalizeRole(user?.role);
   const navigate = useNavigate();
 
-  const [cachedDashboard] = useState(() => (
-    currentRole === APP_ROLES.ADMINISTRATOR
-      ? readAdminDashboardCache()
-      : readDashboardSnapshot()
-  ));
+  const [cachedDashboard] = useState(() => {
+    if (currentRole === APP_ROLES.ADMINISTRATOR) {
+      return readAdminDashboardCache();
+    }
+
+    if (currentRole === APP_ROLES.SYSTEM_STAFF) {
+      return readStaffDashboardSnapshot();
+    }
+
+    return readDashboardSnapshot();
+  });
   const [stats, setStats] = useState(
     () => cachedDashboard?.stats || SAFE_DASHBOARD_STATS
   );
@@ -803,6 +846,13 @@ export const Dashboard = () => {
             tickets: nextTickets,
             ticketTotal: nextTicketTotal,
           });
+        } else if (currentRole === APP_ROLES.SYSTEM_STAFF) {
+          writeStaffDashboardSnapshot({
+            stats: nextStats,
+            categories: nextCategories,
+            tickets: nextTickets,
+            ticketTotal: nextTicketTotal,
+          });
         } else if (currentRole === APP_ROLES.ADMINISTRATOR) {
           writeAdminDashboardCache({
             stats: nextStats,
@@ -921,6 +971,13 @@ export const Dashboard = () => {
             mapTickets: nextAdminMapTickets,
             ticketTotal: nextTicketTotal,
             feedbackSummary: nextFeedbackSummary,
+          });
+        } else if (currentRole === APP_ROLES.SYSTEM_STAFF) {
+          writeStaffDashboardSnapshot({
+            stats: nextStats,
+            categories: nextCategories,
+            tickets: nextTickets,
+            ticketTotal: nextTicketTotal,
           });
         }
       } catch (e) {
