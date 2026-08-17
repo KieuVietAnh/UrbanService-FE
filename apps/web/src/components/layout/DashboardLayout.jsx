@@ -1,7 +1,7 @@
 // src/components/layout/DashboardLayout.jsx
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import StaffCommunicationSurface from '../staff/StaffCommunicationSurface';
+
 import { FeedbackMessagesProvider } from '../../contexts/FeedbackMessagesContext';
 
 import { Sidebar } from './Sidebar';
@@ -199,11 +199,6 @@ export const DashboardLayout = ({ children }) => {
           {shouldWrapFeedbackMessages ? (
             <FeedbackMessagesProvider feedbackId={staffDetailFeedbackId}>
               {renderMainContent()}
-
-              <StaffCommunicationSurface
-                feedbackId={staffDetailFeedbackId}
-                feedbackTitle={location.state?.feedbackTitle || ''}
-              />
             </FeedbackMessagesProvider>
           ) : (
             renderMainContent()

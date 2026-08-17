@@ -1082,7 +1082,7 @@ export const Dashboard = () => {
   const renderStatusBadge = (s) => {
     switch (s) {
       case managementTypes.feedbackStatus.SUBMITTED:
-        return <span className="status-label border-indigo-200 bg-indigo-50 text-indigo-700">Cần review AI</span>;
+        return <span className="status-label border-indigo-200 bg-indigo-50 text-indigo-700">Cần kiểm tra AI</span>;
       case managementTypes.feedbackStatus.AI_REVIEWED:
         return <span className="status-label border-violet-200 bg-violet-50 text-violet-700">Chờ phân công</span>;
       case managementTypes.feedbackStatus.VERIFIED:
@@ -1768,193 +1768,209 @@ export const Dashboard = () => {
   }
 
   // ----------------------------------------------------
-  // 2. SYSTEM STAFF DASHBOARD (Figma: Không gian làm việc - Nhân viên.png)
+  // 2. SYSTEM STAFF DASHBOARD
   // ----------------------------------------------------
   if (currentRole === 'system-staff') {
+    const staffNewCount = residentTickets.filter((ticket) => (
+      ticket.status === managementTypes.feedbackStatus.SUBMITTED
+    )).length;
+    const staffAiReviewCount = residentTickets.filter((ticket) => (
+      ticket.status === managementTypes.feedbackStatus.AI_REVIEWED
+    )).length;
+    const staffDuplicateCount = residentTickets.filter((ticket) => (
+      isConfirmedDuplicateTicket(ticket)
+    )).length;
+    const staffAssignmentCount = residentTickets.filter((ticket) => (
+      ticket.status === managementTypes.feedbackStatus.VERIFIED
+    )).length;
+    const staffApprovalCount = residentTickets.filter((ticket) => (
+      ticket.status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL
+    )).length;
+
+    const staffMetricCards = [
+      {
+        label: 'Phản ánh mới',
+        value: staffNewCount,
+        description: 'Hồ sơ vừa tiếp nhận và cần được kiểm tra ban đầu.',
+        icon: Lucide.FolderClock,
+        toneClass: 'bg-blue-50 text-blue-700',
+      },
+      {
+        label: 'Cần kiểm tra AI',
+        value: staffAiReviewCount,
+        description: 'Kết quả phân loại AI cần nhân viên xác nhận.',
+        icon: Lucide.Cpu,
+        toneClass: 'bg-emerald-50 text-emerald-700',
+      },
+      {
+        label: 'Nghi trùng lặp',
+        value: staffDuplicateCount,
+        description: 'Phản ánh đã có liên kết với hồ sơ gốc.',
+        icon: Lucide.CopyCheck,
+        toneClass: 'bg-rose-50 text-rose-700',
+      },
+      {
+        label: 'Chờ phân công',
+        value: staffAssignmentCount,
+        description: 'Hồ sơ đã xác minh và đang chờ giao đơn vị xử lý.',
+        icon: Lucide.UserRoundPlus,
+        toneClass: 'bg-amber-50 text-amber-700',
+      },
+      {
+        label: 'Chờ duyệt kết quả',
+        value: staffApprovalCount,
+        description: 'Kết quả đã gửi lên để quản lý xem xét.',
+        icon: Lucide.ClipboardCheck,
+        toneClass: 'bg-violet-50 text-violet-700',
+      },
+    ];
+
     return (
-      <div className="page-container space-y-6 text-slate-800">
+      <article className="admin-page-shell space-y-6">
+        <ManagerPageHeader
+          title="Không gian làm việc"
+          description={`Xin chào, ${user.fullName}. Kiểm tra phản ánh mới, xác nhận phân loại AI và điều phối xử lý trong cùng một không gian làm việc.`}
+          icon={Lucide.LayoutDashboard}
+          statusLabel="Hồ sơ đang hiển thị"
+          statusValue={`${residentTotal} phản ánh`}
+          actions={(
+            <Link to="/staff/feedbacks" className="btn admin-primary-action rounded-2xl">
+              <Lucide.ListChecks size={17} aria-hidden="true" />
+              Mở danh sách phản ánh
+            </Link>
+          )}
+        />
 
-        {/* Header Greeting */}
-        <div className="space-y-1">
-          <h2 className="text-2xl font-black text-slate-900">Không gian làm việc</h2>
-          <p className="text-xs font-semibold text-slate-500">Xin chào, {user.fullName}. Bạn có thể kiểm tra phản ánh mới, xác nhận phân loại AI và phân công xử lý.</p>
-        </div>
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="Chỉ số công việc của nhân viên">
+          {staffMetricCards.map((metric) => (
+            <ManagerMetricCard
+              key={metric.label}
+              label={metric.label}
+              value={metric.value}
+              description={metric.description}
+              icon={metric.icon}
+              toneClass={metric.toneClass}
+            />
+          ))}
+        </section>
 
-        {/* 5 Stats Cards Row */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {/* Card 1 */}
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
-            <div className="flex justify-between items-center">
-              <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
-                <Lucide.Folder size={18} />
+        <section className="admin-panel overflow-hidden" aria-labelledby="staff-work-queue-title">
+          <ManagerSectionHeader
+            id="staff-work-queue-title"
+            title="Phản ánh cần xử lý"
+            description="Ưu tiên các hồ sơ mới, cần kiểm tra AI, cần xác minh hoặc đang chờ điều phối."
+            icon={Lucide.Inbox}
+            actions={(
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowStaffFilter((value) => !value)}
+                  className="admin-secondary-link inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold"
+                  aria-expanded={showStaffFilter}
+                >
+                  <Lucide.SlidersHorizontal size={15} aria-hidden="true" />
+                  Bộ lọc
+                </button>
+                <Link
+                  to="/staff/feedbacks"
+                  className="admin-secondary-link inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold"
+                >
+                  Xem tất cả
+                  <Lucide.ArrowRight size={14} aria-hidden="true" />
+                </Link>
               </div>
-              <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg">+12%</span>
-            </div>
-            <div>
-              <span className="text-2xl font-black text-slate-900">18</span>
-              <span className="text-[10px] text-slate-400 font-bold block mt-1">Phản ánh mới</span>
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
-            <div className="flex justify-between items-center">
-              <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-                <Lucide.Cpu size={18} />
-              </div>
-              <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">Review</span>
-            </div>
-            <div>
-              <span className="text-2xl font-black text-slate-900">9</span>
-              <span className="text-[10px] text-slate-400 font-bold block mt-1">Cần review AI</span>
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
-            <div className="flex justify-between items-center">
-              <div className="p-2 rounded-xl bg-red-50 text-red-600">
-                <Lucide.AlertTriangle size={18} />
-              </div>
-              <span className="text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-lg">High</span>
-            </div>
-            <div>
-              <span className="text-2xl font-black text-slate-900">4</span>
-              <span className="text-[10px] text-slate-400 font-bold block mt-1">Nghi trùng lặp</span>
-            </div>
-          </div>
-
-          {/* Card 4 */}
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
-            <div className="flex justify-between items-center">
-              <div className="p-2 rounded-xl bg-slate-100 text-slate-600">
-                <Lucide.UserPlus size={18} />
-              </div>
-              <span className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg">Task</span>
-            </div>
-            <div>
-              <span className="text-2xl font-black text-slate-900">6</span>
-              <span className="text-[10px] text-slate-400 font-bold block mt-1">Chờ phân công</span>
-            </div>
-          </div>
-
-          {/* Card 5 */}
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
-            <div className="flex justify-between items-center">
-              <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
-                <Lucide.CheckSquare size={18} />
-              </div>
-              <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded-lg">Approval</span>
-            </div>
-            <div>
-              <span className="text-2xl font-black text-slate-900">3</span>
-              <span className="text-[10px] text-slate-400 font-bold block mt-1">Chờ duyệt KQ</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Dynamic Data Table "Phản ánh cần xử lý" */}
-        <div className="card bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="font-extrabold text-base text-slate-900">Phản ánh cần xử lý</h3>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowStaffFilter((value) => !value)}
-                className="btn btn-sm btn-outline border-slate-300 rounded-xl text-xs font-bold text-slate-600 h-9 min-h-0 flex gap-1.5 items-center"
-              >
-                <Lucide.SlidersHorizontal size={14} />
-                Bộ lọc
-              </button>
-              <button className="btn btn-sm bg-[color:var(--brand-primary)] hover:bg-[color:var(--brand-primary-dark)] text-white border-none rounded-xl text-xs font-bold h-9 min-h-0">
-                Xuất báo cáo
-              </button>
-            </div>
-          </div>
+            )}
+          />
 
           {showStaffFilter ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                  Tùy chọn lọc
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setStaffFilter('latest')}
-                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'latest' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
-                >
-                  Mới nhất
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStaffFilter('needs-attention')}
-                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'needs-attention' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
-                >
-                  Cần xử lý
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStaffFilter('high-priority')}
-                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'high-priority' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
-                >
-                  Ưu tiên cao
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStaffFilter('all')}
-                  className={`btn btn-xs rounded-full border-slate-300 ${staffFilter === 'all' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
-                >
-                  Tất cả
-                </button>
+            <section className="border-b border-slate-200 px-5 py-4 sm:px-6" aria-label="Bộ lọc phản ánh">
+              <div className="admin-inset-panel flex flex-wrap items-center gap-2 p-3">
+                <span className="mr-1 text-xs font-semibold text-slate-500">Hiển thị:</span>
+                {[
+                  ['latest', 'Mới nhất'],
+                  ['needs-attention', 'Cần xử lý'],
+                  ['high-priority', 'Ưu tiên cao'],
+                  ['all', 'Tất cả'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStaffFilter(value)}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${staffFilter === value
+                      ? 'border-blue-200 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            </div>
+            </section>
           ) : null}
 
-          <div className="overflow-x-auto w-full text-xs">
-            <table className="table w-full">
+          <div className="overflow-x-auto">
+            <table className="table w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 text-slate-400 font-extrabold uppercase text-[9px] tracking-wider border-b border-slate-200">
-                  <th className="py-3">Mã phản ánh</th>
-                  <th className="py-3">Nội dung</th>
-                  <th className="py-3">Loại AI gợi ý</th>
-                  <th className="py-3">Mức độ ưu tiên</th>
-                  <th className="py-3">Trạng thái</th>
-                  <th className="py-3">Thời gian gửi</th>
-                  <th className="py-3 text-right">Hành động</th>
+                <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  <th className="px-5 py-4 sm:px-6">Mã phản ánh</th>
+                  <th className="py-4">Nội dung</th>
+                  <th className="py-4">Loại AI gợi ý</th>
+                  <th className="py-4">Ưu tiên</th>
+                  <th className="py-4">Trạng thái</th>
+                  <th className="py-4">Thời gian gửi</th>
+                  <th className="px-5 py-4 text-right sm:px-6">Hành động</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredStaffTickets.slice(0, 4).map((t) => (
-                  <tr key={t.feedbackId} className="hover:bg-slate-50/50">
-                    <td className="font-bold text-[color:var(--brand-primary)] py-3.5">{formatTicketId(t.feedbackId)}</td>
-                    <td className="max-w-[200px] font-semibold py-3.5 text-slate-700">
-                      <div className="truncate">{t.title}</div>
+                {filteredStaffTickets.slice(0, 6).map((ticket) => (
+                  <tr key={ticket.feedbackId} className="transition hover:bg-blue-50/35">
+                    <td className="px-5 py-4 font-semibold text-blue-700 sm:px-6">
+                      {formatTicketId(ticket.feedbackId)}
                     </td>
-                    <td className="py-3.5">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-700">
-                        {renderCategoryIcon(t.categoryId)}
-                        <span>{getCategoryName(t.categoryId)}</span>
-                      </div>
+                    <td className="max-w-[260px] py-4">
+                      <p className="truncate font-semibold text-slate-950">{ticket.title || 'Phản ánh chưa có tiêu đề'}</p>
+                      <p className="mt-1 truncate text-xs text-slate-500">{ticket.description || 'Chưa có mô tả bổ sung'}</p>
                     </td>
-                    <td className="py-3.5">
-                      {renderPriorityBadge(t.priority)}
+                    <td className="py-4">
+                      <span className="inline-flex items-center gap-2 font-medium text-slate-700">
+                        {renderCategoryIcon(ticket.categoryId)}
+                        {getCategoryName(ticket.categoryId)}
+                      </span>
                     </td>
-                    <td className="py-3.5">
-                      {renderStatusBadge(t.status)}
+                    <td className="py-4">{renderPriorityBadge(ticket.priority)}</td>
+                    <td className="py-4">{renderStatusBadge(ticket.status)}</td>
+                    <td className="py-4 text-xs font-medium text-slate-500">
+                      {new Date(ticket.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      <span className="mt-1 block text-slate-400">
+                        {new Date(ticket.createdAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </span>
                     </td>
-                    <td className="font-bold text-slate-400 py-3.5">
-                      {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, {new Date(t.createdAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' })}
-                    </td>
-                    <td className="text-right py-3.5">
-                      <Link to={`/staff/feedbacks/${t.feedbackId}`} className="text-[color:var(--brand-primary)] hover:underline font-bold">Chi tiết</Link>
+                    <td className="px-5 py-4 text-right sm:px-6">
+                      <Link
+                        to={`/staff/feedbacks/${ticket.feedbackId}`}
+                        className="admin-secondary-link inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                      >
+                        Chi tiết
+                        <Lucide.ChevronRight size={13} aria-hidden="true" />
+                      </Link>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
+
+          {filteredStaffTickets.length === 0 ? (
+            <section className="admin-empty-panel m-5 p-8 text-center sm:m-6">
+              <span className="admin-mini-icon mx-auto" aria-hidden="true">
+                <Lucide.Inbox size={18} />
+              </span>
+              <h3 className="mt-3 text-sm font-semibold text-slate-950">Không có phản ánh phù hợp</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Thử đổi bộ lọc để xem các hồ sơ khác.</p>
+            </section>
+          ) : null}
+        </section>
+      </article>
     );
   }
 

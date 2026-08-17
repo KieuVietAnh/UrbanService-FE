@@ -1,11 +1,12 @@
 // src/pages/staff/ManagementFeedbackDetailPage.jsx
-import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
-import { managementTypes, getPriorityIntent, getStatusIntent } from '@urbanmind/shared-types';
+import { managementTypes, getStatusIntent } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { LoadingSpinner, EmptyState, ConfirmationModal } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
@@ -64,6 +65,7 @@ const CITIZEN_NOTIFICATION_TEMPLATES = [
 export const ManagementFeedbackDetailPage = () => {
   const { feedbackId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   const [feedback, setFeedback] = useState(null);
@@ -101,63 +103,6 @@ export const ManagementFeedbackDetailPage = () => {
     return currentFeedback?.categoryId ?? currentFeedback?.category?.categoryId ?? '';
   };
 
-  const getStatusClass = (s) => {
-    if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
-    const key = String(s).trim().toLowerCase();
-    switch (key) {
-      case managementTypes.feedbackStatus.AI_REVIEWED.toLowerCase():
-      case 'aireviewed':
-      case 'ai reviewed':
-      case 'ai_reviewed':
-        return 'border-violet-200 bg-violet-50 text-violet-700';
-      case 'submitted':
-        return 'border-indigo-200 bg-indigo-50 text-indigo-700';
-      case managementTypes.feedbackStatus.VERIFIED.toLowerCase():
-      case 'verified':
-        return 'border-sky-200 bg-sky-50 text-sky-700';
-      case managementTypes.feedbackStatus.ASSIGNED.toLowerCase():
-      case 'assigned':
-        return 'border-cyan-200 bg-cyan-50 text-cyan-700';
-      case 'inprogress':
-      case 'in progress':
-      case managementTypes.feedbackStatus.IN_PROGRESS.toLowerCase():
-        return 'border-purple-200 bg-purple-50 text-purple-700';
-      case 'waitingcitizen':
-      case 'waiting citizen':
-      case managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL.toLowerCase():
-      case 'submittedforapproval':
-        return 'border-amber-200 bg-amber-50 text-amber-700';
-      case managementTypes.feedbackStatus.NEED_REWORK.toLowerCase():
-      case 'needrework':
-        return 'border-orange-200 bg-orange-50 text-orange-700';
-      case managementTypes.feedbackStatus.APPROVED.toLowerCase():
-      case 'approved':
-        return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-      case 'resolved':
-        return 'border-teal-200 bg-teal-50 text-teal-700';
-      case 'closed':
-        return 'border-slate-200 bg-slate-50 text-slate-700';
-      case 'rejected':
-        return 'border-rose-200 bg-rose-50 text-rose-700';
-      case 'duplicate':
-        return 'border-slate-200 bg-slate-50 text-slate-700';
-      default:
-        return 'border-slate-200 bg-slate-50 text-slate-700';
-    }
-  };
-
-  const getPriorityClass = (p) => {
-    if (!p) return 'badge-priority-low';
-    const key = String(p).trim().toLowerCase();
-    switch (key) {
-      case 'critical': return 'badge-priority-critical';
-      case 'high': return 'badge-priority-high';
-      case 'medium': return 'badge-priority-medium';
-      case 'low': return 'badge-priority-low';
-      default: return 'badge-priority-low';
-    }
-  };
-
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -193,7 +138,7 @@ export const ManagementFeedbackDetailPage = () => {
   const [assignLoading, setAssignLoading] = useState(false);
 
   // Preview attachment
-  const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState(null);
   const [selectedTimelineEventId, setSelectedTimelineEventId] = useState(null);
 
   // Citizen notification
@@ -209,7 +154,10 @@ export const ManagementFeedbackDetailPage = () => {
   // Internal communication
   const [messageDraft, setMessageDraft] = useState('');
   const [composerMode, setComposerMode] = useState('public');
-  const [activeViewTab, setActiveViewTab] = useState('detail');
+  const messageViewportRef = useRef(null);
+  const exchangeSectionRef = useRef(null);
+  const initialExchangeFocusHandledRef = useRef(false);
+  const [activeViewTab, setActiveViewTab] = useState(() => location.state?.focusExchange ? 'exchange' : 'detail');
 
   const {
     messages,
@@ -230,6 +178,12 @@ export const ManagementFeedbackDetailPage = () => {
       setCandidatesLoadError('');
       try {
         const feedbackRes = await managementFeedbackApi.getFeedbackById(feedbackId);
+
+        if (!active) return;
+
+        setFeedback(feedbackRes);
+        setLoading(false);
+
         const linkedFeedbackId = feedbackRes?.feedbackId || feedbackId;
         const [categoriesRes, candidatesRes] = await Promise.allSettled([
           toolsApi.getCategories(),
@@ -238,7 +192,11 @@ export const ManagementFeedbackDetailPage = () => {
 
         if (!active) return;
 
-        setCategories(Array.isArray(categoriesRes.value) ? categoriesRes.value : []);
+        setCategories(
+          categoriesRes.status === 'fulfilled' && Array.isArray(categoriesRes.value)
+            ? categoriesRes.value
+            : []
+        );
         if (candidatesRes.status === 'fulfilled') {
           setCandidates(Array.isArray(candidatesRes.value) ? candidatesRes.value : []);
         } else {
@@ -246,7 +204,6 @@ export const ManagementFeedbackDetailPage = () => {
           setCandidatesLoadError(candidatesRes.reason?.message || 'Không thể tải danh sách đơn vị xử lý.');
         }
 
-        setFeedback(feedbackRes);
         // Debug: log urgency-related fields so we can see why the button may be hidden
         try {
           const dbg = {
@@ -326,10 +283,11 @@ export const ManagementFeedbackDetailPage = () => {
       });
 
       if (refreshed) {
+        sessionStorage.setItem('staff-conversation-count-dirty', '1');
         setMessageDraft('');
-        setPageMessage({ type: 'success', text: composerMode === 'internal' ? 'Ghi chú nội bộ đã được lưu.' : 'Đã gửi trao đổi cho phản ánh.' });
+        setPageMessage({ type: '', text: '' });
       } else {
-        setPageMessage({ type: 'warning', text: 'Tin nhắn đã được gửi nhưng không thể đồng bộ.' });
+        setPageMessage({ type: '', text: '' });
       }
     } catch (err) {
       console.error('Failed to send feedback message', err);
@@ -691,7 +649,97 @@ export const ManagementFeedbackDetailPage = () => {
   const canAssign = !isConfirmedDuplicate && feedback?.status === managementTypes.feedbackStatus.VERIFIED;
   const canUpdateStatus = !isConfirmedDuplicate && nextStatusOptions.length > 0;
 
-  const attachments = Array.isArray(feedback?.attachments) ? feedback.attachments : [];
+  const attachments = useMemo(
+    () => (Array.isArray(feedback?.attachments) ? feedback.attachments : []),
+    [feedback]
+  );
+  const previewItems = useMemo(
+    () => attachments.filter((attachment) => Boolean(getAttachmentUrl(attachment))),
+    [attachments]
+  );
+  const previewAttachment = (
+    previewAttachmentIndex !== null
+    && previewAttachmentIndex >= 0
+    && previewAttachmentIndex < previewItems.length
+  )
+    ? previewItems[previewAttachmentIndex]
+    : null;
+  const previewAttachmentUrl = previewAttachment ? getAttachmentUrl(previewAttachment) : '';
+
+  const movePreview = useCallback((direction) => {
+    if (previewItems.length < 2) return;
+
+    setPreviewAttachmentIndex((currentIndex) => {
+      if (currentIndex === null) return null;
+      return (currentIndex + direction + previewItems.length) % previewItems.length;
+    });
+  }, [previewItems.length]);
+
+  useEffect(() => {
+    if (previewAttachmentIndex === null) return undefined;
+
+    const handlePreviewKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setPreviewAttachmentIndex(null);
+      } else if (event.key === 'ArrowLeft') {
+        movePreview(-1);
+      } else if (event.key === 'ArrowRight') {
+        movePreview(1);
+      }
+    };
+
+    document.addEventListener('keydown', handlePreviewKeyDown);
+    return () => document.removeEventListener('keydown', handlePreviewKeyDown);
+  }, [previewAttachmentIndex, movePreview]);
+
+
+  useEffect(() => {
+    if (activeViewTab !== 'exchange') return;
+    const viewport = messageViewportRef.current;
+    if (!viewport) return;
+
+    requestAnimationFrame(() => {
+      viewport.scrollTop = viewport.scrollHeight;
+    });
+  }, [activeViewTab, messages.length]);
+
+  useEffect(() => {
+    if (
+      loading
+      || activeViewTab !== 'exchange'
+      || !location.state?.focusExchange
+      || initialExchangeFocusHandledRef.current
+    ) {
+      return;
+    }
+
+    initialExchangeFocusHandledRef.current = true;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        exchangeSectionRef.current?.scrollIntoView({
+          behavior: 'auto',
+          block: 'start',
+        });
+      });
+    });
+  }, [activeViewTab, loading, location.state]);
+
+  const handleViewTabChange = (tabId) => {
+    setActiveViewTab(tabId);
+
+    if (tabId !== 'exchange') return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        exchangeSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    });
+  };
+
   const comments = Array.isArray(feedback?.comments) ? feedback.comments : [];
 
   useEffect(() => {
@@ -1062,6 +1110,23 @@ export const ManagementFeedbackDetailPage = () => {
     return 'Trạng thái';
   };
 
+  const returnToFeedbackList = useCallback(() => {
+    if (location.state?.fromStaffConversations || location.state?.fromStaffFeedbackList) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/staff/feedbacks', {
+      state: {
+        restoreFeedbackId: String(feedbackId || ''),
+      },
+    });
+  }, [location.state, navigate, feedbackId]);
+
+  const detailParentLabel = location.state?.fromStaffConversations
+    ? 'Quản lý trao đổi'
+    : 'Quản lý phản ánh';
+
   if (loading) {
     return (
       <div className="flex justify-center py-12">
@@ -1079,7 +1144,7 @@ export const ManagementFeedbackDetailPage = () => {
         />
         <Button
           type="button"
-          onClick={() => navigate('/staff/queue')}
+          onClick={returnToFeedbackList}
           variant="outline"
           size="sm"
         >
@@ -1104,8 +1169,8 @@ export const ManagementFeedbackDetailPage = () => {
           onClose={() => setPageMessage({ type: '', text: '' })}
         />
       )}
-      <div className="border-b border-slate-200 pb-4">
-        <div className="flex flex-wrap items-center gap-6">
+      <div className="admin-panel p-2">
+        <div className="flex flex-wrap items-center gap-2">
           {[
             { id: 'detail', label: 'Chi tiết', icon: Lucide.FileText },
             { id: 'exchange', label: 'Trao đổi', icon: Lucide.MessageSquareText },
@@ -1117,8 +1182,8 @@ export const ManagementFeedbackDetailPage = () => {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveViewTab(tab.id)}
-                className={`flex items-center gap-2 border-b-2 pb-3 text-sm font-semibold transition duration-200 ${selected ? 'border-primary text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                onClick={() => handleViewTabChange(tab.id)}
+                className={`flex items-center gap-2 rounded-[0.9rem] px-4 py-2.5 text-sm font-semibold transition duration-200 ${selected ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
               >
                 <Icon size={16} />
                 {tab.label}
@@ -1129,17 +1194,17 @@ export const ManagementFeedbackDetailPage = () => {
       </div>
 
       {/* Breadcrumb */}
-      <div className="admin-info-note flex items-center gap-1 px-4 py-3 text-[11px] font-bold text-slate-500">
+      <div className="flex items-center gap-2 px-1 text-sm font-medium text-slate-500">
         <button
           type="button"
-          onClick={() => navigate('/staff/queue')}
-          className="text-slate-400 hover:text-slate-600"
-          aria-label="Quay lại hàng đợi"
+          onClick={returnToFeedbackList}
+          className="inline-flex items-center gap-1 text-slate-500 transition hover:text-blue-600"
+          aria-label={`Quay lại ${detailParentLabel.toLowerCase()}`}
         >
-          Hàng đợi
+          {detailParentLabel}
         </button>
         <Lucide.ChevronRight size={12} />
-        <span className="text-[#0052CC]">{feedback.title}</span>
+        <span className="min-w-0 truncate font-semibold text-slate-800">{feedback.title}</span>
       </div>
 
       {isConfirmedDuplicate ? (
@@ -1165,30 +1230,50 @@ export const ManagementFeedbackDetailPage = () => {
       ) : null}
 
       {activeViewTab === 'detail' ? (
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.75fr)]">
         {/* Main Content */}
-        <div className="col-span-2 space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* Header Card */}
-          <div className="admin-panel p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className="admin-hero-title">{feedback.title}</h1>
-                <div className="flex items-center gap-2 mt-2">
+          <div className="admin-page-hero p-5 sm:p-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm">
+                    <Lucide.FileText size={20} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="admin-section-description uppercase tracking-[0.2em]">Chi tiết phản ánh</div>
+                    <h1 className="admin-hero-title mt-1 break-words">{feedback.title}</h1>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
                   {isConfirmedDuplicate ? (
-                    <Badge intent="neutral" className="gap-1 px-2 py-1 text-[10px] font-bold">
-                      <Lucide.GitMerge size={12} aria-hidden="true" />
+                    <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700">
+                      <Lucide.GitMerge size={14} aria-hidden="true" />
                       Phản ánh trùng
-                    </Badge>
+                    </span>
                   ) : null}
-                  <Badge intent={getStatusIntent(feedback.status)} className={`${getStatusClass(feedback.status)} px-2 py-1 text-[10px] font-bold`}>
-                    {getStatusLabel(feedback.status)}
-                  </Badge>
-                  <Badge intent={getPriorityIntent(feedback.priority)} className={`${getPriorityClass(feedback.priority)} px-2 py-1 text-[10px] font-bold`}>
-                    {getPriorityLabel(feedback.priority)}
-                  </Badge>
+
+                  <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-white/80 px-3 shadow-sm">
+                    <span className="text-xs font-medium text-slate-500">Trạng thái</span>
+                    <span className="h-4 w-px bg-slate-200" aria-hidden="true" />
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+                      <Lucide.CircleCheck size={14} aria-hidden="true" />
+                      {getStatusLabel(feedback.status)}
+                    </span>
+                  </div>
+
+                  <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 shadow-sm">
+                    <span className="text-xs font-medium text-slate-500">Ưu tiên</span>
+                    <span className="h-4 w-px bg-slate-200" aria-hidden="true" />
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                      <Lucide.Gauge size={14} aria-hidden="true" />
+                      {getPriorityLabel(feedback.priority)}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 lg:max-w-[320px] lg:justify-end">
                 {canVerify && (
                   <Button
                     type="button"
@@ -1282,8 +1367,8 @@ export const ManagementFeedbackDetailPage = () => {
                                       <div className="card bg-base-100 border p-3 rounded-lg mt-3 text-xs">
                                         <div className="font-bold">{sel.providerName || 'Không có tên nhà cung cấp'}</div>
                                         <div className="text-muted">Điều phối viên: {sel.coordinatorName || '—'}</div>
-                                        <div className="mt-2">Area Match: {sel.areaMatch ?? sel.note ?? 'Không có dữ liệu'}</div>
-                                        <div>Category Match: {sel.categoryMatch ?? (sel.priorityOrder !== undefined ? `priority ${sel.priorityOrder}` : 'Không có dữ liệu')}</div>
+                                        <div className="mt-2">Phù hợp khu vực: {sel.areaMatch ?? sel.note ?? 'Không có dữ liệu'}</div>
+                                        <div>Phù hợp danh mục: {sel.categoryMatch ?? (sel.priorityOrder !== undefined ? `Ưu tiên ${sel.priorityOrder}` : 'Không có dữ liệu')}</div>
                                       </div>
                                     );
                                   })()
@@ -1401,10 +1486,13 @@ export const ManagementFeedbackDetailPage = () => {
 
           {/* Edit Form */}
           {isEditing && (
-            <div className="admin-info-note p-6 space-y-4">
-              <h3 className="font-bold text-slate-900">Chỉnh sửa thông tin</h3>
+            <div className="admin-panel p-5 sm:p-6 space-y-5">
+              <div>
+                <div className="admin-section-description uppercase tracking-[0.2em]">Chỉnh sửa hồ sơ</div>
+                <h3 className="admin-section-title mt-1">Cập nhật thông tin phản ánh</h3>
+              </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-600 block mb-1">Danh mục</label>
                   <select
@@ -1454,7 +1542,7 @@ export const ManagementFeedbackDetailPage = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-600 block mb-1">Địa điểm</label>
                   <input
@@ -1475,7 +1563,7 @@ export const ManagementFeedbackDetailPage = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-600 block mb-1">Vĩ độ</label>
                   <input
@@ -1498,7 +1586,7 @@ export const ManagementFeedbackDetailPage = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs font-bold text-slate-600 block mb-1">Trạng thái</label>
                   <select
@@ -1508,7 +1596,7 @@ export const ManagementFeedbackDetailPage = () => {
                   >
                     <option value="">Giữ nguyên</option>
                     <option value="Submitted">Đã gửi</option>
-                    <option value="AI Reviewed">Đã xem xét AI</option>
+                    <option value="AI Reviewed">Đã kiểm tra AI</option>
                     <option value="Verified">Đã xác minh</option>
                     <option value="Assigned">Đã phân công</option>
                     <option value="InProgress">Đang xử lý</option>
@@ -1549,46 +1637,47 @@ export const ManagementFeedbackDetailPage = () => {
           )}
 
           {/* Details Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="admin-panel p-4 rounded-xl col-span-2">
-              <div className="text-[10px] text-slate-500 font-bold">Mô tả</div>
-              <div className="text-sm font-bold text-slate-900 mt-1 whitespace-pre-line">{feedback.description || 'Không có mô tả'}</div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="admin-inset-panel p-4 sm:col-span-2">
+              <div className="admin-section-description uppercase tracking-[0.18em]">Mô tả</div>
+              <div className="mt-2 text-sm font-semibold leading-6 text-slate-900 whitespace-pre-line">{feedback.description || 'Không có mô tả'}</div>
             </div>
-            <div className="admin-panel p-4 rounded-xl">
-              <div className="text-[10px] text-slate-500 font-bold">Người báo cáo</div>
-              <div className="text-sm font-bold text-slate-900 mt-1">{feedback.userName || feedback.reporterName}</div>
+            <div className="admin-inset-panel p-4">
+              <div className="admin-section-description uppercase tracking-[0.18em]">Người báo cáo</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{feedback.userName || feedback.reporterName}</div>
             </div>
-            <div className="admin-panel p-4 rounded-xl">
-              <div className="text-[10px] text-slate-500 font-bold">Ngày tạo</div>
-              <div className="text-sm font-bold text-slate-900 mt-1">{formatDate(feedback.createdAt)}</div>
+            <div className="admin-inset-panel p-4">
+              <div className="admin-section-description uppercase tracking-[0.18em]">Ngày tạo</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{formatDate(feedback.createdAt)}</div>
             </div>
-            <div className="admin-panel p-4 rounded-xl">
-              <div className="text-[10px] text-slate-500 font-bold">Danh mục</div>
-              <div className="text-sm font-bold text-slate-900 mt-1">{getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type)}</div>
+            <div className="admin-inset-panel p-4">
+              <div className="admin-section-description uppercase tracking-[0.18em]">Danh mục</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type)}</div>
             </div>
-            <div className="admin-panel p-4 rounded-xl">
-              <div className="text-[10px] text-slate-500 font-bold">Địa điểm</div>
-              <div className="text-sm font-bold text-slate-900 mt-1">{feedback.locationText || '-'}</div>
+            <div className="admin-inset-panel p-4">
+              <div className="admin-section-description uppercase tracking-[0.18em]">Địa điểm</div>
+              <div className="mt-2 text-sm font-semibold leading-6 text-slate-900">{feedback.locationText || '-'}</div>
             </div>
-            <div className="admin-panel p-4 rounded-xl">
-              <div className="text-[10px] text-slate-500 font-bold">Ngày hạn</div>
-              <div className="text-sm font-bold text-slate-900 mt-1">{feedback.dueDate ? formatDate(feedback.dueDate) : 'Chưa có'}</div>
+            <div className="admin-inset-panel p-4">
+              <div className="admin-section-description uppercase tracking-[0.18em]">Ngày hạn</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{feedback.dueDate ? formatDate(feedback.dueDate) : 'Chưa có'}</div>
             </div>
           </div>
 
           {/* Map */}
           {feedback.latitude && feedback.longitude && (
             <div className="admin-panel relative overflow-visible p-4 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-bold text-slate-600">Bản đồ</div>
-                  <div className="text-[11px] text-slate-500">Nhấp vào để mở Google Maps hoặc xem điểm trên bản đồ.</div>
+                  <div className="admin-section-description uppercase tracking-[0.2em]">Vị trí phản ánh</div>
+                  <div className="admin-section-title mt-1">Bản đồ sự cố</div>
+                  <div className="mt-1 text-sm text-slate-500">Xem vị trí trên bản đồ hoặc mở nhanh bằng Google Maps.</div>
                 </div>
                 <a
                   href={`https://www.google.com/maps/?q=${feedback.latitude},${feedback.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn btn-xs btn-ghost text-[#0052CC]"
+                  className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
                 >
                   <Lucide.MapPin size={12} />
                   Google Maps
@@ -1609,7 +1698,7 @@ export const ManagementFeedbackDetailPage = () => {
                       className="bg-amber-600 hover:bg-amber-700"
                     >
                       <Lucide.BellRing size={14} />
-                      Tạo Cảnh Báo Khu Vực
+                      Tạo cảnh báo khu vực
                     </Button>
 
                     {showAreaAlertModal && (
@@ -1617,7 +1706,7 @@ export const ManagementFeedbackDetailPage = () => {
                         <div className="p-4 sm:p-5">
                           <div className="flex items-start justify-between gap-4">
                             <div>
-                              <h2 className="text-lg font-semibold text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
+                              <h2 className="text-lg font-semibold text-slate-900">Tạo cảnh báo khu vực</h2>
                               <p className="mt-1 text-sm text-slate-500">Giữ lại thông tin từ phản ánh và điều chỉnh trước khi gửi.</p>
                             </div>
                             <button
@@ -1647,10 +1736,10 @@ export const ManagementFeedbackDetailPage = () => {
                                 onChange={(e) => handleAreaAlertFieldChange('severity', e.target.value)}
                                 className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
                               >
-                                <option value="Critical">Critical</option>
-                                <option value="High">High</option>
-                                <option value="Medium">Medium</option>
-                                <option value="Low">Low</option>
+                                <option value="Critical">Khẩn cấp</option>
+                                <option value="High">Cao</option>
+                                <option value="Medium">Trung bình</option>
+                                <option value="Low">Thấp</option>
                               </select>
                               {areaAlertErrors.severity && <span className="text-xs font-medium text-rose-600">{areaAlertErrors.severity}</span>}
                             </label>
@@ -1661,7 +1750,7 @@ export const ManagementFeedbackDetailPage = () => {
                             <textarea
                               value={areaAlertForm.message}
                               onChange={(e) => handleAreaAlertFieldChange('message', e.target.value)}
-                              rows={4}
+                              rows={2}
                               className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 outline-none focus:border-slate-400"
                             />
                             {areaAlertErrors.message && <span className="text-xs font-medium text-rose-600">{areaAlertErrors.message}</span>}
@@ -1752,18 +1841,18 @@ export const ManagementFeedbackDetailPage = () => {
                 <Lucide.BellRing size={18} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thông báo cho người dân</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Thông báo cho người dân</div>
                 <h3 className="mt-1 text-lg font-semibold text-slate-900">Thông báo cho người dân</h3>
                 <p className="mt-1 text-sm text-slate-500">Gửi thông báo thủ công tới người dân về trạng thái xử lý phản ánh.</p>
               </div>
             </div>
 
             <div className="rounded-[1.2rem] border border-slate-200/80 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                 <Lucide.Info size={12} />
                 Trạng thái hiện tại
               </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">{feedback ? getStatusLabel(feedback.status) : 'Đang tải...'}</div>
                   <div className="mt-1 text-sm text-slate-500">Thông báo đề xuất sẽ được đánh dấu phù hợp với trạng thái hiện tại.</div>
@@ -1775,7 +1864,7 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
 
             <div className="rounded-[1rem] border border-slate-200/80 bg-white p-3 shadow-sm">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Thông tin người nhận</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Thông tin người nhận</div>
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người nhận</div>
@@ -1893,11 +1982,11 @@ export const ManagementFeedbackDetailPage = () => {
                   Xem trước thông báo
                 </div>
                 <div className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                     <Lucide.BellRing size={12} />
                     Thông báo
                   </div>
-                  <div className="mt-3 rounded-[0.9rem] border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                  <div className="mt-3 rounded-[0.9rem] border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                     {notificationForm.templateId === 'processing' ? 'Đang xử lý' : notificationForm.templateId === 'completed' ? 'Đã hoàn thành' : notificationForm.templateId === 'received' ? 'Đã tiếp nhận' : notificationForm.templateId === 'rejected' ? 'Từ chối xử lý' : notificationForm.templateId === 'need-info' ? 'Cần bổ sung thông tin' : 'Tùy chỉnh'}
                   </div>
                   <div className="mt-3 text-sm font-semibold text-slate-900">{notificationForm.title || 'Tiêu đề thông báo'}</div>
@@ -1933,7 +2022,7 @@ export const ManagementFeedbackDetailPage = () => {
 
             {notificationActivities.length > 0 && (
               <div className="rounded-[1.2rem] border border-slate-200/80 bg-slate-50 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Lịch sử thông báo</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Lịch sử thông báo</div>
                 <div className="mt-3 space-y-3">
                   {notificationActivities.map((activity) => (
                     <div key={activity.id} className="relative pl-5">
@@ -1963,7 +2052,7 @@ export const ManagementFeedbackDetailPage = () => {
                     <div
                       key={attachmentKey}
                       className="relative bg-slate-100 rounded-lg overflow-hidden cursor-pointer group"
-                      onClick={() => setPreviewAttachment(fileUrl)}
+                      onClick={() => setPreviewAttachmentIndex(previewItems.findIndex((item) => getAttachmentUrl(item) === fileUrl))}
                     >
                       {isVideo ? (
                         <div className="w-full aspect-video bg-primary/80 flex items-center justify-center group-hover:bg-primary/90">
@@ -2045,7 +2134,7 @@ export const ManagementFeedbackDetailPage = () => {
                     <div key={childFeedbackId || index} className="admin-inset-panel p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Feedback ID</div>
+                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Mã phản ánh</div>
                           <div className="font-semibold text-slate-900">{childFeedbackId || '—'}</div>
                         </div>
                         <div className="space-y-1">
@@ -2366,143 +2455,232 @@ export const ManagementFeedbackDetailPage = () => {
       ) : null}
 
       {activeViewTab === 'exchange' ? (
-        <div className="admin-panel p-6 space-y-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Trao đổi</div>
-              <h3 className="mt-1 text-lg font-semibold text-slate-900">Trao đổi phản ánh</h3>
-              <p className="mt-1 text-sm text-slate-500">Gửi phản hồi trực tiếp cho người dân và quản lý ghi chú nội bộ trong cùng một workspace.</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-slate-600">{messages.length} mục</span>
-              <Badge intent="info" className="px-3 py-1 text-xs uppercase tracking-[0.2em]">Trao đổi</Badge>
-            </div>
-          </div>
+        <section ref={exchangeSectionRef} className="admin-panel scroll-mt-5 overflow-hidden">
+          <div className="border-b border-slate-200 px-6 py-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs font-medium text-slate-500">Trao đổi phản ánh</div>
+                <h3 className="mt-1 text-xl font-semibold text-slate-900">Hội thoại với người dân</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Phản hồi người dân và ghi chú nội bộ trong cùng một luồng xử lý.
+                </p>
+              </div>
 
-          <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {[
-                { id: 'public', label: 'Trả lời người dân' },
-                { id: 'internal', label: 'Ghi chú nội bộ' },
-              ].map((tab) => {
-                const selected = composerMode === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setComposerMode(tab.id)}
-                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${selected ? 'bg-white text-primary shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <label className="mt-4 block text-sm font-semibold text-slate-700">
-              <span className="mb-2 block">Nội dung</span>
-              <textarea
-                value={messageDraft}
-                onChange={(event) => setMessageDraft(event.target.value)}
-                rows={5}
-                placeholder={composerMode === 'internal' ? 'Nhập ghi chú nội bộ...' : 'Nhập phản hồi cho người dân...'}
-                className="w-full rounded-[1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-              />
-            </label>
-
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-slate-500">{messageDraft.length} ký tự</div>
-              <Button
-                type="button"
-                onClick={handleMessageSend}
-                disabled={messageSubmitting || !messageDraft.trim()}
-                variant="primary"
-                size="sm"
-              >
-                {messageSubmitting ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={14} />}
-                Gửi
-              </Button>
+              <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <Lucide.MessagesSquare size={16} className="text-blue-600" aria-hidden="true" />
+                <span className="text-sm font-semibold text-slate-700">{messages.length} tin nhắn</span>
+              </div>
             </div>
           </div>
 
-          {messagesLoading ? (
-            <div className="rounded-[1rem] border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-              <span className="loading loading-spinner loading-sm mr-2" />
-              Đang tải trao đổi...
-            </div>
-          ) : messagesError ? (
-            <div className="rounded-[1rem] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{messagesError}</div>
-          ) : (
-            <div className="space-y-6">
-              {groupedMessageBlocks.map((block, blockIndex) => {
-                const blockKey = `${block.senderKey}-${block.messages[0]?.interactionMessageId || block.messages[0]?.id}`;
-                const blockOuterClass = blockIndex > 0 ? 'pt-6 border-t border-slate-200' : '';
-                const blockHeaderTone = block.isInternal ? 'border-amber-200 bg-amber-50 text-amber-900' : block.isStaff ? 'border-slate-200 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-900';
-                const blockBadgeTone = block.isInternal ? 'bg-amber-200 text-amber-800' : block.isStaff ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-600';
+          <div className="grid h-[560px] min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+            <div className="min-h-0 px-5 pt-5">
+              {messagesLoading ? (
+                <div className="flex h-full min-h-[260px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-sm text-slate-500">
+                  <span className="loading loading-spinner loading-sm mr-2" />
+                  Đang tải trao đổi...
+                </div>
+              ) : messagesError ? (
+                <div className="flex h-full min-h-[260px] items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-6 text-center text-sm text-rose-700">
+                  {messagesError}
+                </div>
+              ) : groupedMessageBlocks.length === 0 ? (
+                <div className="flex h-full min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-sm">
+                    <Lucide.MessagesSquare size={21} aria-hidden="true" />
+                  </span>
+                  <div className="mt-3 text-base font-semibold text-slate-900">Chưa có trao đổi</div>
+                  <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
+                    Bắt đầu bằng một phản hồi cho người dân hoặc tạo ghi chú nội bộ cho đội xử lý.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  ref={messageViewportRef}
+                  className="h-full min-h-[260px] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 sm:px-5"
+                >
+                  <div className="space-y-5">
+                    {groupedMessageBlocks.map((block) => {
+                      const blockKey = `${block.senderKey}-${block.messages[0]?.interactionMessageId || block.messages[0]?.id}`;
+                      const isStaffPublic = block.isStaff && !block.isInternal;
 
-                return (
-                  <div key={blockKey} className={blockOuterClass}>
-                    <div className="rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
-                      <div className={`flex flex-col gap-3 rounded-t-[1.5rem] border-b border-slate-200 px-5 py-4 ${blockHeaderTone}`}>
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
-                              {getMessageAvatar(block.author)}
-                            </div>
-                            <div>
-                              <div className="text-sm font-semibold text-slate-900">{block.author}</div>
-                              <div className="text-xs text-slate-500">{formatDate(block.messages[0]?.createdAt)}</div>
-                            </div>
-                          </div>
-                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${blockBadgeTone}`}>
-                            {block.isInternal ? 'Ghi chú nội bộ' : block.isStaff ? 'Nhân viên' : 'Công dân'}
-                          </span>
-                        </div>
-                        {block.isInternal ? (
-                          <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                            <div className="flex items-center gap-2 font-semibold">
-                              <Lucide.AlertTriangle size={16} />
-                              Nội dung này chỉ hiển thị với quản lý và nhân viên.
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
+                      return (
+                        <div
+                          key={blockKey}
+                          className={`flex ${
+                            block.isInternal
+                              ? 'justify-center'
+                              : isStaffPublic
+                                ? 'justify-end'
+                                : 'justify-start'
+                          }`}
+                        >
+                          <div className={block.isInternal ? 'w-full max-w-[92%]' : 'w-full max-w-[72%]'}>
+                            <div className={`mb-1.5 flex items-center gap-2 ${isStaffPublic ? 'justify-end' : ''}`}>
+                              {!isStaffPublic ? (
+                                <div
+                                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                                    block.isInternal
+                                      ? 'bg-amber-100 text-amber-700'
+                                      : 'bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  {block.isInternal ? (
+                                    <Lucide.LockKeyhole size={14} aria-hidden="true" />
+                                  ) : (
+                                    getMessageAvatar(block.author)
+                                  )}
+                                </div>
+                              ) : null}
 
-                      <div className="space-y-4 px-5 py-5">
-                        {block.messages.map((message, messageIndex) => {
-                          const body = getMessageBody(message);
-                          const itemClass = messageIndex > 0 ? 'pt-4 border-t border-slate-200/70' : '';
-                          return (
-                            <div key={message?.interactionMessageId || message?.id} className={`${itemClass} space-y-3`}>
-                              <div className={`rounded-[1.25rem] border ${block.isInternal ? 'border-amber-200 bg-amber-50 text-amber-900' : block.isStaff ? 'border-primary/20 bg-primary/10 text-slate-900' : 'border-slate-200 bg-slate-50 text-slate-700'} p-4`}>
-                                <div className="text-sm leading-7 whitespace-pre-line">{body || '—'}</div>
+                              <span className="text-xs font-semibold text-slate-800">{block.author}</span>
+
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                  block.isInternal
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : block.isStaff
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : 'bg-slate-200 text-slate-600'
+                                }`}
+                              >
+                                {block.isInternal ? 'Nội bộ' : block.isStaff ? 'Nhân viên' : 'Người dân'}
+                              </span>
+
+                              {isStaffPublic ? (
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                                  {getMessageAvatar(block.author)}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {block.isInternal ? (
+                              <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                <Lucide.LockKeyhole size={14} className="shrink-0" aria-hidden="true" />
+                                Chỉ quản lý và nhân viên có thể xem.
                               </div>
-                              <div className="text-[11px] text-slate-500">{formatDate(message?.createdAt)}</div>
+                            ) : null}
+
+                            <div className="space-y-2">
+                              {block.messages.map((message) => {
+                                const body = getMessageBody(message);
+
+                                return (
+                                  <div key={message?.interactionMessageId || message?.id}>
+                                    <div
+                                      className={`rounded-2xl px-4 py-3 text-sm leading-6 ${
+                                        block.isInternal
+                                          ? 'border border-amber-200 bg-amber-50 text-amber-950'
+                                          : block.isStaff
+                                            ? 'bg-blue-600 text-white'
+                                            : 'border border-slate-200 bg-white text-slate-800'
+                                      }`}
+                                    >
+                                      <div className="whitespace-pre-line break-words">{body || '—'}</div>
+                                    </div>
+
+                                    <div
+                                      className={`mt-1 px-1 text-[11px] text-slate-400 ${
+                                        isStaffPublic ? 'text-right' : ''
+                                      }`}
+                                    >
+                                      {formatDate(message?.createdAt)}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            <div className="border-t border-slate-200 bg-white px-5 py-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { id: 'public', label: 'Trả lời người dân', icon: Lucide.Send },
+                  { id: 'internal', label: 'Ghi chú nội bộ', icon: Lucide.LockKeyhole },
+                ].map((mode) => {
+                  const selected = composerMode === mode.id;
+                  const ModeIcon = mode.icon;
+
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setComposerMode(mode.id)}
+                      className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
+                        selected
+                          ? mode.id === 'internal'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-blue-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <ModeIcon size={14} aria-hidden="true" />
+                      {mode.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex items-end gap-3">
+                <label className="min-w-0 flex-1">
+                  <span className="sr-only">
+                    {composerMode === 'internal' ? 'Nội dung ghi chú' : 'Nội dung phản hồi'}
+                  </span>
+                  <textarea
+                    value={messageDraft}
+                    onChange={(event) => setMessageDraft(event.target.value)}
+                    rows={2}
+                    placeholder={
+                      composerMode === 'internal'
+                        ? 'Nhập ghi chú nội bộ...'
+                        : 'Nhập phản hồi cho người dân...'
+                    }
+                    className="min-h-[72px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+
+                <Button
+                  type="button"
+                  onClick={handleMessageSend}
+                  disabled={messageSubmitting || !messageDraft.trim()}
+                  variant="primary"
+                  size="sm"
+                  className="mb-1 shrink-0"
+                >
+                  {messageSubmitting ? (
+                    <span className="loading loading-spinner loading-xs" />
+                  ) : (
+                    <Lucide.Send size={14} />
+                  )}
+                  {composerMode === 'internal' ? 'Lưu' : 'Gửi'}
+                </Button>
+              </div>
+
+              <div className="mt-1 text-xs text-slate-400">{messageDraft.length} ký tự</div>
+            </div>
+          </div>
+        </section>
       ) : null}
 
       {activeViewTab === 'history' ? (
         <div className="space-y-6">
           <div className="admin-panel p-6 space-y-4">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Theo dõi hồ sơ</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Theo dõi hồ sơ</div>
               <h3 className="mt-1 text-lg font-semibold text-slate-900">Dòng sự kiện phản ánh</h3>
               <p className="mt-1 text-sm text-slate-500">Xem lại toàn bộ tiến trình xử lý, quyết định và thông báo của phản ánh từ lúc tiếp nhận đến hiện tại.</p>
             </div>
             <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-5 shadow-sm">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Tổng số</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Tổng số</div>
                   <div className="mt-1 text-2xl font-semibold text-slate-900">{historyEvents.length}</div>
                 </div>
                 <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Theo dõi từ đầu đến cuối</div>
@@ -2541,7 +2719,7 @@ export const ManagementFeedbackDetailPage = () => {
 
                         {event.note ? (
                           <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 whitespace-pre-line">
-                            {event.note}
+                            {event.note === 'Phản ánh được tạo' ? 'Phản ánh được tạo' : event.note}
                           </div>
                         ) : null}
                       </div>
@@ -2554,32 +2732,98 @@ export const ManagementFeedbackDetailPage = () => {
         </div>
       ) : null}
 
-      {/* Attachment Preview Modal */}
-      {previewAttachment && (
-        <div className="fixed inset-0 bg-primary/90 flex items-center justify-center p-4 z-[99999]">
-          <div className="relative max-w-4xl w-full">
+      {/* Attachment Preview - same full-screen viewer pattern as Service User */}
+      {previewAttachment && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            className="fixed inset-0 z-[99999] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="staff-detail-media-preview-title"
+          >
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 bg-gradient-to-b from-black/80 via-black/35 to-transparent px-4 pb-16 pt-4 sm:px-6 sm:pt-5">
+              <div className="min-w-0">
+                <h2
+                  id="staff-detail-media-preview-title"
+                  className="max-w-[72vw] truncate text-sm font-semibold text-white sm:text-base"
+                >
+                  {previewAttachment?.fileName || previewAttachment?.name || `Tệp đính kèm ${previewAttachmentIndex + 1}`}
+                </h2>
+                <p className="mt-1 text-xs text-white/65">
+                  {previewAttachmentIndex + 1} / {previewItems.length}
+                  {previewItems.length > 1 ? (
+                    <span className="hidden sm:inline"> · Dùng phím ← → để chuyển tệp</span>
+                  ) : null}
+                </p>
+              </div>
+            </div>
+
             <button
-              onClick={() => setPreviewAttachment(null)}
-              className="absolute -top-10 right-0 text-white hover:text-slate-300"
+              type="button"
+              onClick={() => setPreviewAttachmentIndex(null)}
+              className="absolute right-4 top-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white shadow-lg backdrop-blur transition hover:scale-105 hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6 sm:top-5"
+              aria-label="Đóng xem trước"
             >
-              <Lucide.X size={24} />
+              <Lucide.X size={21} aria-hidden="true" />
             </button>
-            {isVideoFile(previewAttachment) ? (
-              <video
-                src={previewAttachment}
-                controls
-                className="w-full rounded-lg"
-              />
-            ) : (
-              <img
-                src={previewAttachment}
-                alt="Preview"
-                className="w-full rounded-lg"
-              />
-            )}
-          </div>
-        </div>
-      )}
+
+            <div
+              className="flex h-full w-full items-center justify-center overflow-hidden px-3 py-3 sm:px-16 sm:py-5"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  setPreviewAttachmentIndex(null);
+                }
+              }}
+            >
+              {isVideoFile(previewAttachmentUrl) ? (
+                <video
+                  key={previewAttachmentUrl}
+                  src={previewAttachmentUrl}
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="metadata"
+                  className="block max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] object-contain sm:max-h-[calc(100dvh-40px)] sm:max-w-[calc(100vw-128px)]"
+                >
+                  Trình duyệt của bạn không hỗ trợ phát video.
+                </video>
+              ) : (
+                <img
+                  key={previewAttachmentUrl}
+                  src={previewAttachmentUrl}
+                  alt={previewAttachment?.fileName || previewAttachment?.name || `Tệp đính kèm ${previewAttachmentIndex + 1}`}
+                  className="block max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] select-none object-contain sm:max-h-[calc(100dvh-40px)] sm:max-w-[calc(100vw-128px)]"
+                  draggable="false"
+                />
+              )}
+            </div>
+
+            {previewItems.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => movePreview(-1)}
+                  className="absolute left-3 top-1/2 z-30 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white shadow-xl backdrop-blur transition hover:scale-105 hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:left-6 sm:h-14 sm:w-14"
+                  aria-label="Xem tệp trước"
+                >
+                  <Lucide.ChevronLeft size={28} aria-hidden="true" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => movePreview(1)}
+                  className="absolute right-3 top-1/2 z-30 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white shadow-xl backdrop-blur transition hover:scale-105 hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6 sm:h-14 sm:w-14"
+                  aria-label="Xem tệp tiếp theo"
+                >
+                  <Lucide.ChevronRight size={28} aria-hidden="true" />
+                </button>
+              </>
+            ) : null}
+          </div>,
+          document.body
+        )
+        : null}
+
       <DelightToast open={areaAlertToast.open} message={areaAlertToast.message} sub={areaAlertToast.sub} onClose={() => setAreaAlertToast({ open: false, message: '', sub: '' })} />
       <DelightToast open={notificationToast.open} message={notificationToast.message} sub={notificationToast.sub} onClose={() => setNotificationToast({ open: false, message: '', sub: '' })} />
 

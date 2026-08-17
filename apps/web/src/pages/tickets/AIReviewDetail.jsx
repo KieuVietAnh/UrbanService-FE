@@ -24,6 +24,30 @@ const getTicketPriority = (ticket = {}) => {
   return `${ticket.priority || ticket.urgencyLevel || ticket.analysisResult?.urgencyLevel || ticket.urgency || 'Medium'}`.trim();
 };
 
+const getUrgencyLabel = (urgency = '') => {
+  const normalized = `${urgency || ''}`.trim().toLowerCase();
+  if (normalized === 'critical') return 'Khẩn cấp';
+  if (normalized === 'high') return 'Cao';
+  if (normalized === 'medium') return 'Trung bình';
+  if (normalized === 'low') return 'Thấp';
+  return urgency || 'Chưa xác định';
+};
+
+const getSentimentLabel = (sentiment = '') => {
+  const normalized = `${sentiment || ''}`.trim().toLowerCase();
+  if (normalized === 'positive') return 'Tích cực';
+  if (normalized === 'negative') return 'Tiêu cực';
+  if (normalized === 'neutral') return 'Trung tính';
+  if (normalized === 'unknown' || normalized === 'undefined' || normalized === 'null') return 'Không xác định';
+  return sentiment || 'Không xác định';
+};
+
+const shortenFeedbackId = (value = '') => {
+  const text = `${value || ''}`;
+  if (text.length <= 18) return text || '—';
+  return `${text.slice(0, 8)}…${text.slice(-5)}`;
+};
+
 const FALLBACK_CATEGORIES = [
   { categoryId: 1, categoryName: 'Vệ sinh môi trường' },
   { categoryId: 2, categoryName: 'Đường sá' },
@@ -33,12 +57,46 @@ const FALLBACK_CATEGORIES = [
   { categoryId: 6, categoryName: 'An toàn giao thông' },
 ];
 
+const AI_QUEUE_CACHE_KEY = 'staff-ai-review-queue-cache';
+const AI_QUEUE_CACHE_TTL = 60 * 1000;
+
+const readAiQueueCache = () => {
+  try {
+    const raw = sessionStorage.getItem(AI_QUEUE_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const mergeAiQueueCache = (patch) => {
+  try {
+    const current = readAiQueueCache() || {};
+    sessionStorage.setItem(
+      AI_QUEUE_CACHE_KEY,
+      JSON.stringify({ ...current, ...patch, savedAt: Date.now() })
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
+
 export const AIReviewDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [tickets, setTickets] = useState([]);
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [categories, setCategories] = useState([]);
+  const [initialQueueCache] = useState(() => readAiQueueCache());
+  const [tickets, setTickets] = useState(() => (
+    Array.isArray(initialQueueCache?.tickets) ? initialQueueCache.tickets : []
+  ));
+  const [selectedTicket, setSelectedTicket] = useState(() => (
+    Array.isArray(initialQueueCache?.tickets) && initialQueueCache.tickets.length > 0
+      ? initialQueueCache.tickets[0]
+      : null
+  ));
+  const [categories, setCategories] = useState(() => (
+    Array.isArray(initialQueueCache?.categories) ? initialQueueCache.categories : []
+  ));
   const [urgencyFilter, setUrgencyFilter] = useState('');
   const [showUrgencyDropdown, setShowUrgencyDropdown] = useState(false);
   
@@ -55,11 +113,18 @@ export const AIReviewDetail = () => {
   };
 
   useEffect(() => {
+    const cacheIsFresh =
+      Number(initialQueueCache?.savedAt) > 0
+      && Date.now() - Number(initialQueueCache.savedAt) < AI_QUEUE_CACHE_TTL;
+
+    if (cacheIsFresh) return undefined;
+
     const loadQueue = async () => {
       try {
         const res = await managementFeedbackApi.getAiReviewedFeedbacks({ pageSize: 50 });
         const normalized = Array.isArray(res) ? res : [];
         setTickets(normalized);
+        mergeAiQueueCache({ tickets: normalized });
         if (normalized.length > 0) {
           handleSelectTicket(normalized[0]);
         } else {
@@ -75,6 +140,7 @@ export const AIReviewDetail = () => {
         const res = await toolsApi.getCategories();
         const resolved = Array.isArray(res) && res.length > 0 ? res : FALLBACK_CATEGORIES;
         setCategories(resolved);
+        mergeAiQueueCache({ categories: resolved });
       } catch (err) {
         console.error('Failed to load categories', err);
         setCategories(FALLBACK_CATEGORIES);
@@ -83,7 +149,7 @@ export const AIReviewDetail = () => {
 
     loadQueue();
     loadCategories();
-  }, []);
+  }, [initialQueueCache]);
 
   const URGENCY_OPTIONS = ['High', 'Critical'];
 
@@ -132,6 +198,7 @@ export const AIReviewDetail = () => {
         categoryId: editCategoryId,
         priority: editPriority
       }, { role: user.role });
+      sessionStorage.removeItem(AI_QUEUE_CACHE_KEY);
       // Notify listeners that status changed (Submitted -> Verified)
       try {
         signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, managementTypes.feedbackStatus.VERIFIED, user);
@@ -147,356 +214,393 @@ export const AIReviewDetail = () => {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="space-y-3">
-        <h2 className="text-3xl font-black">Hàng Chờ Kiểm Duyệt AI</h2>
-        <p className="max-w-3xl text-sm text-gray-500 font-semibold">Đánh giá kết quả phân loại tự động của AI đối với các phản ánh mới trước khi tiến hành điều phối.</p>
-      </div>
+  const highCount = useMemo(() => tickets.filter((ticket) => getTicketPriority(ticket) === 'High').length, [tickets]);
+  const criticalCount = useMemo(() => tickets.filter((ticket) => getTicketPriority(ticket) === 'Critical').length, [tickets]);
 
-      {tickets.length === 0 ? (
-        <div className="card bg-base-100 border border-base-300 p-12 text-center rounded-[28px] space-y-4 shadow-sm">
-          <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-            <Lucide.CheckCircle2 size={32} />
+  return (
+    <div className="admin-page-shell space-y-5 text-slate-800">
+      <section className="admin-page-hero">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.15rem] bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-[0_16px_36px_rgba(37,99,235,0.24)]">
+              <Lucide.Cpu size={25} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="admin-hero-title">Hàng chờ kiểm duyệt AI</h1>
+              <p className="admin-hero-description mt-2 max-w-3xl">
+                Kiểm tra kết quả phân loại tự động, điều chỉnh thông tin khi cần và xác nhận phản ánh trước khi chuyển sang bước phân công.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-extrabold text-sm">Hàng Chờ Đang Trống</h3>
-            <p className="text-xs text-gray-500 font-semibold mt-1">Tất cả các phản ánh mới đã được phê duyệt và điều phối hoàn tất.</p>
+
+          <div className="min-w-[240px] rounded-[24px] border border-emerald-200 bg-emerald-50/90 px-5 py-4 shadow-[0_10px_28px_rgba(16,185,129,0.08)]">
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+              Đang chờ kiểm duyệt
+            </div>
+            <div className="mt-2 text-[28px] font-bold leading-none tracking-[-0.03em] text-slate-950">
+              {displayedTickets.length}
+              <span className="ml-2 text-base font-semibold tracking-normal text-slate-700">phản ánh</span>
+            </div>
           </div>
         </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="admin-stat-card flex items-center justify-between gap-4 p-5">
+          <div>
+            <p className="admin-section-description">Tổng phản ánh</p>
+            <p className="mt-2 text-3xl font-bold tracking-[-0.03em] text-slate-950">{tickets.length}</p>
+            <p className="mt-1 text-sm text-slate-500">Hồ sơ AI đã chuyển vào hàng kiểm duyệt.</p>
+          </div>
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+            <Lucide.Files size={20} aria-hidden="true" />
+          </span>
+        </div>
+
+        <div className="admin-stat-card flex items-center justify-between gap-4 p-5">
+          <div>
+            <p className="admin-section-description">Mức cao</p>
+            <p className="mt-2 text-3xl font-bold tracking-[-0.03em] text-slate-950">{highCount}</p>
+            <p className="mt-1 text-sm text-slate-500">Phản ánh được AI đánh giá ưu tiên cao.</p>
+          </div>
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+            <Lucide.TrendingUp size={20} aria-hidden="true" />
+          </span>
+        </div>
+
+        <div className="admin-stat-card flex items-center justify-between gap-4 p-5">
+          <div>
+            <p className="admin-section-description">Khẩn cấp</p>
+            <p className="mt-2 text-3xl font-bold tracking-[-0.03em] text-slate-950">{criticalCount}</p>
+            <p className="mt-1 text-sm text-slate-500">Phản ánh cần được ưu tiên xem xét ngay.</p>
+          </div>
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+            <Lucide.Siren size={20} aria-hidden="true" />
+          </span>
+        </div>
+      </section>
+
+      {tickets.length === 0 ? (
+        <div className="admin-empty-panel p-12 text-center">
+          <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <Lucide.CheckCircle2 size={30} aria-hidden="true" />
+          </span>
+          <h2 className="mt-4 text-lg font-bold text-slate-950">Hàng chờ đang trống</h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm text-slate-500">Hiện không có phản ánh nào cần nhân viên kiểm duyệt kết quả phân loại AI.</p>
+        </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
-          <aside className="lg:sticky lg:top-28 self-start">
-            <div className="card bg-base-100 border border-base-200 p-4 rounded-[28px] shadow-sm">
-              <div className="border-b border-base-200 pb-4 mb-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-xs uppercase tracking-wider text-gray-400">Danh sách phản ánh mới ({displayedTickets.length})</h4>
-                  <div>
+        <div className="grid items-start gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <aside className="admin-panel xl:sticky xl:top-24">
+            <div className="border-b border-slate-200/80 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="admin-section-title">Phản ánh chờ kiểm duyệt</h2>
+                  <p className="admin-section-description mt-1">Chọn một hồ sơ để xem kết quả AI và xác nhận.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowUrgencyDropdown((value) => !value)}
+                  className="urgency-filter-button inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700"
+                >
+                  <Lucide.SlidersHorizontal size={15} aria-hidden="true" />
+                  Lọc
+                </button>
+              </div>
+
+              {showUrgencyDropdown ? (
+                <div className="urgency-dropdown mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Mức độ ưu tiên</p>
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => setShowUrgencyDropdown((v) => !v)}
-                      className="urgency-filter-button btn btn-sm btn-outline border-slate-300 rounded-xl text-xs font-bold text-slate-600 h-9 min-h-0 flex gap-1.5 items-center"
+                      onClick={() => { setUrgencyFilter(''); setShowUrgencyDropdown(false); }}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${urgencyFilter === '' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
                     >
-                      <Lucide.SlidersHorizontal size={14} />
-                      Bộ lọc
+                      Tất cả
                     </button>
+                    {URGENCY_OPTIONS.map((urgency) => (
+                      <button
+                        key={urgency}
+                        type="button"
+                        onClick={() => { setUrgencyFilter(urgency); setShowUrgencyDropdown(false); }}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${urgencyFilter === urgency ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
+                      >
+                        {getUrgencyLabel(urgency)}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                {showUrgencyDropdown ? (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 mt-3 urgency-dropdown">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Tùy chọn lọc</span>
-                      <button
-                        type="button"
-                        onClick={() => { setUrgencyFilter(''); setShowUrgencyDropdown(false); }}
-                        className={`btn btn-xs rounded-full border-slate-300 ${urgencyFilter === '' ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
-                      >
-                        Tất cả
-                      </button>
-                      {URGENCY_OPTIONS.map((u) => (
-                        <button
-                          key={u}
-                          type="button"
-                          onClick={() => { setUrgencyFilter(u); setShowUrgencyDropdown(false); }}
-                          className={`btn btn-xs rounded-full border-slate-300 ${urgencyFilter === u ? 'bg-[color:var(--brand-primary)] text-white' : 'bg-white text-slate-700'}`}
-                        >
-                          {u}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="space-y-3 max-h-[calc(100vh-18rem)] overflow-y-auto pr-1">
-                {displayedTickets.map((t) => {
-                  const isConfirmedDuplicate = Boolean(t?.parentTicketId || t?.parentFeedbackId);
-                  return (
+              ) : null}
+            </div>
+
+            <div className="max-h-[calc(100vh-15.5rem)] space-y-2 overflow-y-auto p-3">
+              {displayedTickets.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                  Không có phản ánh phù hợp với bộ lọc.
+                </div>
+              ) : displayedTickets.map((ticket) => {
+                const isConfirmedDuplicate = Boolean(ticket?.parentTicketId || ticket?.parentFeedbackId);
+                const isActive = selectedTicket?.feedbackId === ticket.feedbackId;
+                const urgency = getTicketPriority(ticket);
+
+                return (
                   <button
-                    key={t.feedbackId}
+                    key={ticket.feedbackId}
                     type="button"
-                    onClick={() => handleSelectTicket(t)}
-                    className={`w-full text-left p-4 rounded-3xl border transition duration-200 flex flex-col gap-3 ${
-                      selectedTicket?.feedbackId === t.feedbackId
-                        ? 'border-primary bg-primary/10 shadow-sm text-primary'
-                        : `border-base-200 ${getUrgencyBadgeClass(getTicketPriority(t)) === 'border-amber-200 bg-amber-50 text-amber-700' || getUrgencyBadgeClass(getTicketPriority(t)) === 'border-rose-200 bg-rose-50 text-rose-700' ? 'bg-amber-50/20 hover:border-amber-300' : 'bg-white hover:border-base-300 hover:shadow-sm'}`
-                    }`}
+                    onClick={() => handleSelectTicket(ticket)}
+                    className={`w-full rounded-2xl border p-3.5 text-left transition ${isActive ? 'border-blue-300 bg-blue-50/80 shadow-[0_10px_24px_rgba(37,99,235,0.10)]' : 'border-slate-200/80 bg-white hover:border-blue-200 hover:bg-blue-50/40'}`}
                   >
-                    <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500">
-                      <span className="truncate">{t.feedbackId}</span>
-                      <span>{new Date(t.createdAt).toLocaleDateString('vi-VN')}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-xs font-bold text-blue-700" title={ticket.feedbackId}>{shortenFeedbackId(ticket.feedbackId)}</span>
+                      <span className="shrink-0 text-xs font-medium text-slate-400">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString('vi-VN') : '—'}</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="mt-2 line-clamp-2 text-sm font-bold leading-5 text-slate-900">{ticket.title || 'Không có tiêu đề'}</h3>
+                    <p className="mt-1 truncate text-xs text-slate-500">{ticket.locationText || 'Chưa có địa điểm'}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${getUrgencyBadgeClass(urgency)}`}>
+                        {getUrgencyLabel(urgency)}
+                      </span>
                       {isConfirmedDuplicate ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-bold text-violet-700">
                           <Lucide.GitMerge size={11} aria-hidden="true" />
-                          Phản ánh trùng
+                          Trùng lặp
                         </span>
                       ) : null}
-                      <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${getUrgencyBadgeClass(getTicketPriority(t))}`}>
-                        {getTicketPriority(t)}
-                      </span>
                     </div>
-                    <h5 className="font-bold text-sm text-base-content line-clamp-2">{t.title}</h5>
-                    <span className="text-xs font-semibold text-gray-500 line-clamp-1">{t.locationText}</span>
                   </button>
-                  );
-                })}
-              </div>
+                );
+              })}
             </div>
           </aside>
 
-          <main className="space-y-6">
-            {selectedTicket && (
+          <div className="min-w-0 space-y-5">
+            {selectedTicket ? (
               <>
                 {selectedIsConfirmedDuplicate ? (
-                  <section className="rounded-[28px] border border-violet-200 bg-violet-50 p-5 shadow-sm">
+                  <section className="admin-panel border-violet-200 bg-violet-50/70 p-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-start gap-3">
                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white">
                           <Lucide.GitMerge size={20} aria-hidden="true" />
                         </span>
                         <div>
-                          <h3 className="font-bold text-violet-950">Phản ánh trùng</h3>
-                          <p className="mt-1 text-sm text-violet-800">Không duyệt hoặc phân công riêng; phản ánh này được xử lý theo phản ánh đã có.</p>
+                          <h2 className="font-bold text-violet-950">Phản ánh đã được xác nhận trùng lặp</h2>
+                          <p className="mt-1 text-sm text-violet-800">Không cần duyệt hoặc phân công riêng; hồ sơ này được xử lý theo phản ánh gốc.</p>
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => navigate(`/staff/feedbacks/${selectedParentFeedbackId}`)}
-                        className="btn btn-sm rounded-xl border-violet-200 bg-white text-violet-700 hover:bg-violet-100"
+                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-semibold text-violet-700 transition hover:bg-violet-100"
                       >
-                        <Lucide.ExternalLink size={14} aria-hidden="true" />
-                        Xem phản ánh đã có
+                        <Lucide.ExternalLink size={15} aria-hidden="true" />
+                        Xem phản ánh gốc
                       </button>
                     </div>
                   </section>
                 ) : null}
-                <div className="card bg-base-100 border border-base-200 p-6 rounded-[32px] shadow-sm">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-3">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-sm font-semibold text-primary">
-                        <Lucide.Sparkles size={16} /> AI Review Insights
-                      </div>
-                      <div className="space-y-2">
-                        <h3 className="text-3xl font-black leading-tight">Phân Tích AI Đề Xuất</h3>
-                        <p className="max-w-2xl text-sm text-gray-500">Kết quả phân tích tự động từ AI giúp staff đánh giá và ra quyết định nhanh hơn.</p>
-                      </div>
-                    </div>
 
-                    <div className="inline-flex items-center gap-3 rounded-3xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary">
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10">
-                        <Lucide.BarChart3 size={20} />
-                      </span>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500">Độ tin cậy AI</p>
-                        <p className="text-2xl font-black">{Math.round((selectedTicket.confidenceScore || 0) * 100)}%</p>
+                <section className="admin-panel overflow-hidden">
+                  <div className="border-b border-slate-200/80 p-5 sm:p-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
+                          <Lucide.Sparkles size={14} aria-hidden="true" />
+                          Phân tích từ AI
+                        </div>
+                        <h2 className="mt-3 text-2xl font-bold tracking-[-0.025em] text-slate-950">Kết quả AI đề xuất</h2>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Xem lại kết quả phân tích tự động và điều chỉnh thông tin trước khi xác nhận chuyển phân công.</p>
+                      </div>
+
+                      <div className="admin-inset-panel min-w-[190px] px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                            <Lucide.BarChart3 size={19} aria-hidden="true" />
+                          </span>
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Độ tin cậy AI</p>
+                            <p className="mt-1 text-2xl font-bold tracking-[-0.025em] text-slate-950">{Math.round((selectedTicket.confidenceScore || 0) * 100)}%</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${getUrgencyBadgeClass(getTicketPriority(selectedTicket))}`}>
-                      {getTicketPriority(selectedTicket)}
-                    </span>
                   </div>
-                  <div className="mt-6 grid gap-6">
-                    <div className="rounded-[28px] border border-base-200 bg-base-200/70 p-6">
-                      <p className="text-sm uppercase tracking-[0.18em] text-gray-500">Tóm tắt sự cố</p>
-                      <p className="mt-4 text-lg leading-8 font-semibold text-gray-900">{selectedTicket.summary || selectedTicket.description || 'Không có tóm tắt từ AI.'}</p>
+
+                  <div className="space-y-5 p-5 sm:p-6">
+                    <div className="admin-inset-panel p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Tóm tắt sự cố</p>
+                        <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${getUrgencyBadgeClass(getTicketPriority(selectedTicket))}`}>
+                          {getUrgencyLabel(getTicketPriority(selectedTicket))}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-base font-semibold leading-7 text-slate-800">{selectedTicket.summary || selectedTicket.description || 'Không có tóm tắt từ AI.'}</p>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                            <Lucide.ShieldCheck size={18} />
-                          </span>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Độ tin cậy</p>
-                            <p className="mt-2 text-xl font-bold text-gray-900">{Math.round((selectedTicket.confidenceScore || 0) * 100)}%</p>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="admin-inset-panel px-4 py-3.5">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Lucide.ShieldCheck size={16} /></span>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-400">Độ tin cậy</p>
+                            <p className="mt-0.5 text-base font-bold leading-6 tracking-[-0.01em] text-slate-900">{Math.round((selectedTicket.confidenceScore || 0) * 100)}%</p>
                           </div>
                         </div>
                       </div>
-                      <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
-                            <Lucide.TrendingUp size={18} />
-                          </span>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Ưu tiên</p>
-                            <p className="mt-2 text-xl font-bold text-gray-900">{getTicketPriority(selectedTicket)}</p>
+                      <div className="admin-inset-panel px-4 py-3.5">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Lucide.TrendingUp size={16} /></span>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-400">Ưu tiên</p>
+                            <p className="mt-0.5 text-base font-bold leading-6 tracking-[-0.01em] text-slate-900">{getUrgencyLabel(getTicketPriority(selectedTicket))}</p>
                           </div>
                         </div>
                       </div>
-                      <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
-                            <Lucide.HeartPulse size={18} />
-                          </span>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Cảm xúc</p>
-                            <p className="mt-2 text-xl font-bold text-gray-900">{selectedTicket.sentiment || 'Neutral'}</p>
+                      <div className="admin-inset-panel px-4 py-3.5">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600"><Lucide.HeartPulse size={16} /></span>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-400">Cảm xúc</p>
+                            <p className="mt-0.5 whitespace-nowrap text-[15px] font-bold leading-6 tracking-[-0.01em] text-slate-900">{getSentimentLabel(selectedTicket.sentiment)}</p>
                           </div>
                         </div>
                       </div>
-                      <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                        <div className="flex items-center gap-3 mb-4">
-                          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-100 text-violet-600">
-                            <Lucide.Repeat size={18} />
-                          </span>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Trùng lặp</p>
-                            <p className="mt-2 text-xl font-bold text-gray-900">{selectedTicket.duplicateLikelihood != null ? `${selectedTicket.duplicateLikelihood}%` : 'N/A'}</p>
+                      <div className="admin-inset-panel px-4 py-3.5">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Lucide.Repeat size={16} /></span>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-400">Trùng lặp</p>
+                            <p className="mt-0.5 whitespace-nowrap text-base font-bold leading-6 tracking-[-0.01em] text-slate-900">{selectedTicket.duplicateLikelihood != null ? `${selectedTicket.duplicateLikelihood}%` : 'Chưa có'}</p>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-3">
-                      <div className="form-control">
-                        <label className="label">
-                          <span className="label-text font-bold text-xs">Danh mục</span>
-                        </label>
-                        <select 
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-bold text-slate-700">Danh mục</span>
+                        <select
                           value={editCategoryId}
-                          onChange={(e) => setEditCategoryId(Number(e.target.value))}
-                          className="select select-bordered select-sm rounded-2xl font-semibold"
+                          onChange={(event) => setEditCategoryId(Number(event.target.value))}
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                         >
-                          {categories.map((c) => (
-                            <option key={c.categoryId} value={c.categoryId}>{c.categoryName}</option>
+                          {categories.map((category) => (
+                            <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>
                           ))}
                         </select>
-                      </div>
+                      </label>
 
-                      <div className="form-control">
-                        <label className="label">
-                          <span className="label-text font-bold text-xs">Mức độ ưu tiên</span>
-                        </label>
-                        <select 
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-bold text-slate-700">Mức độ ưu tiên</span>
+                        <select
                           value={editPriority}
-                          onChange={(e) => setEditPriority(e.target.value)}
-                          className="select select-bordered select-sm rounded-2xl font-semibold"
+                          onChange={(event) => setEditPriority(event.target.value)}
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                         >
-                          <option value="Low">Thấp (Low)</option>
-                          <option value="Medium">Trung bình (Medium)</option>
-                          <option value="High">Cao (High)</option>
-                          <option value="Critical">Khẩn cấp (Critical)</option>
+                          <option value="Low">Thấp</option>
+                          <option value="Medium">Trung bình</option>
+                          <option value="High">Cao</option>
+                          <option value="Critical">Khẩn cấp</option>
                         </select>
-                      </div>
+                      </label>
 
-                      <div className="rounded-3xl border border-base-200 bg-base-200/70 p-5">
-                        <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Khu vực</p>
-                        <p className="mt-3 text-sm font-semibold text-gray-900">{selectedTicket.areaName || 'Chưa có khu vực'}</p>
+                      <div className="admin-inset-panel p-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Khu vực</p>
+                        <p className="mt-2 text-sm font-bold text-slate-800">{selectedTicket.areaName || 'Chưa có khu vực'}</p>
                       </div>
                     </div>
 
-                    <div className="rounded-[32px] border border-base-200 bg-base-200/70 p-6 shadow-sm">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="admin-inset-panel p-5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">Rủi ro & Hành động đề xuất</p>
-                          <p className="mt-2 text-sm text-gray-600">Thông tin AI dựa trên dữ liệu phân tích và cảnh báo giúp bạn đưa quyết định nhanh hơn.</p>
+                          <h3 className="font-bold text-slate-900">Rủi ro và hành động đề xuất</h3>
+                          <p className="mt-1 text-sm text-slate-500">Thông tin hỗ trợ từ kết quả phân tích AI trước khi nhân viên xác nhận.</p>
                         </div>
-                        <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">Thông tin AI</span>
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Thông tin AI</span>
                       </div>
+
                       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-                        <div className="space-y-4">
-                          <div>
-                            <p className="font-semibold text-gray-900">Rủi ro / Lưu ý</p>
-                            {selectedTicket.riskNotes?.length > 0 ? (
-                              <ul className="mt-3 list-disc space-y-2 pl-5 text-gray-600">
-                                {selectedTicket.riskNotes.map((note) => <li key={note}>{note}</li>)}
-                              </ul>
-                            ) : (
-                              <p className="mt-3 text-gray-600">Không có ghi chú rủi ro cụ thể.</p>
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">Quan sát AI</p>
-                            <p className="mt-3 text-gray-600">{selectedTicket.summary || 'AI không cung cấp nhận xét chi tiết.'}</p>
-                          </div>
-                        </div>
-                        <div className="space-y-4">
-                          <div>
-                            <p className="font-semibold text-gray-900">Ưu tiên xử lý</p>
-                            <p className="mt-3 text-gray-600">{getTicketPriority(selectedTicket) ? `Xử lý ở mức ${getTicketPriority(selectedTicket).toLowerCase()}` : 'Chưa xác định mức độ ưu tiên.'}</p>
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">Hành động đề xuất</p>
-                            <ul className="mt-3 list-disc space-y-2 pl-5 text-gray-600">
-                              <li>Kiểm tra danh mục và mức độ ưu tiên AI đề xuất.</li>
-                              <li>Chỉnh sửa nếu cần và xác nhận chuyển phân công.</li>
-                              <li>Ghi chú thêm nếu có rủi ro đặc biệt.</li>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">Rủi ro / lưu ý</p>
+                          {selectedTicket.riskNotes?.length > 0 ? (
+                            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-600">
+                              {selectedTicket.riskNotes.map((note) => <li key={note}>{note}</li>)}
                             </ul>
-                          </div>
+                          ) : (
+                            <p className="mt-3 text-sm text-slate-500">Không có ghi chú rủi ro cụ thể.</p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">Hành động đề xuất</p>
+                          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+                            <li className="flex gap-2"><Lucide.Check size={15} className="mt-1 shrink-0 text-emerald-600" />Kiểm tra danh mục và mức độ ưu tiên AI đề xuất.</li>
+                            <li className="flex gap-2"><Lucide.Check size={15} className="mt-1 shrink-0 text-emerald-600" />Điều chỉnh nếu cần và xác nhận chuyển phân công.</li>
+                            <li className="flex gap-2"><Lucide.Check size={15} className="mt-1 shrink-0 text-emerald-600" />Xem lại các lưu ý rủi ro trước khi xác nhận.</li>
+                          </ul>
                         </div>
                       </div>
                     </div>
 
                     {selectedIsConfirmedDuplicate ? (
-                      <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-center text-sm font-semibold text-violet-800">
-                        Phản ánh trùng không cần duyệt hoặc phân công riêng.
+                      <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-center text-sm font-semibold text-violet-800">
+                        Phản ánh trùng lặp không cần duyệt hoặc phân công riêng.
                       </div>
                     ) : (
                       <button
                         type="button"
                         onClick={handleApprove}
                         disabled={loading}
-                        className="btn btn-primary w-full rounded-2xl font-bold text-sm h-14"
+                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(37,99,235,0.20)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {loading ? <span className="loading loading-spinner"></span> : 'Xác Nhận & Duyệt Chuyển Phân Công'}
+                        {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.CheckCircle2 size={18} aria-hidden="true" />}
+                        {loading ? 'Đang xác nhận...' : 'Xác nhận và chuyển phân công'}
                       </button>
                     )}
                   </div>
-                </div>
+                </section>
 
-                <div className="card bg-base-100 border border-base-200 p-6 rounded-[32px] shadow-sm">
-                  <div className="border-b border-base-200 pb-4 mb-6">
-                    <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400">Chi Tiết Sự Cố</h4>
+                <section className="admin-panel overflow-hidden">
+                  <div className="border-b border-slate-200/80 px-5 py-4 sm:px-6">
+                    <h2 className="admin-section-title">Chi tiết phản ánh</h2>
+                    <p className="admin-section-description mt-1">Thông tin gốc của hồ sơ đang được kiểm duyệt.</p>
                   </div>
 
-                  <div className="grid gap-5 lg:grid-cols-3">
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Tiêu đề</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedTicket.title || 'Không có tiêu đề'}</p>
+                  <div className="p-5 sm:p-6">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <div className="admin-inset-panel p-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Tiêu đề</p><p className="mt-2 text-sm font-bold text-slate-800">{selectedTicket.title || 'Không có tiêu đề'}</p></div>
+                      <div className="admin-inset-panel p-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Mã phản ánh</p><p className="mt-2 whitespace-nowrap text-sm font-semibold text-blue-700" title={selectedTicket.feedbackId}>{shortenFeedbackId(selectedTicket.feedbackId)}</p></div>
+                      <div className="admin-inset-panel p-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Người báo cáo</p><p className="mt-2 text-sm font-bold text-slate-800">{selectedTicket.reporterName || 'Không rõ'}</p></div>
+                      <div className="admin-inset-panel p-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Địa điểm</p><p className="mt-2 text-sm font-bold text-slate-800">{selectedTicket.locationText || 'Không có địa điểm'}</p></div>
+                      <div className="admin-inset-panel p-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Khu vực</p><p className="mt-2 text-sm font-bold text-slate-800">{selectedTicket.areaName || 'Không có khu vực'}</p></div>
+                      <div className="admin-inset-panel p-3.5"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Danh mục hồ sơ</p><p className="mt-2 text-sm font-bold text-slate-800">{selectedTicket.categoryName || 'Không có danh mục'}</p></div>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Mã phản ánh</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedTicket.feedbackId}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Người báo cáo</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedTicket.reporterName || 'Không rõ'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Địa điểm</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedTicket.locationText || 'Không có địa điểm'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Khu vực</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedTicket.areaName || 'Không có khu vực'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Danh mục hồ sơ</p>
-                      <p className="text-sm font-semibold text-gray-900">{selectedTicket.categoryName || 'Không có danh mục'}</p>
-                    </div>
-                  </div>
 
-                  <div className="mt-6 grid gap-6 lg:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Nội dung phản ánh</p>
-                      <p className="mt-3 rounded-3xl border border-base-200 bg-base-200/70 p-5 text-sm leading-7 text-gray-700">{selectedTicket.description || selectedTicket.title || 'Không có nội dung phản ánh.'}</p>
-                    </div>
-                    {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
+                    <div className="mt-5 grid gap-5 lg:grid-cols-2">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Ảnh đính kèm</p>
-                        <img src={selectedTicket.attachments?.[0]} alt="Evidence" className="mt-3 w-full aspect-video object-cover rounded-[28px] border border-base-200" />
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Nội dung phản ánh</p>
+                        <div className="admin-inset-panel mt-2 min-h-24 p-4 text-sm leading-7 text-slate-700">{selectedTicket.description || selectedTicket.title || 'Không có nội dung phản ánh.'}</div>
                       </div>
-                    )}
+                      {selectedTicket.attachments && selectedTicket.attachments.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Ảnh đính kèm</p>
+                          <img src={selectedTicket.attachments?.[0]} alt="Ảnh đính kèm của phản ánh" className="mt-2 aspect-video w-full rounded-2xl border border-slate-200 object-cover" />
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                </section>
               </>
+            ) : (
+              <div className="admin-empty-panel p-12 text-center">
+                <Lucide.MousePointerClick size={30} className="mx-auto text-slate-300" aria-hidden="true" />
+                <h2 className="mt-3 font-bold text-slate-900">Chọn một phản ánh</h2>
+                <p className="mt-1 text-sm text-slate-500">Chọn hồ sơ ở danh sách bên trái để bắt đầu kiểm duyệt.</p>
+              </div>
             )}
-          </main>
+          </div>
         </div>
       )}
     </div>
   );
+
 };
