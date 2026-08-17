@@ -10,6 +10,28 @@ import * as Lucide from 'lucide-react';
 import { ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
 
 const PAGE_SIZE = 10;
+const COORDINATOR_CACHE_KEY = 'staff-coordinator-directory-cache';
+
+const readCoordinatorCache = () => {
+  try {
+    const raw = sessionStorage.getItem(COORDINATOR_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const mergeCoordinatorCache = (patch) => {
+  try {
+    const current = readCoordinatorCache() || {};
+    sessionStorage.setItem(
+      COORDINATOR_CACHE_KEY,
+      JSON.stringify({ ...current, ...patch, savedAt: Date.now() })
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+};
 
 const getAreaLabel = (area) => area?.name || area?.areaName || area?.displayName || `Khu vực ${area?.id || area?.areaId || ''}`;
 const getCategoryLabel = (category) => category?.name || category?.categoryName || category?.categoryType || `Danh mục ${category?.id || category?.categoryId || ''}`;
@@ -17,22 +39,36 @@ const getCategoryLabel = (category) => category?.name || category?.categoryName 
 export default function CoordinatorDirectoryPage() {
   const navigate = useNavigate();
 
-  const [items, setItems] = useState([]);
-  const [areas, setAreas] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [initialCache] = useState(() => readCoordinatorCache());
+  const [items, setItems] = useState(() => (
+    Array.isArray(initialCache?.items) ? initialCache.items : []
+  ));
+  const [areas, setAreas] = useState(() => (
+    Array.isArray(initialCache?.areas) ? initialCache.areas : []
+  ));
+  const [categories, setCategories] = useState(() => (
+    Array.isArray(initialCache?.categories) ? initialCache.categories : []
+  ));
+  const [loading, setLoading] = useState(() => !Array.isArray(initialCache?.items));
   const [error, setError] = useState('');
 
-  const [search, setSearch] = useState('');
-  const [areaId, setAreaId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [includeInactive, setIncludeInactive] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [search, setSearch] = useState(() => initialCache?.search || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => initialCache?.search || '');
+  const [areaId, setAreaId] = useState(() => initialCache?.areaId || '');
+  const [categoryId, setCategoryId] = useState(() => initialCache?.categoryId || '');
+  const [includeInactive, setIncludeInactive] = useState(() => Boolean(initialCache?.includeInactive));
+  const [currentPage, setCurrentPage] = useState(() => Number(initialCache?.currentPage) || 1);
 
   useEffect(() => {
     let active = true;
 
     const loadLookups = async () => {
+      const hasCachedLookups =
+        Array.isArray(initialCache?.areas) && initialCache.areas.length > 0
+        && Array.isArray(initialCache?.categories) && initialCache.categories.length > 0;
+
+      if (hasCachedLookups) return;
+
       const [aRes, cRes] = await Promise.allSettled([
         toolsApi.getAreas(),
         toolsApi.getCategories(),
@@ -40,13 +76,21 @@ export default function CoordinatorDirectoryPage() {
 
       if (!active) return;
 
-      setAreas(aRes.status === 'fulfilled' && Array.isArray(aRes.value) ? aRes.value : []);
-      setCategories(cRes.status === 'fulfilled' && Array.isArray(cRes.value) ? cRes.value : []);
+      const resolvedAreas = aRes.status === 'fulfilled' && Array.isArray(aRes.value) ? aRes.value : [];
+      const resolvedCategories = cRes.status === 'fulfilled' && Array.isArray(cRes.value) ? cRes.value : [];
+      setAreas(resolvedAreas);
+      setCategories(resolvedCategories);
+      mergeCoordinatorCache({ areas: resolvedAreas, categories: resolvedCategories });
     };
 
     loadLookups();
     return () => { active = false; };
-  }, []);
+  }, [initialCache]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const fetchCoordinators = useCallback(async () => {
     setLoading(true);
@@ -55,7 +99,7 @@ export default function CoordinatorDirectoryPage() {
     try {
       // Swagger: endpoint này trả về toàn bộ mảng kết quả và chỉ nhận 4 filter dưới đây.
       const response = await managementFeedbackApi.getServiceProviders({
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         areaId: areaId ? Number(areaId) : undefined,
         categoryId: categoryId ? Number(categoryId) : undefined,
         includeInactive,
@@ -70,14 +114,21 @@ export default function CoordinatorDirectoryPage() {
             : [];
 
       setItems(itemsArr);
+      mergeCoordinatorCache({
+        items: itemsArr,
+        search: debouncedSearch,
+        areaId,
+        categoryId,
+        includeInactive,
+      });
     } catch (err) {
       console.error('Failed to fetch coordinators', err);
       setError('Không thể tải danh sách điều phối viên. Vui lòng thử lại.');
-      setItems([]);
+      setItems((current) => (current.length > 0 ? current : []));
     } finally {
       setLoading(false);
     }
-  }, [search, areaId, categoryId, includeInactive]);
+  }, [debouncedSearch, areaId, categoryId, includeInactive]);
 
   useEffect(() => {
     fetchCoordinators();
@@ -85,7 +136,7 @@ export default function CoordinatorDirectoryPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, areaId, categoryId, includeInactive]);
+  }, [debouncedSearch, areaId, categoryId, includeInactive]);
 
   const totalCount = items.length;
   const activeCount = useMemo(() => items.filter((item) => item?.isActive !== false).length, [items]);
@@ -100,6 +151,10 @@ export default function CoordinatorDirectoryPage() {
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    mergeCoordinatorCache({ currentPage });
+  }, [currentPage]);
 
   const hasFilters = Boolean(search.trim() || areaId || categoryId || includeInactive);
   const clearFilters = () => {

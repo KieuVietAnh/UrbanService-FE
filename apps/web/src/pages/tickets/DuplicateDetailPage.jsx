@@ -151,7 +151,10 @@ export const DuplicateDetailPage = () => {
 
       const normalizedCandidate = normalizeDuplicateCandidatePayload(response || null);
 
-
+      if (normalizedCandidate) {
+        setCandidate(normalizedCandidate);
+        setLoading(false);
+      }
 
       // If attachments are stored on the referenced feedback resources, fetch them by id
       const fbId = response?.feedbackId || response?.feedback?.feedbackId || response?.feedback?.id || response?.feedback?.feedback_id || null;
@@ -328,6 +331,7 @@ export const DuplicateDetailPage = () => {
 
     try {
       await duplicateManagementApi.confirmDuplicateCandidate(duplicateCandidateId);
+      sessionStorage.setItem('staff-duplicate-cache-dirty', '1');
       setConfirmModalOpen(false);
       navigate('/staff/duplicates', {
         replace: true,
@@ -354,6 +358,7 @@ export const DuplicateDetailPage = () => {
 
     try {
       await duplicateManagementApi.rejectDuplicateCandidate(duplicateCandidateId);
+      sessionStorage.setItem('staff-duplicate-cache-dirty', '1');
       setRejectModalOpen(false);
       navigate('/staff/duplicates', {
         replace: true,

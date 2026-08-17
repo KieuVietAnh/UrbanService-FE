@@ -9,6 +9,31 @@ import { LocationPicker } from '../../components/maps/LocationPicker';
 import Button from '../../components/design-system/Button';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 
+const AREA_ALERT_LOOKUP_CACHE_KEY = 'staff-area-alert-lookup-cache';
+const AREA_ALERT_LOOKUP_TTL = 10 * 60 * 1000;
+
+const readAreaAlertLookupCache = () => {
+  try {
+    const raw = sessionStorage.getItem(AREA_ALERT_LOOKUP_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed?.savedAt || Date.now() - Number(parsed.savedAt) > AREA_ALERT_LOOKUP_TTL) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeAreaAlertLookupCache = (areas, categories) => {
+  try {
+    sessionStorage.setItem(
+      AREA_ALERT_LOOKUP_CACHE_KEY,
+      JSON.stringify({ areas, categories, savedAt: Date.now() })
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
 const DEFAULT_FORM = {
   title: '',
   message: '',
@@ -35,8 +60,13 @@ const selectClass = 'select h-11 w-full rounded-xl border-slate-200 !bg-white te
 
 export default function AreaAlertCreatePage() {
   const navigate = useNavigate();
-  const [areas, setAreas] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [initialLookupCache] = useState(() => readAreaAlertLookupCache());
+  const [areas, setAreas] = useState(() => (
+    Array.isArray(initialLookupCache?.areas) ? initialLookupCache.areas : []
+  ));
+  const [categories, setCategories] = useState(() => (
+    Array.isArray(initialLookupCache?.categories) ? initialLookupCache.categories : []
+  ));
   const [loadingCreate, setLoadingCreate] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState(DEFAULT_FORM);
@@ -48,6 +78,15 @@ export default function AreaAlertCreatePage() {
     const loadLookups = async () => {
       setError('');
 
+      if (
+        Array.isArray(initialLookupCache?.areas)
+        && initialLookupCache.areas.length > 0
+        && Array.isArray(initialLookupCache?.categories)
+        && initialLookupCache.categories.length > 0
+      ) {
+        return;
+      }
+
       try {
         const [areasRes, categoriesRes] = await Promise.allSettled([
           toolsApi.getAreas(),
@@ -56,8 +95,15 @@ export default function AreaAlertCreatePage() {
 
         if (!active) return;
 
-        setAreas(normalizeLookupList(areasRes.status === 'fulfilled' ? areasRes.value : []));
-        setCategories(normalizeLookupList(categoriesRes.status === 'fulfilled' ? categoriesRes.value : []));
+        const resolvedAreas = normalizeLookupList(areasRes.status === 'fulfilled' ? areasRes.value : []);
+        const resolvedCategories = normalizeLookupList(categoriesRes.status === 'fulfilled' ? categoriesRes.value : []);
+
+        setAreas(resolvedAreas);
+        setCategories(resolvedCategories);
+
+        if (areasRes.status === 'fulfilled' && categoriesRes.status === 'fulfilled') {
+          writeAreaAlertLookupCache(resolvedAreas, resolvedCategories);
+        }
 
         if (areasRes.status === 'rejected' || categoriesRes.status === 'rejected') {
           setError('Một số dữ liệu khu vực hoặc danh mục chưa tải được. Vui lòng tải lại trang.');
@@ -74,7 +120,7 @@ export default function AreaAlertCreatePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialLookupCache]);
 
   const handleFieldChange = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));

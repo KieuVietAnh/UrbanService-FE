@@ -9,6 +9,35 @@ import { ManagerPageHeader, ManagerSectionHeader } from '../../components/manage
 import { normalizeDuplicateCandidatePayload } from './duplicateDetailUtils';
 
 const PAGE_SIZE = 10;
+const DUPLICATE_ALL_CACHE_KEY = 'staff-duplicate-all-cache';
+const DUPLICATE_CACHE_DIRTY_KEY = 'staff-duplicate-cache-dirty';
+
+const readDuplicateAllCache = () => {
+  try {
+    const raw = sessionStorage.getItem(DUPLICATE_ALL_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeDuplicateAllCache = (summary, allItems) => {
+  try {
+    sessionStorage.setItem(
+      DUPLICATE_ALL_CACHE_KEY,
+      JSON.stringify({ summary, allItems, savedAt: Date.now() })
+    );
+    sessionStorage.removeItem(DUPLICATE_CACHE_DIRTY_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
+const getDuplicateSummarySignature = (summary) => (
+  [summary?.pending, summary?.confirmed, summary?.rejected, summary?.total]
+    .map((value) => Number(value) || 0)
+    .join('|')
+);
 
 const STATUS_FILTERS = [
   { key: '', label: 'Tổng trường hợp', summaryKey: 'total', icon: Lucide.Layers3, tone: 'blue' },
@@ -100,24 +129,35 @@ export const DuplicateDetection = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [summary, setSummary] = useState({
+  const [initialAllCache] = useState(() => readDuplicateAllCache());
+  const [summary, setSummary] = useState(() => initialAllCache?.summary || {
     pending: 0,
     confirmed: 0,
     rejected: 0,
     total: 0,
   });
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => (
+    Array.isArray(initialAllCache?.allItems)
+      ? initialAllCache.allItems.slice(0, PAGE_SIZE)
+      : []
+  ));
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
-    pageNumber: 1,
-    pageSize: PAGE_SIZE,
-    totalItems: 0,
-    totalPages: 0,
-    hasPreviousPage: false,
-    hasNextPage: false,
+  const [pagination, setPagination] = useState(() => {
+    const cachedCount = Array.isArray(initialAllCache?.allItems)
+      ? initialAllCache.allItems.length
+      : 0;
+    const cachedTotal = Number(initialAllCache?.summary?.total) || cachedCount;
+    return {
+      pageNumber: 1,
+      pageSize: PAGE_SIZE,
+      totalItems: cachedTotal,
+      totalPages: Math.max(1, Math.ceil(cachedCount / PAGE_SIZE)),
+      hasPreviousPage: false,
+      hasNextPage: cachedCount > PAGE_SIZE,
+    };
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !Array.isArray(initialAllCache?.allItems));
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
@@ -144,6 +184,30 @@ export const DuplicateDetection = () => {
       setSummary(nextSummary);
 
       if (!statusFilter) {
+        const cachedAll = readDuplicateAllCache();
+        const cachedItems = Array.isArray(cachedAll?.allItems) ? cachedAll.allItems : [];
+        const cacheIsDirty = sessionStorage.getItem(DUPLICATE_CACHE_DIRTY_KEY) === '1';
+        const summaryUnchanged =
+          getDuplicateSummarySignature(cachedAll?.summary)
+          === getDuplicateSummarySignature(nextSummary);
+
+        if (!cacheIsDirty && cachedItems.length > 0 && summaryUnchanged) {
+          const cachedTotalPages = Math.max(1, Math.ceil(cachedItems.length / PAGE_SIZE));
+          const safeCachedPage = Math.min(page, cachedTotalPages);
+          const cachedStartIndex = (safeCachedPage - 1) * PAGE_SIZE;
+
+          setItems(cachedItems.slice(cachedStartIndex, cachedStartIndex + PAGE_SIZE));
+          setPagination({
+            pageNumber: safeCachedPage,
+            pageSize: PAGE_SIZE,
+            totalItems: Number(nextSummary.total) || cachedItems.length,
+            totalPages: cachedTotalPages,
+            hasPreviousPage: safeCachedPage > 1,
+            hasNextPage: safeCachedPage < cachedTotalPages,
+          });
+          return;
+        }
+
         const statusCounts = [
           ['Pending', nextSummary.pending],
           ['Confirmed', nextSummary.confirmed],
@@ -186,6 +250,7 @@ export const DuplicateDetection = () => {
         const startIndex = (safeAllPage - 1) * PAGE_SIZE;
         const currentItems = allItems.slice(startIndex, startIndex + PAGE_SIZE);
 
+        writeDuplicateAllCache(nextSummary, allItems);
         setItems(currentItems);
         setPagination({
           pageNumber: safeAllPage,
@@ -248,7 +313,7 @@ export const DuplicateDetection = () => {
         type: 'error',
         text: err?.message || 'Không thể tải danh sách phản ánh nghi trùng.',
       });
-      setItems([]);
+      setItems((current) => (current.length > 0 ? current : []));
     } finally {
       setLoading(false);
     }

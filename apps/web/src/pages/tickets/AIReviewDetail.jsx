@@ -57,12 +57,46 @@ const FALLBACK_CATEGORIES = [
   { categoryId: 6, categoryName: 'An toàn giao thông' },
 ];
 
+const AI_QUEUE_CACHE_KEY = 'staff-ai-review-queue-cache';
+const AI_QUEUE_CACHE_TTL = 60 * 1000;
+
+const readAiQueueCache = () => {
+  try {
+    const raw = sessionStorage.getItem(AI_QUEUE_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const mergeAiQueueCache = (patch) => {
+  try {
+    const current = readAiQueueCache() || {};
+    sessionStorage.setItem(
+      AI_QUEUE_CACHE_KEY,
+      JSON.stringify({ ...current, ...patch, savedAt: Date.now() })
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
+
 export const AIReviewDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [tickets, setTickets] = useState([]);
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [categories, setCategories] = useState([]);
+  const [initialQueueCache] = useState(() => readAiQueueCache());
+  const [tickets, setTickets] = useState(() => (
+    Array.isArray(initialQueueCache?.tickets) ? initialQueueCache.tickets : []
+  ));
+  const [selectedTicket, setSelectedTicket] = useState(() => (
+    Array.isArray(initialQueueCache?.tickets) && initialQueueCache.tickets.length > 0
+      ? initialQueueCache.tickets[0]
+      : null
+  ));
+  const [categories, setCategories] = useState(() => (
+    Array.isArray(initialQueueCache?.categories) ? initialQueueCache.categories : []
+  ));
   const [urgencyFilter, setUrgencyFilter] = useState('');
   const [showUrgencyDropdown, setShowUrgencyDropdown] = useState(false);
   
@@ -79,11 +113,18 @@ export const AIReviewDetail = () => {
   };
 
   useEffect(() => {
+    const cacheIsFresh =
+      Number(initialQueueCache?.savedAt) > 0
+      && Date.now() - Number(initialQueueCache.savedAt) < AI_QUEUE_CACHE_TTL;
+
+    if (cacheIsFresh) return undefined;
+
     const loadQueue = async () => {
       try {
         const res = await managementFeedbackApi.getAiReviewedFeedbacks({ pageSize: 50 });
         const normalized = Array.isArray(res) ? res : [];
         setTickets(normalized);
+        mergeAiQueueCache({ tickets: normalized });
         if (normalized.length > 0) {
           handleSelectTicket(normalized[0]);
         } else {
@@ -99,6 +140,7 @@ export const AIReviewDetail = () => {
         const res = await toolsApi.getCategories();
         const resolved = Array.isArray(res) && res.length > 0 ? res : FALLBACK_CATEGORIES;
         setCategories(resolved);
+        mergeAiQueueCache({ categories: resolved });
       } catch (err) {
         console.error('Failed to load categories', err);
         setCategories(FALLBACK_CATEGORIES);
@@ -107,7 +149,7 @@ export const AIReviewDetail = () => {
 
     loadQueue();
     loadCategories();
-  }, []);
+  }, [initialQueueCache]);
 
   const URGENCY_OPTIONS = ['High', 'Critical'];
 
@@ -156,6 +198,7 @@ export const AIReviewDetail = () => {
         categoryId: editCategoryId,
         priority: editPriority
       }, { role: user.role });
+      sessionStorage.removeItem(AI_QUEUE_CACHE_KEY);
       // Notify listeners that status changed (Submitted -> Verified)
       try {
         signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, managementTypes.feedbackStatus.VERIFIED, user);
