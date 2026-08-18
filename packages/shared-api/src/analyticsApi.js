@@ -27,6 +27,72 @@ const normalizeRole = (role) => {
 };
 
 export const analyticsApi = {
+
+  async getManagerSentimentStats() {
+    try {
+      const [aiReviewedResponse, aiHealthResponse] = await Promise.all([
+        axiosClient.get('/api/management/feedbacks/ai-reviewed', {
+          params: { PageNumber: 1, PageSize: 1000 },
+        }),
+        axiosClient.get('/api/ai/health').catch((error) => {
+          console.warn('Unable to load AI health for sentiment analytics', error);
+          return null;
+        }),
+      ]);
+
+      const items = Array.isArray(aiReviewedResponse?.items)
+        ? aiReviewedResponse.items
+        : Array.isArray(aiReviewedResponse?.data?.items)
+          ? aiReviewedResponse.data.items
+          : [];
+
+      const sentimentTrend = items.reduce((counts, item) => {
+        const sentiment = String(item?.analysisResult?.sentiment || '').trim().toLowerCase();
+        if (sentiment === 'positive') counts.Positive += 1;
+        if (sentiment === 'neutral') counts.Neutral += 1;
+        if (sentiment === 'negative') counts.Negative += 1;
+        return counts;
+      }, { Positive: 0, Neutral: 0, Negative: 0 });
+
+      const totalAnalyzed = sentimentTrend.Positive + sentimentTrend.Neutral + sentimentTrend.Negative;
+      const toRate = (value) => totalAnalyzed > 0 ? Math.round((value / totalAnalyzed) * 100) : 0;
+      const sortedSentiments = Object.entries(sentimentTrend).sort((a, b) => b[1] - a[1]);
+      const dominantKey = totalAnalyzed > 0 ? sortedSentiments[0]?.[0] : null;
+      const dominantSentiment = ({
+        Positive: 'Tích cực',
+        Neutral: 'Trung tính',
+        Negative: 'Tiêu cực',
+      })[dominantKey] || 'Chưa đủ dữ liệu';
+
+      const aiHealth = aiHealthResponse?.data ?? aiHealthResponse;
+      const aiStatus = aiHealth
+        ? (aiHealth.isAvailable
+          ? `Đang hoạt động${aiHealth.model ? ` · ${aiHealth.model}` : ''}`
+          : 'Không khả dụng')
+        : 'Chưa xác định';
+
+      return {
+        sentimentTrend,
+        totalAnalyzed,
+        positiveRate: toRate(sentimentTrend.Positive),
+        neutralRate: toRate(sentimentTrend.Neutral),
+        negativeRate: toRate(sentimentTrend.Negative),
+        dominantSentiment,
+        aiStatus,
+      };
+    } catch (error) {
+      console.warn('analyticsApi.getManagerSentimentStats failed, returning safe defaults', error);
+      return {
+        sentimentTrend: { Positive: 0, Neutral: 0, Negative: 0 },
+        totalAnalyzed: 0,
+        positiveRate: 0,
+        neutralRate: 0,
+        negativeRate: 0,
+        dominantSentiment: 'Chưa đủ dữ liệu',
+        aiStatus: 'Không khả dụng',
+      };
+    }
+  },
   async getSystemDashboardStats(role) {
     try {
       const normalizedRole = normalizeRole(role);
