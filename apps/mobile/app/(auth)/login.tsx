@@ -40,25 +40,35 @@ export default function LoginScreen() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const submitLockRef = useRef(false);
 
+  const expoConfig = Constants.expoConfig as {
+    scheme?: string;
+    extra?: Record<string, string | undefined>;
+    android?: { package?: string };
+  } | undefined;
+  const manifest = Constants.manifest as {
+    scheme?: string;
+    android?: { package?: string };
+  } | undefined;
+
   const googleIosClientId =
     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
-    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+    expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
     '';
   const googleAndroidClientId =
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
-    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
     '';
   const googleWebClientId =
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-    Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
     '';
 
   const redirectUri = makeRedirectUri({
-    scheme: Constants.expoConfig?.scheme || Constants.manifest?.scheme || 'urbanmind',
+    scheme: expoConfig?.scheme || manifest?.scheme || 'urbanmind',
   });
 
   console.log('[GoogleOAuth] debug', {
-    packageName: Constants.expoConfig?.android?.package || Constants.manifest?.android?.package || 'unknown',
+    packageName: expoConfig?.android?.package || manifest?.android?.package || 'unknown',
     hasIosClientId: Boolean(googleIosClientId),
     hasAndroidClientId: Boolean(googleAndroidClientId),
     hasWebClientId: Boolean(googleWebClientId),

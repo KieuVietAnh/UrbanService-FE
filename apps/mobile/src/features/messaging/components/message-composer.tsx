@@ -51,8 +51,34 @@ export default function MessageComposer({
 }
 
 const styles = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: semantics.border.default, backgroundColor: semantics.bg.surface },
-  input: { flex: 1, minHeight: 44, maxHeight: 120, backgroundColor: semantics.bg.surfaceSubtle, borderRadius: 22, paddingHorizontal: 14, paddingVertical: 10, fontFamily: 'Geist-Regular', color: semantics.text.primary },
-  sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: semantics.bg.primary, alignItems: 'center', justifyContent: 'center' },
+  container: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
+    backgroundColor: semantics.bg.surface,
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 120,
+    backgroundColor: semantics.bg.surfaceSubtle,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    fontFamily: 'Geist-Regular',
+    color: semantics.text.primary,
+    textAlignVertical: 'center',
+  },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: semantics.bg.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sendBtnDisabled: { backgroundColor: semantics.text.lightMuted },
 });

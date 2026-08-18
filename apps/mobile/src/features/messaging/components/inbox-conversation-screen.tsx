@@ -22,7 +22,7 @@ import { messagingApi, messagingKeys } from '../api';
 
 const STATIC_THREAD_META: Record<string, { title: string; subtitle: string; description: string }> = {
   'ai-assistant': {
-    title: 'AI Assistant',
+    title: 'Trợ lý AI',
     subtitle: 'Trợ lý đô thị thông minh',
     description: 'Đặt câu hỏi về quy trình phản ánh, trạng thái xử lý hoặc hướng dẫn nhanh.',
   },
@@ -67,7 +67,7 @@ export default function InboxConversationScreen() {
       if (!Array.isArray(raw)) return [];
       return raw.map((item: any) => ({
         id: String(item.messageId ?? item.id ?? item.uuid ?? Math.random()),
-        senderName: item.senderName ?? item.authorName ?? (item.role === 'assistant' ? 'AI Assistant' : 'Bạn'),
+        senderName: item.senderName ?? item.authorName ?? (item.role === 'assistant' ? 'Trợ lý AI' : 'Bạn'),
         content: item.content ?? item.message ?? item.text ?? '',
         createdAt: item.createdAt ?? item.createdAtUtc ?? new Date().toISOString(),
         role: item.role ?? item.senderRole ?? 'assistant',
@@ -103,7 +103,7 @@ export default function InboxConversationScreen() {
     setAiMessages([
       {
         id: 'welcome',
-        senderName: 'AI Assistant',
+        senderName: 'Trợ lý AI',
         content: 'Xin chào! Mình có thể giúp gì cho bạn hôm nay? Bạn có thể chọn một hành động nhanh bên dưới.',
         createdAt: new Date().toISOString(),
         role: 'assistant',
@@ -126,7 +126,7 @@ export default function InboxConversationScreen() {
       const reply = await messagingApi.sendAiMessage({ message: text });
       const aiMsg: ConversationMessage = {
         id: `ai-${Date.now()}`,
-        senderName: 'AI Assistant',
+        senderName: 'Trợ lý AI',
         content: reply?.message ?? String(reply),
         createdAt: reply?.createdAt ?? new Date().toISOString(),
         role: 'assistant',
@@ -139,7 +139,7 @@ export default function InboxConversationScreen() {
         router.push(`/(resident)/tickets/${id}` as any);
       }
     } catch (err) {
-      setAiMessages((s) => [...s, { id: `ai-err-${Date.now()}`, senderName: 'AI Assistant', content: 'Không thể kết nối AI. Vui lòng thử lại sau.', createdAt: new Date().toISOString(), role: 'assistant' }]);
+      setAiMessages((s) => [...s, { id: `ai-err-${Date.now()}`, senderName: 'Trợ lý AI', content: 'Không thể kết nối AI. Vui lòng thử lại sau.', createdAt: new Date().toISOString(), role: 'assistant' }]);
     } finally {
       setAiLoading(false);
     }
