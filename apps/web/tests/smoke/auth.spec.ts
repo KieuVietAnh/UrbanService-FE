@@ -28,7 +28,7 @@ test.describe('Authentication smoke tests', () => {
     await loginPage.emailInput.fill(invalidEmail);
     await loginPage.passwordInput.fill(invalidPassword);
     await loginPage.submitButton.click();
-    await expect(loginPage.errorMessage).toContainText(/Đăng nhập thất bại|Sai|invalid|Unauthorized/i);
+    await expect(loginPage.errorMessage).toContainText(/Lỗi đăng nhập|Email hoặc mật khẩu|Đăng nhập thất bại|Sai|invalid|Unauthorized/i);
     await expect(page).toHaveURL(/\/login/);
   });
 

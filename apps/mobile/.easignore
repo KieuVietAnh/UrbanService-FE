@@ -48,6 +48,11 @@ test-results/
 .cache/
 .turbo/
 
+# Native folders are intentionally excluded because this app is configured with
+# native config in app.config.js and uses Expo prebuild/CNG flow instead of checked-in native builds.
+android/
+ios/
+
 # Keep required Expo and project files uploadable
 !assets/icon.png
 !assets/adaptive-icon.png
@@ -64,4 +69,3 @@ test-results/
 !app/
 !src/
 !plugins/
-!android/

@@ -88,7 +88,7 @@ export function HomeHeader({ router, areaName }: Props) {
     };
   }, []);
 
-  const fullName = user?.fullName?.trim() || user?.email || 'Resident';
+  const fullName = user?.fullName?.trim() || user?.email || 'Cư dân';
   const avatarUrl = user?.avatarUrl || userAny?.profileImageUrl || null;
   const roleLabel = formatRole(user?.role);
   const locationLabel =

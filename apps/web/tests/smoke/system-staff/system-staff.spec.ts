@@ -133,7 +133,7 @@ test.describe.serial('System Staff smoke tests', () => {
     await page.goto(duplicateDetectionRoute);
     await page.waitForLoadState('domcontentloaded');
 
-    await expect(page.locator('h2.admin-section-title, h1.admin-hero-title, .duplicate-list')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('h2.admin-section-title, h1.admin-hero-title, .duplicate-list').first()).toBeVisible({ timeout: 15000 });
 
     // Open first candidate if present
     const count = await page.locator('.duplicate-candidate-row, table tbody tr').count();

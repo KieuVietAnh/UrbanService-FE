@@ -10,9 +10,9 @@ export class LoginPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.emailInput = page.locator('input[type="text"]');
-    this.passwordInput = page.locator('input[type="password"]');
-    this.submitButton = page.locator('button[type="submit"]');
+    this.emailInput = page.getByRole('textbox', { name: /email/i });
+    this.passwordInput = page.getByPlaceholder('••••••••');
+    this.submitButton = page.getByRole('button', { name: /Đăng nhập/i }).first();
     this.errorMessage = page.locator('.alert.alert-error, .text-red-600');
     this.quickLoginButtons = page.locator('button', { hasText: /Administrator|System Staff|Interaction Manager|Service Operator/ });
   }
