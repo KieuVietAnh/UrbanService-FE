@@ -49,7 +49,7 @@ jobs:
 
       - name: Build Android APK with EAS
         id: eas_build
-        working-directory: apps/mobile
+        working-directory: .
         shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -86,7 +86,7 @@ jobs:
 
       - name: Download APK from EAS
         id: download_apk
-        working-directory: apps/mobile
+        working-directory: .
         shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -95,21 +95,17 @@ jobs:
 
           BUILD_ID="${{ steps.eas_build.outputs.build_id }}"
 
-          echo "Fetching EAS build information..."
-
-          eas build:view "$BUILD_ID" \
-            --json \
-            --non-interactive > eas-build-view.json
-
-          cat eas-build-view.json
+          echo "Reading APK artifact from EAS build output..."
 
           APK_URL=$(node -e "
-            const build = require('./eas-build-view.json');
-
-            const url = build?.artifacts?.applicationArchiveUrl;
+            const build = require('./eas-build.json');
+            const result = Array.isArray(build) ? build[0] : build;
+            const url = result?.artifacts?.applicationArchiveUrl
+              ?? result?.artifacts?.applicationArchive?.url
+              ?? result?.artifacts?.apk?.url;
 
             if (!url) {
-              console.error('APK download URL not found');
+              console.error('APK download URL not found in EAS build output');
               process.exit(1);
             }
 
@@ -117,10 +113,10 @@ jobs:
           ")
 
           VERSION=$(node -e "
-            const app = require('./app.json');
+            const app = require('./apps/mobile/app.json');
 
             if (!app?.expo?.version) {
-              console.error('expo.version not found in app.json');
+              console.error('expo.version not found in apps/mobile/app.json');
               process.exit(1);
             }
 
@@ -142,9 +138,9 @@ jobs:
             --retry 3 \
             --retry-delay 5 \
             "$APK_URL" \
-            --output "$APK_NAME"
+            --output "apps/mobile/$APK_NAME"
 
-          test -s "$APK_NAME"
+          test -s "apps/mobile/$APK_NAME"
 
           echo "APK downloaded successfully."
 

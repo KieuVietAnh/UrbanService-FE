@@ -6,7 +6,10 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import {
+  KeyboardStickyView,
+  useKeyboardHandler,
+} from 'react-native-keyboard-controller';
 
 interface KeyboardAwareComposerLayoutProps {
   children: React.ReactNode;
@@ -22,6 +25,35 @@ export function KeyboardAwareComposerLayout({
   contentStyle,
 }: KeyboardAwareComposerLayoutProps) {
   const insets = useSafeAreaInsets();
+
+  useKeyboardHandler(
+    {
+      onStart: (event) => {
+        'worklet';
+        console.log(
+          '[KeyboardController] start',
+          event.height,
+        );
+      },
+
+      onMove: (event) => {
+        'worklet';
+        console.log(
+          '[KeyboardController] move',
+          event.height,
+        );
+      },
+
+      onEnd: (event) => {
+        'worklet';
+        console.log(
+          '[KeyboardController] end',
+          event.height,
+        );
+      },
+    },
+    [],
+  );
 
   return (
     <View style={[styles.container, style]}>
