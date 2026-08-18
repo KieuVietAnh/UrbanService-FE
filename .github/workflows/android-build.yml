@@ -1,18 +1,18 @@
 name: Android Build
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: android-manual-build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -26,12 +26,20 @@ jobs:
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          run_install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Install EAS CLI
-        run: npm install -g eas-cli
+        run: npm install --global eas-cli
+
+      - name: Verify EAS authentication
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas whoami
 
       - name: Setup Gradle properties
         run: |
@@ -39,7 +47,7 @@ jobs:
           echo "org.gradle.jvmargs=-Xmx4096m" >> ~/.gradle/gradle.properties
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
 
-      - name: Build Android APK
+      - name: Build Android APK with EAS
         id: eas_build
         working-directory: apps/mobile
         shell: bash
@@ -50,12 +58,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Starting EAS Android build..."
+
           eas build \
             --platform android \
             --profile preview \
             --non-interactive \
             --wait \
             --json > eas-build.json
+
+          cat eas-build.json
 
           BUILD_ID=$(node -e "
             const result = require('./eas-build.json');
@@ -69,11 +81,11 @@ jobs:
             process.stdout.write(build.id);
           ")
 
+          echo "EAS Build ID: $BUILD_ID"
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
 
-      # Chỉ tạo GitHub Release khi push main
-      - name: Download APK
-        if: github.ref == 'refs/heads/main'
+      - name: Download APK from EAS
+        id: download_apk
         working-directory: apps/mobile
         shell: bash
         env:
@@ -83,7 +95,13 @@ jobs:
 
           BUILD_ID="${{ steps.eas_build.outputs.build_id }}"
 
-          eas build:view "$BUILD_ID" --json > eas-build-view.json
+          echo "Fetching EAS build information..."
+
+          eas build:view "$BUILD_ID" \
+            --json \
+            --non-interactive > eas-build-view.json
+
+          cat eas-build-view.json
 
           APK_URL=$(node -e "
             const build = require('./eas-build-view.json');
@@ -91,58 +109,107 @@ jobs:
             const url = build?.artifacts?.applicationArchiveUrl;
 
             if (!url) {
-              console.error('APK URL not found');
+              console.error('APK download URL not found');
               process.exit(1);
             }
 
             process.stdout.write(url);
           ")
 
-          VERSION=$(node -p "require('./app.json').expo.version")
-          SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION=$(node -e "
+            const app = require('./app.json');
 
-          APK_NAME="UrbanMind-v${VERSION}-${SHORT_SHA}.apk"
+            if (!app?.expo?.version) {
+              console.error('expo.version not found in app.json');
+              process.exit(1);
+            }
+
+            process.stdout.write(app.expo.version);
+          ")
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          RUN_NUMBER="${GITHUB_RUN_NUMBER}"
+          RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT}"
+
+          APK_NAME="UrbanMind-v${VERSION}-${SHORT_SHA}-build${RUN_NUMBER}.apk"
+
+          echo "Downloading APK..."
+          echo "APK name: $APK_NAME"
 
           curl \
             --fail \
             --location \
             --retry 3 \
+            --retry-delay 5 \
             "$APK_URL" \
             --output "$APK_NAME"
 
           test -s "$APK_NAME"
 
+          echo "APK downloaded successfully."
+
           echo "APK_FILE=apps/mobile/$APK_NAME" >> "$GITHUB_ENV"
           echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+          echo "RUN_NUMBER=$RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "RUN_ATTEMPT=$RUN_ATTEMPT" >> "$GITHUB_ENV"
+          echo "EAS_BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: ${{ env.APK_FILE }}
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          TAG="android-${SHORT_SHA}"
+          TAG="android-v${APP_VERSION}-${SHORT_SHA}-run${RUN_NUMBER}.${RUN_ATTEMPT}"
+
+          echo "Creating GitHub Release: $TAG"
 
           gh release create "$TAG" \
             "$APK_FILE" \
             --target "$GITHUB_SHA" \
-            --title "UrbanMind v${APP_VERSION} Android Preview" \
-            --prerelease \
-            --notes "Automated Android preview build.
+            --title "UrbanMind v${APP_VERSION} Android" \
+            --notes "UrbanMind Android APK built manually with GitHub Actions and EAS Build.
 
           Version: v${APP_VERSION}
           Commit: ${GITHUB_SHA}
-          EAS profile: preview"
+          Branch: ${GITHUB_REF_NAME}
+          EAS Build ID: ${EAS_BUILD_ID}
+          EAS profile: preview
+          GitHub Actions run: ${RUN_NUMBER}.${RUN_ATTEMPT}
+
+          This APK was generated from a manually triggered workflow."
 
       - name: Build Summary
-        if: github.ref == 'refs/heads/main'
+        if: always()
+        shell: bash
         run: |
-          echo "## UrbanMind Android APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "## UrbanMind Android Build" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Version: v${APP_VERSION}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Commit: ${SHORT_SHA}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- APK: ${APK_NAME}" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${APP_VERSION:-}" ]; then
+            echo "- Version: v${APP_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "- Branch: ${GITHUB_REF_NAME}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${GITHUB_SHA}" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${EAS_BUILD_ID:-}" ]; then
+            echo "- EAS Build ID: ${EAS_BUILD_ID}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -n "${APK_NAME:-}" ]; then
+            echo "- APK: ${APK_NAME}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "- Profile: preview" >> "$GITHUB_STEP_SUMMARY"
