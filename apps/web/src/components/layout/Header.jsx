@@ -309,7 +309,7 @@ export const Header = ({ onMenuToggle }) => {
       sla: 'Chính sách SLA',
       analytics: 'Báo cáo phân tích',
       sentiment: 'Cảm xúc người dân',
-      heatmap: 'Bản đồ nhiệt',
+      heatmap: 'Bản đồ điểm nóng',
       manager: 'Quản lý tương tác',
       interactions: 'Giám sát tương tác',
       approvals: 'Hàng đợi duyệt',

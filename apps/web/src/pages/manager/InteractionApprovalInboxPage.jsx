@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { managementTypes, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
+import { managementTypes, PRIORITY_BADGE_CLASSES } from '@urbanmind/shared-types';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import {
   ManagerEmptyState,
   ManagerMetricCard,
   ManagerPageHeader,
-  ManagerSectionHeader,
 } from '../../components/manager/ManagerPageElements';
 
 const priorityLabels = {
@@ -18,17 +17,22 @@ const priorityLabels = {
   Critical: 'Khẩn cấp',
 };
 
+const pageSizeOptions = [5, 10, 20, 50];
+
 const formatDateTime = (value) => {
   if (!value) return 'Chưa có dữ liệu';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Không xác định';
-  return date.toLocaleString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
+  return date.toLocaleDateString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
+};
+
+const formatFeedbackCode = (value) => {
+  const compact = String(value || '').replace(/-/g, '').toUpperCase();
+  return compact ? `UM-${compact.slice(0, 8)}` : 'UM-UNKNOWN';
 };
 
 const getWaitingTime = (value) => {
@@ -46,27 +50,40 @@ export const InteractionApprovalInboxPage = () => {
   const location = useLocation();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
 
-  const loadItems = useCallback(async (
-    requestedPage = pageIndex,
-    requestedPageSize = pageSize,
-    requestedSearch = search
-  ) => {
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPageIndex(0);
+      setDebouncedSearch(search.trim());
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
+
+  const loadItems = useCallback(async () => {
     setLoading(true);
     setError('');
+
     try {
       const response = await managementFeedbackApi.getFeedbacks({
-        pageIndex: requestedPage,
-        pageSize: requestedPageSize,
+        pageIndex,
+        pageSize,
         status: managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-        search: requestedSearch || undefined,
+        search: debouncedSearch || undefined,
       });
-      const list = Array.isArray(response?.items) ? response.items : Array.isArray(response) ? response : [];
+      const list = Array.isArray(response?.items)
+        ? response.items
+        : Array.isArray(response)
+          ? response
+          : [];
+
       setItems(list);
       setTotalCount(Number(response?.totalItems ?? response?.totalCount ?? response?.total ?? list.length ?? 0));
     } catch (err) {
@@ -76,39 +93,33 @@ export const InteractionApprovalInboxPage = () => {
       setTotalCount(0);
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
-  }, [pageIndex, pageSize, search]);
+  }, [debouncedSearch, pageIndex, pageSize]);
 
   useEffect(() => {
     loadItems();
   }, [loadItems, location.state?.refreshKey]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const highPriorityCount = useMemo(() => items.filter((item) => ['High', 'Critical'].includes(item?.priority)).length, [items]);
-  const oldestItem = useMemo(() => (
-    [...items].sort((a, b) => new Date(a?.updatedAt || a?.createdAt || 0) - new Date(b?.updatedAt || b?.createdAt || 0))[0] || null
-  ), [items]);
-
-  const handleSearchSubmit = (event) => {
-    event.preventDefault();
-    setPageIndex(0);
-    loadItems(0, pageSize, search);
-  };
+  const highPriorityCount = useMemo(
+    () => items.filter((item) => ['High', 'Critical'].includes(item?.priority)).length,
+    [items]
+  );
+  const oldestItem = useMemo(
+    () => [...items].sort((a, b) => new Date(a?.updatedAt || a?.createdAt || 0) - new Date(b?.updatedAt || b?.createdAt || 0))[0] || null,
+    [items]
+  );
 
   const handlePageSizeChange = (event) => {
-    const nextPageSize = Number(event.target.value);
     setPageIndex(0);
-    setPageSize(nextPageSize);
+    setPageSize(Number(event.target.value));
   };
 
-  if (loading && items.length === 0) {
+  if (!hasLoaded && loading) {
     return (
       <article className="admin-page-shell space-y-6" aria-busy="true" aria-label="Đang tải hàng đợi duyệt">
-        <header className="admin-page-hero animate-pulse">
-          <span className="block h-5 w-40 rounded-full bg-slate-100" />
-          <span className="mt-4 block h-9 w-2/3 rounded-2xl bg-slate-100" />
-          <span className="mt-3 block h-4 w-1/2 rounded-full bg-slate-100" />
-        </header>
+        <header className="admin-page-hero h-44 animate-pulse" />
         <section className="grid gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
             <article key={index} className="admin-stat-card h-28 animate-pulse" />
@@ -154,41 +165,54 @@ export const InteractionApprovalInboxPage = () => {
       </section>
 
       <section className="admin-panel overflow-hidden" aria-labelledby="approval-queue-title">
-        <ManagerSectionHeader
-          id="approval-queue-title"
-          title="Danh sách cần duyệt"
-          description="Ưu tiên hồ sơ khẩn cấp, hồ sơ chờ lâu và trường hợp có nhiều lần gửi lại kết quả."
-          icon={Lucide.ListChecks}
-          actions={(
-            <form className="flex flex-col gap-3 sm:flex-row sm:items-center" role="search" onSubmit={handleSearchSubmit}>
-              <label className="input input-bordered flex h-11 min-w-[260px] items-center gap-2 rounded-2xl bg-white text-sm">
-                <Lucide.Search size={16} className="text-slate-400" aria-hidden="true" />
-                <span className="sr-only">Tìm kiếm phản ánh</span>
+        <header className="border-b border-slate-200 px-5 py-5 sm:px-6 dark:border-slate-800">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                <Lucide.ListChecks size={19} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h2 id="approval-queue-title" className="text-xl font-bold text-slate-950 dark:text-slate-100">
+                  Danh sách cần duyệt
+                </h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Hiển thị {items.length} trên tổng số {totalCount} phản ánh đang chờ quyết định.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center xl:w-auto">
+              <label className="relative block w-full sm:w-[300px]" htmlFor="approval-search">
+                <span className="sr-only">Tìm phản ánh</span>
+                <Lucide.Search
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
                 <input
+                  id="approval-search"
                   type="search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  className="grow"
-                  placeholder="Tìm mã, tiêu đề, địa điểm..."
+                  className="h-11 w-full appearance-none rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-9 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 [&::-webkit-search-cancel-button]:hidden dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:bg-slate-900 dark:focus:ring-blue-500/15"
+                  placeholder="Tìm theo mã, nội dung, vị trí..."
+                  autoComplete="off"
+                  spellCheck="false"
                 />
+                {search ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                    aria-label="Xóa từ khóa tìm kiếm"
+                  >
+                    <Lucide.X size={14} aria-hidden="true" />
+                  </button>
+                ) : null}
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-500">
-                <span>Số dòng</span>
-                <select
-                  value={pageSize}
-                  onChange={handlePageSizeChange}
-                  className="select select-bordered h-11 rounded-2xl text-sm"
-                  aria-label="Số dòng mỗi trang"
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
-              </label>
-            </form>
-          )}
-        />
+            </div>
+          </div>
+        </header>
 
         {error ? (
           <aside className="px-5 pt-5 sm:px-6" aria-live="polite">
@@ -197,108 +221,164 @@ export const InteractionApprovalInboxPage = () => {
         ) : null}
 
         {items.length === 0 ? (
-          <ManagerEmptyState
-            icon={Lucide.BadgeCheck}
-            title="Không có phản ánh đang chờ duyệt"
-            description="Khi System Staff gửi kết quả xử lý, hồ sơ sẽ xuất hiện tại đây để Interaction Manager đánh giá."
-          />
+          <div className="p-6">
+            <ManagerEmptyState
+              icon={Lucide.BadgeCheck}
+              title="Không có phản ánh đang chờ duyệt"
+              description="Khi System Staff gửi kết quả xử lý, hồ sơ sẽ xuất hiện tại đây để Interaction Manager đánh giá."
+            />
+          </div>
         ) : (
-          <section className="admin-table-wrap m-5 overflow-hidden sm:m-6">
-            <div className="overflow-x-auto">
-              <table className="table w-full">
-                <caption className="sr-only">Danh sách phản ánh đang chờ Interaction Manager duyệt</caption>
-                <thead className="admin-table-head">
-                  <tr className="text-[10px] font-semibold uppercase tracking-[0.16em]">
-                    <th scope="col">Phản ánh</th>
-                    <th scope="col">Phân loại</th>
-                    <th scope="col">Mức ưu tiên</th>
-                    <th scope="col">Thời gian chờ</th>
-                    <th scope="col">Trạng thái</th>
-                    <th scope="col" className="text-right">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="admin-table-body divide-y divide-slate-100">
-                  {items.map((item) => {
-                    const feedbackId = item.feedbackId || item.id;
-                    const createdAt = item.updatedAt || item.createdAt;
-                    return (
-                      <tr key={feedbackId} className="admin-table-row align-top">
-                        <th scope="row" className="min-w-[280px] font-normal">
-                          <article>
-                            <header className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-[11px] font-semibold text-blue-700">{feedbackId}</span>
-                              <time className="text-[11px] text-slate-400" dateTime={createdAt || undefined}>{formatDateTime(createdAt)}</time>
-                            </header>
-                            <h3 className="mt-2 text-sm font-semibold text-slate-950">{item.title || 'Không có tiêu đề'}</h3>
-                            <address className="mt-1 flex items-center gap-1.5 not-italic text-xs text-slate-500">
-                              <Lucide.MapPin size={13} aria-hidden="true" />
-                              {item.locationText || item.areaName || 'Chưa có vị trí'}
-                            </address>
-                          </article>
-                        </th>
-                        <td>
-                          <span className="text-sm font-medium text-slate-700">{item.categoryName || 'Chưa phân loại'}</span>
-                        </td>
-                        <td>
-                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${PRIORITY_BADGE_CLASSES[item.priority] || PRIORITY_BADGE_CLASSES.Medium}`}>
-                            {priorityLabels[item.priority] || item.priority || 'Trung bình'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                            <Lucide.Clock3 size={14} className="text-slate-400" aria-hidden="true" />
-                            {getWaitingTime(createdAt)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${STATUS_BADGE_CLASSES[item.status] || STATUS_BADGE_CLASSES.SubmittedForApproval}`}>
-                            Chờ duyệt
-                          </span>
-                        </td>
-                        <td className="text-right">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/manager/approvals/${feedbackId}`)}
-                            className="btn btn-sm admin-primary-action rounded-xl"
-                            aria-label={`Xem và duyệt phản ánh ${item.title || feedbackId}`}
+          <div className={`transition-opacity ${loading ? 'pointer-events-none opacity-60' : 'opacity-100'}`}>
+            <table className="table table-fixed w-full">
+              <caption className="sr-only">Danh sách phản ánh đang chờ Interaction Manager duyệt</caption>
+              <colgroup>
+                <col className="w-[12%]" />
+                <col className="w-[31%]" />
+                <col className="w-[13%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+              <thead className="admin-table-head">
+                <tr className="text-[11px] font-semibold uppercase tracking-[0.08em]">
+                  <th scope="col">Mã</th>
+                  <th scope="col">Nội dung</th>
+                  <th scope="col">Danh mục</th>
+                  <th scope="col">Ưu tiên</th>
+                  <th scope="col">Thời gian chờ</th>
+                  <th scope="col">Cập nhật</th>
+                  <th scope="col" className="text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="admin-table-body divide-y divide-slate-100 dark:divide-slate-800">
+                {items.map((item) => {
+                  const feedbackId = item.feedbackId || item.id;
+                  const createdAt = item.updatedAt || item.createdAt;
+                  return (
+                    <tr key={feedbackId} className="admin-table-row align-middle">
+                      <th scope="row" className="font-normal">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/manager/approvals/${feedbackId}`)}
+                          className="text-left text-sm font-bold text-blue-600 transition hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+                          title={feedbackId}
+                        >
+                          {formatFeedbackCode(feedbackId)}
+                        </button>
+                      </th>
+
+                      <td className="min-w-0">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">
+                            {item.title || 'Không có tiêu đề'}
+                          </p>
+                          <p
+                            className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+                            title={item.locationText || item.areaName || 'Chưa có vị trí'}
                           >
-                            <Lucide.FileSearch size={15} aria-hidden="true" />
-                            Xem hồ sơ
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                            <Lucide.MapPin size={13} className="shrink-0" aria-hidden="true" />
+                            <span className="min-w-0 truncate">
+                              {item.locationText || item.areaName || 'Chưa có vị trí'}
+                            </span>
+                          </p>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span className="block line-clamp-2 text-sm font-medium leading-5 text-slate-700 dark:text-slate-200">
+                          {item.categoryName || 'Chưa phân loại'}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${PRIORITY_BADGE_CLASSES[item.priority] || PRIORITY_BADGE_CLASSES.Medium}`}>
+                          {priorityLabels[item.priority] || item.priority || 'Trung bình'}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
+                          <Lucide.Clock3 size={14} className="shrink-0 text-slate-400" aria-hidden="true" />
+                          {getWaitingTime(createdAt)}
+                        </span>
+                      </td>
+
+                      <td>
+                        <time className="whitespace-nowrap text-sm text-slate-500 dark:text-slate-400" dateTime={createdAt || undefined}>
+                          {formatDateTime(createdAt)}
+                        </time>
+                      </td>
+
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/manager/approvals/${feedbackId}`)}
+                          className="inline-flex items-center justify-end gap-1.5 text-sm font-bold text-blue-600 transition hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+                          aria-label={`Mở chi tiết phản ánh ${item.title || feedbackId}`}
+                        >
+                          Chi tiết
+                          <Lucide.ChevronRight size={15} aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
-        <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-slate-500">
-            Trang <strong className="text-slate-800">{totalCount === 0 ? 0 : pageIndex + 1}</strong> / {totalCount === 0 ? 0 : totalPages} · {totalCount} hồ sơ
+        <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800">
+          <p className="text-slate-500 dark:text-slate-400">
+            {totalCount === 0 ? (
+              'Không có dữ liệu'
+            ) : (
+              <>
+                Trang <strong className="text-slate-800 dark:text-slate-200">{pageIndex + 1}</strong> / {totalPages}
+                {' · '}{totalCount} phản ánh
+              </>
+            )}
           </p>
-          <nav className="flex items-center gap-2" aria-label="Phân trang hàng đợi duyệt">
-            <button
-              type="button"
-              className="btn btn-sm admin-secondary-action rounded-xl"
-              disabled={pageIndex === 0 || loading}
-              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-            >
-              <Lucide.ChevronLeft size={15} aria-hidden="true" />
-              Trước
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm admin-secondary-action rounded-xl"
-              disabled={pageIndex >= totalPages - 1 || loading || totalCount === 0}
-              onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
-            >
-              Sau
-              <Lucide.ChevronRight size={15} aria-hidden="true" />
-            </button>
-          </nav>
+
+          <section className="flex flex-col gap-3 sm:flex-row sm:items-center" aria-label="Điều khiển phân trang">
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400" htmlFor="approval-page-size">
+              <span>Số dòng</span>
+              <select
+                id="approval-page-size"
+                value={pageSize}
+                onChange={handlePageSizeChange}
+                className="select select-bordered h-9 min-h-0 rounded-xl text-sm"
+                aria-label="Số dòng mỗi trang"
+              >
+                {pageSizeOptions.map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+
+            <nav className="flex items-center gap-2" aria-label="Phân trang hàng đợi duyệt">
+              <button
+                type="button"
+                className="btn btn-sm admin-secondary-action rounded-xl"
+                disabled={pageIndex === 0 || loading}
+                onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+              >
+                <Lucide.ChevronLeft size={15} aria-hidden="true" />
+                Trước
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm admin-secondary-action rounded-xl"
+                disabled={pageIndex >= totalPages - 1 || loading || totalCount === 0}
+                onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
+              >
+                Sau
+                <Lucide.ChevronRight size={15} aria-hidden="true" />
+              </button>
+            </nav>
+          </section>
         </footer>
       </section>
     </article>

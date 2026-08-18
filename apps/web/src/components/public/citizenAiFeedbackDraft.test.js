@@ -15,30 +15,32 @@ test('copilot final submission path does not call the AI draft endpoint', async 
   assert.doesNotMatch(componentSource, /createAiFeedbackDraft|\/api\/ai\/feedback-draft/);
 });
 
-test('builds a direct backend submission without truncating long content', () => {
+test('routes AI-assisted drafts through the citizen form without pre-assigning category or priority', () => {
   const description = 'Mô tả rất dài '.repeat(800);
   const attachments = [{ name: 'evidence.jpg' }];
   const plan = buildCitizenFeedbackSubmission({
-    resolvedIds: { areaId: 2, categoryId: 5 },
     title: 'Đường hư hỏng',
     description,
+    suggestedCategory: 'Bảo trì đường bộ',
     location: 'Phường 1',
     latitude: '10.75',
     longitude: '106.67',
     attachments,
   });
 
-  assert.equal(plan.type, 'submit');
-  assert.equal(plan.ticketData.description, description);
-  assert.equal(plan.ticketData.attachments, attachments);
-  assert.equal(plan.ticketData.areaId, 2);
-  assert.equal(plan.ticketData.categoryId, 5);
+  assert.equal(plan.type, 'complete-in-form');
+  assert.equal(plan.draft.description, description);
+  assert.equal(plan.draft.suggestedCategory, 'Bảo trì đường bộ');
+  assert.equal(plan.draft.latitude, 10.75);
+  assert.equal(plan.draft.longitude, 106.67);
+  assert.equal('priority' in plan.draft, false);
+  assert.equal('categoryId' in plan.draft, false);
+  assert.equal(plan.attachments, attachments);
 });
 
-test('routes missing required IDs to the form with content and files intact', () => {
+test('routes missing location IDs to the form with content and files intact', () => {
   const attachments = [{ name: 'evidence.jpg' }];
   const plan = buildCitizenFeedbackSubmission({
-    resolvedIds: { areaId: null, categoryId: null },
     title: 'Ngập nước',
     description: 'Nước ngập sâu trước nhà',
     suggestedCategory: 'Cấp thoát nước',

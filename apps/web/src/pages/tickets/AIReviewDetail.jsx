@@ -2,35 +2,50 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { ticketApi } from '../../services/api/ticketApi';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
-import { toolsApi } from '@urbanmind/shared-api';
+import { ticketApi, toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 
+const normalizePriority = (value = '') => {
+  const normalized = `${value || ''}`.trim().toLowerCase();
+  if (normalized === 'urgent' || normalized === 'critical') return 'Urgent';
+  if (normalized === 'high') return 'High';
+  if (normalized === 'medium') return 'Medium';
+  if (normalized === 'low') return 'Low';
+  return '';
+};
+
 const getUrgencyBadgeClass = (urgency = '') => {
-  const normalized = `${urgency || ''}`.trim().toLowerCase();
-  if (normalized === 'critical') {
+  const normalized = normalizePriority(urgency);
+  if (normalized === 'Urgent') {
     return 'border-rose-200 bg-rose-50 text-rose-700';
   }
-  if (normalized === 'high') {
+  if (normalized === 'High') {
     return 'border-amber-200 bg-amber-50 text-amber-700';
   }
   return 'border-slate-200 bg-slate-100 text-slate-500';
 };
 
 const getTicketPriority = (ticket = {}) => {
-  return `${ticket.priority || ticket.urgencyLevel || ticket.analysisResult?.urgencyLevel || ticket.urgency || 'Medium'}`.trim();
+  // In the AI review queue, the AI urgency is the proposal Staff is reviewing.
+  // Fall back to the persisted feedback priority only when the AI result has no urgency.
+  return normalizePriority(
+    ticket.analysisResult?.urgencyLevel
+      || ticket.urgencyLevel
+      || ticket.urgency
+      || ticket.priority
+  );
 };
 
 const getUrgencyLabel = (urgency = '') => {
-  const normalized = `${urgency || ''}`.trim().toLowerCase();
-  if (normalized === 'critical') return 'Khẩn cấp';
-  if (normalized === 'high') return 'Cao';
-  if (normalized === 'medium') return 'Trung bình';
-  if (normalized === 'low') return 'Thấp';
-  return urgency || 'Chưa xác định';
+  const normalized = normalizePriority(urgency);
+  if (normalized === 'Urgent') return 'Khẩn cấp';
+  if (normalized === 'High') return 'Cao';
+  if (normalized === 'Medium') return 'Trung bình';
+  if (normalized === 'Low') return 'Thấp';
+  return 'Chưa xác định';
 };
 
 const getSentimentLabel = (sentiment = '') => {
@@ -48,16 +63,7 @@ const shortenFeedbackId = (value = '') => {
   return `${text.slice(0, 8)}…${text.slice(-5)}`;
 };
 
-const FALLBACK_CATEGORIES = [
-  { categoryId: 1, categoryName: 'Vệ sinh môi trường' },
-  { categoryId: 2, categoryName: 'Đường sá' },
-  { categoryId: 3, categoryName: 'Cấp thoát nước' },
-  { categoryId: 4, categoryName: 'Điện chiếu sáng' },
-  { categoryId: 5, categoryName: 'Cây xanh' },
-  { categoryId: 6, categoryName: 'An toàn giao thông' },
-];
-
-const AI_QUEUE_CACHE_KEY = 'staff-ai-review-queue-cache';
+const AI_QUEUE_CACHE_KEY = 'staff-ai-review-queue-cache-v2';
 const AI_QUEUE_CACHE_TTL = 60 * 1000;
 
 const readAiQueueCache = () => {
@@ -101,15 +107,27 @@ export const AIReviewDetail = () => {
   const [showUrgencyDropdown, setShowUrgencyDropdown] = useState(false);
   
   // Edit variables
-  const [editCategoryId, setEditCategoryId] = useState('');
-  const [editPriority, setEditPriority] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState(() => {
+    const initialTicket = Array.isArray(initialQueueCache?.tickets) ? initialQueueCache.tickets[0] : null;
+    const detectedCategoryId = initialTicket?.analysisResult?.detectedCategoryId
+      || initialTicket?.detectedCategoryId
+      || initialTicket?.categoryId;
+    return detectedCategoryId ? Number(detectedCategoryId) : '';
+  });
+  const [editPriority, setEditPriority] = useState(() => {
+    const initialTicket = Array.isArray(initialQueueCache?.tickets) ? initialQueueCache.tickets[0] : null;
+    return initialTicket ? getTicketPriority(initialTicket) : '';
+  });
   const [loading, setLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const handleSelectTicket = (t) => {
     const detectedCategoryId = t?.analysisResult?.detectedCategoryId || t?.detectedCategoryId || t?.categoryId;
     setSelectedTicket(t);
-    setEditCategoryId(detectedCategoryId || '');
+    setEditCategoryId(detectedCategoryId ? Number(detectedCategoryId) : '');
     setEditPriority(getTicketPriority(t));
+    setActionError('');
   };
 
   useEffect(() => {
@@ -137,13 +155,28 @@ export const AIReviewDetail = () => {
 
     const loadCategories = async () => {
       try {
+        setCategoriesError('');
         const res = await toolsApi.getCategories();
-        const resolved = Array.isArray(res) && res.length > 0 ? res : FALLBACK_CATEGORIES;
+        const resolved = Array.isArray(res)
+          ? res
+          : Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res?.data)
+              ? res.data
+              : [];
+
+        if (resolved.length === 0) {
+          setCategories([]);
+          setCategoriesError('Không thể tải danh mục thật từ hệ thống. Vui lòng tải lại trước khi xác nhận.');
+          return;
+        }
+
         setCategories(resolved);
         mergeAiQueueCache({ categories: resolved });
       } catch (err) {
         console.error('Failed to load categories', err);
-        setCategories(FALLBACK_CATEGORIES);
+        setCategories([]);
+        setCategoriesError('Không thể tải danh mục thật từ hệ thống. Vui lòng tải lại trước khi xác nhận.');
       }
     };
 
@@ -151,7 +184,7 @@ export const AIReviewDetail = () => {
     loadCategories();
   }, [initialQueueCache]);
 
-  const URGENCY_OPTIONS = ['High', 'Critical'];
+  const URGENCY_OPTIONS = ['High', 'Urgent'];
 
   useEffect(() => {
     const onDocClick = (event) => {
@@ -173,7 +206,7 @@ export const AIReviewDetail = () => {
     return tickets.filter((t) => {
       if (!urgencyFilter) return true;
       const urgency = getTicketPriority(t);
-      return urgency === urgencyFilter;
+      return urgency === normalizePriority(urgencyFilter);
     });
   }, [tickets, urgencyFilter]);
 
@@ -182,9 +215,18 @@ export const AIReviewDetail = () => {
       setSelectedTicket(null);
       return;
     }
-    // keep selection in sync: if current selectedTicket isn't in displayed list, pick first
+    // Keep selection and editable Staff corrections in sync with the visible ticket.
     const isSelectedVisible = selectedTicket && displayedTickets.some((d) => d.feedbackId === selectedTicket.feedbackId);
-    if (!isSelectedVisible) setSelectedTicket(displayedTickets[0]);
+    if (!isSelectedVisible) {
+      const nextTicket = displayedTickets[0];
+      const detectedCategoryId = nextTicket?.analysisResult?.detectedCategoryId
+        || nextTicket?.detectedCategoryId
+        || nextTicket?.categoryId;
+      setSelectedTicket(nextTicket);
+      setEditCategoryId(detectedCategoryId ? Number(detectedCategoryId) : '');
+      setEditPriority(getTicketPriority(nextTicket));
+      setActionError('');
+    }
   }, [displayedTickets, selectedTicket]);
 
   const selectedParentFeedbackId = selectedTicket?.parentTicketId || selectedTicket?.parentFeedbackId || null;
@@ -219,31 +261,62 @@ export const AIReviewDetail = () => {
   };
 
   const handleApprove = async () => {
-    if (!selectedTicket || selectedIsConfirmedDuplicate) return;
+    if (!selectedTicket || selectedIsConfirmedDuplicate || loading) return;
+
+    const categoryId = Number(editCategoryId);
+    const priority = normalizePriority(editPriority);
+    const categoryExists = categories.some((category) => Number(category?.categoryId ?? category?.id) === categoryId);
+
+    if (!Number.isInteger(categoryId) || categoryId <= 0 || !categoryExists) {
+      setActionError('Vui lòng chọn một danh mục hợp lệ từ dữ liệu hệ thống trước khi xác nhận.');
+      return;
+    }
+
+    if (!priority) {
+      setActionError('Vui lòng chọn mức độ ưu tiên trước khi xác nhận.');
+      return;
+    }
+
     setLoading(true);
+    setActionError('');
     try {
-      await ticketApi.verifyAndApprove(selectedTicket.feedbackId, user.userId, {
-        categoryId: editCategoryId,
-        priority: editPriority
-      }, { role: user.role });
+      // Keep the existing verification flow. Staff corrections are passed through
+      // the established API path; backend owns the status-transition/SLA rules.
+      await ticketApi.verifyAndApprove(
+        selectedTicket.feedbackId,
+        user.userId,
+        { categoryId, priority },
+        { role: user.role }
+      );
+
       sessionStorage.removeItem(AI_QUEUE_CACHE_KEY);
-      // Notify listeners that status changed (Submitted -> Verified)
       try {
-        signalrService.notifyStatusChanged(selectedTicket.feedbackId, selectedTicket.status, managementTypes.feedbackStatus.VERIFIED, user);
+        signalrService.notifyStatusChanged(
+          selectedTicket.feedbackId,
+          selectedTicket.status,
+          managementTypes.feedbackStatus.VERIFIED,
+          user
+        );
       } catch (e) {
         console.warn('SignalR notify failed', e);
       }
-      // Redirect to assignment page for this ticket
+
       navigate(`/tickets/assign/${selectedTicket.feedbackId}`);
     } catch (err) {
       console.error(err);
+      setActionError(
+        err?.response?.data?.message
+          || err?.response?.data?.title
+          || err?.message
+          || 'Không thể lưu điều chỉnh và xác nhận phản ánh. Vui lòng thử lại.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const highCount = useMemo(() => tickets.filter((ticket) => getTicketPriority(ticket) === 'High').length, [tickets]);
-  const criticalCount = useMemo(() => tickets.filter((ticket) => getTicketPriority(ticket) === 'Critical').length, [tickets]);
+  const criticalCount = useMemo(() => tickets.filter((ticket) => getTicketPriority(ticket) === 'Urgent').length, [tickets]);
 
   return (
     <div className="admin-page-shell space-y-5 text-slate-800">
@@ -509,26 +582,37 @@ export const AIReviewDetail = () => {
                         <span className="mb-2 block text-sm font-bold text-slate-700">Danh mục</span>
                         <select
                           value={editCategoryId}
-                          onChange={(event) => setEditCategoryId(Number(event.target.value))}
-                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          onChange={(event) => {
+                            setEditCategoryId(event.target.value ? Number(event.target.value) : '');
+                            setActionError('');
+                          }}
+                          disabled={categories.length === 0 || loading}
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                         >
-                          {categories.map((category) => (
-                            <option key={category.categoryId} value={category.categoryId}>{category.categoryName}</option>
-                          ))}
+                          {categories.map((category) => {
+                            const categoryId = category?.categoryId ?? category?.id;
+                            const categoryName = category?.categoryName ?? category?.name ?? 'Chưa đặt tên';
+                            return <option key={categoryId} value={categoryId}>{categoryName}</option>;
+                          })}
                         </select>
+                        {categoriesError ? <p className="mt-2 text-xs font-medium text-red-600">{categoriesError}</p> : null}
                       </label>
 
                       <label className="block">
                         <span className="mb-2 block text-sm font-bold text-slate-700">Mức độ ưu tiên</span>
                         <select
                           value={editPriority}
-                          onChange={(event) => setEditPriority(event.target.value)}
-                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          onChange={(event) => {
+                            setEditPriority(event.target.value);
+                            setActionError('');
+                          }}
+                          disabled={loading}
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                         >
                           <option value="Low">Thấp</option>
                           <option value="Medium">Trung bình</option>
                           <option value="High">Cao</option>
-                          <option value="Critical">Khẩn cấp</option>
+                          <option value="Urgent">Khẩn cấp</option>
                         </select>
                       </label>
 
@@ -569,6 +653,12 @@ export const AIReviewDetail = () => {
                       </div>
                     </div>
 
+                    {actionError ? (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" role="alert">
+                        {actionError}
+                      </div>
+                    ) : null}
+
                     {selectedIsConfirmedDuplicate ? (
                       <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-center text-sm font-semibold text-violet-800">
                         Phản ánh trùng lặp không cần duyệt hoặc phân công riêng.
@@ -587,7 +677,7 @@ export const AIReviewDetail = () => {
                         <button
                           type="button"
                           onClick={handleApprove}
-                          disabled={loading}
+                          disabled={loading || categories.length === 0 || !editCategoryId || !normalizePriority(editPriority)}
                           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(37,99,235,0.20)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.CheckCircle2 size={18} aria-hidden="true" />}

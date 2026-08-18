@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
+  CircleMarker,
   MapContainer,
   Marker,
   Popup,
@@ -262,6 +263,74 @@ const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail }) => {
   );
 };
 
+
+const priorityHeatWeight = (value) => {
+  const key = String(value || '').trim().toLocaleLowerCase('en-US');
+  if (key === 'urgent' || key === 'critical') return 1;
+  if (key === 'high') return 0.82;
+  if (key === 'medium') return 0.58;
+  if (key === 'low') return 0.38;
+  return 0.45;
+};
+
+function IncidentHeatLayer({ incidents, weightBuilder }) {
+  const validIncidents = useMemo(
+    () => (Array.isArray(incidents) ? incidents : []).filter((incident) => (
+      isValidLocation(incident?.latitude, incident?.longitude)
+    )),
+    [incidents],
+  );
+
+  return validIncidents.map((incident) => {
+    const rawWeight = typeof weightBuilder === 'function'
+      ? Number(weightBuilder(incident))
+      : priorityHeatWeight(incident?.priority);
+    const weight = Number.isFinite(rawWeight) ? Math.min(Math.max(rawWeight, 0.2), 1) : 0.45;
+    const radius = 18 + Math.round(weight * 24);
+
+    return (
+      <CircleMarker
+        key={`heat-${incident.feedbackId || `${incident.latitude}-${incident.longitude}`}`}
+        center={[incident.latitude, incident.longitude]}
+        radius={radius}
+        pathOptions={{
+          stroke: false,
+          fill: true,
+          fillColor: '#ef4444',
+          fillOpacity: 0.08 + (weight * 0.18),
+        }}
+        interactive={false}
+      />
+    );
+  });
+}
+
+function PersistMapView({ onViewStateChange }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (typeof onViewStateChange !== 'function') return undefined;
+
+    const persist = () => {
+      const center = map.getCenter();
+      onViewStateChange({
+        latitude: center.lat,
+        longitude: center.lng,
+        zoom: map.getZoom(),
+      });
+    };
+
+    map.on('moveend', persist);
+    map.on('zoomend', persist);
+    return () => {
+      map.off('moveend', persist);
+      map.off('zoomend', persist);
+    };
+  }, [map, onViewStateChange]);
+
+  return null;
+}
+
 const IncidentMapThemeStyles = () => (
   <style>{`
     .incident-map-shell {
@@ -444,9 +513,19 @@ export const IncidentMap = ({
   focusLongitude = null,
   detailPathBuilder = null,
   returnPath = '/community/map',
+  showMarkers = true,
+  showHeatLayer = false,
+  heatWeightBuilder = null,
+  initialViewState = null,
+  onViewStateChange = null,
 }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const hasInitialView = Boolean(
+    initialViewState &&
+    isValidLocation(Number(initialViewState.latitude), Number(initialViewState.longitude)) &&
+    Number.isFinite(Number(initialViewState.zoom))
+  );
   const { theme } = useTheme();
 
   const openFeedbackDetail = (ticket) => {
@@ -529,37 +608,46 @@ export const IncidentMap = ({
       <IncidentMapThemeStyles />
       <div className="public-map-stack incident-map-shell h-[550px] w-full overflow-hidden border-0 shadow-none transition-shadow duration-200 ease-out map-interaction">
         <MapContainer
-          center={DEFAULT_CENTER}
-          zoom={DEFAULT_ZOOM}
+          center={
+            initialViewState && isValidLocation(Number(initialViewState.latitude), Number(initialViewState.longitude))
+              ? [Number(initialViewState.latitude), Number(initialViewState.longitude)]
+              : DEFAULT_CENTER
+          }
+          zoom={Number.isFinite(Number(initialViewState?.zoom)) ? Number(initialViewState.zoom) : DEFAULT_ZOOM}
           scrollWheelZoom={true}
           className="relative z-0 h-full w-full"
           zoomControl={true}
+          preferCanvas={true}
         >
           <TileLayer
             key={theme}
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <PersistMapView onViewStateChange={onViewStateChange} />
           {focusFeedbackId ? (
             <FocusIncident
               feedbackId={focusFeedbackId}
               latitude={focusLatitude}
               longitude={focusLongitude}
             />
-          ) : (
+          ) : (!hasInitialView || fitRequestKey > 0) ? (
             <AutoFitBounds
               incidents={markers}
               fitRequestKey={fitRequestKey}
             />
-          )}
-          {markers.map((marker) => (
+          ) : null}
+          {showHeatLayer ? (
+            <IncidentHeatLayer incidents={incidentsWithFocusedMarker} weightBuilder={heatWeightBuilder} />
+          ) : null}
+          {showMarkers ? markers.map((marker) => (
             <IncidentMarker
               key={`${marker.latitude}-${marker.longitude}`}
               marker={marker}
               focusFeedbackId={focusFeedbackId}
               openFeedbackDetail={openFeedbackDetail}
             />
-          ))}
+          )) : null}
         </MapContainer>
       </div>
     </>

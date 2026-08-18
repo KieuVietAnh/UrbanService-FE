@@ -46,7 +46,7 @@ export const normalizeAiReviewedPayload = (payload = {}) => {
       locationText: feedback.locationText || feedback.location || feedback.address || '',
       categoryId: feedback.categoryId ?? analysisResult.detectedCategoryId ?? '',
       categoryName: feedback.categoryName || analysisResult.detectedCategoryName || '',
-      priority: feedback.priority || 'Medium',
+      priority: feedback.priority || '',
       areaName: feedback.areaName || feedback.area?.name || '',
       createdAt: feedback.createdAt || analysisResult.createdAt || null,
       updatedAt: feedback.updatedAt || feedback.updatedDate || null,

@@ -26,6 +26,9 @@ const DASHBOARD_SNAPSHOT_STORAGE_KEY =
   'urbanmind-service-user-dashboard-snapshot';
 const STAFF_DASHBOARD_SNAPSHOT_STORAGE_KEY =
   'urbanmind-staff-dashboard-snapshot-v1';
+const MANAGER_DASHBOARD_SNAPSHOT_STORAGE_KEY =
+  'urbanmind-manager-dashboard-snapshot-v1';
+const MANAGER_DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 
 const readDashboardSnapshot = () => {
   if (typeof window === 'undefined') return null;
@@ -91,6 +94,47 @@ const writeStaffDashboardSnapshot = (snapshot) => {
   } catch {
     // Storage can be unavailable in private mode.
   }
+};
+
+
+const readManagerDashboardSnapshot = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawSnapshot = window.sessionStorage.getItem(
+      MANAGER_DASHBOARD_SNAPSHOT_STORAGE_KEY
+    );
+    if (!rawSnapshot) return null;
+
+    const parsedSnapshot = JSON.parse(rawSnapshot);
+    return parsedSnapshot && typeof parsedSnapshot === 'object'
+      ? parsedSnapshot
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeManagerDashboardSnapshot = (snapshot) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      MANAGER_DASHBOARD_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        ...snapshot,
+        updatedAt: Date.now(),
+      })
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+};
+
+const isFreshManagerDashboardSnapshot = (snapshot) => {
+  const updatedAt = Number(snapshot?.updatedAt);
+  return Number.isFinite(updatedAt)
+    && Date.now() - updatedAt < MANAGER_DASHBOARD_CACHE_TTL_MS;
 };
 
 const normalizeTicketCollection = (response) => {
@@ -198,7 +242,7 @@ const SAFE_DASHBOARD_STATS = {
   avgResolutionTimeHours: 0,
   slaBreaches: 0,
   apiStatus: 'Ổn định',
-  aiStatus: 'Đang bật',
+  aiStatus: 'Chưa xác định',
   storageUsage: '0 KB',
   sentimentTrend: {
     Positive: 0,
@@ -642,6 +686,10 @@ export const Dashboard = () => {
       return readStaffDashboardSnapshot();
     }
 
+    if (currentRole === APP_ROLES.INTERACTION_MANAGER) {
+      return readManagerDashboardSnapshot();
+    }
+
     return readDashboardSnapshot();
   });
   const [stats, setStats] = useState(
@@ -755,12 +803,42 @@ export const Dashboard = () => {
     };
   }, []);
 
+  const fetchManagerDashboardContent = useCallback(async () => {
+    const [overviewResult, statusResult, categoryResult, slaOverviewResult] = await Promise.allSettled([
+      feedbackDashboardApi.getOverview(),
+      feedbackDashboardApi.getStatusDistribution(),
+      feedbackDashboardApi.getCategoryDistribution(),
+      slaApi.getDashboardOverview(),
+    ]);
+
+    const categoryDistribution = categoryResult.status === 'fulfilled' && Array.isArray(categoryResult.value)
+      ? [...categoryResult.value].sort((left, right) => Number(right?.count || 0) - Number(left?.count || 0))
+      : null;
+
+    return {
+      overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
+      statusDistribution: statusResult.status === 'fulfilled' && Array.isArray(statusResult.value)
+        ? statusResult.value
+        : null,
+      categoryDistribution,
+      slaOverview: slaOverviewResult.status === 'fulfilled' ? slaOverviewResult.value : null,
+    };
+  }, []);
+
   useEffect(() => {
     if (!user) return;
 
     const loadDashboardContent = async () => {
       const requestId = ++dashboardRequestIdRef.current;
       const hasCachedContent = Boolean(cachedDashboard);
+      const hasFreshManagerCache = currentRole === APP_ROLES.INTERACTION_MANAGER
+        && isFreshManagerDashboardSnapshot(cachedDashboard);
+
+      if (hasFreshManagerCache) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
       if (hasCachedContent) {
         setRefreshing(true);
@@ -770,12 +848,14 @@ export const Dashboard = () => {
 
       try {
         const isAdmin = currentRole === APP_ROLES.ADMINISTRATOR;
+        const isManager = currentRole === APP_ROLES.INTERACTION_MANAGER;
         const [
           resStats,
           fetchedCategories,
           fetchedAreas,
           ticketPage,
           adminDashboard,
+          managerDashboard,
         ] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
@@ -786,6 +866,7 @@ export const Dashboard = () => {
             : Promise.resolve([]),
           isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
           isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
+          isManager ? fetchManagerDashboardContent() : Promise.resolve(null),
         ]);
         const baseStats = normalizeDashboardStats(resStats);
         const nextStats = isAdmin && Array.isArray(adminDashboard?.categoryDistribution)
@@ -793,7 +874,23 @@ export const Dashboard = () => {
             ...baseStats,
             categoryDistribution: adminDashboard.categoryDistribution,
           }
-          : baseStats;
+          : isManager
+            ? {
+              ...baseStats,
+              categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
+                ? managerDashboard.categoryDistribution
+                : baseStats.categoryDistribution,
+              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
+                ? managerDashboard.statusDistribution
+                : baseStats.statusDistribution,
+              slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
+                ? Number(managerDashboard.slaOverview.breachedSla)
+                : baseStats.slaBreaches,
+              processingRate: Number.isFinite(Number(managerDashboard?.overview?.completionRate))
+                ? Math.round(Number(managerDashboard.overview.completionRate))
+                : baseStats.processingRate,
+            }
+            : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
           : [];
@@ -862,6 +959,13 @@ export const Dashboard = () => {
             ticketTotal: nextTicketTotal,
             feedbackSummary: nextFeedbackSummary,
           });
+        } else if (currentRole === APP_ROLES.INTERACTION_MANAGER) {
+          writeManagerDashboardSnapshot({
+            stats: nextStats,
+            categories: nextCategories,
+            tickets: nextTickets,
+            ticketTotal: nextTicketTotal,
+          });
         }
       } catch (err) {
         if (requestId !== dashboardRequestIdRef.current) return;
@@ -896,6 +1000,7 @@ export const Dashboard = () => {
     currentRole,
     fetchScopedTickets,
     fetchAdminDashboardContent,
+    fetchManagerDashboardContent,
     cachedDashboard,
   ]);
 
@@ -909,14 +1014,16 @@ export const Dashboard = () => {
 
       try {
         const isAdmin = currentRole === APP_ROLES.ADMINISTRATOR;
+        const isManager = currentRole === APP_ROLES.INTERACTION_MANAGER;
         const realtimeCache = isAdmin ? readAdminDashboardCache() : null;
-        const [resStats, fetchedCategories, ticketPage, adminDashboard] = await Promise.all([
+        const [resStats, fetchedCategories, ticketPage, adminDashboard, managerDashboard] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
             : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
           isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
           isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
+          isManager ? fetchManagerDashboardContent() : Promise.resolve(null),
         ]);
         const nextTickets = isAdmin
           ? (Array.isArray(adminDashboard?.recentTickets)
@@ -951,7 +1058,23 @@ export const Dashboard = () => {
             ...baseStats,
             categoryDistribution: adminDashboard.categoryDistribution,
           }
-          : baseStats;
+          : isManager
+            ? {
+              ...baseStats,
+              categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
+                ? managerDashboard.categoryDistribution
+                : baseStats.categoryDistribution,
+              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
+                ? managerDashboard.statusDistribution
+                : baseStats.statusDistribution,
+              slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
+                ? Number(managerDashboard.slaOverview.breachedSla)
+                : baseStats.slaBreaches,
+              processingRate: Number.isFinite(Number(managerDashboard?.overview?.completionRate))
+                ? Math.round(Number(managerDashboard.overview.completionRate))
+                : baseStats.processingRate,
+            }
+            : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
           : [];
@@ -974,6 +1097,13 @@ export const Dashboard = () => {
           });
         } else if (currentRole === APP_ROLES.SYSTEM_STAFF) {
           writeStaffDashboardSnapshot({
+            stats: nextStats,
+            categories: nextCategories,
+            tickets: nextTickets,
+            ticketTotal: nextTicketTotal,
+          });
+        } else if (currentRole === APP_ROLES.INTERACTION_MANAGER) {
+          writeManagerDashboardSnapshot({
             stats: nextStats,
             categories: nextCategories,
             tickets: nextTickets,
@@ -1012,7 +1142,7 @@ export const Dashboard = () => {
       ));
       dashboardRequestIdRef.current += 1;
     };
-  }, [user, currentRole, fetchScopedTickets, fetchAdminDashboardContent]);
+  }, [user, currentRole, fetchScopedTickets, fetchAdminDashboardContent, fetchManagerDashboardContent]);
 
   useEffect(() => {
     if (
@@ -1110,6 +1240,88 @@ export const Dashboard = () => {
       cancelled = true;
     };
   }, [areas, currentRole, selectedAreaId]);
+
+  if (loading && currentRole === 'interaction-manager') {
+    return (
+      <main
+        className="admin-page-shell space-y-6"
+        aria-busy="true"
+        aria-label="Đang tải tổng quan quản lý tương tác"
+      >
+        <span className="sr-only" role="status">Đang tải dữ liệu tổng quan</span>
+
+        <section className="admin-panel animate-pulse p-6 sm:p-7" aria-hidden="true">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="h-16 w-16 shrink-0 rounded-2xl bg-slate-200/80" />
+              <div className="min-w-0 flex-1 pt-1">
+                <div className="h-8 w-72 max-w-full rounded-xl bg-slate-200/80" />
+                <div className="mt-3 h-4 w-[32rem] max-w-full rounded-full bg-slate-100" />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="h-16 w-52 rounded-2xl bg-slate-100" />
+              <div className="h-12 w-44 rounded-2xl bg-slate-200/80" />
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-hidden="true">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="admin-panel h-36 animate-pulse p-5 sm:p-6">
+              <div className="h-3 w-24 rounded-full bg-slate-200/80" />
+              <div className="mt-5 h-8 w-16 rounded-lg bg-slate-200/80" />
+              <div className="mt-4 h-3 w-4/5 rounded-full bg-slate-100" />
+              <div className="mt-2 h-3 w-3/5 rounded-full bg-slate-100" />
+            </div>
+          ))}
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]" aria-hidden="true">
+          <div className="space-y-6">
+            <div className="admin-panel h-[360px] p-6">
+              <div className="animate-pulse">
+                <div className="h-5 w-44 rounded-lg bg-slate-200/80" />
+                <div className="mt-3 h-3 w-72 max-w-full rounded-full bg-slate-100" />
+              </div>
+              <div className="relative mx-auto mt-10 h-44 w-44" aria-hidden="true">
+                <div className="absolute inset-0 rounded-full border-[22px] border-slate-100" />
+                <div className="absolute inset-0 animate-spin rounded-full border-[22px] border-transparent border-t-blue-200 border-r-emerald-100 [animation-duration:1.6s]" />
+                <div className="absolute inset-[34px] animate-pulse rounded-full bg-slate-50" />
+              </div>
+              <div className="mx-auto mt-5 h-3 w-44 animate-pulse rounded-full bg-slate-100" />
+            </div>
+            <div className="admin-panel animate-pulse p-6">
+              <div className="h-5 w-56 rounded-lg bg-slate-200/80" />
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                {[0, 1, 2, 3, 4, 5].map((item) => (
+                  <div key={item} className="h-24 rounded-2xl bg-slate-100" />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="space-y-6">
+            <div className="admin-panel h-[390px] animate-pulse p-6">
+              <div className="h-5 w-40 rounded-lg bg-slate-200/80" />
+              <div className="mt-6 space-y-3">
+                {[0, 1, 2, 3].map((item) => (
+                  <div key={item} className="h-20 rounded-2xl bg-slate-100" />
+                ))}
+              </div>
+            </div>
+            <div className="admin-panel h-[280px] animate-pulse p-6">
+              <div className="h-5 w-48 rounded-lg bg-slate-200/80" />
+              <div className="mt-6 space-y-3">
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className="h-20 rounded-2xl bg-slate-100" />
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   if (!stats) {
     return (
@@ -2315,21 +2527,48 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   if (currentRole === 'interaction-manager') {
     const managerTickets = Array.isArray(tickets) ? tickets : [];
-    const pendingApprovals = managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL);
-    const needRework = managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.NEED_REWORK);
-    const activeInteractions = managerTickets.filter((ticket) => [
-      managementTypes.feedbackStatus.VERIFIED,
-      managementTypes.feedbackStatus.ASSIGNED,
-      managementTypes.feedbackStatus.IN_PROGRESS,
-      managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-      managementTypes.feedbackStatus.NEED_REWORK,
-    ].includes(ticket.status));
-    const completedInteractions = managerTickets.filter((ticket) => [
-      managementTypes.feedbackStatus.APPROVED,
-      managementTypes.feedbackStatus.CLOSED,
-    ].includes(ticket.status));
+    const managerStatusDistribution = Array.isArray(stats?.statusDistribution)
+      ? stats.statusDistribution
+      : [];
+    const normalizeStatusKey = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const statusCounts = new Map(
+      managerStatusDistribution.map((item) => [normalizeStatusKey(item?.status), toDashboardCount(item?.count)])
+    );
+    const getStatusCount = (status) => statusCounts.get(normalizeStatusKey(status)) || 0;
+    const hasStatusDistribution = managerStatusDistribution.length > 0;
+
+    const pendingApprovalCount = hasStatusDistribution
+      ? getStatusCount(managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL)
+      : managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL).length;
+    const needReworkCount = hasStatusDistribution
+      ? getStatusCount(managementTypes.feedbackStatus.NEED_REWORK)
+      : managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.NEED_REWORK).length;
+    const activeInteractionCount = hasStatusDistribution
+      ? [
+        managementTypes.feedbackStatus.VERIFIED,
+        managementTypes.feedbackStatus.ASSIGNED,
+        managementTypes.feedbackStatus.IN_PROGRESS,
+        managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+        managementTypes.feedbackStatus.NEED_REWORK,
+      ].reduce((sum, status) => sum + getStatusCount(status), 0)
+      : managerTickets.filter((ticket) => [
+        managementTypes.feedbackStatus.VERIFIED,
+        managementTypes.feedbackStatus.ASSIGNED,
+        managementTypes.feedbackStatus.IN_PROGRESS,
+        managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+        managementTypes.feedbackStatus.NEED_REWORK,
+      ].includes(ticket.status)).length;
+    const completedInteractionCount = hasStatusDistribution
+      ? [
+        managementTypes.feedbackStatus.APPROVED,
+        managementTypes.feedbackStatus.CLOSED,
+      ].reduce((sum, status) => sum + getStatusCount(status), 0)
+      : managerTickets.filter((ticket) => [
+        managementTypes.feedbackStatus.APPROVED,
+        managementTypes.feedbackStatus.CLOSED,
+      ].includes(ticket.status)).length;
     const managerTopCategories = Array.isArray(stats.categoryDistribution)
-      ? stats.categoryDistribution.slice(0, 4)
+      ? stats.categoryDistribution
       : [];
     const managerQuickLinks = [
       {
@@ -2371,7 +2610,7 @@ export const Dashboard = () => {
           description="Theo dõi xu hướng phản hồi, giám sát tương tác và xác định cơ hội cải thiện dịch vụ."
           icon={Lucide.ScanSearch}
           statusLabel="Hồ sơ chờ quyết định"
-          statusValue={`${pendingApprovals.length} phản ánh`}
+          statusValue={`${pendingApprovalCount} phản ánh`}
           actions={(
             <Link to="/manager/approvals" className="btn admin-primary-action rounded-2xl">
               <Lucide.BadgeCheck size={17} aria-hidden="true" />
@@ -2383,28 +2622,28 @@ export const Dashboard = () => {
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số quản lý tương tác">
           <ManagerMetricCard
             label="Luồng đang hoạt động"
-            value={activeInteractions.length}
+            value={activeInteractionCount}
             description="Phản ánh đang xác minh, phối hợp hoặc xử lý."
             icon={Lucide.Workflow}
             toneClass="bg-blue-50 text-blue-700"
           />
           <ManagerMetricCard
             label="Chờ duyệt"
-            value={pendingApprovals.length}
+            value={pendingApprovalCount}
             description="Kết quả cần Manager ra quyết định."
             icon={Lucide.ClipboardCheck}
             toneClass="bg-emerald-50 text-emerald-700"
           />
           <ManagerMetricCard
             label="Cần làm lại"
-            value={needRework.length}
+            value={needReworkCount}
             description="Hồ sơ đã trả về để Staff bổ sung."
             icon={Lucide.RotateCcw}
             toneClass="bg-amber-50 text-amber-700"
           />
           <ManagerMetricCard
             label="Đã hoàn tất"
-            value={completedInteractions.length}
+            value={completedInteractionCount}
             description="Phản ánh đã duyệt hoặc đã đóng."
             icon={Lucide.CircleCheckBig}
             toneClass="bg-cyan-50 text-cyan-700"
@@ -2425,10 +2664,11 @@ export const Dashboard = () => {
                   positive={stats.sentimentTrend.Positive}
                   neutral={stats.sentimentTrend.Neutral}
                   negative={stats.sentimentTrend.Negative}
+                  animate={!cachedDashboard}
                 />
               </section>
               <figcaption className="border-t border-slate-200 px-5 py-4 text-xs leading-5 text-slate-500 sm:px-6">
-                CSAT hiện tại: {stats.csatScore}/5 · Thời gian xử lý trung bình: {stats.avgResolutionTimeHours} giờ.
+                Dữ liệu cảm xúc được tổng hợp từ các phản ánh đã được AI phân tích.
               </figcaption>
             </figure>
 
@@ -2441,20 +2681,56 @@ export const Dashboard = () => {
               />
               {managerTopCategories.length > 0 ? (
                 <ol className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">
-                  {managerTopCategories.map((category, index) => (
-                    <li key={category.categoryId || category.name || index}>
-                      <article className="admin-inset-panel flex items-center justify-between gap-4 p-4">
+                  {managerTopCategories.map((category, index) => {
+                    const categoryId = category.categoryId ?? category.id ?? '';
+                    const categoryLabel = getCategoryLabel(
+                      category.categoryName || category.name || category.categoryType || category.type,
+                      'Chưa phân loại'
+                    );
+                    const categoryQuery = new URLSearchParams();
+
+                    if (categoryId !== '') categoryQuery.set('categoryId', String(categoryId));
+                    categoryQuery.set('categoryName', categoryLabel);
+
+                    const cardContent = (
+                      <>
                         <span className="flex min-w-0 items-center gap-3">
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700" aria-hidden="true">{index + 1}</span>
                           <span className="min-w-0">
-                            <h3 className="truncate text-sm font-semibold text-slate-950">{getCategoryLabel(category.categoryName || category.name || category.categoryType || category.type, 'Chưa phân loại')}</h3>
+                            <h3 className="truncate text-sm font-semibold text-slate-950">{categoryLabel}</h3>
                             <p className="mt-1 text-xs text-slate-500">Khối lượng phản ánh trong dữ liệu tổng hợp</p>
                           </span>
                         </span>
-                        <strong className="text-lg font-semibold text-blue-700">{category.count ?? category.value ?? 0}</strong>
-                      </article>
-                    </li>
-                  ))}
+                        <span className="flex shrink-0 items-center gap-2">
+                          <strong className="text-lg font-semibold text-blue-700">{category.count ?? category.value ?? 0}</strong>
+                          {categoryId !== '' ? (
+                            <Lucide.ChevronRight size={16} className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-700" aria-hidden="true" />
+                          ) : null}
+                        </span>
+                      </>
+                    );
+
+                    return (
+                      <li key={category.categoryId || category.name || index}>
+                        {categoryId !== '' ? (
+                          <Link
+                            to={`/manager/interactions?${categoryQuery.toString()}`}
+                            className="admin-inset-panel group flex items-center justify-between gap-4 p-4 transition hover:border-blue-300 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                            aria-label={`Xem phản ánh thuộc danh mục ${categoryLabel}`}
+                          >
+                            {cardContent}
+                          </Link>
+                        ) : (
+                          <article
+                            className="admin-inset-panel flex items-center justify-between gap-4 p-4"
+                            title="API hiện tại chưa hỗ trợ lọc riêng phản ánh chưa phân loại"
+                          >
+                            {cardContent}
+                          </article>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ol>
               ) : (
                 <section className="admin-empty-panel m-5 p-8 text-center text-sm text-slate-500 sm:m-6">Chưa có dữ liệu phân bố danh mục.</section>

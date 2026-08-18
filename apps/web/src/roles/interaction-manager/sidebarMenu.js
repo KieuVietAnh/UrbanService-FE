@@ -11,6 +11,6 @@ export default [
   { name: 'Phân Tích SLA', path: '/analytics/sla', icon: 'BarChart3' },
   // Provider candidate checker removed
   { name: 'Cảm Xúc Người Dân (AI)', path: '/analytics/sentiment', icon: 'Smile' },
-  { name: 'Bản Đồ Nhiệt Sự Cố', path: '/analytics/heatmap', icon: 'Flame' },
+  { name: 'Bản Đồ Điểm Nóng', path: '/analytics/heatmap', icon: 'Flame' },
   { name: 'Cài Đặt', path: '/settings', icon: 'Settings' }
 ];
