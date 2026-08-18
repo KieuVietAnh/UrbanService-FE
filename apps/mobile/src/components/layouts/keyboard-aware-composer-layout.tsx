@@ -1,6 +1,10 @@
 import React from 'react';
-import { StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
-
+import {
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 
@@ -27,7 +31,10 @@ export function KeyboardAwareComposerLayout({
 
       <KeyboardStickyView
         enabled
-        offset={{ closed: insets.bottom, opened: 0 }}
+        offset={{
+          closed: -insets.bottom,
+          opened: 0,
+        }}
         style={styles.stickyComposer}
       >
         {composer}
