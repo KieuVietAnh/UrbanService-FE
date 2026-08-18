@@ -49,7 +49,7 @@ jobs:
 
       - name: Build Android APK with EAS
         id: eas_build
-        working-directory: .
+        working-directory: apps/mobile
         shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -86,7 +86,7 @@ jobs:
 
       - name: Download APK from EAS
         id: download_apk
-        working-directory: .
+        working-directory: apps/mobile
         shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -113,7 +113,7 @@ jobs:
           ")
 
           VERSION=$(node -e "
-            const app = require('./apps/mobile/app.json');
+            const app = require('./app.json');
 
             if (!app?.expo?.version) {
               console.error('expo.version not found in apps/mobile/app.json');
@@ -128,6 +128,7 @@ jobs:
           RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT}"
 
           APK_NAME="UrbanMind-v${VERSION}-${SHORT_SHA}-build${RUN_NUMBER}.apk"
+          APK_FILE="$PWD/$APK_NAME"
 
           echo "Downloading APK..."
           echo "APK name: $APK_NAME"
@@ -138,13 +139,13 @@ jobs:
             --retry 3 \
             --retry-delay 5 \
             "$APK_URL" \
-            --output "apps/mobile/$APK_NAME"
+            --output "$APK_FILE"
 
-          test -s "apps/mobile/$APK_NAME"
+          test -s "$APK_FILE"
 
           echo "APK downloaded successfully."
 
-          echo "APK_FILE=apps/mobile/$APK_NAME" >> "$GITHUB_ENV"
+          echo "APK_FILE=$APK_FILE" >> "$GITHUB_ENV"
           echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
