@@ -1,90 +1,116 @@
-import { useId } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 // src/components/charts/CustomCharts.jsx
 
 
 // 1. Sentiment Donut Chart Component
-export const SentimentDonutChart = ({ positive = 45, neutral = 35, negative = 20 }) => {
+export const SentimentDonutChart = ({ positive = 0, neutral = 0, negative = 0, animate = true }) => {
   const total = positive + neutral + negative;
-  const posPct = total > 0 ? Math.round((positive / total) * 100) : 0;
-  const neuPct = total > 0 ? Math.round((neutral / total) * 100) : 0;
-  const negPct = total > 0 ? Math.round((negative / total) * 100) : 0;
+  const posPct = total > 0 ? (positive / total) * 100 : 0;
+  const neuPct = total > 0 ? (neutral / total) * 100 : 0;
+  const negPct = total > 0 ? (negative / total) * 100 : 0;
+  const [progress, setProgress] = useState(0);
+  const animationFrameRef = useRef(null);
 
-  // Circle parameters for Donut
+  useEffect(() => {
+    const prefersReducedMotion = typeof window !== 'undefined'
+      && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    if (!animate || prefersReducedMotion) {
+      setProgress(1);
+      return undefined;
+    }
+
+    setProgress(0);
+    const duration = 900;
+    const startAt = performance.now();
+
+    const tick = (now) => {
+      const elapsed = Math.min(1, (now - startAt) / duration);
+      const eased = 1 - Math.pow(1 - elapsed, 3);
+      setProgress(eased);
+
+      if (elapsed < 1) {
+        animationFrameRef.current = requestAnimationFrame(tick);
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, [animate, positive, neutral, negative]);
+
   const radius = 50;
   const circumference = 2 * Math.PI * radius;
-  
-  // Calculate stroke offsets
-  const neuDash = (neuPct / 100) * circumference;
-  const negDash = (negPct / 100) * circumference;
-  const posDash = (posPct / 100) * circumference;
-
-  // Cumulative offsets
+  const animatedPosPct = posPct * progress;
+  const animatedNeuPct = neuPct * progress;
+  const animatedNegPct = negPct * progress;
+  const posDash = (animatedPosPct / 100) * circumference;
+  const neuDash = (animatedNeuPct / 100) * circumference;
+  const negDash = (animatedNegPct / 100) * circumference;
   const posStrokeOffset = 0;
   const neuStrokeOffset = posDash;
   const negStrokeOffset = posDash + neuDash;
+  const displayedPositivePct = Math.round(animatedPosPct);
 
   return (
     <div className="flex flex-col items-center justify-center p-4 bg-base-100 rounded-2xl border border-base-300">
       <h4 className="text-sm font-bold mb-4 text-center">Chỉ Số Cảm Xúc Cư Dân (AI)</h4>
       <div className="relative w-40 h-40">
-        <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90">
-          {/* Background circle */}
+        <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90" role="img" aria-label={`Tích cực ${Math.round(posPct)}%, trung tính ${Math.round(neuPct)}%, tiêu cực ${Math.round(negPct)}%`}>
           <circle cx="60" cy="60" r={radius} fill="transparent" stroke="var(--fallback-b3, #e5e7eb)" strokeWidth="12" />
-          
-          {/* Positive segment */}
+
           {posPct > 0 && (
             <circle
               cx="60"
               cy="60"
               r={radius}
               fill="transparent"
-              stroke="#10b981" // Emerald-500
+              stroke="#10b981"
               strokeWidth="12"
+              strokeLinecap="round"
               strokeDasharray={`${posDash} ${circumference - posDash}`}
               strokeDashoffset={-posStrokeOffset}
-              className="transition-all duration-1000 ease-out"
             />
           )}
-          
-          {/* Neutral segment */}
+
           {neuPct > 0 && (
             <circle
               cx="60"
               cy="60"
               r={radius}
               fill="transparent"
-              stroke="#f59e0b" // Amber-500
+              stroke="#f59e0b"
               strokeWidth="12"
+              strokeLinecap="round"
               strokeDasharray={`${neuDash} ${circumference - neuDash}`}
               strokeDashoffset={-neuStrokeOffset}
-              className="transition-all duration-1000 ease-out"
             />
           )}
-          
-          {/* Negative segment */}
+
           {negPct > 0 && (
             <circle
               cx="60"
               cy="60"
               r={radius}
               fill="transparent"
-              stroke="#ef4444" // Red-500
+              stroke="#ef4444"
               strokeWidth="12"
+              strokeLinecap="round"
               strokeDasharray={`${negDash} ${circumference - negDash}`}
               strokeDashoffset={-negStrokeOffset}
-              className="transition-all duration-1000 ease-out"
             />
           )}
         </svg>
-        {/* Center label */}
+
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-black text-emerald-500">{posPct}%</span>
+          <span className="text-2xl font-black tabular-nums text-emerald-500">{displayedPositivePct}%</span>
           <span className="text-[9px] uppercase tracking-wider font-bold text-gray-500">Tích cực</span>
         </div>
       </div>
 
-      {/* Legend */}
       <div className="flex gap-4 mt-6 text-xs font-semibold">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
