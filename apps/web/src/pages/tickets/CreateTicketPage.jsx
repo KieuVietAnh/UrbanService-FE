@@ -5,18 +5,24 @@ import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
-import { LocationPicker } from '../../components/maps/LocationPicker';
+import {
+  LocationPicker,
+  isLocationInsideBoundaryGeoJson,
+  reverseGeocodeApproximateAddress,
+} from '../../components/maps/LocationPicker';
 
 const STEPS = [
   { id: 1, label: 'Mô tả', description: 'Nêu rõ vấn đề', icon: Lucide.FileText },
-  { id: 2, label: 'Vị trí', description: 'Đánh dấu trên bản đồ', icon: Lucide.MapPin },
+  { id: 2, label: 'Vị trí', description: 'Chọn địa chỉ hoặc bản đồ', icon: Lucide.MapPin },
   { id: 3, label: 'Minh chứng', description: 'Thêm ảnh hoặc video', icon: Lucide.Images },
+  { id: 4, label: 'Xem lại', description: 'Kiểm tra trước khi gửi', icon: Lucide.ClipboardCheck },
 ];
 
 const STEP_FIELDS = {
   1: ['title', 'description'],
   2: ['areaId', 'location'],
   3: ['attachments'],
+  4: [],
 };
 
 const CATEGORY_LABELS = {
@@ -33,6 +39,15 @@ const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
 const DRAFT_STORAGE_PREFIX = 'urbanmind:create-ticket-draft';
+
+const looksLikeCoordinateOnlyLocation = (value = '') => {
+  const normalized = String(value).trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized.startsWith('vị trí đã chọn:') ||
+    normalized.startsWith('vị trí gần đúng:')
+  );
+};
 
 const formatFileSize = (bytes = 0) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -115,32 +130,6 @@ const getAreaBoundaryGeoJson = (area) => (
   null
 );
 
-const getBoundaryDebugPreview = (boundaryGeoJson) => {
-  if (boundaryGeoJson == null) return null;
-
-  if (typeof boundaryGeoJson === 'string') {
-    return {
-      type: 'string',
-      length: boundaryGeoJson.length,
-      preview: boundaryGeoJson.slice(0, 2000),
-      truncated: boundaryGeoJson.length > 2000,
-    };
-  }
-
-  if (typeof boundaryGeoJson === 'object') {
-    return {
-      type: boundaryGeoJson.type || 'object',
-      keys: Object.keys(boundaryGeoJson),
-      preview: boundaryGeoJson,
-    };
-  }
-
-  return {
-    type: typeof boundaryGeoJson,
-    value: boundaryGeoJson,
-  };
-};
-
 const normalizePriority = (value) => {
   if (value === 'Critical') return 'Urgent';
   return PRIORITY_OPTIONS.some((option) => option.value === value)
@@ -159,6 +148,7 @@ export const CreateTicketPage = () => {
   const draftStorageKey = `${DRAFT_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
 
   const [step, setStep] = useState(1);
+  const [reviewEditStep, setReviewEditStep] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [areaId, setAreaId] = useState('');
@@ -190,6 +180,7 @@ export const CreateTicketPage = () => {
   const draftHydratedRef = useRef(false);
   const draftSaveTimerRef = useRef(null);
   const aiAttachmentsHydratedRef = useRef(false);
+  const reviewAttachmentsRef = useRef([]);
 
   const formStageRef = useRef(null);
   const titleFieldRef = useRef(null);
@@ -209,7 +200,7 @@ export const CreateTicketPage = () => {
       }
 
       const draft = JSON.parse(rawDraft);
-      const restoredStep = Math.min(3, Math.max(1, Number(draft.step) || 1));
+      const restoredStep = Math.min(STEPS.length, Math.max(1, Number(draft.step) || 1));
 
       setStep(restoredStep);
       setTitle(typeof draft.title === 'string' ? draft.title : '');
@@ -471,6 +462,48 @@ export const CreateTicketPage = () => {
   );
 
   const selectedAreaBoundaryGeoJson = getAreaBoundaryGeoJson(selectedArea);
+  const isSelectedLocationInsideArea = useMemo(() => {
+    if (latitude == null || longitude == null) return false;
+    if (!selectedAreaBoundaryGeoJson) return true;
+
+    return isLocationInsideBoundaryGeoJson(
+      Number(latitude),
+      Number(longitude),
+      selectedAreaBoundaryGeoJson
+    );
+  }, [latitude, longitude, selectedAreaBoundaryGeoJson]);
+
+  useEffect(() => {
+    if (
+      step !== 4 ||
+      latitude == null ||
+      longitude == null ||
+      !selectedArea ||
+      !looksLikeCoordinateOnlyLocation(locationText)
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const resolveReviewLocation = async () => {
+      const resolvedAddress = await reverseGeocodeApproximateAddress(
+        Number(latitude),
+        Number(longitude),
+        getAreaName(selectedArea)
+      );
+
+      if (!cancelled && resolvedAddress) {
+        setLocationText(resolvedAddress);
+      }
+    };
+
+    resolveReviewLocation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, latitude, longitude, selectedArea, locationText]);
 
   const selectedCategory = useMemo(
     () => categories.find(
@@ -526,8 +559,26 @@ export const CreateTicketPage = () => {
 
   const stepCompletion = useMemo(() => ({
     1: Boolean(title.trim() && description.trim() && categoryId && priority),
-    2: Boolean(areaId && latitude != null && longitude != null),
+    2: Boolean(
+      areaId &&
+      latitude != null &&
+      longitude != null &&
+      isSelectedLocationInsideArea
+    ),
     3: Boolean(
+      attachments.length > 0 &&
+      attachments.length <= MAX_ATTACHMENT_COUNT &&
+      totalAttachmentSize <= MAX_TOTAL_ATTACHMENT_SIZE_BYTES
+    ),
+    4: Boolean(
+      title.trim() &&
+      description.trim() &&
+      categoryId &&
+      priority &&
+      areaId &&
+      latitude != null &&
+      longitude != null &&
+      isSelectedLocationInsideArea &&
       attachments.length > 0 &&
       attachments.length <= MAX_ATTACHMENT_COUNT &&
       totalAttachmentSize <= MAX_TOTAL_ATTACHMENT_SIZE_BYTES
@@ -539,6 +590,7 @@ export const CreateTicketPage = () => {
     description,
     latitude,
     longitude,
+    isSelectedLocationInsideArea,
     priority,
     title,
     totalAttachmentSize,
@@ -561,7 +613,11 @@ export const CreateTicketPage = () => {
         errors.areaId = 'Vui lòng chọn khu vực xảy ra vấn đề.';
       }
       if (latitude == null || longitude == null) {
-        errors.location = 'Vui lòng đánh dấu vị trí cụ thể trên bản đồ.';
+        errors.location = 'Vui lòng tìm địa chỉ hoặc đánh dấu vị trí cụ thể trên bản đồ.';
+      } else if (!isSelectedLocationInsideArea) {
+        errors.location = selectedArea
+          ? `Vị trí đã chọn không thuộc ${getAreaName(selectedArea)}. Vui lòng chọn lại vị trí trong khu vực này.`
+          : 'Vị trí đã chọn không thuộc khu vực đã chọn. Vui lòng chọn lại.';
       }
     }
 
@@ -619,6 +675,21 @@ export const CreateTicketPage = () => {
   const goToStep = (nextStep) => {
     setSubmitError('');
     setStep(nextStep);
+  };
+
+  const beginReviewEdit = (targetStep) => {
+    reviewAttachmentsRef.current = attachments;
+    setReviewEditStep(targetStep);
+    goToStep(targetStep);
+  };
+
+  const restoreReviewAttachmentsIfNeeded = () => {
+    if (
+      attachments.length === 0 &&
+      reviewAttachmentsRef.current.length > 0
+    ) {
+      setAttachments(reviewAttachmentsRef.current);
+    }
   };
 
   const hasUnsavedDraft = useMemo(() => Boolean(
@@ -869,13 +940,40 @@ export const CreateTicketPage = () => {
 
     setCategoryId(resolvedCategoryId);
     setPriority(resolvedPriority || 'Medium');
+
+    if (reviewEditStep === 1) {
+      restoreReviewAttachmentsIfNeeded();
+      setReviewEditStep(null);
+      goToStep(4);
+      return;
+    }
+
     goToStep(2);
   };
 
   const handleLocationSelect = async (lat, lng, address) => {
+    if (
+      selectedAreaBoundaryGeoJson &&
+      !isLocationInsideBoundaryGeoJson(lat, lng, selectedAreaBoundaryGeoJson)
+    ) {
+      setFieldErrors((current) => ({
+        ...current,
+        location: selectedArea
+          ? `Vị trí này không thuộc ${getAreaName(selectedArea)}. Vui lòng chọn lại vị trí trong khu vực đã chọn.`
+          : 'Vị trí này nằm ngoài khu vực đã chọn. Vui lòng chọn lại.',
+      }));
+      setSubmitError('Vị trí không hợp lệ với khu vực đã chọn.');
+      return;
+    }
+
     setLatitude(lat);
     setLongitude(lng);
-    setLocationText(address || `Vị trí đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    setLocationText(
+      address ||
+      (selectedArea
+        ? `${getAreaName(selectedArea)} (vị trí gần đúng)`
+        : 'Vị trí đã được xác định trên bản đồ')
+    );
     clearFieldError('location');
     setSubmitError('');
     setShowDuplicateWarning(false);
@@ -939,6 +1037,7 @@ export const CreateTicketPage = () => {
       if (aiDraftStorageKey) {
         window.localStorage.removeItem(aiDraftStorageKey);
       }
+      reviewAttachmentsRef.current = [];
       setDraftNotice('');
       setSubmitted(true);
     } catch (error) {
@@ -968,6 +1067,7 @@ export const CreateTicketPage = () => {
     setLatitude(null);
     setLongitude(null);
     setAttachments([]);
+    reviewAttachmentsRef.current = [];
     setAttachmentError('');
     setDuplicates([]);
     setShowDuplicateWarning(false);
@@ -989,6 +1089,7 @@ export const CreateTicketPage = () => {
     setLatitude(null);
     setLongitude(null);
     setAttachments([]);
+    reviewAttachmentsRef.current = [];
     setAttachmentError('');
     setDuplicates([]);
     setShowDuplicateWarning(false);
@@ -1216,7 +1317,7 @@ export const CreateTicketPage = () => {
               </span>
             </div>
 
-            <ol className="mt-4 grid grid-cols-3 gap-2 sm:gap-3" aria-label="Tiến trình gửi phản ánh">
+            <ol className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" aria-label="Tiến trình gửi phản ánh">
               {STEPS.map(({ id, label, icon: Icon }) => {
                 const isCurrent = step === id;
                 const isComplete = stepCompletion[id];
@@ -1420,7 +1521,7 @@ export const CreateTicketPage = () => {
                   Khu vực và vị trí sự cố
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-base-content/50">
-                  Chọn khu vực đã xảy ra sự cố, sau đó đánh dấu điểm chính xác trên bản đồ.
+                  Chọn khu vực, sau đó tìm địa chỉ hoặc đánh dấu điểm chính xác trên bản đồ.
                 </p>
               </header>
 
@@ -1486,22 +1587,7 @@ export const CreateTicketPage = () => {
                       boundaryGeoJson={selectedAreaBoundaryGeoJson}
                       boundaryName={selectedArea ? getAreaName(selectedArea) : ''}
                     />
-                    <details className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                      <summary className="cursor-pointer font-bold">
-                        Debug GeoBoundaryJson
-                      </summary>
-                      <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-white/80 p-3 font-mono text-[11px] leading-5">
-                        {JSON.stringify(
-                          {
-                            areaId,
-                            areaName: selectedArea ? getAreaName(selectedArea) : null,
-                            boundaryDebug: getBoundaryDebugPreview(selectedAreaBoundaryGeoJson),
-                          },
-                          null,
-                          2
-                        )}
-                      </pre>
-                    </details>
+
                   </div>
                   {fieldErrors.location ? (
                     <span id="location-error" className="mt-1.5 block text-xs font-medium text-error" role="alert">
@@ -1677,7 +1763,203 @@ export const CreateTicketPage = () => {
                     </ul>
                   </section>
                 ) : null}
+
+
               </div>
+            </section>
+          ) : null}
+
+          {step === 4 ? (
+            <section className="create-form-section border-b border-base-200 px-5 py-5 sm:px-7 sm:py-6" aria-labelledby="step-review-heading">
+              <div className="mb-5">
+                <h2 id="step-review-heading" className="text-xl font-bold text-[var(--public-title)]">
+                  Xem lại và xác nhận
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-[var(--public-muted)]">
+                  Kiểm tra lần cuối toàn bộ thông tin trước khi gửi phản ánh.
+                </p>
+              </div>
+
+                <section
+                  className="overflow-hidden rounded-[24px] border border-blue-100 bg-gradient-to-br from-blue-50/70 via-white to-cyan-50/40 shadow-[0_12px_32px_rgba(37,99,235,0.07)] dark:border-blue-500/20 dark:from-blue-950/30 dark:via-slate-900 dark:to-cyan-950/20"
+                  aria-labelledby="submission-review-title"
+                >
+                  <div className="flex flex-col gap-3 border-b border-blue-100/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-blue-500/15">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.18)]" aria-hidden="true">
+                        <Lucide.ClipboardCheck size={18} />
+                      </span>
+                      <div>
+                        <h3 id="submission-review-title" className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                          Xem lại thông tin phản ánh
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          Kiểm tra lại nội dung, vị trí và minh chứng trước khi gửi.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                      <Lucide.ShieldCheck size={13} aria-hidden="true" />
+                      Sẵn sàng kiểm tra
+                    </span>
+                  </div>
+
+                  <div className="grid gap-4 p-5 lg:grid-cols-2">
+                    <article className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-950/45">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Lucide.FileText size={16} className="text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            Nội dung phản ánh
+                          </h4>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => beginReviewEdit(1)}
+                          disabled={submitting}
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                        >
+                          <Lucide.Pencil size={12} aria-hidden="true" />
+                          Chỉnh sửa
+                        </button>
+                      </div>
+
+                      <dl className="mt-4 space-y-3 text-sm">
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Tiêu đề
+                          </dt>
+                          <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
+                            {title.trim() || 'Chưa nhập tiêu đề'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Nội dung
+                          </dt>
+                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6 text-slate-600 dark:text-slate-300">
+                            {description.trim() || 'Chưa nhập nội dung'}
+                          </dd>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                              Danh mục
+                            </dt>
+                            <dd className="mt-1 font-medium text-slate-700 dark:text-slate-300">
+                              {selectedCategory ? getCategoryLabel(selectedCategory) : 'Hệ thống đang xác định'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                              Mức độ
+                            </dt>
+                            <dd className="mt-1 font-medium text-slate-700 dark:text-slate-300">
+                              {selectedPriority?.label || 'Hệ thống đang xác định'}
+                            </dd>
+                          </div>
+                        </div>
+                      </dl>
+                    </article>
+
+                    <article className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-950/45">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Lucide.MapPinned size={16} className="text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            Vị trí
+                          </h4>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => beginReviewEdit(2)}
+                          disabled={submitting}
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                        >
+                          <Lucide.Pencil size={12} aria-hidden="true" />
+                          Chỉnh sửa
+                        </button>
+                      </div>
+
+                      <dl className="mt-4 space-y-3 text-sm">
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Khu vực
+                          </dt>
+                          <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
+                            {selectedArea ? getAreaName(selectedArea) : 'Chưa chọn khu vực'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                            Địa chỉ / vị trí gần đúng
+                          </dt>
+                          <dd className="mt-1 break-words leading-6 text-slate-600 dark:text-slate-300">
+                            {locationText || 'Chưa có địa chỉ'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </article>
+
+                    <article className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 lg:col-span-2 dark:border-slate-700 dark:bg-slate-950/45">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Lucide.Images size={16} className="text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            Minh chứng
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                            {attachments.length} tệp · {formatFileSize(totalAttachmentSize)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => beginReviewEdit(3)}
+                            disabled={submitting}
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-blue-600 transition hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                          >
+                            <Lucide.Pencil size={12} aria-hidden="true" />
+                            Chỉnh sửa
+                          </button>
+                        </div>
+                      </div>
+
+                      {attachments.length > 0 ? (
+                        <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
+                          {attachments.map((attachment) => (
+                            <button
+                              key={`review-${attachment.id}`}
+                              type="button"
+                              onClick={() => openAttachmentPreview(attachment.id)}
+                              className="group relative h-20 w-24 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm transition hover:border-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-800"
+                              aria-label={`Xem lại ${attachment.name}`}
+                            >
+                              {isVideo(attachment) ? (
+                                <>
+                                  <video src={attachment.preview} className="h-full w-full object-cover" muted />
+                                  <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white">
+                                    <Lucide.Play size={18} fill="currentColor" aria-hidden="true" />
+                                  </span>
+                                </>
+                              ) : (
+                                <img
+                                  src={attachment.preview}
+                                  alt={attachment.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                          Chưa có minh chứng được chọn.
+                        </p>
+                      )}
+                    </article>
+                  </div>
+                </section>
             </section>
           ) : null}
 
@@ -1694,7 +1976,7 @@ export const CreateTicketPage = () => {
               </button>
             ) : null}
 
-            {step < 3 ? (
+            {step < STEPS.length ? (
               <button
                 type="button"
                 onClick={() => {
@@ -1704,7 +1986,16 @@ export const CreateTicketPage = () => {
                   }
 
                   if (validateStepAndFocus(step)) {
-                    goToStep(Math.min(3, step + 1));
+                    if (reviewEditStep === step) {
+                      if (step !== 3) {
+                        restoreReviewAttachmentsIfNeeded();
+                      }
+                      setReviewEditStep(null);
+                      goToStep(4);
+                      return;
+                    }
+
+                    goToStep(Math.min(STEPS.length, step + 1));
                   }
                 }}
                 disabled={classificationLoading}
@@ -1734,67 +2025,6 @@ export const CreateTicketPage = () => {
           </footer>
         </article>
 
-        <aside className="hidden">
-          <section className="rounded-[24px] border border-blue-100/80 bg-base-100 p-5 shadow-[0_12px_35px_rgba(15,23,42,0.06)] dark:border-blue-500/15" aria-labelledby="submission-summary-title">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
-                <Lucide.ClipboardList size={18} />
-              </span>
-              <div>
-                <h2 id="submission-summary-title" className="text-base font-semibold">
-                  Thông tin đã nhập
-                </h2>
-                <p className="mt-1 text-xs text-base-content/45">
-                  Kiểm tra nhanh trước khi gửi.
-                </p>
-              </div>
-            </div>
-
-            <dl className="mt-4 divide-y divide-base-300 text-sm">
-              <div className="py-3 first:pt-0">
-                <dt className="text-xs text-base-content/45">Vấn đề</dt>
-                <dd className="mt-1 truncate font-medium">
-                  {title.trim() || 'Chưa nhập tiêu đề'}
-                </dd>
-              </div>
-              <div className="py-3">
-                <dt className="text-xs text-base-content/45">Danh mục</dt>
-                <dd className="mt-1 font-medium">
-                  {selectedCategory ? getCategoryLabel(selectedCategory) : 'Hệ thống đang xác định'}
-                </dd>
-              </div>
-              <div className="py-3">
-                <dt className="text-xs text-base-content/45">Mức độ ảnh hưởng</dt>
-                <dd className="mt-1 font-medium">
-                  {selectedPriority?.label || 'Hệ thống đang xác định'}
-                </dd>
-              </div>
-              <div className="py-3">
-                <dt className="text-xs text-base-content/45">Khu vực</dt>
-                <dd className="mt-1 font-medium">
-                  {selectedArea ? getAreaName(selectedArea) : 'Chưa chọn'}
-                </dd>
-              </div>
-              <div className="py-3 last:pb-0">
-                <dt className="text-xs text-base-content/45">Minh chứng</dt>
-                <dd className="mt-1 font-medium">
-                  {attachments.length > 0
-                    ? `${attachments.length} tệp · ${formatFileSize(totalAttachmentSize)}`
-                    : 'Chưa thêm'}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <aside className="rounded-[24px] border border-info/20 bg-info/5 p-5">
-            <div className="flex items-start gap-3">
-              <Lucide.ShieldCheck size={18} className="mt-0.5 shrink-0 text-info" aria-hidden="true" />
-              <p className="text-xs leading-5 text-base-content/55">
-                Thông tin vị trí và minh chứng chỉ được sử dụng để tiếp nhận, xác minh và xử lý phản ánh.
-              </p>
-            </div>
-          </aside>
-        </aside>
       </section>
         </div>
 

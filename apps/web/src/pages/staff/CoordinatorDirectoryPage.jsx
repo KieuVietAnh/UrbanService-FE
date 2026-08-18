@@ -244,7 +244,7 @@ export default function CoordinatorDirectoryPage() {
             <select
               value={areaId}
               onChange={(event) => setAreaId(event.target.value)}
-              className="select h-11 w-full rounded-xl border-slate-200 !bg-white text-sm text-slate-800 shadow-sm [color-scheme:light]"
+              className="select staff-coordinator-select h-11 w-full rounded-xl text-sm shadow-sm"
               style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
             >
               <option value="" style={{ backgroundColor: '#ffffff' }}>Tất cả khu vực</option>
@@ -258,7 +258,7 @@ export default function CoordinatorDirectoryPage() {
             <select
               value={categoryId}
               onChange={(event) => setCategoryId(event.target.value)}
-              className="select h-11 w-full rounded-xl border-slate-200 !bg-white text-sm text-slate-800 shadow-sm [color-scheme:light]"
+              className="select staff-coordinator-select h-11 w-full rounded-xl text-sm shadow-sm"
               style={{ backgroundColor: '#ffffff', color: '#0f172a' }}
             >
               <option value="" style={{ backgroundColor: '#ffffff' }}>Tất cả danh mục</option>
