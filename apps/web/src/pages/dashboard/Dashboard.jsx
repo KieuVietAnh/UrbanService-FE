@@ -804,8 +804,9 @@ export const Dashboard = () => {
   }, []);
 
   const fetchManagerDashboardContent = useCallback(async () => {
-    const [overviewResult, categoryResult, slaOverviewResult] = await Promise.allSettled([
+    const [overviewResult, statusResult, categoryResult, slaOverviewResult] = await Promise.allSettled([
       feedbackDashboardApi.getOverview(),
+      feedbackDashboardApi.getStatusDistribution(),
       feedbackDashboardApi.getCategoryDistribution(),
       slaApi.getDashboardOverview(),
     ]);
@@ -816,6 +817,9 @@ export const Dashboard = () => {
 
     return {
       overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
+      statusDistribution: statusResult.status === 'fulfilled' && Array.isArray(statusResult.value)
+        ? statusResult.value
+        : null,
       categoryDistribution,
       slaOverview: slaOverviewResult.status === 'fulfilled' ? slaOverviewResult.value : null,
     };
@@ -876,6 +880,9 @@ export const Dashboard = () => {
               categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
                 ? managerDashboard.categoryDistribution
                 : baseStats.categoryDistribution,
+              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
+                ? managerDashboard.statusDistribution
+                : baseStats.statusDistribution,
               slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
                 ? Number(managerDashboard.slaOverview.breachedSla)
                 : baseStats.slaBreaches,
@@ -1057,6 +1064,9 @@ export const Dashboard = () => {
               categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
                 ? managerDashboard.categoryDistribution
                 : baseStats.categoryDistribution,
+              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
+                ? managerDashboard.statusDistribution
+                : baseStats.statusDistribution,
               slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
                 ? Number(managerDashboard.slaOverview.breachedSla)
                 : baseStats.slaBreaches,
@@ -2517,19 +2527,46 @@ export const Dashboard = () => {
   // ----------------------------------------------------
   if (currentRole === 'interaction-manager') {
     const managerTickets = Array.isArray(tickets) ? tickets : [];
-    const pendingApprovals = managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL);
-    const needRework = managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.NEED_REWORK);
-    const activeInteractions = managerTickets.filter((ticket) => [
-      managementTypes.feedbackStatus.VERIFIED,
-      managementTypes.feedbackStatus.ASSIGNED,
-      managementTypes.feedbackStatus.IN_PROGRESS,
-      managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-      managementTypes.feedbackStatus.NEED_REWORK,
-    ].includes(ticket.status));
-    const completedInteractions = managerTickets.filter((ticket) => [
-      managementTypes.feedbackStatus.APPROVED,
-      managementTypes.feedbackStatus.CLOSED,
-    ].includes(ticket.status));
+    const managerStatusDistribution = Array.isArray(stats?.statusDistribution)
+      ? stats.statusDistribution
+      : [];
+    const normalizeStatusKey = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const statusCounts = new Map(
+      managerStatusDistribution.map((item) => [normalizeStatusKey(item?.status), toDashboardCount(item?.count)])
+    );
+    const getStatusCount = (status) => statusCounts.get(normalizeStatusKey(status)) || 0;
+    const hasStatusDistribution = managerStatusDistribution.length > 0;
+
+    const pendingApprovalCount = hasStatusDistribution
+      ? getStatusCount(managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL)
+      : managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL).length;
+    const needReworkCount = hasStatusDistribution
+      ? getStatusCount(managementTypes.feedbackStatus.NEED_REWORK)
+      : managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.NEED_REWORK).length;
+    const activeInteractionCount = hasStatusDistribution
+      ? [
+        managementTypes.feedbackStatus.VERIFIED,
+        managementTypes.feedbackStatus.ASSIGNED,
+        managementTypes.feedbackStatus.IN_PROGRESS,
+        managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+        managementTypes.feedbackStatus.NEED_REWORK,
+      ].reduce((sum, status) => sum + getStatusCount(status), 0)
+      : managerTickets.filter((ticket) => [
+        managementTypes.feedbackStatus.VERIFIED,
+        managementTypes.feedbackStatus.ASSIGNED,
+        managementTypes.feedbackStatus.IN_PROGRESS,
+        managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
+        managementTypes.feedbackStatus.NEED_REWORK,
+      ].includes(ticket.status)).length;
+    const completedInteractionCount = hasStatusDistribution
+      ? [
+        managementTypes.feedbackStatus.APPROVED,
+        managementTypes.feedbackStatus.CLOSED,
+      ].reduce((sum, status) => sum + getStatusCount(status), 0)
+      : managerTickets.filter((ticket) => [
+        managementTypes.feedbackStatus.APPROVED,
+        managementTypes.feedbackStatus.CLOSED,
+      ].includes(ticket.status)).length;
     const managerTopCategories = Array.isArray(stats.categoryDistribution)
       ? stats.categoryDistribution
       : [];
@@ -2573,7 +2610,7 @@ export const Dashboard = () => {
           description="Theo dõi xu hướng phản hồi, giám sát tương tác và xác định cơ hội cải thiện dịch vụ."
           icon={Lucide.ScanSearch}
           statusLabel="Hồ sơ chờ quyết định"
-          statusValue={`${pendingApprovals.length} phản ánh`}
+          statusValue={`${pendingApprovalCount} phản ánh`}
           actions={(
             <Link to="/manager/approvals" className="btn admin-primary-action rounded-2xl">
               <Lucide.BadgeCheck size={17} aria-hidden="true" />
@@ -2585,28 +2622,28 @@ export const Dashboard = () => {
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số quản lý tương tác">
           <ManagerMetricCard
             label="Luồng đang hoạt động"
-            value={activeInteractions.length}
+            value={activeInteractionCount}
             description="Phản ánh đang xác minh, phối hợp hoặc xử lý."
             icon={Lucide.Workflow}
             toneClass="bg-blue-50 text-blue-700"
           />
           <ManagerMetricCard
             label="Chờ duyệt"
-            value={pendingApprovals.length}
+            value={pendingApprovalCount}
             description="Kết quả cần Manager ra quyết định."
             icon={Lucide.ClipboardCheck}
             toneClass="bg-emerald-50 text-emerald-700"
           />
           <ManagerMetricCard
             label="Cần làm lại"
-            value={needRework.length}
+            value={needReworkCount}
             description="Hồ sơ đã trả về để Staff bổ sung."
             icon={Lucide.RotateCcw}
             toneClass="bg-amber-50 text-amber-700"
           />
           <ManagerMetricCard
             label="Đã hoàn tất"
-            value={completedInteractions.length}
+            value={completedInteractionCount}
             description="Phản ánh đã duyệt hoặc đã đóng."
             icon={Lucide.CircleCheckBig}
             toneClass="bg-cyan-50 text-cyan-700"
