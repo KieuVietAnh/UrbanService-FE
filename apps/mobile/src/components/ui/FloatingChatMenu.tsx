@@ -23,7 +23,7 @@ const CHAT_OPTIONS = (mode: 'default' | 'home' = 'default') => [
   mode === 'home'
     ? {
         id: 'inbox' as const,
-        label: 'Inbox',
+        label: 'Hộp thư',
         sub: 'Hộp thư',
         icon: 'inbox' as const,
         color: '#2563EB',
@@ -39,7 +39,7 @@ const CHAT_OPTIONS = (mode: 'default' | 'home' = 'default') => [
       },
   {
     id: 'ai' as const,
-    label: 'Chat AI Assistant',
+    label: 'Chat Trợ lý AI',
     sub: 'Trợ lý đô thị thông minh',
     icon: 'cpu' as const,
     color: '#8B5CF6',
@@ -73,7 +73,7 @@ export function FloatingChatMenu({ bottomOffset = 90, onSelectOption, mode = 'de
       onSelectOption(id);
       return;
     }
-    if (id === 'ai') toast.info('Đang kết nối Trợ lý AI Assistant...');
+    if (id === 'ai') toast.info('Đang kết nối Trợ lý AI...');
     else if (id === 'inbox') toast.info('Mở hộp thư...');
     else toast.info('Đang kết nối Cán bộ hỗ trợ...');
   };

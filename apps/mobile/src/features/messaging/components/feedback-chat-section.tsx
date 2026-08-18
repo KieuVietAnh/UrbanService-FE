@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, StyleSheet, Text, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, FlatList, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { KeyboardAwareComposerLayout } from '@/components/layouts';
 import MessageBubble, { ChatMessage } from './feedback-message-bubble';
 import MessageComposer from './message-composer';
@@ -13,7 +14,6 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
   const qc = useQueryClient();
   const toast = useToast();
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
-  const [composerHeight, setComposerHeight] = useState<number>(72);
 
   const {
     data: messages = [],
@@ -87,7 +87,6 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
                 onSend={handleSend}
                 sending={!feedbackId || sendMutation.isPending || isLoading}
                 onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80)}
-                onHeightChange={(h: number) => setComposerHeight(h)}
               />
             </View>
           </View>
@@ -100,30 +99,32 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
 
           <View style={styles.chatBody}>
             <View style={styles.listWrap}>
-              <FlatList
-                ref={listRef}
-                data={messages}
-                keyExtractor={(m: ChatMessage, i: number) =>
-                  String(m?.id ?? m?.messageId ?? m?.tempId ?? `${m?.createdAt ?? ''}-${i}`)
-                }
-                renderItem={({ item }) => <MessageBubble msg={item} />}
-                ListEmptyComponent={isLoading ? (
-                  <View style={styles.initialLoading}>
-                    <ActivityIndicator size="large" color={semantics.text.brand} />
-                  </View>
-                ) : isError ? (
-                  <AppErrorState onRetry={refetch}>Unable to load this conversation.</AppErrorState>
-                ) : (
-                  <View style={styles.empty}> 
-                    <Text style={styles.emptyTitle}>No conversation yet</Text>
-                    <Text style={styles.emptySub}>You can ask staff about this feedback.</Text>
-                  </View>
-                )}
-                contentContainerStyle={{ paddingVertical: 10, paddingBottom: 16 }}
-                nestedScrollEnabled
-                keyboardShouldPersistTaps="handled"
-                onContentSizeChange={() => setTimeout(() => scrollToBottom(true), 50)}
-                style={styles.list}
+              <KeyboardAwareScrollView
+                ref={listRef as any}
+                ScrollViewComponent={FlatList as any}
+                {...({
+                  data: messages,
+                  keyExtractor: (m: ChatMessage, i: number) =>
+                    String(m?.id ?? m?.messageId ?? m?.tempId ?? `${m?.createdAt ?? ''}-${i}`),
+                  renderItem: ({ item }: { item: ChatMessage }) => <MessageBubble msg={item} />,
+                  ListEmptyComponent: isLoading ? (
+                    <View style={styles.initialLoading}>
+                      <ActivityIndicator size="large" color={semantics.text.brand} />
+                    </View>
+                  ) : isError ? (
+                    <AppErrorState onRetry={refetch}>Unable to load this conversation.</AppErrorState>
+                  ) : (
+                    <View style={styles.empty}>
+                      <Text style={styles.emptyTitle}>No conversation yet</Text>
+                      <Text style={styles.emptySub}>You can ask staff about this feedback.</Text>
+                    </View>
+                  ),
+                  contentContainerStyle: { paddingVertical: 10, paddingBottom: 16 },
+                  nestedScrollEnabled: true,
+                  keyboardShouldPersistTaps: 'handled',
+                  onContentSizeChange: () => setTimeout(() => scrollToBottom(true), 50),
+                  style: styles.list,
+                } as any)}
               />
             </View>
           </View>
@@ -140,7 +141,14 @@ const styles = StyleSheet.create({
   listWrap: { flex: 1 },
   list: { flex: 1 },
   initialLoading: { paddingVertical: 48, alignItems: 'center', justifyContent: 'center' },
-  composerWrap: { width: '100%', zIndex: 20, backgroundColor: semantics.bg.surface, paddingHorizontal: 12, paddingVertical: 8, alignItems: 'stretch' },
+  composerWrap: {
+    width: '100%',
+    zIndex: 20,
+    backgroundColor: semantics.bg.surface,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    alignItems: 'stretch',
+  },
   headerRow: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 },
   sectionTitle: { fontSize: 12, fontFamily: 'Geist-SemiBold', color: semantics.text.lightMuted, textTransform: 'uppercase', letterSpacing: 0.6 },
   empty: { padding: 20, alignItems: 'center' },

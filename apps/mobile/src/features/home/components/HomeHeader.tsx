@@ -17,9 +17,9 @@ type Props = {
 };
 
 const formatRole = (role?: string) => {
-  if (!role) return 'Resident';
+  if (!role) return 'Cư dân';
   const normalized = role.replace(/[_-]+/g, ' ').trim().toLowerCase();
-  if (normalized === 'resident' || normalized === 'service user') return 'Resident';
+  if (normalized === 'resident' || normalized === 'service user') return 'Cư dân';
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 };
 

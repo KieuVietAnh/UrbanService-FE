@@ -1,16 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   FlatList,
   StyleSheet,
   RefreshControl,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
@@ -98,7 +97,6 @@ export default function AiConversationDetailScreen() {
   const toast = useToast();
   const listRef = useRef<FlatList<AiMessage> | null>(null);
   const queryClient = useQueryClient();
-  const [composerHeight, setComposerHeight] = useState(72);
   const isPlaceholderConversation = conversationId === 'ai-assistant';
 
   const {
@@ -222,7 +220,7 @@ export default function AiConversationDetailScreen() {
       <View style={[styles.messageWrap, isUser ? styles.messageOwnWrap : styles.messageOtherWrap]}>
         <View style={[styles.messageBubble, isUser ? styles.messageOwn : styles.messageOther]}>
           <Text style={[styles.messageSender, isUser ? styles.messageSenderOwn : styles.messageSenderOther]}>
-            {isUser ? 'Bạn' : 'AI Assistant'}
+            {isUser ? 'Bạn' : 'Trợ lý AI'}
           </Text>
           <Text style={[styles.messageText, isUser ? styles.messageTextOwn : styles.messageTextOther]}>
             {item.content}
@@ -238,7 +236,7 @@ export default function AiConversationDetailScreen() {
   return (
     <View style={styles.safe}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <AppHeader showBack title="AI Assistant" subtitle="Câu chuyện của bạn" />
+        <AppHeader showBack title="Trợ lý AI" subtitle="Câu chuyện của bạn" />
 
         {isError && messages.length === 0 ? (
           <AppErrorState onRetry={refetch}>
@@ -254,7 +252,6 @@ export default function AiConversationDetailScreen() {
                     onSend={handleSend}
                     sending={sendMutation.isPending || isLoading}
                     onFocus={() => scrollToBottom(true)}
-                    onHeightChange={(height) => setComposerHeight(height)}
                   />
                 </View>
               </View>
@@ -262,40 +259,43 @@ export default function AiConversationDetailScreen() {
           >
             <View style={styles.container}>
               <View style={styles.chatBody}>
-                <FlatList
-                  ref={listRef}
-                  data={messages}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderMessage}
-                  contentContainerStyle={{
-                    paddingVertical: 10,
-                    paddingHorizontal: 0,
-                    paddingBottom: 16,
-                    flexGrow: 1,
-                  }}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  onContentSizeChange={() => setTimeout(() => scrollToBottom(true), 60)}
-                  onLayout={() => setTimeout(() => scrollToBottom(true), 60)}
-                  style={styles.list}
-                  refreshControl={
-                    <RefreshControl
-                      refreshing={isRefetching}
-                      onRefresh={refetch}
-                      tintColor={semantics.text.brand}
-                    />
-                  }
-                  ListEmptyComponent={isLoading ? (
-                    <View style={styles.initialLoading}>
-                      <ActivityIndicator size="large" color={semantics.text.brand} />
-                    </View>
-                  ) : (
-                    <AppEmptyState
-                      icon={<Icon name="cpu" size={40} color={semantics.text.lightMuted} />}
-                    >
-                      Chưa có tin nhắn nào trong hội thoại này. Gửi tin nhắn để bắt đầu.
-                    </AppEmptyState>
-                  )}
+                <KeyboardAwareScrollView
+                  ref={listRef as any}
+                  ScrollViewComponent={FlatList as any}
+                  {...({
+                    data: messages,
+                    keyExtractor: (item: AiMessage) => item.id,
+                    renderItem: renderMessage,
+                    contentContainerStyle: {
+                      paddingVertical: 10,
+                      paddingHorizontal: 0,
+                      paddingBottom: 16,
+                      flexGrow: 1,
+                    },
+                    showsVerticalScrollIndicator: false,
+                    keyboardShouldPersistTaps: 'handled',
+                    onContentSizeChange: () => setTimeout(() => scrollToBottom(true), 60),
+                    onLayout: () => setTimeout(() => scrollToBottom(true), 60),
+                    style: styles.list,
+                    refreshControl: (
+                      <RefreshControl
+                        refreshing={isRefetching}
+                        onRefresh={refetch}
+                        tintColor={semantics.text.brand}
+                      />
+                    ),
+                    ListEmptyComponent: isLoading ? (
+                      <View style={styles.initialLoading}>
+                        <ActivityIndicator size="large" color={semantics.text.brand} />
+                      </View>
+                    ) : (
+                      <AppEmptyState
+                        icon={<Icon name="cpu" size={40} color={semantics.text.lightMuted} />}
+                      >
+                        Chưa có tin nhắn nào trong hội thoại này. Gửi tin nhắn để bắt đầu.
+                      </AppEmptyState>
+                    ),
+                  } as any)}
                 />
               </View>
             </View>

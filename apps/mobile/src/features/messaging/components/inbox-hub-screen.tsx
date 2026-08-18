@@ -292,12 +292,12 @@ function AIHeroCard({ onPress }: { onPress: () => void }) {
                 <View style={heroStyles.eyebrowDot} />
                 <Text style={heroStyles.eyebrowText}>UrbanMind AI</Text>
               </View>
-              <Text style={heroStyles.heroTitle}>AI Assistant</Text>
+              <Text style={heroStyles.heroTitle}>Trợ lý AI</Text>
             </View>
 
             <View style={heroStyles.onlineBadge}>
               <View style={heroStyles.onlineDot} />
-              <Text style={heroStyles.onlineText}>Online</Text>
+              <Text style={heroStyles.onlineText}>Trực tuyến</Text>
             </View>
           </View>
 
@@ -799,7 +799,7 @@ export default function InboxScreen() {
         >
           <View style={tabStyles.tabContent}>
             <Icon name="cpu" size={13} color={activeTab === 'ai' ? D.aiPrimary : semantics.text.lightMuted} />
-            <Text style={[tabStyles.tabLabel, activeTab === 'ai' && tabStyles.tabLabelActive]}>AI Assistant</Text>
+            <Text style={[tabStyles.tabLabel, activeTab === 'ai' && tabStyles.tabLabelActive]}>Trợ lý AI</Text>
           </View>
         </Pressable>
         <Pressable

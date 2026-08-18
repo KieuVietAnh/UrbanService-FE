@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from '@expo-google-fonts/geist/useFonts';
 import { Geist_400Regular } from '@expo-google-fonts/geist/400Regular';
@@ -50,7 +51,7 @@ export default function RootLayout() {
     console.log('[RootLayout] waiting for fonts to load');
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff' }}>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>Loading UrbanMind...</Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>Đang khởi động UrbanMind...</Text>
       </View>
     );
   }
@@ -58,11 +59,13 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <RootNavigation />
-          </ToastProvider>
-        </QueryClientProvider>
+        <KeyboardProvider>
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>
+              <RootNavigation />
+            </ToastProvider>
+          </QueryClientProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
