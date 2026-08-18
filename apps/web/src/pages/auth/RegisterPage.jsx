@@ -8,6 +8,7 @@ import { AuthLayout } from '../../components/auth/AuthLayout';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^0\d{9}$/;
+const MIN_PASSWORD_LENGTH = 8;
 const REGISTER_DRAFT_STORAGE_KEY = 'urbanmind:registration-draft';
 
 
@@ -77,15 +78,16 @@ const getServerValidationFields = (data) => {
   if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return {};
 
   const mappedErrors = {};
-  Object.entries(errors).forEach(([key, messages]) => {
+  Object.keys(errors).forEach((key) => {
     const normalizedKey = normalizeForMatch(key).replace(/[^a-z]/g, '');
-    const rawMessage = toMessageList(messages)[0] || '';
-
-    if (normalizedKey.includes('email')) mappedErrors.email = rawMessage;
-    else if (normalizedKey.includes('phone')) mappedErrors.phone = rawMessage;
-    else if (normalizedKey.includes('password')) mappedErrors.password = rawMessage;
-    else if (normalizedKey.includes('fullname') || normalizedKey.includes('name')) {
-      mappedErrors.fullName = rawMessage;
+    if (normalizedKey.includes('email')) {
+      mappedErrors.email = 'Địa chỉ email chưa hợp lệ.';
+    } else if (normalizedKey.includes('phone')) {
+      mappedErrors.phone = 'Số điện thoại chưa hợp lệ.';
+    } else if (normalizedKey.includes('password')) {
+      mappedErrors.password = 'Mật khẩu chưa hợp lệ.';
+    } else if (normalizedKey.includes('fullname') || normalizedKey.includes('name')) {
+      mappedErrors.fullName = 'Họ và tên chưa hợp lệ.';
     }
   });
 
@@ -276,19 +278,9 @@ const getRegisterErrorDetails = (err) => {
   }
 
   if (status === 400 || status === 422) {
-    const safeBackendMessage = messages.find((message) => {
-      const normalized = normalizeForMatch(message);
-      return (
-        message.length <= 180 &&
-        !normalized.includes('request failed with status code') &&
-        !normalized.includes('bad request') &&
-        !normalized.includes('validation failed')
-      );
-    });
-
     return {
       title: 'Thông tin đăng ký chưa hợp lệ',
-      message: safeBackendMessage || 'Vui lòng kiểm tra lại thông tin và thử đăng ký lần nữa.',
+      message: 'Vui lòng kiểm tra lại thông tin và thử đăng ký lần nữa.',
       fieldErrors,
     };
   }
@@ -311,7 +303,6 @@ const getOtpDeliveryError = (err) => {
     ...toMessageList(err?.response?.data),
     ...toMessageList(err?.message),
   ].filter(Boolean);
-  const rawMessage = messages[0] || '';
   const normalizedMessage = normalizeForMatch(messages.join(' '));
 
   if (
@@ -360,9 +351,7 @@ const getOtpDeliveryError = (err) => {
 
   return {
     title: 'Chưa thể gửi mã xác thực',
-    message: rawMessage && rawMessage.length <= 180
-      ? rawMessage
-      : 'Tài khoản đã được tạo. Vui lòng thử gửi lại mã ở bước tiếp theo.',
+    message: 'Tài khoản đã được tạo. Vui lòng thử gửi lại mã ở bước tiếp theo.',
   };
 };
 
@@ -431,7 +420,7 @@ export const RegisterPage = () => {
   ].join(' ');
 
   const validateForm = () => {
-    const normalizedFullName = fullName.trim();
+    const normalizedFullName = fullName.trim().replace(/\s+/g, ' ');
     const normalizedEmail = email.trim();
     const normalizedPhone = phone.trim();
     const nextErrors = {};
@@ -459,8 +448,10 @@ export const RegisterPage = () => {
         nextErrors.password = isEditingRegistration
           ? 'Vui lòng nhập mật khẩu mới.'
           : 'Vui lòng nhập mật khẩu.';
-      } else if (password.length < 8) {
-        nextErrors.password = 'Mật khẩu phải có ít nhất 8 ký tự.';
+      } else if (!password.trim()) {
+        nextErrors.password = 'Mật khẩu không được chỉ chứa khoảng trắng.';
+      } else if (password.length < MIN_PASSWORD_LENGTH) {
+        nextErrors.password = `Mật khẩu phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự.`;
       }
 
       if (!confirmPassword) {
@@ -479,6 +470,10 @@ export const RegisterPage = () => {
       });
       return null;
     }
+
+    setFullName(normalizedFullName);
+    setEmail(normalizedEmail);
+    setPhone(normalizedPhone);
 
     return {
       fullName: normalizedFullName,
@@ -687,6 +682,7 @@ export const RegisterPage = () => {
                 autoComplete="name"
                 placeholder="Nguyễn Văn A"
                 value={fullName}
+                maxLength={120}
                 onChange={(event) => {
                   setFullName(event.target.value);
                   clearFieldError('fullName');
@@ -716,6 +712,7 @@ export const RegisterPage = () => {
                 inputMode="email"
                 placeholder="name@email.com"
                 value={email}
+                maxLength={254}
                 onChange={(event) => {
                   setEmail(event.target.value);
                   clearFieldError('email');
