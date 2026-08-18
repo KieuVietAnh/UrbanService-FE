@@ -6,10 +6,11 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  KeyboardStickyView,
-  useKeyboardHandler,
-} from 'react-native-keyboard-controller';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { useKeyboardHandler } from 'react-native-keyboard-controller';
 
 interface KeyboardAwareComposerLayoutProps {
   children: React.ReactNode;
@@ -26,34 +27,42 @@ export function KeyboardAwareComposerLayout({
 }: KeyboardAwareComposerLayoutProps) {
   const insets = useSafeAreaInsets();
 
+  const keyboardHeight = useSharedValue(0);
+  const keyboardProgress = useSharedValue(0);
+
   useKeyboardHandler(
     {
-      onStart: (event) => {
-        'worklet';
-        console.log(
-          '[KeyboardController] start',
-          event.height,
-        );
-      },
-
       onMove: (event) => {
         'worklet';
-        console.log(
-          '[KeyboardController] move',
-          event.height,
-        );
+
+        keyboardHeight.value = event.height;
+        keyboardProgress.value = event.progress;
       },
 
       onEnd: (event) => {
         'worklet';
-        console.log(
-          '[KeyboardController] end',
-          event.height,
-        );
+
+        keyboardHeight.value = event.height;
+        keyboardProgress.value = event.progress;
       },
     },
     [],
   );
+
+  const composerAnimatedStyle = useAnimatedStyle(() => {
+    const restingInset =
+      (1 - keyboardProgress.value) * insets.bottom;
+
+    return {
+      transform: [
+        {
+          translateY:
+            -keyboardHeight.value -
+            restingInset,
+        },
+      ],
+    };
+  }, [insets.bottom]);
 
   return (
     <View style={[styles.container, style]}>
@@ -61,16 +70,14 @@ export function KeyboardAwareComposerLayout({
         {children}
       </View>
 
-      <KeyboardStickyView
-        enabled
-        offset={{
-          closed: -insets.bottom,
-          opened: 0,
-        }}
-        style={styles.stickyComposer}
+      <Animated.View
+        style={[
+          styles.composer,
+          composerAnimatedStyle,
+        ]}
       >
         {composer}
-      </KeyboardStickyView>
+      </Animated.View>
     </View>
   );
 }
@@ -82,7 +89,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  stickyComposer: {
+  composer: {
     alignSelf: 'stretch',
   },
 });
