@@ -48,6 +48,7 @@ export default function CoordinatorDirectoryPage() {
   const canManage = role === APP_ROLES.ADMINISTRATOR || role === APP_ROLES.INTERACTION_MANAGER;
 
   const [items, setItems] = useState(initialCache.items);
+  const [summaryItems, setSummaryItems] = useState(initialCache.items);
   const [areas, setAreas] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(!initialCache.hasLoaded);
@@ -63,9 +64,16 @@ export default function CoordinatorDirectoryPage() {
   const [highlightedCoordinatorId, setHighlightedCoordinatorId] = useState('');
 
   useEffect(() => {
-    Promise.allSettled([toolsApi.getAreas(), toolsApi.getCategories()]).then(([areaResult, categoryResult]) => {
+    Promise.allSettled([
+      toolsApi.getAreas(),
+      toolsApi.getCategories(),
+      managementFeedbackApi.getServiceProviders({ includeInactive: true }),
+    ]).then(([areaResult, categoryResult, coordinatorResult]) => {
       setAreas(areaResult.status === 'fulfilled' ? unwrapList(areaResult.value) : []);
       setCategories(categoryResult.status === 'fulfilled' ? unwrapList(categoryResult.value) : []);
+      if (coordinatorResult.status === 'fulfilled') {
+        setSummaryItems(unwrapList(coordinatorResult.value));
+      }
     });
   }, []);
 
@@ -261,11 +269,11 @@ export default function CoordinatorDirectoryPage() {
   };
 
   const stats = useMemo(() => ({
-    total: items.length,
-    active: items.filter((item) => item.isActive).length,
-    inactive: items.filter((item) => !item.isActive).length,
-    coverages: items.reduce((sum, item) => sum + Number(item.coverageCount || 0), 0),
-  }), [items]);
+    total: summaryItems.length,
+    active: summaryItems.filter((item) => item.isActive).length,
+    inactive: summaryItems.filter((item) => !item.isActive).length,
+    coverages: summaryItems.reduce((sum, item) => sum + Number(item.coverageCount || 0), 0),
+  }), [summaryItems]);
 
   const filteredItems = useMemo(() => {
     if (statusFilter === 'active') return items.filter((item) => item.isActive);
@@ -417,15 +425,15 @@ export default function CoordinatorDirectoryPage() {
           {refreshing && <span className="inline-flex items-center gap-2"><span className="loading loading-spinner loading-xs text-blue-600" /> Đang cập nhật danh sách...</span>}
         </div>
 
-        <div className="mt-2 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
+        <div className="mt-2 min-w-0 overflow-hidden border-t border-slate-200 dark:border-slate-700">
           <table className="table table-fixed w-full text-sm text-slate-700 dark:text-slate-200">
             <colgroup>
-              <col className="w-[23%]" />
-              <col className="w-[16%]" />
+              <col className="w-[25%]" />
+              <col className="w-[17%]" />
               <col className="w-[22%]" />
-              <col className="w-[15%]" />
-              <col className="w-[19%]" />
-              <col className="w-[5%]" />
+              <col className="w-[14%]" />
+              <col className="w-[13%]" />
+              <col className="w-[9%]" />
             </colgroup>
             <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
               <tr><th>Đơn vị cung cấp</th><th>Người phụ trách</th><th>Liên hệ</th><th>Phạm vi phụ trách</th><th>Trạng thái</th><th /></tr>
@@ -450,10 +458,10 @@ export default function CoordinatorDirectoryPage() {
                   >
                     <td className="min-w-0"><div className="break-words font-semibold text-slate-950 dark:text-slate-100">{item.providerName || '—'}</div><div className="mt-1 text-xs text-slate-400 dark:text-slate-500">Mã: {id}</div></td>
                     <td className="break-words font-medium text-slate-700 dark:text-slate-300">{item.coordinatorName || item.name || '—'}</td>
-                    <td className="min-w-0"><div>{item.phoneNumber || '—'}</div><div className="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">{item.email || '—'}</div></td>
+                    <td className="min-w-0"><div>{item.phoneNumber || '—'}</div><div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400" title={item.email || ''}>{item.email || '—'}</div></td>
                     <td><span className="inline-flex rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">{item.coverageCount ?? 0}</span></td>
                     <td><span className={`badge border-0 font-semibold ${item.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{item.isActive ? 'Hoạt động' : 'Đã vô hiệu hóa'}</span></td>
-                    <td><Lucide.ChevronRight size={18} className="text-slate-400" /></td>
+                    <td className="whitespace-nowrap text-right"><button type="button" onClick={(event) => { event.stopPropagation(); openCoordinator(id); }} className="whitespace-nowrap text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline">Chi tiết</button></td>
                   </tr>
                 );
               })}
