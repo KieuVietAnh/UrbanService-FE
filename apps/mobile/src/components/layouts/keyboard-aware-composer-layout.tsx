@@ -1,7 +1,16 @@
 import React from 'react';
-import { StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
+import {
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { useKeyboardHandler } from 'react-native-keyboard-controller';
 
 interface KeyboardAwareComposerLayoutProps {
   children: React.ReactNode;
@@ -18,19 +27,57 @@ export function KeyboardAwareComposerLayout({
 }: KeyboardAwareComposerLayoutProps) {
   const insets = useSafeAreaInsets();
 
+  const keyboardHeight = useSharedValue(0);
+  const keyboardProgress = useSharedValue(0);
+
+  useKeyboardHandler(
+    {
+      onMove: (event) => {
+        'worklet';
+
+        keyboardHeight.value = event.height;
+        keyboardProgress.value = event.progress;
+      },
+
+      onEnd: (event) => {
+        'worklet';
+
+        keyboardHeight.value = event.height;
+        keyboardProgress.value = event.progress;
+      },
+    },
+    [],
+  );
+
+  const composerAnimatedStyle = useAnimatedStyle(() => {
+    const restingInset =
+      (1 - keyboardProgress.value) * insets.bottom;
+
+    return {
+      transform: [
+        {
+          translateY:
+            -keyboardHeight.value -
+            restingInset,
+        },
+      ],
+    };
+  }, [insets.bottom]);
+
   return (
     <View style={[styles.container, style]}>
       <View style={[styles.content, contentStyle]}>
         {children}
       </View>
 
-      <KeyboardStickyView
-        enabled
-        offset={{ closed: insets.bottom, opened: 0 }}
-        style={styles.stickyComposer}
+      <Animated.View
+        style={[
+          styles.composer,
+          composerAnimatedStyle,
+        ]}
       >
         {composer}
-      </KeyboardStickyView>
+      </Animated.View>
     </View>
   );
 }
@@ -42,7 +89,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  stickyComposer: {
+  composer: {
     alignSelf: 'stretch',
   },
 });
