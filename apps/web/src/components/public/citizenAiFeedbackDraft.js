@@ -23,7 +23,6 @@ export const parseCitizenAiFeedbackDraft = (rawDraft, validSteps = []) => {
 };
 
 export const buildCitizenFeedbackSubmission = ({
-  resolvedIds,
   title,
   description,
   suggestedCategory,
@@ -35,34 +34,19 @@ export const buildCitizenFeedbackSubmission = ({
   const latitudeNumber = latitude === '' || latitude == null ? NaN : Number(latitude);
   const longitudeNumber = longitude === '' || longitude == null ? NaN : Number(longitude);
   const hasCoordinates = Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber);
-  const draft = {
-    title,
-    description,
-    suggestedCategory,
-    location,
-    latitude: hasCoordinates ? latitudeNumber : null,
-    longitude: hasCoordinates ? longitudeNumber : null,
-    priority: 'Medium',
-  };
 
-  if (!resolvedIds?.areaId || !resolvedIds?.categoryId) {
-    return { type: 'complete-in-form', draft, attachments };
-  }
-
+  // Citizen submission must not assign category or priority before the
+  // post-submission AI review. Keep AI suggestions as draft-only context.
   return {
-    type: 'submit',
-    ticketData: {
-      areaId: Number(resolvedIds.areaId),
-      categoryId: Number(resolvedIds.categoryId),
+    type: 'complete-in-form',
+    draft: {
       title,
       description,
-      priority: 'Medium',
-      locationText: location || (hasCoordinates
-        ? `Vị trí GPS: ${latitudeNumber.toFixed(6)}, ${longitudeNumber.toFixed(6)}`
-        : 'Chưa cung cấp vị trí chi tiết'),
-      latitude: hasCoordinates ? latitudeNumber : undefined,
-      longitude: hasCoordinates ? longitudeNumber : undefined,
-      attachments,
+      suggestedCategory,
+      location,
+      latitude: hasCoordinates ? latitudeNumber : null,
+      longitude: hasCoordinates ? longitudeNumber : null,
     },
+    attachments,
   };
 };

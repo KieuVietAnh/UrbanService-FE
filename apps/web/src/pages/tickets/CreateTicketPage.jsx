@@ -25,14 +25,6 @@ const STEP_FIELDS = {
   4: [],
 };
 
-const CATEGORY_LABELS = {
-  Drainage: 'Thoát nước',
-  'Garbage Collection': 'Thu gom rác',
-  'Public Safety': 'An toàn công cộng',
-  'Road Maintenance': 'Bảo trì đường bộ',
-  'Street Lighting': 'Chiếu sáng đô thị',
-  'Water Supply': 'Cấp nước',
-};
 
 const MAX_ATTACHMENT_COUNT = 5;
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -65,41 +57,7 @@ const formatFileSize = (bytes = 0) => {
   return `${value.toFixed(digits)} ${units[unitIndex]}`;
 };
 
-const PRIORITY_OPTIONS = [
-  {
-    value: 'Low',
-    label: 'Thấp',
-    description: 'Ít ảnh hưởng và chưa cần xử lý ngay.',
-    icon: Lucide.ArrowDown,
-  },
-  {
-    value: 'Medium',
-    label: 'Trung bình',
-    description: 'Có ảnh hưởng nhưng chưa gây nguy hiểm tức thời.',
-    icon: Lucide.Minus,
-  },
-  {
-    value: 'High',
-    label: 'Cao',
-    description: 'Ảnh hưởng rõ rệt và cần được ưu tiên.',
-    icon: Lucide.ArrowUp,
-  },
-  {
-    value: 'Urgent',
-    label: 'Khẩn cấp',
-    description: 'Có nguy cơ mất an toàn hoặc gây gián đoạn nghiêm trọng.',
-    icon: Lucide.Siren,
-  },
-];
 
-const getCategoryId = (category) => category?.categoryId ?? category?.id;
-const getCategoryName = (category) => (
-  category?.categoryName ?? category?.name ?? 'Chưa phân loại'
-);
-const getCategoryLabel = (category) => {
-  const name = getCategoryName(category);
-  return CATEGORY_LABELS[name] || name;
-};
 
 const getAreaId = (area) => area?.areaId ?? area?.id;
 const getAreaName = (area) => (
@@ -108,17 +66,6 @@ const getAreaName = (area) => (
 
 const normalizeAiDraftPayload = (payload) => payload?.data ?? payload?.draft ?? payload ?? null;
 
-const findCategoryIdByAiSuggestion = (categories, suggestedCategory) => {
-  if (!suggestedCategory) return '';
-  const normalizedSuggestion = String(suggestedCategory).trim().toLowerCase();
-  const matchedCategory = categories.find((category) => {
-    const categoryIdValue = String(getCategoryId(category) ?? '').toLowerCase();
-    const categoryNameValue = String(getCategoryName(category) ?? '').toLowerCase();
-    const categoryLabelValue = String(getCategoryLabel(category) ?? '').toLowerCase();
-    return [categoryIdValue, categoryNameValue, categoryLabelValue].includes(normalizedSuggestion);
-  });
-  return matchedCategory ? String(getCategoryId(matchedCategory)) : '';
-};
 
 const getAreaBoundaryGeoJson = (area) => (
   area?.BoundaryGeoJson ??
@@ -130,12 +77,6 @@ const getAreaBoundaryGeoJson = (area) => (
   null
 );
 
-const normalizePriority = (value) => {
-  if (value === 'Critical') return 'Urgent';
-  return PRIORITY_OPTIONS.some((option) => option.value === value)
-    ? value
-    : 'Medium';
-};
 
 const isVideo = (attachment) => (
   attachment?.type?.startsWith('video/') || attachment?.file?.type?.startsWith('video/')
@@ -152,17 +93,13 @@ export const CreateTicketPage = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [areaId, setAreaId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [priority, setPriority] = useState('Medium');
   const [locationText, setLocationText] = useState('');
   const [latitude, setLatitude] = useState(null);
   const [longitude, setLongitude] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [attachmentError, setAttachmentError] = useState('');
   const [areas, setAreas] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [areasLoading, setAreasLoading] = useState(true);
-  const [classificationLoading, setClassificationLoading] = useState(false);
   const [duplicates, setDuplicates] = useState([]);
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -206,8 +143,6 @@ export const CreateTicketPage = () => {
       setTitle(typeof draft.title === 'string' ? draft.title : '');
       setDescription(typeof draft.description === 'string' ? draft.description : '');
       setAreaId(draft.areaId ? String(draft.areaId) : '');
-      setCategoryId(draft.categoryId ? String(draft.categoryId) : '');
-      setPriority(normalizePriority(draft.priority));
       setLocationText(typeof draft.locationText === 'string' ? draft.locationText : '');
       setLatitude(Number.isFinite(draft.latitude) ? draft.latitude : null);
       setLongitude(Number.isFinite(draft.longitude) ? draft.longitude : null);
@@ -239,12 +174,9 @@ export const CreateTicketPage = () => {
     if (nextLocation) setLocationText(nextLocation);
     if (Number.isFinite(Number(aiDraft.latitude))) setLatitude(Number(aiDraft.latitude));
     if (Number.isFinite(Number(aiDraft.longitude))) setLongitude(Number(aiDraft.longitude));
-    if (aiDraft.urgencyLevel) setPriority(normalizePriority(aiDraft.urgencyLevel));
     if (nextImageUrls.length > 0) setAiImageUrls(nextImageUrls);
     setAiMissingFields(nextMissingFields);
 
-    const suggestedCategoryId = findCategoryIdByAiSuggestion(categories, aiDraft.suggestedCategory);
-    if (suggestedCategoryId) setCategoryId(suggestedCategoryId);
 
     setStep(1);
     setDraftNotice('');
@@ -253,7 +185,7 @@ export const CreateTicketPage = () => {
       'AI đã tạo bản nháp phản ánh. Vui lòng xem trước, bổ sung thông tin còn thiếu và xác nhận gửi.'
     );
     window.history.replaceState({}, document.title);
-  }, [categories, routeLocation.state]);
+  }, [routeLocation.state]);
 
   useEffect(() => {
     if (aiAttachmentsHydratedRef.current) return;
@@ -314,8 +246,6 @@ export const CreateTicketPage = () => {
           title,
           description,
           areaId,
-          categoryId,
-          priority,
           locationText,
           latitude,
           longitude,
@@ -330,13 +260,11 @@ export const CreateTicketPage = () => {
   }, [
     areaId,
     attachments,
-    categoryId,
     description,
     draftStorageKey,
     latitude,
     locationText,
     longitude,
-    priority,
     step,
     submitted,
     title,
@@ -348,9 +276,8 @@ export const CreateTicketPage = () => {
     const loadOptions = async () => {
       setAreasLoading(true);
 
-      const [areasResult, categoriesResult] = await Promise.allSettled([
+      const [areasResult] = await Promise.allSettled([
         toolsApi.getAreas(),
-        toolsApi.getCategories(),
       ]);
 
       if (!active) return;
@@ -358,11 +285,6 @@ export const CreateTicketPage = () => {
       setAreas(
         areasResult.status === 'fulfilled' && Array.isArray(areasResult.value)
           ? areasResult.value
-          : []
-      );
-      setCategories(
-        categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value)
-          ? categoriesResult.value
           : []
       );
       setAreasLoading(false);
@@ -505,17 +427,6 @@ export const CreateTicketPage = () => {
     };
   }, [step, latitude, longitude, selectedArea, locationText]);
 
-  const selectedCategory = useMemo(
-    () => categories.find(
-      (category) => String(getCategoryId(category)) === String(categoryId)
-    ),
-    [categories, categoryId]
-  );
-
-  const selectedPriority = useMemo(
-    () => PRIORITY_OPTIONS.find((option) => option.value === priority),
-    [priority]
-  );
 
   const totalAttachmentSize = useMemo(
     () => attachments.reduce(
@@ -558,7 +469,7 @@ export const CreateTicketPage = () => {
   };
 
   const stepCompletion = useMemo(() => ({
-    1: Boolean(title.trim() && description.trim() && categoryId && priority),
+    1: Boolean(title.trim() && description.trim()),
     2: Boolean(
       areaId &&
       latitude != null &&
@@ -573,8 +484,6 @@ export const CreateTicketPage = () => {
     4: Boolean(
       title.trim() &&
       description.trim() &&
-      categoryId &&
-      priority &&
       areaId &&
       latitude != null &&
       longitude != null &&
@@ -586,12 +495,10 @@ export const CreateTicketPage = () => {
   }), [
     areaId,
     attachments.length,
-    categoryId,
     description,
     latitude,
     longitude,
     isSelectedLocationInsideArea,
-    priority,
     title,
     totalAttachmentSize,
   ]);
@@ -907,39 +814,10 @@ export const CreateTicketPage = () => {
     clearFieldError('attachments');
   };
 
-  const handleDescriptionNext = async () => {
+  const handleDescriptionNext = () => {
     if (!validateStepAndFocus(1)) return;
 
     setSubmitError('');
-    setClassificationLoading(true);
-
-    let resolvedCategoryId = categoryId;
-    let resolvedPriority = priority;
-
-    try {
-      const analysis = await toolsApi.aiClassify(title.trim(), description.trim());
-      if (analysis?.categoryId) resolvedCategoryId = String(analysis.categoryId);
-      if (analysis?.urgencyLevel) {
-        resolvedPriority = normalizePriority(analysis.urgencyLevel);
-      }
-    } catch (error) {
-      console.warn('Automatic classification unavailable', error);
-    }
-
-    if (!resolvedCategoryId) {
-      const fallbackCategoryId = getCategoryId(categories[0]);
-      if (fallbackCategoryId) resolvedCategoryId = String(fallbackCategoryId);
-    }
-
-    setClassificationLoading(false);
-
-    if (!resolvedCategoryId) {
-      setSubmitError('Hệ thống chưa thể tự phân loại phản ánh. Vui lòng thử lại sau ít phút.');
-      return;
-    }
-
-    setCategoryId(resolvedCategoryId);
-    setPriority(resolvedPriority || 'Medium');
 
     if (reviewEditStep === 1) {
       restoreReviewAttachmentsIfNeeded();
@@ -979,14 +857,10 @@ export const CreateTicketPage = () => {
     setShowDuplicateWarning(false);
     setDuplicates([]);
 
-    try {
-      const matches = await toolsApi.checkDuplicates(Number(categoryId), lat, lng);
-      const normalizedMatches = Array.isArray(matches) ? matches : [];
-      setDuplicates(normalizedMatches);
-      setShowDuplicateWarning(normalizedMatches.length > 0);
-    } catch (error) {
-      console.warn('Duplicate check unavailable', error);
-    }
+    // Duplicate detection is deferred until after AI review because category
+    // is intentionally not assigned during citizen submission.
+    setDuplicates([]);
+    setShowDuplicateWarning(false);
   };
 
   const handleSubmit = async () => {
@@ -1021,10 +895,8 @@ export const CreateTicketPage = () => {
         user?.fullName,
         {
           areaId: Number(areaId),
-          categoryId: Number(categoryId),
           title: title.trim(),
           description: description.trim(),
-          priority,
           locationText,
           latitude,
           longitude,
@@ -1061,8 +933,6 @@ export const CreateTicketPage = () => {
     setTitle('');
     setDescription('');
     setAreaId('');
-    setCategoryId('');
-    setPriority('Medium');
     setLocationText('');
     setLatitude(null);
     setLongitude(null);
@@ -1083,8 +953,6 @@ export const CreateTicketPage = () => {
     setTitle('');
     setDescription('');
     setAreaId('');
-    setCategoryId('');
-    setPriority('Medium');
     setLocationText('');
     setLatitude(null);
     setLongitude(null);
@@ -1841,24 +1709,6 @@ export const CreateTicketPage = () => {
                             {description.trim() || 'Chưa nhập nội dung'}
                           </dd>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                              Danh mục
-                            </dt>
-                            <dd className="mt-1 font-medium text-slate-700 dark:text-slate-300">
-                              {selectedCategory ? getCategoryLabel(selectedCategory) : 'Hệ thống đang xác định'}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                              Mức độ
-                            </dt>
-                            <dd className="mt-1 font-medium text-slate-700 dark:text-slate-300">
-                              {selectedPriority?.label || 'Hệ thống đang xác định'}
-                            </dd>
-                          </div>
-                        </div>
                       </dl>
                     </article>
 
@@ -1998,12 +1848,8 @@ export const CreateTicketPage = () => {
                     goToStep(Math.min(STEPS.length, step + 1));
                   }
                 }}
-                disabled={classificationLoading}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700 disabled:opacity-50"
               >
-                {classificationLoading ? (
-                  <span className="loading loading-spinner loading-sm" aria-hidden="true" />
-                ) : null}
                 Tiếp tục
                 <Lucide.ArrowRight size={16} aria-hidden="true" />
               </button>
