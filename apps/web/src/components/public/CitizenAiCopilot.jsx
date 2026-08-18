@@ -5,8 +5,13 @@ import { ticketApi, toolsApi } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
+import {
+  buildCitizenFeedbackSubmission,
+  parseCitizenAiFeedbackDraft,
+} from './citizenAiFeedbackDraft';
 
 const AI_DOCK_STORAGE_KEY = 'urbanmind-ai-dock-position';
+const AI_FEEDBACK_DRAFT_STORAGE_PREFIX = 'urbanmind:ai-feedback-draft';
 const AI_BUTTON_SIZE = 56;
 const AI_MIN_TOP = 96;
 const AI_CITIZEN_BOTTOM_GAP = 112;
@@ -16,6 +21,7 @@ const DRAFT_STEPS = {
   IDLE: 'idle',
   TITLE: 'title',
   DESCRIPTION: 'description',
+  CATEGORY: 'category',
   LOCATION: 'location',
   EVIDENCE: 'evidence',
   READY: 'ready',
@@ -32,6 +38,10 @@ const getDraftQuestion = (step) => {
     return 'Bạn mô tả chi tiết sự việc giúp tôi nhé: vấn đề là gì, mức độ ảnh hưởng/khẩn cấp ra sao?';
   }
 
+  if (step === DRAFT_STEPS.CATEGORY) {
+    return 'Vấn đề này thuộc danh mục nào? Ví dụ: đường giao thông, chiếu sáng, vệ sinh môi trường hoặc cấp thoát nước.';
+  }
+
   if (step === DRAFT_STEPS.LOCATION) {
     return 'Vị trí cụ thể ở đâu? Bạn có thể nhập địa chỉ hoặc bấm nút GPS bên dưới.';
   }
@@ -40,7 +50,7 @@ const getDraftQuestion = (step) => {
     return 'Bạn có ảnh minh chứng không? Nếu có hãy bấm nút “Ảnh” bên dưới để chọn ảnh, hoặc nhắn “không có” để bỏ qua.';
   }
 
-  return 'Đã đủ thông tin cơ bản. Bạn bấm “Tạo bản nháp” để tôi tạo phản ánh cho bạn.';
+  return 'Đã đủ thông tin cơ bản. Bạn bấm “Gửi phản ánh” để gửi thông tin trực tiếp đến hệ thống.';
 };
 
 const getAiMessageText = (payload) => (
@@ -80,17 +90,6 @@ const normalizeAiMessage = (message, index = 0) => ({
   createdAt: message?.createdAt,
 });
 
-const fileToBase64 = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => {
-    const result = String(reader.result || '');
-    const [, rawBase64 = result] = result.split(',');
-    resolve(rawBase64);
-  };
-  reader.onerror = reject;
-  reader.readAsDataURL(file);
-});
-
 export const CitizenAiCopilot = () => {
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
@@ -115,6 +114,7 @@ export const CitizenAiCopilot = () => {
   const [draftStep, setDraftStep] = useState(DRAFT_STEPS.IDLE);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftDescription, setDraftDescription] = useState('');
+  const [draftCategory, setDraftCategory] = useState('');
   const [reflection, setReflection] = useState('');
   const [locationText, setLocationText] = useState('');
   const [latitude, setLatitude] = useState('');
@@ -122,6 +122,7 @@ export const CitizenAiCopilot = () => {
   const [selectedImages, setSelectedImages] = useState([]);
   const [loadingReply, setLoadingReply] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
+  const [draftHydratedKey, setDraftHydratedKey] = useState(null);
   const [viewportHeight, setViewportHeight] = useState(() => (
     typeof window !== 'undefined' ? window.innerHeight : 900
   ));
@@ -134,6 +135,7 @@ export const CitizenAiCopilot = () => {
   const [aiDragging, setAiDragging] = useState(false);
   const aiDragStateRef = useRef(null);
   const suppressAiClickRef = useRef(false);
+  const draftStorageKey = `${AI_FEEDBACK_DRAFT_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
 
 useEffect(() => {
   const handleResize = () => {
@@ -242,6 +244,105 @@ const getAiDockTop = (dock) => {
   }
 }, [chatOpen]);
 
+  useEffect(() => {
+    setDraftHydratedKey(null);
+    setDraftStep(DRAFT_STEPS.IDLE);
+    setDraftTitle('');
+    setDraftDescription('');
+    setDraftCategory('');
+    setReflection('');
+    setLocationText('');
+    setLatitude('');
+    setLongitude('');
+    setSelectedImages([]);
+
+    let restoredDraft = null;
+    try {
+      restoredDraft = parseCitizenAiFeedbackDraft(
+        window.localStorage.getItem(draftStorageKey),
+        Object.values(DRAFT_STEPS)
+      );
+    } catch (error) {
+      console.warn('Unable to restore AI feedback draft', error);
+    }
+
+    if (restoredDraft) {
+      setDraftStep(restoredDraft.draftStep || DRAFT_STEPS.IDLE);
+      setDraftTitle(restoredDraft.title);
+      setDraftDescription(restoredDraft.description);
+      setDraftCategory(restoredDraft.categoryText);
+      setReflection(restoredDraft.reflection);
+      setLocationText(restoredDraft.locationText);
+      setLatitude(restoredDraft.latitude);
+      setLongitude(restoredDraft.longitude);
+
+      const imageReminder = restoredDraft.hadImages
+        ? ` Ảnh (${restoredDraft.imageNames.join(', ') || 'đã chọn trước đó'}) cần được chọn lại.`
+        : '';
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: `Đã khôi phục bản nháp phản ánh đang làm dở.${imageReminder}` },
+      ]);
+    }
+
+    setDraftHydratedKey(draftStorageKey);
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (draftHydratedKey !== draftStorageKey) return;
+
+    const hasDraftContent = Boolean(
+      draftStep !== DRAFT_STEPS.IDLE ||
+      draftTitle.trim() ||
+      draftDescription.trim() ||
+      draftCategory.trim() ||
+      reflection.trim() ||
+      locationText.trim() ||
+      latitude !== '' ||
+      longitude !== '' ||
+      selectedImages.length > 0
+    );
+
+    if (!hasDraftContent) {
+      try {
+        window.localStorage.removeItem(draftStorageKey);
+      } catch (error) {
+        console.warn('Unable to clear AI feedback draft', error);
+      }
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(draftStorageKey, JSON.stringify({
+        draftStep,
+        title: draftTitle,
+        description: draftDescription,
+        categoryText: draftCategory,
+        reflection,
+        locationText,
+        latitude: latitude === '' ? null : Number(latitude),
+        longitude: longitude === '' ? null : Number(longitude),
+        hadImages: selectedImages.length > 0,
+        imageNames: selectedImages.map((file) => file.name),
+        savedAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.warn('Unable to save AI feedback draft', error);
+    }
+  }, [
+    draftCategory,
+    draftDescription,
+    draftHydratedKey,
+    draftStep,
+    draftStorageKey,
+    draftTitle,
+    latitude,
+    locationText,
+    longitude,
+    reflection,
+    selectedImages,
+  ]);
+
 if (!isAuthenticated || !isCitizen) {
   return null;
 }
@@ -263,9 +364,15 @@ const selectConversation = async (conversationId) => {
   };
 
   const resetDraftFlow = () => {
+    try {
+      window.localStorage.removeItem(draftStorageKey);
+    } catch (error) {
+      console.warn('Unable to clear AI feedback draft', error);
+    }
     setDraftStep(DRAFT_STEPS.IDLE);
     setDraftTitle('');
     setDraftDescription('');
+    setDraftCategory('');
     setReflection('');
     setLocationText('');
     setLatitude('');
@@ -318,18 +425,28 @@ const selectConversation = async (conversationId) => {
     const matchedArea = areas.find((area) => {
       const areaId = normalize(getEntityId(area, 'areaId'));
       const areaName = normalize(area?.areaName || area?.name || area?.displayName);
-      return suggestedArea && (areaId === suggestedArea || areaName === suggestedArea || suggestedArea.includes(areaName));
+      return suggestedArea && (
+        areaId === suggestedArea ||
+        areaName === suggestedArea ||
+        (areaName && (suggestedArea.includes(areaName) || areaName.includes(suggestedArea)))
+      );
     });
 
     const matchedCategory = categories.find((category) => {
       const categoryId = normalize(getEntityId(category, 'categoryId'));
       const categoryName = normalize(category?.categoryName || category?.name || category?.displayName);
-      return suggestedCategory && (categoryId === suggestedCategory || categoryName === suggestedCategory || suggestedCategory.includes(categoryName));
+      return suggestedCategory && (
+        categoryId === suggestedCategory ||
+        categoryName === suggestedCategory ||
+        (categoryName && (
+          suggestedCategory.includes(categoryName) || categoryName.includes(suggestedCategory)
+        ))
+      );
     });
 
     return {
-      areaId: getEntityId(matchedArea, 'areaId') ?? getEntityId(areas[0], 'areaId'),
-      categoryId: getEntityId(matchedCategory, 'categoryId') ?? getEntityId(categories[0], 'categoryId'),
+      areaId: getEntityId(matchedArea, 'areaId'),
+      categoryId: getEntityId(matchedCategory, 'categoryId'),
     };
   };
 
@@ -363,6 +480,16 @@ const selectConversation = async (conversationId) => {
       setDraftDescription(userMsg);
       const nextReflection = buildReflectionText(draftTitle, userMsg);
       setReflection(nextReflection);
+      setDraftStep(DRAFT_STEPS.CATEGORY);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.CATEGORY) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.CATEGORY) {
+      setDraftCategory(userMsg);
       setDraftStep(DRAFT_STEPS.LOCATION);
       setChatMessages((current) => [
         ...current,
@@ -393,7 +520,7 @@ const selectConversation = async (conversationId) => {
     if (draftStep === DRAFT_STEPS.READY) {
       setChatMessages((current) => [
         ...current,
-        { sender: 'ai', text: 'Thông tin đã sẵn sàng. Bạn bấm “Tạo bản nháp” để tôi tạo phản ánh.' },
+        { sender: 'ai', text: 'Thông tin đã sẵn sàng. Bạn bấm “Gửi phản ánh” để gửi trực tiếp đến hệ thống.' },
       ]);
       return true;
     }
@@ -525,43 +652,40 @@ const selectConversation = async (conversationId) => {
     setCreatingDraft(true);
 
     try {
-      const base64Images = await Promise.all(selectedImages.map(fileToBase64));
-      const draft = await toolsApi.createAiFeedbackDraft({
-        reflection: text,
+      const finalDraft = {
+        title: collectedTitle || 'Phản ánh đô thị',
+        description: collectedDescription || text,
         location: collectedLocation,
         latitude: latitude === '' ? null : Number(latitude),
         longitude: longitude === '' ? null : Number(longitude),
-        imageUrls: [],
-        base64Images,
-      });
-
-      const normalizedDraft = draft?.data ?? draft?.draft ?? draft ?? {};
-      const finalDraft = {
-        ...normalizedDraft,
-        title: collectedTitle || normalizedDraft.title || normalizedDraft.summary || 'Phản ánh đô thị từ AI',
-        description: collectedDescription || normalizedDraft.description || normalizedDraft.summary || text,
-        location: collectedLocation || normalizedDraft.location || '',
-        latitude: latitude === '' ? normalizedDraft.latitude ?? null : Number(latitude),
-        longitude: longitude === '' ? normalizedDraft.longitude ?? null : Number(longitude),
-        imageUrls: Array.isArray(normalizedDraft.imageUrls) ? normalizedDraft.imageUrls : [],
-        confirmationMessage: 'Đã lấy thông tin bạn cung cấp để tạo phản ánh. Vui lòng kiểm tra lại và bấm gửi phản ánh.',
+        suggestedCategory: draftCategory,
+        confirmationMessage: 'Đã lấy thông tin bạn cung cấp. Vui lòng kiểm tra và gửi phản ánh.',
       };
 
       const resolvedIds = await resolveFeedbackRequiredIds(finalDraft);
-      const latitudeNumber = Number(finalDraft.latitude);
-      const longitudeNumber = Number(finalDraft.longitude);
-      const hasCoordinates = Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber);
+      const submission = buildCitizenFeedbackSubmission({
+        resolvedIds,
+        title: finalDraft.title,
+        description: finalDraft.description,
+        suggestedCategory: finalDraft.suggestedCategory,
+        location: finalDraft.location,
+        latitude: finalDraft.latitude,
+        longitude: finalDraft.longitude,
+        attachments: selectedImages,
+      });
 
-      if (!resolvedIds.areaId) {
+      if (submission.type === 'complete-in-form') {
         navigate('/tickets/create', {
           state: {
-            aiDraft: finalDraft,
+            aiDraft: submission.draft,
             aiDraftSource: {
               reflection: text,
               title: finalDraft.title,
               description: finalDraft.description,
               location: finalDraft.location,
               imageNames: selectedImages.map((file) => file.name),
+              attachments: submission.attachments,
+              storageKey: draftStorageKey,
               createAttempted: true,
             },
           },
@@ -573,17 +697,7 @@ const selectConversation = async (conversationId) => {
       const response = await ticketApi.createTicket(
         user?.userId,
         user?.fullName || user?.name,
-        {
-          areaId: Number(resolvedIds.areaId),
-          categoryId: resolvedIds.categoryId ? Number(resolvedIds.categoryId) : undefined,
-          title: finalDraft.title,
-          description: finalDraft.description,
-          priority: normalizedDraft.urgencyLevel || normalizedDraft.priority || 'Medium',
-          locationText: finalDraft.location || collectedLocation || (hasCoordinates ? `Vị trí GPS: ${latitudeNumber.toFixed(6)}, ${longitudeNumber.toFixed(6)}` : 'Chưa cung cấp vị trí chi tiết'),
-          latitude: hasCoordinates ? latitudeNumber : undefined,
-          longitude: hasCoordinates ? longitudeNumber : undefined,
-          attachments: selectedImages,
-        },
+        submission.ticketData,
         { role: user?.role || APP_ROLES.SERVICE_USER }
       );
 
@@ -604,7 +718,7 @@ const selectConversation = async (conversationId) => {
         ...current,
         {
           sender: 'ai',
-          text: error?.message || 'Không thể tạo bản nháp phản ánh bằng AI. Vui lòng thử lại sau.',
+          text: error?.message || 'Không thể gửi phản ánh. Dữ liệu bản nháp vẫn được giữ để bạn thử lại.',
         },
       ]);
     } finally {
@@ -779,7 +893,7 @@ const selectConversation = async (conversationId) => {
                 className="btn btn-primary btn-sm flex-1 rounded-xl"
               >
                 {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={14} />}
-                {draftStep === DRAFT_STEPS.IDLE ? 'Tạo phản ánh' : 'Tạo bản nháp'}
+                {draftStep === DRAFT_STEPS.IDLE ? 'Tạo phản ánh' : 'Gửi phản ánh'}
               </button>
               <button
                 type="button"

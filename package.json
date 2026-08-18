@@ -17,7 +17,7 @@
     "dev:mobile": "pnpm --dir apps/mobile start",
     "dev:mobile:android": "pnpm --dir apps/mobile android",
     "dev:proxy": "pnpm --dir dev-proxy start",
-    "test": "node --test packages/shared-utils/src/index.test.js packages/shared-types/src/roleMap.test.js packages/shared-api/src/toolsApi.test.js",
+    "test": "node --test packages/shared-utils/src/index.test.js packages/shared-types/src/roleMap.test.js packages/shared-api/src/toolsApi.test.js apps/web/src/components/public/citizenAiFeedbackDraft.test.js",
     "test:e2e": "pnpm --dir apps/web test:e2e",
     "test:e2e:ui": "pnpm --dir apps/web test:e2e:ui",
     "test:e2e:report": "pnpm --dir apps/web test:e2e:report"

@@ -189,6 +189,7 @@ export const CreateTicketPage = () => {
   const [pendingExit, setPendingExit] = useState(null);
   const draftHydratedRef = useRef(false);
   const draftSaveTimerRef = useRef(null);
+  const aiAttachmentsHydratedRef = useRef(false);
 
   const formStageRef = useRef(null);
   const titleFieldRef = useRef(null);
@@ -262,6 +263,37 @@ export const CreateTicketPage = () => {
     );
     window.history.replaceState({}, document.title);
   }, [categories, routeLocation.state]);
+
+  useEffect(() => {
+    if (aiAttachmentsHydratedRef.current) return;
+
+    const sourceAttachments = Array.isArray(routeLocation.state?.aiDraftSource?.attachments)
+      ? routeLocation.state.aiDraftSource.attachments.filter((file) => file instanceof File)
+      : [];
+    if (sourceAttachments.length === 0) return;
+
+    aiAttachmentsHydratedRef.current = true;
+    Promise.all(sourceAttachments.map((file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+        id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID?.() || Date.now()}`,
+        file,
+        preview: reader.result,
+        type: file.type,
+        name: file.name,
+      });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    })))
+      .then((restoredAttachments) => setAttachments((current) => [
+        ...current,
+        ...restoredAttachments,
+      ]))
+      .catch(() => {
+        aiAttachmentsHydratedRef.current = false;
+        setAttachmentError('Không thể chuyển ảnh từ trợ lý sang biểu mẫu. Vui lòng chọn lại ảnh.');
+      });
+  }, [routeLocation.state]);
 
   useEffect(() => {
     if (!draftHydratedRef.current || submitted) return undefined;
@@ -903,6 +935,10 @@ export const CreateTicketPage = () => {
         { role: user?.role || 'service-user' }
       );
       window.localStorage.removeItem(draftStorageKey);
+      const aiDraftStorageKey = routeLocation.state?.aiDraftSource?.storageKey;
+      if (aiDraftStorageKey) {
+        window.localStorage.removeItem(aiDraftStorageKey);
+      }
       setDraftNotice('');
       setSubmitted(true);
     } catch (error) {
