@@ -6,10 +6,10 @@ export default defineConfig({
   expect: {
     timeout: 10000,
   },
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  workers: 1,
   reporter: [
     ['list'],
     ['html', { outputFolder: 'tests/results/html', open: 'never' }],

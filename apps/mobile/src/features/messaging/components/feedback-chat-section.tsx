@@ -80,7 +80,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: semantics.bg.surface }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <View style={[styles.wrap, { flex: 1 }]}>

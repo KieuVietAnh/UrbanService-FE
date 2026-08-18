@@ -242,7 +242,7 @@ export default function AiConversationDetailScreen() {
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           {isError && messages.length === 0 ? (
             <AppErrorState onRetry={refetch}>

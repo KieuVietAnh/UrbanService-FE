@@ -32,7 +32,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { axiosClient } from '@urbanmind/shared-api';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
@@ -574,6 +574,7 @@ const SUPPORT_FEEDBACK_FILTERS = {
 export default function InboxScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabKey>('ai');
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
   const aiListRef = useRef<any>(null);
@@ -783,15 +784,6 @@ export default function InboxScreen() {
           <Text style={rootStyles.pageTitle}>Hộp thư</Text>
           <Text style={rootStyles.pageSubtitle}>Trao đổi với AI hoặc phản ánh của bạn</Text>
         </View>
-        <View style={rootStyles.headerActions}>
-          <Pressable
-            hitSlop={12}
-            style={({ pressed }) => [rootStyles.searchBtn, pressed && { opacity: 0.7 }]}
-            accessibilityLabel="Tìm kiếm"
-          >
-            <Icon name="search" size={18} color={semantics.text.secondary} />
-          </Pressable>
-        </View>
       </View>
 
       {/* ── Segmented Control ───────────────────────────────────────────────── */}
@@ -853,6 +845,7 @@ export default function InboxScreen() {
                   keyExtractor={(item) => item.id}
                   contentContainerStyle={[
                     tabContentStyles.listContent,
+                    { paddingBottom: 80 + insets.bottom },
                     aiConversations.length === 0 && tabContentStyles.flexGrow,
                   ]}
                   showsVerticalScrollIndicator={false}
@@ -893,6 +886,7 @@ export default function InboxScreen() {
                   keyExtractor={(item, i) => String(item?.feedbackId ?? i)}
                   contentContainerStyle={[
                     tabContentStyles.listContent,
+                    { paddingBottom: 80 + insets.bottom },
                     supportFeedbacks.length === 0 && tabContentStyles.flexGrow,
                   ]}
                   showsVerticalScrollIndicator={false}

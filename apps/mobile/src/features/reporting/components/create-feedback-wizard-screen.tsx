@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
@@ -638,6 +638,7 @@ export default function CreateFeedbackWizardScreen() {
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
 
   const [step, setStep] = useState(1);
@@ -1043,7 +1044,7 @@ export default function CreateFeedbackWizardScreen() {
       ) : null}
       <KeyboardAvoidingView
         style={styles.flex1}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <View style={styles.flex1}>
@@ -1135,7 +1136,7 @@ export default function CreateFeedbackWizardScreen() {
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
           {step > 1 && (
           <AppButton variant="outline" size="lg" onPress={goBack} className="flex-1">
             Quay lại
@@ -1236,7 +1237,7 @@ const styles = StyleSheet.create({
   trustItem: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   trustIconWrap: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#22C55E', alignItems: 'center', justifyContent: 'center' },
   trustText: { flex: 1, fontFamily: 'Geist-Medium', fontSize: 12, color: '#166534', lineHeight: 18 },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 12 : 16, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F1F5F9', zIndex: 50 },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#F1F5F9', zIndex: 50 },
   floatingNext: { position: 'absolute', right: 20, bottom: 92, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 6, zIndex: 60 },
   headerNext: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   selectAreaInput: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, marginBottom: 12 },

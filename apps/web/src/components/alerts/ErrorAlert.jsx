@@ -7,6 +7,7 @@ export const ErrorAlert = ({ message, title = 'Lỗi', onClose, icon = true }) =
       {icon && <Lucide.AlertCircle size={20} className="flex-shrink-0 mt-0.5" />}
       <div className="flex-1">
         {title && <h4 className="font-bold text-sm">{title}</h4>}
+        {title && message ? ' ' : null}
         <p className="text-xs leading-relaxed">{message}</p>
       </div>
       {onClose && (
@@ -29,6 +30,7 @@ export const WarningAlert = ({ message, title = 'Cảnh báo', onClose, icon = t
       {icon && <Lucide.AlertTriangle size={20} className="flex-shrink-0 mt-0.5" />}
       <div className="flex-1">
         {title && <h4 className="font-bold text-sm">{title}</h4>}
+        {title && message ? ' ' : null}
         <p className="text-xs leading-relaxed">{message}</p>
       </div>
       {onClose && (
@@ -51,6 +53,7 @@ export const InfoAlert = ({ message, title = 'Thông tin', onClose, icon = true 
       {icon && <Lucide.Info size={20} className="flex-shrink-0 mt-0.5" />}
       <div className="flex-1">
         {title && <h4 className="font-bold text-sm">{title}</h4>}
+        {title && message ? ' ' : null}
         <p className="text-xs leading-relaxed">{message}</p>
       </div>
       {onClose && (
@@ -73,6 +76,7 @@ export const SuccessAlert = ({ message, title = 'Thành công', onClose, icon = 
       {icon && <Lucide.Check size={20} className="flex-shrink-0 mt-0.5" />}
       <div className="flex-1">
         {title && <h4 className="font-bold text-sm">{title}</h4>}
+        {title && message ? ' ' : null}
         <p className="text-xs leading-relaxed">{message}</p>
       </div>
       {onClose && (
