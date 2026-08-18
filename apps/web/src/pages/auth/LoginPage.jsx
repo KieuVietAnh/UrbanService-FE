@@ -13,6 +13,44 @@ import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import * as Lucide from 'lucide-react';
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 8;
+
+const getAuthErrorMessage = (err, mode = 'login') => {
+  const status = err?.status ?? err?.response?.status;
+  const rawMessage = (
+    err?.response?.data?.message ||
+    err?.response?.data?.error ||
+    err?.message ||
+    ''
+  );
+  const normalized = String(rawMessage).toLowerCase();
+
+  if (mode === 'google') {
+    if (status === 400 || status === 401 || status === 403) {
+      return 'Không thể đăng nhập bằng Google. Tài khoản phải tồn tại, đang hoạt động và đã xác thực email.';
+    }
+    if (status >= 500) {
+      return 'Google Login tạm thời chưa khả dụng. Vui lòng thử lại sau.';
+    }
+    return 'Đăng nhập bằng Google thất bại. Vui lòng thử lại.';
+  }
+
+  if (status === 401 || normalized.includes('invalid credentials')) {
+    return 'Email hoặc mật khẩu không chính xác.';
+  }
+  if (status === 403) {
+    return 'Tài khoản hiện không được phép đăng nhập. Vui lòng kiểm tra trạng thái tài khoản.';
+  }
+  if (status === 429) {
+    return 'Bạn đã thử đăng nhập quá nhiều lần. Vui lòng chờ một lúc rồi thử lại.';
+  }
+  if (status >= 500) {
+    return 'Hệ thống đăng nhập đang gặp sự cố. Vui lòng thử lại sau.';
+  }
+  return 'Đăng nhập thất bại. Vui lòng thử lại.';
+};
+
 const normalizeRole = (role) => {
   if (!role) return role;
   const normalized = String(role).trim().toLowerCase();
@@ -132,6 +170,7 @@ export const LoginPage = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
   const [forgotStep, setForgotStep] = useState('request');
   const [forgotOtp, setForgotOtp] = useState('');
   const [forgotPassword, setForgotPassword] = useState('');
@@ -148,15 +187,29 @@ export const LoginPage = () => {
 
   const handleLogin = async (event) => {
     event?.preventDefault();
-    if (!email || !password) {
-      setError('Vui lòng điền đầy đủ thông tin đăng nhập.');
+    if (loading) return;
+
+    const normalizedEmail = email.trim();
+
+    if (!normalizedEmail) {
+      setError('Vui lòng nhập địa chỉ email.');
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setError('Địa chỉ email không đúng định dạng.');
+      return;
+    }
+
+    if (!password) {
+      setError('Vui lòng nhập mật khẩu.');
       return;
     }
 
     setError('');
     setLoading(true);
     try {
-      const user = await login(email, password);
+      const user = await login(normalizedEmail, password);
 
       if (!user?.isVerified) {
         navigate('/verify-email');
@@ -165,7 +218,7 @@ export const LoginPage = () => {
 
       navigate(resolveRedirect(user.role), { replace: true });
     } catch (err) {
-      setError(err.message || 'Đăng nhập thất bại.');
+      setError(getAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -177,16 +230,97 @@ export const LoginPage = () => {
     setError('');
   };
 
-  const openForgotPassword = () => { setForgotMode(true); setForgotStep('request'); setForgotError(''); setForgotMessage(''); };
-  const closeForgotPassword = () => { setForgotMode(false); setForgotError(''); setForgotMessage(''); };
+  const openForgotPassword = () => {
+    setForgotMode(true);
+    setForgotStep('request');
+    setForgotEmail(email.trim());
+    setForgotOtp('');
+    setForgotPassword('');
+    setForgotConfirmPassword('');
+    setForgotError('');
+    setForgotMessage('');
+  };
+
+  const closeForgotPassword = () => {
+    setForgotMode(false);
+    setForgotStep('request');
+    setForgotOtp('');
+    setForgotPassword('');
+    setForgotConfirmPassword('');
+    setForgotError('');
+    setForgotMessage('');
+  };
+
   const handleForgotPassword = async (event) => {
-    event.preventDefault(); const normalizedEmail = email.trim(); setForgotError(''); setForgotMessage('');
-    if (!normalizedEmail) { setForgotError('Vui lòng nhập email tài khoản.'); return; }
-    if (forgotStep === 'request') { setForgotLoading(true); try { await authApi.requestForgotPasswordOtp(normalizedEmail); setForgotStep('reset'); setForgotMessage('Nếu email hợp lệ, mã OTP đã được gửi. Mã có hiệu lực trong 5 phút.'); } catch (err) { setForgotError(err.message || 'Không thể gửi mã OTP. Vui lòng thử lại.'); } finally { setForgotLoading(false); } return; }
-    if (!/^\d{6}$/.test(forgotOtp.trim())) { setForgotError('Mã OTP phải gồm 6 chữ số.'); return; }
-    if (forgotPassword.length < 6) { setForgotError('Mật khẩu mới phải có ít nhất 6 ký tự.'); return; }
-    if (forgotPassword !== forgotConfirmPassword) { setForgotError('Mật khẩu xác nhận không khớp.'); return; }
-    setForgotLoading(true); try { await authApi.resetForgottenPassword(normalizedEmail, forgotOtp.trim(), forgotPassword); setForgotMessage('Đổi mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.'); setForgotStep('request'); setForgotOtp(''); setForgotPassword(''); setForgotConfirmPassword(''); } catch (err) { setForgotError(err.message || 'Không thể đổi mật khẩu. Vui lòng kiểm tra mã OTP.'); } finally { setForgotLoading(false); }
+    event.preventDefault();
+    if (forgotLoading) return;
+
+    const normalizedEmail = forgotEmail.trim();
+    setForgotError('');
+    setForgotMessage('');
+
+    if (!normalizedEmail) {
+      setForgotError('Vui lòng nhập email tài khoản.');
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setForgotError('Địa chỉ email không đúng định dạng.');
+      return;
+    }
+
+    if (forgotStep === 'request') {
+      setForgotLoading(true);
+      try {
+        await authApi.requestForgotPasswordOtp(normalizedEmail);
+        setForgotStep('reset');
+        setForgotMessage('Nếu email hợp lệ, mã OTP đã được gửi. Mã có hiệu lực trong 5 phút.');
+      } catch {
+        setForgotError('Không thể gửi mã OTP. Vui lòng thử lại.');
+      } finally {
+        setForgotLoading(false);
+      }
+      return;
+    }
+
+    const normalizedOtp = forgotOtp.trim();
+    if (!/^\d{6}$/.test(normalizedOtp)) {
+      setForgotError('Mã OTP phải gồm đúng 6 chữ số.');
+      return;
+    }
+
+    if (!forgotPassword.trim()) {
+      setForgotError('Vui lòng nhập mật khẩu mới.');
+      return;
+    }
+
+    if (forgotPassword.length < MIN_PASSWORD_LENGTH) {
+      setForgotError(`Mật khẩu mới phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự.`);
+      return;
+    }
+
+    if (forgotPassword !== forgotConfirmPassword) {
+      setForgotError('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      await authApi.resetForgottenPassword(
+        normalizedEmail,
+        normalizedOtp,
+        forgotPassword
+      );
+      setEmail(normalizedEmail);
+      setForgotMessage('Đổi mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.');
+      setForgotOtp('');
+      setForgotPassword('');
+      setForgotConfirmPassword('');
+    } catch {
+      setForgotError('Không thể đổi mật khẩu. Vui lòng kiểm tra mã OTP và thử lại.');
+    } finally {
+      setForgotLoading(false);
+    }
   };
   const handleGoogleLoginCallback = useCallback(
     async (response) => {
@@ -194,7 +328,7 @@ export const LoginPage = () => {
         setLoading(true);
         const idToken = response?.credential;
         if (!idToken) {
-          setError('Google login failed to return credential.');
+          setError('Google không trả về thông tin xác thực. Vui lòng thử lại.');
           return;
         }
 
@@ -211,7 +345,7 @@ export const LoginPage = () => {
         );
         navigate(redirect, { replace: true });
       } catch (err) {
-        setError(err.message || 'Google đăng nhập thất bại.');
+        setError(getAuthErrorMessage(err, 'google'));
       } finally {
         setLoading(false);
       }
@@ -224,12 +358,12 @@ export const LoginPage = () => {
 
   const handleGoogleSignIn = () => {
     if (!googleClientId) {
-      setError('Google login not configured.');
+      setError('Đăng nhập bằng Google chưa được cấu hình.');
       return;
     }
 
     if (!window.google?.accounts?.id) {
-      setError('Google SDK not loaded yet. Vui lòng thử lại.');
+      setError('Dịch vụ đăng nhập Google chưa tải xong. Vui lòng thử lại.');
       return;
     }
 
@@ -350,7 +484,7 @@ export const LoginPage = () => {
         <form onSubmit={handleLogin} className="auth-login-form relative z-10 mt-6 space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="login-email" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Email hoặc số điện thoại
+              Email
             </label>
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
@@ -359,11 +493,15 @@ export const LoginPage = () => {
               <input
                 id="login-email"
                 name="email"
-                type="text"
-                autoComplete="username"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
                 placeholder="name@email.com"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  if (error) setError('');
+                }}
                 className="h-12 w-full rounded-2xl border border-slate-300 bg-white pl-11 pr-4 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:hover:border-slate-600"
               />
             </div>
@@ -384,7 +522,10 @@ export const LoginPage = () => {
                 autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  if (error) setError('');
+                }}
                 className="h-12 w-full rounded-2xl border border-slate-300 bg-white pl-11 pr-12 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:hover:border-slate-600"
               />
               <button
@@ -426,7 +567,14 @@ export const LoginPage = () => {
             <div className="flex items-start justify-between gap-3"><div><h2 id="forgot-password-title" className="text-sm font-bold text-slate-900">Quên mật khẩu</h2><p className="mt-1 text-xs leading-5 text-slate-600">Nhận mã OTP qua email rồi đặt mật khẩu mới.</p></div><button type="button" onClick={closeForgotPassword} className="text-xs font-semibold text-slate-500">Đóng</button></div>
             {forgotError ? <p role="alert" className="mt-3 rounded-xl bg-red-100 px-3 py-2 text-xs text-red-700">{forgotError}</p> : null}
             {forgotMessage ? <p role="status" className="mt-3 rounded-xl bg-emerald-100 px-3 py-2 text-xs text-emerald-700">{forgotMessage}</p> : null}
-            <form onSubmit={handleForgotPassword} className="mt-4 space-y-3"><input aria-label="Email khôi phục" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@email.com" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" />{forgotStep === 'reset' ? <><input aria-label="Mã OTP" inputMode="numeric" maxLength={6} value={forgotOtp} onChange={(event) => setForgotOtp(event.target.value.replace(/\D/g, ''))} placeholder="Mã OTP 6 số" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /><input aria-label="Mật khẩu mới" type="password" value={forgotPassword} onChange={(event) => setForgotPassword(event.target.value)} placeholder="Mật khẩu mới" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /><input aria-label="Xác nhận mật khẩu mới" type="password" value={forgotConfirmPassword} onChange={(event) => setForgotConfirmPassword(event.target.value)} placeholder="Xác nhận mật khẩu mới" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /></> : null}<button type="submit" disabled={forgotLoading} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-60">{forgotLoading ? 'Đang xử lý...' : forgotStep === 'request' ? 'Gửi mã OTP' : 'Đổi mật khẩu'}</button>{forgotStep === 'reset' ? <button type="button" onClick={() => { setForgotStep('request'); setForgotMessage(''); setForgotError(''); }} className="w-full text-center text-xs font-semibold text-blue-700 hover:underline">Gửi lại mã / đổi email</button> : null}</form>
+            <form onSubmit={handleForgotPassword} className="mt-4 space-y-3"><input aria-label="Email khôi phục" type="email" autoComplete="email" inputMode="email" value={forgotEmail} onChange={(event) => { setForgotEmail(event.target.value); setForgotError(''); }} placeholder="name@email.com" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />{forgotStep === 'reset' ? <><input aria-label="Mã OTP" inputMode="numeric" maxLength={6} value={forgotOtp} onChange={(event) => setForgotOtp(event.target.value.replace(/\D/g, ''))} placeholder="Mã OTP 6 số" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /><input aria-label="Mật khẩu mới" type="password" value={forgotPassword} onChange={(event) => setForgotPassword(event.target.value)} placeholder="Mật khẩu mới (ít nhất 8 ký tự)" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /><input aria-label="Xác nhận mật khẩu mới" type="password" value={forgotConfirmPassword} onChange={(event) => setForgotConfirmPassword(event.target.value)} placeholder="Xác nhận mật khẩu mới" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none" /></> : null}<button type="submit" disabled={forgotLoading} className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-60">{forgotLoading ? 'Đang xử lý...' : forgotStep === 'request' ? 'Gửi mã OTP' : 'Đổi mật khẩu'}</button>{forgotStep === 'reset' ? <button type="button" onClick={() => {
+      setForgotStep('request');
+      setForgotOtp('');
+      setForgotPassword('');
+      setForgotConfirmPassword('');
+      setForgotMessage('');
+      setForgotError('');
+    }} className="w-full text-center text-xs font-semibold text-blue-700 hover:underline">Gửi lại mã / đổi email</button> : null}</form>
           </section>
         ) : null}
         <div className="auth-login-divider relative z-10 my-5 flex items-center gap-3" aria-hidden="true">

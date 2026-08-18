@@ -128,7 +128,7 @@ const formatDate = (value) => {
   return date.toLocaleDateString('vi-VN');
 };
 
-const getLocationText = (feedback) => {
+const getAreaName = (feedback) => {
   const areaName = [
     feedback?.wardName,
     feedback?.areaName,
@@ -139,7 +139,17 @@ const getLocationText = (feedback) => {
     feedback?.location?.areaName,
   ].find((value) => typeof value === 'string' && value.trim());
 
-  return areaName?.trim() || 'Chưa xác định khu vực';
+  return areaName?.trim() || '';
+};
+
+const getLocationText = (feedback) => {
+  const locationText = [
+    feedback?.locationText,
+    feedback?.address,
+    feedback?.location?.address,
+  ].find((value) => typeof value === 'string' && value.trim());
+
+  return locationText?.trim() || getAreaName(feedback) || 'Chưa xác định vị trí';
 };
 
 const getStatusLabel = (status) => {
@@ -803,7 +813,17 @@ export const FeedbackManagement = () => {
                       <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-blue-700 dark:text-blue-300">{formatFeedbackId(feedbackId)}</td>
                       <td className="min-w-0 px-4 py-4">
                         <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{feedback.title || 'Không có tiêu đề'}</p>
-                        <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{getLocationText(feedback)}</p>
+                        <p
+                          className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400"
+                          title={getLocationText(feedback)}
+                        >
+                          {getLocationText(feedback)}
+                        </p>
+                        {feedback.locationText && getAreaName(feedback) ? (
+                          <p className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
+                            {getAreaName(feedback)}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300"><span className="block truncate" title={getCategoryName(feedback, categories)}>{getCategoryName(feedback, categories)}</span></td>
                       <td className="whitespace-nowrap px-4 py-4"><PriorityBadge priority={feedback.priority} /></td>
