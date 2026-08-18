@@ -8,7 +8,7 @@ import {
   StyleProp,
   ViewStyle,
 } from 'react-native';
-import Icon from '@Expo/vector-icons/Feather';
+import Icon from '@expo/vector-icons/Feather';
 import { semantics } from '@/theme/semantics';
 
 export default function MessageComposer({
