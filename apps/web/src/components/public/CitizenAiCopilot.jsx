@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
-import { toolsApi } from '@urbanmind/shared-api';
+import { ticketApi, toolsApi } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
@@ -11,6 +11,37 @@ const AI_BUTTON_SIZE = 56;
 const AI_MIN_TOP = 96;
 const AI_CITIZEN_BOTTOM_GAP = 112;
 const AI_DRAG_THRESHOLD = 6;
+
+const DRAFT_STEPS = {
+  IDLE: 'idle',
+  TITLE: 'title',
+  DESCRIPTION: 'description',
+  LOCATION: 'location',
+  EVIDENCE: 'evidence',
+  READY: 'ready',
+};
+
+const DRAFT_INTENT_REGEX = /(tạo|tao|lập|lap|gửi|gui).*(phản ánh|phan anh|feedback|ticket)|phản ánh|phan anh/i;
+
+const getDraftQuestion = (step) => {
+  if (step === DRAFT_STEPS.TITLE) {
+    return 'Bạn muốn đặt tiêu đề phản ánh là gì? Ví dụ: “Đường hư hỏng trước nhà”.';
+  }
+
+  if (step === DRAFT_STEPS.DESCRIPTION) {
+    return 'Bạn mô tả chi tiết sự việc giúp tôi nhé: vấn đề là gì, mức độ ảnh hưởng/khẩn cấp ra sao?';
+  }
+
+  if (step === DRAFT_STEPS.LOCATION) {
+    return 'Vị trí cụ thể ở đâu? Bạn có thể nhập địa chỉ hoặc bấm nút GPS bên dưới.';
+  }
+
+  if (step === DRAFT_STEPS.EVIDENCE) {
+    return 'Bạn có ảnh minh chứng không? Nếu có hãy bấm nút “Ảnh” bên dưới để chọn ảnh, hoặc nhắn “không có” để bỏ qua.';
+  }
+
+  return 'Đã đủ thông tin cơ bản. Bạn bấm “Tạo bản nháp” để tôi tạo phản ánh cho bạn.';
+};
 
 const getAiMessageText = (payload) => (
   payload?.message ||
@@ -51,7 +82,11 @@ const normalizeAiMessage = (message, index = 0) => ({
 
 const fileToBase64 = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onload = () => {
+    const result = String(reader.result || '');
+    const [, rawBase64 = result] = result.split(',');
+    resolve(rawBase64);
+  };
   reader.onerror = reject;
   reader.readAsDataURL(file);
 });
@@ -77,6 +112,9 @@ export const CitizenAiCopilot = () => {
     },
   ]);
   const [inputVal, setInputVal] = useState('');
+  const [draftStep, setDraftStep] = useState(DRAFT_STEPS.IDLE);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
   const [reflection, setReflection] = useState('');
   const [locationText, setLocationText] = useState('');
   const [latitude, setLatitude] = useState('');
@@ -84,7 +122,6 @@ export const CitizenAiCopilot = () => {
   const [selectedImages, setSelectedImages] = useState([]);
   const [loadingReply, setLoadingReply] = useState(false);
   const [creatingDraft, setCreatingDraft] = useState(false);
-  const [showAiDraftForm, setShowAiDraftForm] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(() => (
     typeof window !== 'undefined' ? window.innerHeight : 900
   ));
@@ -225,27 +262,161 @@ const selectConversation = async (conversationId) => {
     }
   };
 
+  const resetDraftFlow = () => {
+    setDraftStep(DRAFT_STEPS.IDLE);
+    setDraftTitle('');
+    setDraftDescription('');
+    setReflection('');
+    setLocationText('');
+    setLatitude('');
+    setLongitude('');
+    setSelectedImages([]);
+  };
+
+  const startDraftFlow = () => {
+    setActiveConversationId(null);
+    setDraftStep(DRAFT_STEPS.TITLE);
+    setChatMessages((current) => [
+      ...current,
+      { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.TITLE) },
+    ]);
+  };
+
+  const buildReflectionText = (
+    title = draftTitle,
+    description = draftDescription,
+    locationValue = locationText
+  ) => (
+    [
+      title.trim() ? `Tiêu đề: ${title.trim()}` : '',
+      description.trim() ? `Mô tả: ${description.trim()}` : '',
+      locationValue.trim() ? `Vị trí: ${locationValue.trim()}` : '',
+    ].filter(Boolean).join('\n')
+  );
+
+  const getEntityId = (entity, primaryKey) => (
+    entity?.[primaryKey] ?? entity?.id ?? entity?.value ?? null
+  );
+
+  const resolveFeedbackRequiredIds = async (draft) => {
+    const [areasResult, categoriesResult] = await Promise.allSettled([
+      toolsApi.getAreas(),
+      toolsApi.getCategories(),
+    ]);
+
+    const areas = areasResult.status === 'fulfilled' && Array.isArray(areasResult.value)
+      ? areasResult.value
+      : [];
+    const categories = categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value)
+      ? categoriesResult.value
+      : [];
+
+    const normalize = (value) => String(value ?? '').trim().toLowerCase();
+    const suggestedArea = normalize(draft?.areaId || draft?.suggestedArea || draft?.areaName || draft?.location);
+    const suggestedCategory = normalize(draft?.categoryId || draft?.suggestedCategory || draft?.categoryName);
+
+    const matchedArea = areas.find((area) => {
+      const areaId = normalize(getEntityId(area, 'areaId'));
+      const areaName = normalize(area?.areaName || area?.name || area?.displayName);
+      return suggestedArea && (areaId === suggestedArea || areaName === suggestedArea || suggestedArea.includes(areaName));
+    });
+
+    const matchedCategory = categories.find((category) => {
+      const categoryId = normalize(getEntityId(category, 'categoryId'));
+      const categoryName = normalize(category?.categoryName || category?.name || category?.displayName);
+      return suggestedCategory && (categoryId === suggestedCategory || categoryName === suggestedCategory || suggestedCategory.includes(categoryName));
+    });
+
+    return {
+      areaId: getEntityId(matchedArea, 'areaId') ?? getEntityId(areas[0], 'areaId'),
+      categoryId: getEntityId(matchedCategory, 'categoryId') ?? getEntityId(categories[0], 'categoryId'),
+    };
+  };
+
   const startNewConversation = () => {
     setActiveConversationId(null);
+    resetDraftFlow();
     setChatMessages([
       {
         sender: 'ai',
         text: routeFeedbackId
           ? `Bạn đang chat theo ngữ cảnh phản ánh #${routeFeedbackId}. Hãy nhập câu hỏi cần AI hỗ trợ.`
-          : 'Chào bạn! Tôi là UrbanMind Assist — trợ giúp bạn điều hướng quy trình phản ánh và giám sát vận hành đô thị. Bạn cần hỗ trợ gì hôm nay?',
+          : 'Chào bạn! Nếu muốn tạo phản ánh, hãy nhắn “tạo phản ánh”, tôi sẽ hỏi từng thông tin một.',
       },
     ]);
   };
 
   const toggleChat = () => setChatOpen((current) => !current);
 
+  const handleDraftStepMessage = (userMsg) => {
+    if (draftStep === DRAFT_STEPS.TITLE) {
+      setDraftTitle(userMsg);
+      setDraftStep(DRAFT_STEPS.DESCRIPTION);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.DESCRIPTION) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.DESCRIPTION) {
+      setDraftDescription(userMsg);
+      const nextReflection = buildReflectionText(draftTitle, userMsg);
+      setReflection(nextReflection);
+      setDraftStep(DRAFT_STEPS.LOCATION);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.LOCATION) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.LOCATION) {
+      setLocationText(userMsg);
+      setDraftStep(DRAFT_STEPS.EVIDENCE);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.EVIDENCE) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.EVIDENCE) {
+      setDraftStep(DRAFT_STEPS.READY);
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: getDraftQuestion(DRAFT_STEPS.READY) },
+      ]);
+      return true;
+    }
+
+    if (draftStep === DRAFT_STEPS.READY) {
+      setChatMessages((current) => [
+        ...current,
+        { sender: 'ai', text: 'Thông tin đã sẵn sàng. Bạn bấm “Tạo bản nháp” để tôi tạo phản ánh.' },
+      ]);
+      return true;
+    }
+
+    return false;
+  };
+
   const handleSendMessage = async () => {
     if (!inputVal.trim() || loadingReply) return;
 
     const userMsg = inputVal.trim();
     setInputVal('');
-    setReflection((current) => current || userMsg);
     setChatMessages((current) => [...current, { sender: 'user', text: userMsg }]);
+
+    if (draftStep !== DRAFT_STEPS.IDLE && handleDraftStepMessage(userMsg)) {
+      return;
+    }
+
+    if (DRAFT_INTENT_REGEX.test(userMsg)) {
+      startDraftFlow();
+      return;
+    }
+
     setLoadingReply(true);
 
     try {
@@ -295,6 +466,18 @@ const selectConversation = async (conversationId) => {
         setLatitude(String(nextLatitude));
         setLongitude(String(nextLongitude));
         setLocationText((current) => current || `Vị trí GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}`);
+        if (draftStep === DRAFT_STEPS.LOCATION) {
+          setDraftStep(DRAFT_STEPS.EVIDENCE);
+        }
+        setChatMessages((current) => [
+          ...current,
+          {
+            sender: 'ai',
+            text: draftStep === DRAFT_STEPS.LOCATION
+              ? `Đã lấy GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}. ${getDraftQuestion(DRAFT_STEPS.EVIDENCE)}`
+              : `Đã lấy GPS: ${nextLatitude.toFixed(6)}, ${nextLongitude.toFixed(6)}.`,
+          },
+        ]);
       },
       () => {
         setChatMessages((current) => [
@@ -308,11 +491,29 @@ const selectConversation = async (conversationId) => {
 
   const handleImageSelect = (event) => {
     const files = Array.from(event.target.files || []).filter((file) => file.type.startsWith('image/'));
-    setSelectedImages(files.slice(0, 5));
+    const nextImages = files.slice(0, 5);
+    setSelectedImages(nextImages);
+    if (nextImages.length > 0) {
+      if (draftStep === DRAFT_STEPS.EVIDENCE) {
+        setDraftStep(DRAFT_STEPS.READY);
+      }
+      setChatMessages((current) => [
+        ...current,
+        {
+          sender: 'ai',
+          text: draftStep === DRAFT_STEPS.EVIDENCE
+            ? `Đã đính kèm ${nextImages.length} ảnh minh chứng: ${nextImages.map((file) => file.name).join(', ')}. ${getDraftQuestion(DRAFT_STEPS.READY)}`
+            : `Đã đính kèm ${nextImages.length} ảnh minh chứng: ${nextImages.map((file) => file.name).join(', ')}.`,
+        },
+      ]);
+    }
   };
 
   const handleCreateDraft = async () => {
-    const text = reflection.trim() || inputVal.trim();
+    const collectedTitle = draftTitle.trim();
+    const collectedDescription = draftDescription.trim() || reflection.trim() || inputVal.trim();
+    const collectedLocation = locationText.trim();
+    const text = buildReflectionText(collectedTitle, collectedDescription, collectedLocation).trim() || inputVal.trim();
     if (!text || creatingDraft) {
       setChatMessages((current) => [
         ...current,
@@ -327,23 +528,77 @@ const selectConversation = async (conversationId) => {
       const base64Images = await Promise.all(selectedImages.map(fileToBase64));
       const draft = await toolsApi.createAiFeedbackDraft({
         reflection: text,
-        location: locationText.trim(),
+        location: collectedLocation,
         latitude: latitude === '' ? null : Number(latitude),
         longitude: longitude === '' ? null : Number(longitude),
         imageUrls: [],
         base64Images,
       });
 
-      navigate('/tickets/create', {
-        state: {
-          aiDraft: draft,
-          aiDraftSource: {
-            reflection: text,
-            imageNames: selectedImages.map((file) => file.name),
+      const normalizedDraft = draft?.data ?? draft?.draft ?? draft ?? {};
+      const finalDraft = {
+        ...normalizedDraft,
+        title: collectedTitle || normalizedDraft.title || normalizedDraft.summary || 'Phản ánh đô thị từ AI',
+        description: collectedDescription || normalizedDraft.description || normalizedDraft.summary || text,
+        location: collectedLocation || normalizedDraft.location || '',
+        latitude: latitude === '' ? normalizedDraft.latitude ?? null : Number(latitude),
+        longitude: longitude === '' ? normalizedDraft.longitude ?? null : Number(longitude),
+        imageUrls: Array.isArray(normalizedDraft.imageUrls) ? normalizedDraft.imageUrls : [],
+        confirmationMessage: 'Đã lấy thông tin bạn cung cấp để tạo phản ánh. Vui lòng kiểm tra lại và bấm gửi phản ánh.',
+      };
+
+      const resolvedIds = await resolveFeedbackRequiredIds(finalDraft);
+      const latitudeNumber = Number(finalDraft.latitude);
+      const longitudeNumber = Number(finalDraft.longitude);
+      const hasCoordinates = Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber);
+
+      if (!resolvedIds.areaId) {
+        navigate('/tickets/create', {
+          state: {
+            aiDraft: finalDraft,
+            aiDraftSource: {
+              reflection: text,
+              title: finalDraft.title,
+              description: finalDraft.description,
+              location: finalDraft.location,
+              imageNames: selectedImages.map((file) => file.name),
+              createAttempted: true,
+            },
           },
+        });
+        setChatOpen(false);
+        return;
+      }
+
+      const response = await ticketApi.createTicket(
+        user?.userId,
+        user?.fullName || user?.name,
+        {
+          areaId: Number(resolvedIds.areaId),
+          categoryId: resolvedIds.categoryId ? Number(resolvedIds.categoryId) : undefined,
+          title: finalDraft.title,
+          description: finalDraft.description,
+          priority: normalizedDraft.urgencyLevel || normalizedDraft.priority || 'Medium',
+          locationText: finalDraft.location || collectedLocation || (hasCoordinates ? `Vị trí GPS: ${latitudeNumber.toFixed(6)}, ${longitudeNumber.toFixed(6)}` : 'Chưa cung cấp vị trí chi tiết'),
+          latitude: hasCoordinates ? latitudeNumber : undefined,
+          longitude: hasCoordinates ? longitudeNumber : undefined,
+          attachments: selectedImages,
         },
-      });
-      setChatOpen(false);
+        { role: user?.role || APP_ROLES.SERVICE_USER }
+      );
+
+      const createdFeedbackId = response?.data?.feedbackId || response?.data?.id || response?.feedbackId || response?.id;
+      setChatMessages((current) => [
+        ...current,
+        {
+          sender: 'ai',
+          text: createdFeedbackId
+            ? `Đã tạo phản ánh thành công (#${createdFeedbackId}). Bạn có thể theo dõi trong mục “Phản ánh của tôi”.`
+            : 'Đã tạo phản ánh thành công. Bạn có thể theo dõi trong mục “Phản ánh của tôi”.',
+        },
+      ]);
+      resetDraftFlow();
+      loadConversations();
     } catch (error) {
       setChatMessages((current) => [
         ...current,
@@ -516,84 +771,56 @@ const selectConversation = async (conversationId) => {
           </div>
 
           <div className="border-t border-base-300 bg-base-100 px-4 py-3">
-            <button
-              type="button"
-              onClick={() => setShowAiDraftForm((current) => !current)}
-              className="btn btn-outline btn-sm w-full rounded-xl"
-              aria-expanded={showAiDraftForm}
-            >
-              <Lucide.FilePlus2 size={14} />
-              Tạo phản ánh bằng AI
-              {showAiDraftForm ? <Lucide.ChevronDown size={14} /> : <Lucide.ChevronUp size={14} />}
-            </button>
-
-            {showAiDraftForm ? (
-              <div className="mt-3 space-y-2">
-                <textarea
-                  value={reflection}
-                  onChange={(event) => setReflection(event.target.value)}
-                  placeholder="Mô tả phản ánh tự nhiên, ví dụ: Đường trước nhà tôi có ổ gà lớn..."
-                  className="textarea textarea-bordered textarea-xs min-h-16 w-full rounded-xl text-xs"
-                />
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={draftStep === DRAFT_STEPS.IDLE ? startDraftFlow : handleCreateDraft}
+                disabled={creatingDraft}
+                className="btn btn-primary btn-sm flex-1 rounded-xl"
+              >
+                {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={14} />}
+                {draftStep === DRAFT_STEPS.IDLE ? 'Tạo phản ánh' : 'Tạo bản nháp'}
+              </button>
+              <button
+                type="button"
+                onClick={handleUseBrowserLocation}
+                className="btn btn-outline btn-sm rounded-xl"
+                title="Lấy GPS"
+              >
+                <Lucide.MapPin size={14} />
+                GPS
+              </button>
+              <label className="btn btn-outline btn-sm rounded-xl" title="Đính kèm ảnh">
+                <Lucide.ImagePlus size={14} />
+                Ảnh
                 <input
-                  type="text"
-                  value={locationText}
-                  onChange={(event) => setLocationText(event.target.value)}
-                  placeholder="Vị trí dạng text"
-                  className="input input-bordered input-xs w-full rounded-xl text-xs"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageSelect}
+                  className="hidden"
                 />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    value={latitude}
-                    onChange={(event) => setLatitude(event.target.value)}
-                    placeholder="Latitude"
-                    className="input input-bordered input-xs rounded-xl text-xs"
-                  />
-                  <input
-                    type="number"
-                    value={longitude}
-                    onChange={(event) => setLongitude(event.target.value)}
-                    placeholder="Longitude"
-                    className="input input-bordered input-xs rounded-xl text-xs"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={handleUseBrowserLocation} className="btn btn-xs btn-outline rounded-xl">
-                    <Lucide.MapPin size={12} />
-                    GPS
-                  </button>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageSelect}
-                    className="file-input file-input-bordered file-input-xs min-w-0 flex-1 rounded-xl text-xs"
-                  />
-                </div>
-                {selectedImages.length > 0 ? (
-                  <p className="text-[10px] text-base-content/60">
-                    Đã chọn {selectedImages.length} ảnh: {selectedImages.map((file) => file.name).join(', ')}
-                  </p>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handleCreateDraft}
-                  disabled={creatingDraft}
-                  className="btn btn-primary btn-sm w-full rounded-xl"
-                >
-                  {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={14} />}
-                  Tạo bản nháp phản ánh
-                </button>
-              </div>
+              </label>
+            </div>
+            <input
+              type="text"
+              value={locationText}
+              onChange={(event) => setLocationText(event.target.value)}
+              placeholder="Vị trí phản ánh (có thể nhập sau khi chat)"
+              className="input input-bordered input-xs w-full rounded-xl text-xs"
+            />
+            {selectedImages.length > 0 ? (
+              <p className="mt-1 text-[10px] text-base-content/60">
+                Đã chọn {selectedImages.length} ảnh: {selectedImages.map((file) => file.name).join(', ')}
+              </p>
             ) : null}
           </div>
 
           <div className="flex gap-2 border-t border-base-300 bg-base-100 p-4">
             <input
               type="text"
-              placeholder="Hỏi AI về luật, thủ tục phản ánh..."
-              aria-label="Hỏi AI"
+              placeholder={draftStep === DRAFT_STEPS.IDLE ? 'Nhắn với AI hoặc nhập “tạo phản ánh”...' : 'Trả lời câu hỏi hiện tại...'}
+              aria-label="Nhắn với AI"
               value={inputVal}
               onChange={(event) => setInputVal(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && handleSendMessage()}

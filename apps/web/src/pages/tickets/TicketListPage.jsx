@@ -1607,10 +1607,20 @@ export const TicketListPage = () => {
                           </div>
 
                           <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--public-muted)]">
-                            <span className="inline-flex min-w-0 items-center gap-1.5">
-                              <Lucide.MapPin size={13} className="shrink-0" aria-hidden="true" />
-                              <span className="max-w-md truncate">
-                                {ticket.areaName || 'Chưa xác định khu vực'}
+                            <span className="inline-flex min-w-0 items-start gap-1.5">
+                              <Lucide.MapPin size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                              <span className="min-w-0 max-w-md">
+                                <span
+                                  className="block truncate font-medium text-[var(--public-copy)]"
+                                  title={ticket.locationText || ticket.areaName || ''}
+                                >
+                                  {ticket.locationText || ticket.areaName || 'Chưa xác định vị trí'}
+                                </span>
+                                {ticket.locationText && ticket.areaName ? (
+                                  <span className="mt-0.5 block truncate text-[11px] text-[var(--public-muted)]">
+                                    {ticket.areaName}
+                                  </span>
+                                ) : null}
                               </span>
                             </span>
 

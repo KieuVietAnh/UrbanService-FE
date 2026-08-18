@@ -13,6 +13,7 @@ const citizenNavigation = [
   { label: 'Phản ánh của tôi', to: '/tickets', end: true },
   { label: 'Bảng tin', to: '/community/feed' },
   { label: 'Bản đồ sự cố', to: '/community/map' },
+  { label: 'Cảnh báo', to: '/area-alerts' },
 ];
 
 const isCitizenNavigationActive = (targetPath, pathname) => {
@@ -302,7 +303,7 @@ export const Header = ({ onMenuToggle }) => {
       admin: 'Quản trị hệ thống',
       management: 'Quản trị vận hành',
       users: 'Quản lý người dùng',
-      coordinators: 'Điều phối viên',
+      coordinators: 'Danh bạ điều phối viên',
       feedbacks: 'Quản lý phản ánh',
       categories: 'Danh mục phản ánh',
       sla: 'Chính sách SLA',
@@ -316,8 +317,10 @@ export const Header = ({ onMenuToggle }) => {
       tasks: 'Nhiệm vụ được giao',
       tickets: 'Phản ánh',
       create: 'Gửi phản ánh mới',
-      queue: 'Hàng chờ kiểm duyệt',
-      duplicates: 'Hộp thư trùng lặp',
+      queue: 'Hàng chờ kiểm duyệt AI',
+      conversations: 'Quản lý trao đổi',
+      'area-alerts': 'Quản lý cảnh báo khu vực',
+      duplicates: 'Xử lý trùng lặp',
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
       feed: 'Bảng tin',
@@ -329,6 +332,22 @@ export const Header = ({ onMenuToggle }) => {
 
     if (location.pathname === '/dashboard') {
       return <span className="font-semibold text-slate-950">Tổng quan hệ thống</span>;
+    }
+
+    if (location.pathname.startsWith('/tickets/assign/')) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Link to="/dashboard" className="font-medium text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
+            Tổng quan hệ thống
+          </Link>
+          <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
+          <Link to="/staff/queue" className="font-semibold text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
+            Hàng chờ kiểm duyệt AI
+          </Link>
+          <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
+          <span className="font-semibold text-slate-950 dark:text-slate-100">Phân công xử lý</span>
+        </div>
+      );
     }
 
     const hiddenBreadcrumbSegments = new Set([
@@ -354,11 +373,17 @@ export const Header = ({ onMenuToggle }) => {
           if (index === 0 && path === 'dashboard') return null;
 
           const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
-          const isCoordinatorId = /^\d+$/.test(path) && location.pathname.startsWith('/management/coordinators/');
-          const segmentName = isFeedbackId
-            ? 'Chi tiết phản ánh'
+          const isCoordinatorId = /^\d+$/.test(path) && (location.pathname.startsWith('/management/coordinators/') || location.pathname.startsWith('/staff/coordinators/'));
+          const segmentName = index > 0 && location.pathname.startsWith('/staff/duplicates/')
+            ? 'Chi tiết trường hợp nghi trùng'
+            : isFeedbackId
+              ? 'Chi tiết phản ánh'
             : isCoordinatorId
               ? 'Chi tiết điều phối viên'
+            : path === 'feedbacks' && location.state?.fromStaffConversations
+              ? 'Quản lý trao đổi'
+            : path === 'create' && location.pathname.startsWith('/staff/area-alerts/')
+              ? 'Tạo cảnh báo'
             : path === 'sla' && location.pathname.startsWith('/analytics/')
               ? 'Phân tích SLA'
               : labelMap[path] || path;
@@ -370,12 +395,16 @@ export const Header = ({ onMenuToggle }) => {
             heatmap: '/analytics/heatmap',
             sentiment: '/analytics/sentiment',
             settings: '/settings',
-            coordinators: '/management/coordinators',
+            coordinators: location.pathname.startsWith('/staff/coordinators') ? '/staff/coordinators' : '/management/coordinators',
+            'area-alerts': '/staff/area-alerts',
+            duplicates: '/staff/duplicates',
           };
 
-          const breadcrumbLink = path === 'sla' && location.pathname.startsWith('/analytics/')
-            ? '/analytics/sla'
-            : breadcrumbLinkMap[path];
+          const breadcrumbLink = path === 'feedbacks' && location.state?.fromStaffConversations
+            ? '/staff/conversations'
+            : path === 'sla' && location.pathname.startsWith('/analytics/')
+              ? '/analytics/sla'
+              : breadcrumbLinkMap[path];
 
           return (
             <span key={`${path}-${index}`} className="flex items-center gap-1.5">

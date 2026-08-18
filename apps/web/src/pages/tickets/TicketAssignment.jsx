@@ -143,7 +143,7 @@ export const TicketAssignment = () => {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-20 bg-base-100 rounded-3xl border border-base-300">
+      <div className="admin-panel flex min-h-[320px] items-center justify-center">
         <span className="loading loading-spinner loading-lg text-primary"></span>
       </div>
     );
@@ -158,7 +158,7 @@ export const TicketAssignment = () => {
   const categoryName = categories.find((c) => Number(c.categoryId) === Number(ticket.categoryId))?.categoryName || 'Không rõ';
 
   return (
-    <div className="space-y-6">
+    <div className="admin-page-shell staff-assignment-page space-y-5">
       {message.type === 'success' && (
         <SuccessAlert
           message={message.text}
@@ -172,242 +172,172 @@ export const TicketAssignment = () => {
         />
       )}
 
-      <div className="space-y-3">
-        <h2 className="text-3xl font-black">Điều Phối & Phân Công Xử Lý</h2>
-        <p className="max-w-3xl text-sm text-gray-500 font-semibold">Lựa chọn đơn vị xử lý phù hợp và xác nhận thời hạn xử lý.</p>
-      </div>
+      <section className="admin-page-hero">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="admin-hero-icon" aria-hidden="true">
+              <Lucide.UserRoundCheck size={26} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="admin-hero-title">Phân công xử lý</h1>
+              <p className="admin-hero-description">Chọn đơn vị xử lý phù hợp và xác nhận thông tin giao việc cho phản ánh.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/staff/queue')}
+            className="staff-assignment-back inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition"
+          >
+            <Lucide.ArrowLeft size={16} aria-hidden="true" />
+            Quay lại
+          </button>
+        </div>
+      </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(280px,320px)_1fr]">
-        <aside className="space-y-6">
-          <div className="card bg-base-100 border border-base-200 p-6 rounded-[28px] shadow-sm h-full">
-            <div className="flex items-center justify-between gap-3 mb-5">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Tóm tắt sự cố</p>
-                <h3 className="mt-3 text-xl font-black text-gray-900">{ticket.title || 'Không có tiêu đề'}</h3>
+      <div className="grid items-start gap-4 xl:grid-cols-[288px_minmax(0,1fr)]">
+        <aside className="xl:sticky xl:top-24">
+          <section className="admin-panel staff-assignment-summary overflow-hidden p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Tóm tắt phản ánh</p>
+                <h2 className="mt-2 text-base font-bold leading-6 text-slate-950">{ticket.title || 'Không có tiêu đề'}</h2>
               </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-3xl bg-primary/10 text-primary">
-                <Lucide.FileText size={20} />
+              <span className="admin-mini-icon staff-assignment-icon-primary h-10 w-10 shrink-0" aria-hidden="true">
+                <Lucide.FileText size={18} />
               </span>
             </div>
 
-            <div className="space-y-4 text-sm text-gray-700">
-              <div className="rounded-3xl border border-base-200 bg-base-200/70 p-4">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Vị trí</p>
-                <p className="mt-2 font-semibold text-gray-900">{ticket.locationText || 'Chưa có vị trí'}</p>
+            <div className="mt-4 space-y-2.5 text-sm">
+              <div className="admin-inset-panel staff-assignment-summary-tile p-3.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Vị trí</p>
+                <p className="mt-2 font-semibold leading-6 text-slate-800">{ticket.locationText || 'Chưa có vị trí'}</p>
               </div>
 
-              <div className="grid gap-3">
-                <div className="rounded-3xl border border-base-200 bg-white p-4">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Danh mục</p>
-                  <p className="mt-2 font-semibold text-gray-900">{categoryName}</p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="admin-inset-panel staff-assignment-summary-tile p-3.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Danh mục</p>
+                  <p className="mt-2 font-semibold text-slate-800">{categoryName}</p>
                 </div>
-                <div className="rounded-3xl border border-base-200 bg-white p-4">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Mức độ ưu tiên</p>
-                  <p className="mt-2 font-semibold text-gray-900">{ticket.priority || 'Medium'}</p>
+                <div className="admin-inset-panel staff-assignment-summary-tile p-3.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Mức độ ưu tiên</p>
+                  <p className="mt-2 font-semibold text-slate-800">{ticket.priority || 'Medium'}</p>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         </aside>
 
-        <main className="space-y-6">
-          <div className="card bg-base-100 border border-base-200 p-8 rounded-[32px] shadow-sm flex flex-col">
-            <form onSubmit={handleAssign} className="flex flex-col">
-              {error && (
-                <div className="mb-4 rounded-3xl border border-error/20 bg-error/10 p-4 text-sm text-error">
-                  {error}
+        <div className="space-y-4">
+          <form onSubmit={handleAssign} className="space-y-4">
+            {error && (
+              <div className="rounded-2xl border border-error/20 bg-error/10 p-4 text-sm text-error">
+                {error}
+              </div>
+            )}
+
+            <section className="admin-panel staff-assignment-section staff-assignment-section-primary p-5 sm:p-6">
+              <header className="staff-assignment-section-head flex items-start gap-3 pb-4">
+                <span className="admin-mini-icon staff-assignment-icon-primary" aria-hidden="true"><Lucide.Gauge size={17} /></span>
+                <div>
+                  <h2 className="admin-section-title">Thiết lập phương án xử lý</h2>
+                  <p className="admin-section-description mt-1">Kiểm tra SLA và thông tin phân loại trước khi giao việc.</p>
                 </div>
-              )}
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center gap-3 rounded-full border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary">
-                    <Lucide.UserCheck size={18} />
-                    THÔNG TIN PHÂN CÔNG
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-3xl font-black text-gray-900">Decision Workspace</h3>
-                    <p className="max-w-3xl text-sm text-gray-500">Lựa chọn đơn vị xử lý phù hợp và xác nhận thời hạn xử lý.</p>
-                  </div>
+              </header>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="admin-inset-panel staff-assignment-metric min-h-[92px] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">SLA</p><p className="mt-2 text-lg font-bold text-slate-950">{slaHours} giờ</p></div>
+                <div className="admin-inset-panel staff-assignment-metric min-h-[92px] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Mức độ ưu tiên</p><p className="mt-2 text-lg font-bold text-slate-950">{ticket.priority || 'Medium'}</p></div>
+                <div className="admin-inset-panel staff-assignment-metric min-h-[92px] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Danh mục</p><p className="mt-2 text-lg font-bold text-slate-950">{categoryName}</p></div>
+                <div className="admin-inset-panel staff-assignment-metric min-h-[92px] p-4"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Hạn dự kiến</p><p className="mt-2 text-lg font-bold text-slate-950">{projectedDeadline.toLocaleDateString('vi-VN')}</p></div>
+              </div>
+            </section>
+
+            <section className="admin-panel staff-assignment-section p-5 sm:p-6">
+              <header className="staff-assignment-section-head flex items-start gap-3 pb-4">
+                <span className="admin-mini-icon staff-assignment-icon-neutral" aria-hidden="true"><Lucide.Building2 size={17} /></span>
+                <div>
+                  <h2 className="admin-section-title">Đơn vị xử lý</h2>
+                  <p className="admin-section-description mt-1">Chọn đơn vị phù hợp hoặc nhập mã đơn vị khi cần.</p>
                 </div>
+              </header>
+
+              <div className={`staff-assignment-provider relative mt-4 overflow-hidden rounded-2xl border p-5 ${selectedOperator ? 'is-selected' : 'is-empty'}`}>
+                {selectedOperator ? <span className="staff-assignment-provider-accent absolute inset-y-0 left-0 w-1" aria-hidden="true" /> : null}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Đơn vị đang chọn</p>
+                    <p className="mt-2 text-base font-bold text-slate-950">{selectedOperator ? selectedOperator.operatorName : 'Chưa chọn đơn vị xử lý'}</p>
+                  </div>
+                  <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${selectedOperator ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{selectedOperator ? 'Đã chọn' : 'Chưa chọn'}</span>
+                </div>
+
+                {selectedOperator ? (
+                  <div className="staff-assignment-provider-meta mt-4 grid gap-4 border-t pt-4 sm:grid-cols-2">
+                    <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Số điện thoại</p><p className="mt-1.5 text-sm font-semibold text-slate-800">{selectedOperator.contactPhone || '-'}</p></div>
+                    <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Email</p><p className="mt-1.5 text-sm font-semibold text-slate-800">{selectedOperator.email || '-'}</p></div>
+                    <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Phạm vi phụ trách</p><p className="mt-1.5 text-sm font-semibold text-slate-800">{selectedOperator.coverage || '-'}</p></div>
+                    <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">SLA</p><p className="mt-1.5 text-sm font-semibold text-slate-800">{selectedOperator.sla || `${slaHours} giờ`}</p></div>
+                  </div>
+                ) : null}
               </div>
 
-              <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">SLA</p>
-                  <p className="mt-3 text-2xl font-black text-gray-900">{slaHours} giờ</p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-slate-700">Chọn đơn vị xử lý</label>
+                  {providerCandidatesLoaded ? (
+                    operators.length > 0 ? (
+                      <select value={selectedOperatorId} onChange={(e) => { setSelectedOperatorId(e.target.value); if (e.target.value) setManualOperatorId(''); }} className="select select-bordered staff-assignment-control w-full rounded-xl text-sm font-semibold">
+                        <option value="">-- Chọn đơn vị xử lý --</option>
+                        {operators.map((op) => (<option key={op.operatorId} value={op.operatorId}>{op.operatorName}</option>))}
+                      </select>
+                    ) : (<p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">Không có đơn vị xử lý khả dụng.</p>)
+                  ) : (<p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">Đang tải danh sách đơn vị xử lý...</p>)}
                 </div>
-                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Priority</p>
-                  <p className="mt-3 text-2xl font-black text-gray-900">{ticket.priority || 'Medium'}</p>
-                </div>
-                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Category</p>
-                  <p className="mt-3 text-2xl font-black text-gray-900">{categoryName}</p>
-                </div>
-                <div className="rounded-3xl border border-base-200 bg-white p-5 shadow-sm">
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">ETA</p>
-                  <p className="mt-3 text-2xl font-black text-gray-900">{projectedDeadline.toLocaleDateString('vi-VN')}</p>
-                </div>
-              </div>
-
-              <div className="mt-8 grid gap-6 lg:grid-cols-[1fr]">
-                <div className={`rounded-[28px] border p-6 ${selectedOperator ? 'border-base-200 bg-white shadow-sm' : 'border-dashed border-base-300 bg-base-200/60'}`}>
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Đơn vị xử lý đã chọn</p>
-                      <p className="mt-3 text-lg font-semibold text-gray-900">{selectedOperator ? selectedOperator.operatorName : 'Chưa chọn đơn vị xử lý'}</p>
-                    </div>
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${selectedOperator ? 'bg-emerald-100 text-emerald-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                      {selectedOperator ? 'Đã chọn' : 'Chưa chọn'}
-                    </span>
-                  </div>
-                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Phone</p>
-                      <p className="font-semibold text-gray-900">{selectedOperator?.contactPhone || '-'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Email</p>
-                      <p className="font-semibold text-gray-900">{selectedOperator?.email || '-'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Coverage</p>
-                      <p className="font-semibold text-gray-900">{selectedOperator?.coverage || '-'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">SLA</p>
-                      <p className="font-semibold text-gray-900">{selectedOperator?.sla || `${slaHours} giờ`}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6">
-                    <label className="label">
-                      <span className="label-text text-xs font-bold">Chọn đơn vị xử lý</span>
-                    </label>
-                    {providerCandidatesLoaded ? (
-                      operators.length > 0 ? (
-                        <select
-                          value={selectedOperatorId}
-                          onChange={(e) => {
-                            setSelectedOperatorId(e.target.value);
-                            if (e.target.value) setManualOperatorId('');
-                          }}
-                          className="select select-bordered select-sm rounded-2xl w-full font-semibold"
-                        >
-                          <option value="">-- Chọn đơn vị xử lý --</option>
-                          {operators.map((op) => (
-                            <option key={op.operatorId} value={op.operatorId}>
-                              {op.operatorName}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <p className="text-sm text-gray-500">Không có đơn vị xử lý khả dụng. Hãy nhập mã thủ công bên dưới.</p>
-                      )
-                    ) : (
-                      <p className="text-sm text-gray-500">Đang tải danh sách đơn vị xử lý...</p>
-                    )}
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="label">
-                      <span className="label-text text-xs font-bold">Hoặc nhập mã đơn vị xử lý</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={manualOperatorId}
-                      onChange={(e) => {
-                        setManualOperatorId(e.target.value);
-                        if (e.target.value) setSelectedOperatorId('');
-                      }}
-                      placeholder="VD: 123"
-                      className="input input-bordered input-sm rounded-2xl w-full font-semibold"
-                    />
-                  </div>
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-slate-700">Hoặc nhập mã đơn vị xử lý</label>
+                  <input type="text" value={manualOperatorId} onChange={(e) => { setManualOperatorId(e.target.value); if (e.target.value) setSelectedOperatorId(''); }} placeholder="VD: 123" className="input input-bordered staff-assignment-control w-full rounded-xl text-sm font-semibold" />
                 </div>
               </div>
+            </section>
 
-              <div className="rounded-[28px] border border-base-200 bg-base-200/50 p-6">
-                <label className="label">
-                  <span className="label-text text-xs font-bold">Ghi chú giao việc</span>
-                </label>
-                <textarea
-                  rows="5"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Mô tả yêu cầu xử lý, lưu ý kỹ thuật, thông tin hiện trường..."
-                  className="textarea textarea-bordered textarea-lg w-full rounded-3xl font-semibold text-sm"
-                />
-              </div>
-
-              <div className="mt-4 border-t border-base-200 pt-4 sticky top-[calc(100vh-96px)] bg-base-100">
-                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end sm:items-center">
-                  <button
-                    type="button"
-                    onClick={() => navigate(-1)}
-                    className="btn btn-ghost rounded-2xl px-6"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary rounded-2xl px-6 font-bold"
-                    disabled={assignLoading || (!selectedOperatorId && !manualOperatorId)}
-                  >
-                    {assignLoading ? <span className="loading loading-spinner"></span> : 'Xác nhận phân công'}
-                  </button>
+            <section className="admin-panel staff-assignment-section p-5 sm:p-6">
+              <header className="staff-assignment-section-head flex items-start gap-3 pb-4">
+                <span className="admin-mini-icon staff-assignment-icon-neutral" aria-hidden="true"><Lucide.NotebookPen size={17} /></span>
+                <div>
+                  <h2 className="admin-section-title">Ghi chú giao việc</h2>
+                  <p className="admin-section-description mt-1">Bổ sung yêu cầu xử lý hoặc lưu ý cần chuyển cho đơn vị tiếp nhận.</p>
                 </div>
+              </header>
+              <textarea rows="4" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Mô tả yêu cầu xử lý, lưu ý kỹ thuật, thông tin hiện trường..." className="textarea textarea-bordered staff-assignment-control staff-assignment-note mt-4 min-h-24 w-full rounded-xl text-sm leading-6" />
+              <div className="mt-4 flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+                <button type="button" onClick={() => navigate(-1)} className="staff-assignment-secondary inline-flex h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold transition">Hủy</button>
+                <button type="submit" className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-6 text-sm font-bold text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={assignLoading || (!selectedOperatorId && !manualOperatorId)}>{assignLoading ? <span className="loading loading-spinner"></span> : 'Xác nhận phân công'}</button>
               </div>
-            </form>
-          </div>
+            </section>
+          </form>
 
-          <div className="card bg-base-100 border border-base-200 p-6 rounded-[32px] shadow-sm">
-            <div className="border-b border-base-200 pb-4 mb-6">
-              <h4 className="font-extrabold text-xs uppercase tracking-wider text-gray-400">Chi tiết sự cố</h4>
+          <section className="admin-panel staff-assignment-section staff-assignment-detail p-4 sm:p-5">
+            <header className="staff-assignment-section-head flex items-start gap-3 pb-4">
+              <span className="admin-mini-icon staff-assignment-icon-neutral" aria-hidden="true"><Lucide.FileSearch size={17} /></span>
+              <div><h2 className="admin-section-title">Chi tiết phản ánh</h2><p className="admin-section-description mt-1">Thông tin tham chiếu trước khi xác nhận phân công.</p></div>
+            </header>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr_1.15fr]">
+              <dl className="space-y-4 text-sm">
+                <div><dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Tiêu đề</dt><dd className="mt-1.5 font-semibold text-slate-800">{ticket.title || 'Không có tiêu đề'}</dd></div>
+                <div><dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Mã phản ánh</dt><dd className="mt-1.5 break-all font-semibold text-slate-800">{ticket.feedbackId || ticket.id || 'Không rõ'}</dd></div>
+                <div><dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Người báo cáo</dt><dd className="mt-1.5 font-semibold text-slate-800">{ticket.reporterName || 'Không rõ'}</dd></div>
+              </dl>
+              <dl className="space-y-4 text-sm">
+                <div><dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Khu vực</dt><dd className="mt-1.5 font-semibold text-slate-800">{ticket.areaName || 'Không có khu vực'}</dd></div>
+                <div><dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Danh mục</dt><dd className="mt-1.5 font-semibold text-slate-800">{categoryName}</dd></div>
+                <div><dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Thời gian tạo</dt><dd className="mt-1.5 font-semibold text-slate-800">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('vi-VN') : 'Không rõ'}</dd></div>
+              </dl>
+              <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Nội dung phản ánh</p><p className="admin-inset-panel mt-2 min-h-[72px] p-3.5 text-sm leading-6 text-slate-700">{ticket.description || 'Không có nội dung phản ánh.'}</p></div>
             </div>
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="space-y-4 text-sm text-gray-700">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Tiêu đề</p>
-                  <p className="mt-2 font-semibold text-gray-900">{ticket.title || 'Không có tiêu đề'}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Mã phản ánh</p>
-                  <p className="mt-2 font-semibold text-gray-900">{ticket.feedbackId || ticket.id || 'Không rõ'}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Người báo cáo</p>
-                  <p className="mt-2 font-semibold text-gray-900">{ticket.reporterName || 'Không rõ'}</p>
-                </div>
-              </div>
-              <div className="space-y-4 text-sm text-gray-700">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Khu vực</p>
-                  <p className="mt-2 font-semibold text-gray-900">{ticket.areaName || 'Không có khu vực'}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Danh mục</p>
-                  <p className="mt-2 font-semibold text-gray-900">{categoryName}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Mức độ ưu tiên</p>
-                  <p className="mt-2 font-semibold text-gray-900">{ticket.priority || 'Medium'}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Thời gian tạo</p>
-                  <p className="mt-2 font-semibold text-gray-900">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('vi-VN') : 'Không rõ'}</p>
-                </div>
-              </div>
-              <div className="space-y-4 text-sm text-gray-700">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Nội dung phản ánh</p>
-                  <p className="mt-2 rounded-3xl border border-base-200 bg-base-200/70 p-5 text-sm leading-7 text-gray-700">{ticket.description || 'Không có nội dung phản ánh.'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
+          </section>
+        </div>
       </div>
+
     </div>
   );
 };

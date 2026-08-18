@@ -8,6 +8,12 @@ import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
 
 const DEFAULT_CENTER = [10.776530, 106.700981];
 const DEFAULT_ZOOM = 14;
+const GEOCODING_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
+const REVERSE_GEOCODING_ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
+const GEOCODING_CACHE_PREFIX = 'urbanmind:location-search:';
+const REVERSE_GEOCODING_CACHE_PREFIX = 'urbanmind:location-reverse:';
+let lastNominatimRequestAt = 0;
+
 
 const defaultIcon = new L.Icon({
   iconUrl: markerIconUrl,
@@ -23,6 +29,55 @@ function isValidCoordinate(value, min, max) {
 
 function isValidLocation(lat, lng) {
   return isValidCoordinate(lat, -90, 90) && isValidCoordinate(lng, -180, 180);
+}
+
+function normalizeSearchText(value = '') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeWardName(value = '') {
+  return normalizeSearchText(value)
+    .replace(/^(phuong|xa|thi tran)\s+/, '')
+    .trim();
+}
+
+function doesSearchResultMatchBoundaryName(result, boundaryName) {
+  const expectedWard = normalizeWardName(boundaryName);
+  if (!expectedWard) return true;
+
+  const address = result?.address && typeof result.address === 'object'
+    ? result.address
+    : {};
+
+  const administrativeCandidates = [
+    address.suburb,
+    address.quarter,
+    address.neighbourhood,
+    address.village,
+    address.town,
+    address.city_district,
+    address.municipality,
+  ]
+    .map(normalizeWardName)
+    .filter(Boolean);
+
+  if (administrativeCandidates.some((candidate) => (
+    candidate === expectedWard ||
+    candidate.includes(expectedWard) ||
+    expectedWard.includes(candidate)
+  ))) {
+    return true;
+  }
+
+  const displayName = normalizeSearchText(result?.display_name || '');
+  return displayName.includes(expectedWard);
 }
 
 function normalizeBoundaryGeoJson(boundaryGeoJson) {
@@ -86,6 +141,250 @@ function getBoundaryLayerKey(boundaryGeoJson) {
   return boundaryGeoJson.type || 'boundary';
 }
 
+function isPointOnSegment(lng, lat, start, end) {
+  const [startLng, startLat] = start;
+  const [endLng, endLat] = end;
+  const cross = (lat - startLat) * (endLng - startLng) - (lng - startLng) * (endLat - startLat);
+  if (Math.abs(cross) > 1e-10) return false;
+
+  const dot = (lng - startLng) * (endLng - startLng) + (lat - startLat) * (endLat - startLat);
+  if (dot < 0) return false;
+
+  const squaredLength = (endLng - startLng) ** 2 + (endLat - startLat) ** 2;
+  return dot <= squaredLength;
+}
+
+function isPointInRing(lat, lng, ring = []) {
+  if (!Array.isArray(ring) || ring.length < 3) return false;
+
+  let inside = false;
+  for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index, index += 1) {
+    const currentPoint = ring[index];
+    const previousPoint = ring[previous];
+    if (!Array.isArray(currentPoint) || !Array.isArray(previousPoint)) continue;
+
+    if (isPointOnSegment(lng, lat, previousPoint, currentPoint)) return true;
+
+    const [currentLng, currentLat] = currentPoint;
+    const [previousLng, previousLat] = previousPoint;
+    const intersects = ((currentLat > lat) !== (previousLat > lat)) &&
+      (lng < ((previousLng - currentLng) * (lat - currentLat)) / (previousLat - currentLat) + currentLng);
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function isPointInPolygon(lat, lng, polygonCoordinates = []) {
+  if (!Array.isArray(polygonCoordinates) || polygonCoordinates.length === 0) return false;
+  if (!isPointInRing(lat, lng, polygonCoordinates[0])) return false;
+
+  return !polygonCoordinates.slice(1).some((hole) => isPointInRing(lat, lng, hole));
+}
+
+function isPointInsideBoundary(lat, lng, geoJson) {
+  if (!geoJson) return true;
+
+  if (geoJson.type === 'FeatureCollection') {
+    return (geoJson.features || []).some((feature) => isPointInsideBoundary(lat, lng, feature));
+  }
+
+  if (geoJson.type === 'Feature') {
+    return geoJson.geometry
+      ? isPointInsideBoundary(lat, lng, geoJson.geometry)
+      : false;
+  }
+
+  if (geoJson.type === 'GeometryCollection') {
+    return (geoJson.geometries || []).some((geometry) => isPointInsideBoundary(lat, lng, geometry));
+  }
+
+  if (geoJson.type === 'Polygon') {
+    return isPointInPolygon(lat, lng, geoJson.coordinates);
+  }
+
+  if (geoJson.type === 'MultiPolygon') {
+    return (geoJson.coordinates || []).some((polygon) => isPointInPolygon(lat, lng, polygon));
+  }
+
+  // Unsupported geometries (Point/LineString/etc.) must never make an arbitrary
+  // coordinate pass a ward-boundary validation.
+  return false;
+}
+
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function isLocationInsideBoundaryGeoJson(lat, lng, boundaryGeoJson) {
+  if (!isValidLocation(lat, lng)) return false;
+  if (!boundaryGeoJson) return true;
+
+  const normalizedBoundary = normalizeBoundaryGeoJson(boundaryGeoJson);
+  if (!normalizedBoundary) return false;
+
+  return isPointInsideBoundary(lat, lng, normalizedBoundary);
+}
+
+
+// eslint-disable-next-line react-refresh/only-export-components
+export async function reverseGeocodeApproximateAddress(lat, lng, boundaryName = '') {
+  if (!isValidLocation(lat, lng)) {
+    return boundaryName
+      ? `${boundaryName} (vị trí gần đúng)`
+      : 'Vị trí đã được xác định trên bản đồ';
+  }
+
+  const numericLat = Number(lat);
+  const numericLng = Number(lng);
+  const cacheKey = `${numericLat.toFixed(5)},${numericLng.toFixed(5)}`;
+  const cached = readReverseGeocodingCache(cacheKey);
+
+  if (cached) {
+    return formatApproximateAddress(cached, boundaryName, numericLat, numericLng);
+  }
+
+  try {
+    await waitForNominatimRateLimit();
+
+    const params = new URLSearchParams({
+      lat: String(numericLat),
+      lon: String(numericLng),
+      format: 'jsonv2',
+      addressdetails: '1',
+      zoom: '18',
+      'accept-language': 'vi',
+    });
+
+    const response = await fetch(
+      `${REVERSE_GEOCODING_ENDPOINT}?${params.toString()}`,
+      { headers: { Accept: 'application/json' } }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Reverse geocoding failed with status ${response.status}`);
+    }
+
+    const payload = await response.json();
+    writeReverseGeocodingCache(cacheKey, payload);
+    return formatApproximateAddress(payload, boundaryName, numericLat, numericLng);
+  } catch (reverseError) {
+    console.warn('Reverse geocoding unavailable', reverseError);
+    return boundaryName
+      ? `${boundaryName} (vị trí gần đúng)`
+      : 'Vị trí đã được xác định trên bản đồ';
+  }
+}
+
+function getBoundaryViewbox(boundaryGeoJson) {
+  if (!boundaryGeoJson) return null;
+
+  try {
+    const bounds = L.geoJSON(boundaryGeoJson).getBounds();
+    if (!bounds.isValid()) return null;
+
+    const west = bounds.getWest();
+    const north = bounds.getNorth();
+    const east = bounds.getEast();
+    const south = bounds.getSouth();
+    return `${west},${north},${east},${south}`;
+  } catch {
+    return null;
+  }
+}
+
+function readGeocodingCache(cacheKey) {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(`${GEOCODING_CACHE_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGeocodingCache(cacheKey, results) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      `${GEOCODING_CACHE_PREFIX}${cacheKey}`,
+      JSON.stringify(results)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+}
+
+
+function readReverseGeocodingCache(cacheKey) {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(
+      `${REVERSE_GEOCODING_CACHE_PREFIX}${cacheKey}`
+    );
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeReverseGeocodingCache(cacheKey, result) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      `${REVERSE_GEOCODING_CACHE_PREFIX}${cacheKey}`,
+      JSON.stringify(result)
+    );
+  } catch {
+    // Storage can be unavailable in private mode.
+  }
+}
+
+async function waitForNominatimRateLimit() {
+  const elapsed = Date.now() - lastNominatimRequestAt;
+  if (elapsed < 1000) {
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 1000 - elapsed);
+    });
+  }
+  lastNominatimRequestAt = Date.now();
+}
+
+function formatApproximateAddress(result, boundaryName, lat, lng) {
+  if (!result || typeof result !== 'object') {
+    return boundaryName
+      ? `${boundaryName} (vị trí gần đúng)`
+      : 'Vị trí đã được xác định trên bản đồ';
+  }
+
+  if (!boundaryName || doesSearchResultMatchBoundaryName(result, boundaryName)) {
+    return result.display_name || (
+      boundaryName
+        ? `${boundaryName} (vị trí gần đúng)`
+        : 'Vị trí đã được xác định trên bản đồ'
+    );
+  }
+
+  const address = result.address && typeof result.address === 'object'
+    ? result.address
+    : {};
+  const streetParts = [
+    address.house_number,
+    address.road || address.pedestrian || address.path || address.neighbourhood || address.quarter,
+  ].filter(Boolean);
+
+  if (streetParts.length > 0) {
+    return `${streetParts.join(' ')}, ${boundaryName}`;
+  }
+
+  return `${boundaryName} · ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
+
 function MapAutoCenter({ center }) {
   const map = useMap();
 
@@ -147,6 +446,10 @@ export const LocationPicker = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [areaBoundary, setAreaBoundary] = useState(null);
+  const [addressQuery, setAddressQuery] = useState('');
+  const [addressResults, setAddressResults] = useState([]);
+  const [searchingAddress, setSearchingAddress] = useState(false);
+  const [addressSearchMessage, setAddressSearchMessage] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -169,17 +472,28 @@ export const LocationPicker = ({
     };
   }, [boundaryGeoJson]);
 
+  useEffect(() => {
+    setAddressResults([]);
+    setAddressSearchMessage('');
+  }, [boundaryName, boundaryGeoJson]);
+
   const boundaryLayerKey = useMemo(
     () => getBoundaryLayerKey(areaBoundary),
     [areaBoundary]
   );
 
   const selectedPosition = useMemo(() => {
-    if (isValidLocation(latitude, longitude)) {
-      return { lat: latitude, lng: longitude };
+    if (!isValidLocation(latitude, longitude)) return null;
+
+    if (
+      boundaryGeoJson &&
+      !isLocationInsideBoundaryGeoJson(latitude, longitude, boundaryGeoJson)
+    ) {
+      return null;
     }
-    return null;
-  }, [latitude, longitude]);
+
+    return { lat: latitude, lng: longitude };
+  }, [latitude, longitude, boundaryGeoJson]);
 
   const center = useMemo(() => {
     if (selectedPosition) {
@@ -188,16 +502,169 @@ export const LocationPicker = ({
     return [initialLatitude, initialLongitude];
   }, [selectedPosition, initialLatitude, initialLongitude]);
 
+  const reverseGeocodeLocation = (lat, lng) => (
+    reverseGeocodeApproximateAddress(lat, lng, boundaryName)
+  );
+
   const updateSelection = (lat, lng, message = null) => {
     if (!isValidLocation(lat, lng)) {
       setError('Tọa độ không hợp lệ. Vui lòng chọn lại.');
-      return;
+      return false;
+    }
+
+    if (boundaryGeoJson && !isLocationInsideBoundaryGeoJson(lat, lng, boundaryGeoJson)) {
+      setError(
+        boundaryName
+          ? `Vị trí này không thuộc ${boundaryName}. Vui lòng chọn lại vị trí trong khu vực đã chọn.`
+          : 'Vị trí này nằm ngoài khu vực đã chọn. Vui lòng chọn lại.'
+      );
+      return false;
     }
 
     setError('');
+    setStatus('');
     if (typeof onSelectLocation === 'function') {
-      onSelectLocation(lat, lng, message || `Vị trí đã chọn: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      onSelectLocation(
+        lat,
+        lng,
+        message || (
+          boundaryName
+            ? `${boundaryName} (vị trí gần đúng)`
+            : 'Vị trí đã được xác định trên bản đồ'
+        )
+      );
     }
+    return true;
+  };
+
+  const updateSelectionFromCoordinates = async (lat, lng) => {
+    if (!isValidLocation(lat, lng)) {
+      setError('Tọa độ không hợp lệ. Vui lòng chọn lại.');
+      return false;
+    }
+
+    if (
+      boundaryGeoJson &&
+      !isLocationInsideBoundaryGeoJson(lat, lng, boundaryGeoJson)
+    ) {
+      setError(
+        boundaryName
+          ? `Vị trí này không thuộc ${boundaryName}. Vui lòng chọn lại vị trí trong khu vực đã chọn.`
+          : 'Vị trí này nằm ngoài khu vực đã chọn. Vui lòng chọn lại.'
+      );
+      return false;
+    }
+
+    setStatus('Đang xác định địa chỉ gần đúng...');
+    const approximateAddress = await reverseGeocodeLocation(lat, lng);
+    const selected = updateSelection(lat, lng, approximateAddress);
+    if (selected) {
+      setStatus('Đã xác định vị trí và địa chỉ gần đúng.');
+    }
+    return selected;
+  };
+
+  const handleAddressSearch = async (event) => {
+    event.preventDefault();
+    if (readonly || searchingAddress) return;
+
+    const query = addressQuery.trim();
+    if (query.length < 3) {
+      setAddressResults([]);
+      setAddressSearchMessage('Vui lòng nhập ít nhất 3 ký tự để tìm địa chỉ.');
+      return;
+    }
+
+    setSearchingAddress(true);
+    setError('');
+    setAddressSearchMessage('');
+
+    const viewbox = getBoundaryViewbox(areaBoundary);
+    const cacheKey = JSON.stringify({ query: query.toLowerCase(), viewbox: viewbox || '' });
+    const cachedResults = readGeocodingCache(cacheKey);
+
+    try {
+      let results = cachedResults;
+
+      if (!results) {
+        const params = new URLSearchParams({
+          q: query,
+          format: 'jsonv2',
+          addressdetails: '1',
+          limit: '5',
+          countrycodes: 'vn',
+          'accept-language': 'vi',
+        });
+
+        if (viewbox) {
+          params.set('viewbox', viewbox);
+          params.set('bounded', '1');
+        }
+
+        await waitForNominatimRateLimit();
+
+        const response = await fetch(`${GEOCODING_ENDPOINT}?${params.toString()}`, {
+          headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Geocoding request failed with status ${response.status}`);
+        }
+
+        const payload = await response.json();
+        results = Array.isArray(payload) ? payload : [];
+        writeGeocodingCache(cacheKey, results);
+      }
+
+      const normalizedResults = results
+        .map((result) => ({
+          id: result.place_id,
+          lat: Number(result.lat),
+          lng: Number(result.lon),
+          displayName: result.display_name || query,
+          address: result.address || {},
+        }))
+        .filter((result) => isValidLocation(result.lat, result.lng))
+        .filter((result) => (
+          !boundaryGeoJson ||
+          isLocationInsideBoundaryGeoJson(result.lat, result.lng, boundaryGeoJson)
+        ))
+        .filter((result) => (
+          !boundaryName ||
+          doesSearchResultMatchBoundaryName(result, boundaryName)
+        ));
+
+      setAddressResults(normalizedResults);
+      setAddressSearchMessage(
+        normalizedResults.length > 0
+          ? `Tìm thấy ${normalizedResults.length} vị trí phù hợp${boundaryName ? ` trong ${boundaryName}` : ''}.`
+          : `Không tìm thấy địa chỉ phù hợp${boundaryName ? ` trong ${boundaryName}` : ''}. Hãy thử nhập rõ số nhà, tên đường.`
+      );
+    } catch (searchError) {
+      console.warn('Address search unavailable', searchError);
+      setAddressResults([]);
+      setAddressSearchMessage('Không thể tìm địa chỉ lúc này. Bạn vẫn có thể chọn trực tiếp trên bản đồ.');
+    } finally {
+      setSearchingAddress(false);
+    }
+  };
+
+  const handleAddressResultSelect = (result) => {
+    if (!result) return;
+
+    if (boundaryName && !doesSearchResultMatchBoundaryName(result, boundaryName)) {
+      setError(
+        `Địa chỉ này không thuộc ${boundaryName}. Vui lòng chọn kết quả đúng khu vực đã chọn.`
+      );
+      return;
+    }
+
+    const selected = updateSelection(result.lat, result.lng, result.displayName);
+    if (!selected) return;
+
+    setAddressQuery(result.displayName);
+    setAddressResults([]);
+    setAddressSearchMessage('Đã chọn địa chỉ và chuyển thành tọa độ trên bản đồ.');
   };
 
   const handleUseCurrentLocation = () => {
@@ -214,9 +681,9 @@ export const LocationPicker = ({
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setLoading(false);
-        setStatus('Đã lấy vị trí hiện tại.');
+        setStatus('Đã lấy vị trí hiện tại. Đang tìm địa chỉ gần đúng...');
         const { latitude: lat, longitude: lng } = position.coords;
-        updateSelection(lat, lng, `Vị trí hiện tại: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+        updateSelectionFromCoordinates(lat, lng);
       },
       (geoError) => {
         setLoading(false);
@@ -238,6 +705,79 @@ export const LocationPicker = ({
 
   return (
     <div className={`space-y-3 text-slate-800 ${className}`}>
+      {!readonly ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <form onSubmit={handleAddressSearch} className="flex flex-col gap-2 sm:flex-row">
+            <label className="relative min-w-0 flex-1">
+              <Lucide.Search
+                size={16}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              />
+              <span className="sr-only">Tìm địa chỉ</span>
+              <input
+                type="search"
+                value={addressQuery}
+                onChange={(event) => {
+                  setAddressQuery(event.target.value);
+                  setAddressResults([]);
+                  setAddressSearchMessage('');
+                }}
+                placeholder={boundaryName ? `Nhập địa chỉ trong ${boundaryName}...` : 'Nhập số nhà, tên đường để tìm vị trí...'}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={searchingAddress}
+              className="btn h-11 min-h-11 rounded-xl border-0 bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {searchingAddress ? (
+                <span className="loading loading-spinner loading-xs" aria-label="Đang tìm địa chỉ" />
+              ) : (
+                <Lucide.Search size={15} aria-hidden="true" />
+              )}
+              Tìm địa chỉ
+            </button>
+          </form>
+
+          {addressSearchMessage ? (
+            <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400" role="status">
+              {addressSearchMessage}
+            </p>
+          ) : null}
+
+          {addressResults.length > 0 ? (
+            <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+              {addressResults.map((result) => (
+                <button
+                  key={result.id || `${result.lat}-${result.lng}`}
+                  type="button"
+                  onClick={() => handleAddressResultSelect(result)}
+                  className="flex w-full items-start gap-3 border-b border-slate-100 bg-white px-3 py-3 text-left transition last:border-b-0 hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-blue-950/30"
+                >
+                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300">
+                    <Lucide.MapPin size={14} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-5 text-slate-800 dark:text-slate-100">
+                      {result.displayName}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                      {result.lat.toFixed(6)}, {result.lng.toFixed(6)}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+            Tìm kiếm địa chỉ © OpenStreetMap contributors
+          </p>
+        </div>
+      ) : null}
+
       <div className="overflow-hidden rounded-3xl border border-slate-200 shadow-sm h-[400px]">
         <MapContainer
           center={center}
@@ -267,13 +807,13 @@ export const LocationPicker = ({
                 click: (event) => {
                   if (readonly) return;
                   const { lat, lng } = event.latlng;
-                  updateSelection(lat, lng);
+                  updateSelectionFromCoordinates(lat, lng);
                 }
               }}
             />
           ) : null}
           {!areaBoundary ? (
-            <LocationSelector readonly={readonly} onSelect={({ lat, lng }) => updateSelection(lat, lng)} />
+            <LocationSelector readonly={readonly} onSelect={({ lat, lng }) => updateSelectionFromCoordinates(lat, lng)} />
           ) : null}
           {markers.map((marker, index) => {
             if (!isValidLocation(marker.latitude, marker.longitude)) return null;
@@ -312,8 +852,8 @@ export const LocationPicker = ({
               {readonly
                 ? 'Chế độ xem chỉ'
                 : areaBoundary
-                  ? `Chọn vị trí bằng cách nhấp vào bản đồ${boundaryName ? ` trong khu vực ${boundaryName}` : ''}`
-                  : 'Chọn vị trí bằng cách nhấp vào bản đồ'}
+                  ? `Tìm địa chỉ hoặc nhấp vào bản đồ${boundaryName ? ` trong khu vực ${boundaryName}` : ''}`
+                  : 'Tìm địa chỉ hoặc nhấp vào bản đồ'}
             </span>
           </div>
           {selectedPosition ? (
@@ -325,8 +865,8 @@ export const LocationPicker = ({
               {readonly
                 ? 'Vị trí chưa có trên vé.'
                 : areaBoundary
-                  ? 'Khu vực đã chọn được tô sáng. Nhấp vào bản đồ để đặt vị trí.'
-                  : 'Nhấp vào bản đồ để đặt vị trí.'}
+                  ? 'Khu vực đã chọn được tô sáng. Tìm địa chỉ hoặc nhấp vào bản đồ để đặt vị trí.'
+                  : 'Tìm địa chỉ hoặc nhấp vào bản đồ để đặt vị trí.'}
             </div>
           )}
         </div>

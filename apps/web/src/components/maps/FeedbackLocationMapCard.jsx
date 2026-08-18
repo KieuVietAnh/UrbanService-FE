@@ -115,9 +115,14 @@ export const FeedbackLocationMapCard = ({
           </span>
           <div className="min-w-0">
             <h2 id={`feedback-location-${feedbackId}`} className={isAdmin ? 'admin-section-title' : 'text-base font-bold'}>Vị trí phản ánh</h2>
-            <p className={isAdmin ? 'mt-1 break-words text-sm text-slate-500 dark:text-slate-400' : 'mt-1 break-words text-sm font-medium text-base-content/65'}>
-              {areaName || locationText || 'Chưa xác định khu vực'}
+            <p className={isAdmin ? 'mt-1 break-words text-sm font-medium text-slate-700 dark:text-slate-300' : 'mt-1 break-words text-sm font-medium text-base-content/70'}>
+              {locationText || areaName || 'Chưa xác định vị trí'}
             </p>
+            {locationText && areaName && locationText !== areaName ? (
+              <p className={isAdmin ? 'mt-1 text-xs text-slate-400 dark:text-slate-500' : 'mt-1 text-xs text-base-content/45'}>
+                {areaName}
+              </p>
+            ) : null}
           </div>
         </div>
       </header>

@@ -5,6 +5,7 @@ import * as Lucide from 'lucide-react';
 import { managementTypes } from '@urbanmind/shared-types';
 import { getAdminFeedbackCategories, loadAdminFeedbackDetail, peekAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
+import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
 
 const ADMIN_FEEDBACK_RETURN_STORAGE_KEY = 'urbanmind-admin-feedback-return';
 
@@ -103,7 +104,6 @@ const getCategoryName = (feedback, categories) => {
   return localizeCategoryName(value);
 };
 
-const getLocationText = (feedback) => feedback?.areaName || feedback?.locationText || feedback?.address || 'Chưa có thông tin vị trí';
 const getReporter = (feedback) => feedback?.userName || feedback?.reporterName || feedback?.citizenName || feedback?.createdBy || feedback?.email || 'Chưa có thông tin';
 
 const normalizeAttachment = (file) => {
@@ -186,6 +186,12 @@ export const FeedbackDetailPage = () => {
   const [failedMedia, setFailedMedia] = useState(() => new Set());
   const [reloadNonce, setReloadNonce] = useState(0);
   const detailRequestIdRef = useRef(0);
+  const resolvedLocationText = useResolvedLocationText({
+    locationText: feedback?.locationText || feedback?.address,
+    areaName: feedback?.areaName || feedback?.wardName,
+    latitude: feedback?.latitude,
+    longitude: feedback?.longitude,
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -382,7 +388,7 @@ export const FeedbackDetailPage = () => {
             </div>
             <h1 className="admin-hero-title mt-3 max-w-4xl break-words">{title}</h1>
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600 dark:text-slate-300">
-              <span className="inline-flex min-w-0 items-center gap-2"><Lucide.MapPin size={16} className="shrink-0 text-slate-400" /><span className="break-words">{getLocationText(feedback)}</span></span>
+              <span className="inline-flex min-w-0 items-center gap-2"><Lucide.MapPin size={16} className="shrink-0 text-slate-400" /><span className="break-words">{resolvedLocationText}</span></span>
               <span className="inline-flex items-center gap-2"><Lucide.Clock3 size={16} className="text-slate-400" />Gửi lúc {formatDateTime(feedback?.createdAt)}</span>
             </div>
           </div>
@@ -480,8 +486,8 @@ export const FeedbackDetailPage = () => {
             feedbackId={feedbackId}
             latitude={latitude}
             longitude={longitude}
-            locationText={feedback?.locationText || feedback?.address}
-            areaName={feedback?.areaName}
+            locationText={resolvedLocationText}
+            areaName={feedback?.areaName || feedback?.wardName}
             variant="admin"
           />
         </div>

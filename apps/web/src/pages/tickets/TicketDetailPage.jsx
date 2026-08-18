@@ -10,9 +10,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { getCommunityFeedDetail } from '../../services/api/feedApi';
 import useTicketDetail from '../../hooks/useTicketDetail';
+import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
+import { FeedbackMessagesProvider } from '../../contexts/FeedbackMessagesContext';
+import CitizenTicketConversation from '../../components/tickets/CitizenTicketConversation';
 
 const CATEGORY_LABELS = {
   Drainage: 'Thoát nước',
@@ -498,6 +501,13 @@ export const TicketDetailPage = () => {
   )
     ? ticketState.value
     : null;
+  const resolvedLocationText = useResolvedLocationText({
+    locationText: ticket?.locationText,
+    areaName: ticket?.areaName || ticket?.wardName || ticket?.districtName,
+    latitude: ticket?.latitude,
+    longitude: ticket?.longitude,
+  });
+
   const setTicket = useCallback((updater) => {
     setTicketState((current) => {
       const currentValue = current.snapshotKey === ticketSnapshotKey
@@ -1780,9 +1790,11 @@ export const TicketDetailPage = () => {
                       {authorName}
                     </strong>
                   </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Lucide.MapPin size={15} aria-hidden="true" />
-                    {ticket.areaName || 'Chưa xác định khu vực'}
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <Lucide.MapPin size={15} className="shrink-0" aria-hidden="true" />
+                    <span className="max-w-xl truncate" title={resolvedLocationText}>
+                      {resolvedLocationText}
+                    </span>
                   </span>
                   <time
                     dateTime={createdAt || undefined}
@@ -2023,7 +2035,7 @@ export const TicketDetailPage = () => {
             feedbackId={feedbackId}
             latitude={ticket?.latitude}
             longitude={ticket?.longitude}
-            locationText={ticket?.locationText}
+            locationText={resolvedLocationText}
             areaName={ticket?.areaName || ticket?.wardName || ticket?.districtName}
           />
 
@@ -2638,6 +2650,12 @@ export const TicketDetailPage = () => {
               </div>
             </section>
           </section>
+
+          {isServiceUser ? (
+            <FeedbackMessagesProvider feedbackId={feedbackId} includeInternal={false}>
+              <CitizenTicketConversation currentUserId={snapshotUserId} />
+            </FeedbackMessagesProvider>
+          ) : null}
         </main>
       </TicketDetailShell>
 

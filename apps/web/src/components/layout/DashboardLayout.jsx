@@ -1,7 +1,7 @@
 // src/components/layout/DashboardLayout.jsx
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import StaffCommunicationSurface from '../staff/StaffCommunicationSurface';
+
 import { FeedbackMessagesProvider } from '../../contexts/FeedbackMessagesContext';
 
 import { Sidebar } from './Sidebar';
@@ -9,6 +9,7 @@ import { Header } from './Header';
 import { Footer } from './Footer';
 import PageTransition from '../motion/PageTransition';
 import { PublicThemeStyles } from '../public/PublicLayout';
+import CitizenFeedbackInbox from '../tickets/CitizenFeedbackInbox';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { normalizeRole } from '../../utils/roleMap';
 import { useAuth } from '../../contexts/AuthContext';
@@ -132,6 +133,9 @@ export const DashboardLayout = ({ children }) => {
   const isStaffFeedbackDetailRoute =
     /^\/staff\/feedbacks\/[^/]+\/?$/.test(location.pathname);
 
+  const isStaffAssignmentRoute =
+    /^\/tickets\/assign\/[^/]+\/?$/.test(location.pathname);
+
   const staffDetailFeedbackId = isStaffFeedbackDetailRoute
     ? location.pathname.split('/').filter(Boolean).pop()
     : null;
@@ -146,7 +150,9 @@ export const DashboardLayout = ({ children }) => {
       className={`min-h-0 flex-1 overflow-y-scroll overflow-x-hidden ${
         isCitizen
           ? 'bg-transparent'
-          : 'bg-slate-50 dark:bg-slate-950'
+          : isStaffAssignmentRoute
+            ? 'staff-assignment-workspace bg-transparent dark:bg-slate-950'
+            : 'bg-slate-50 dark:bg-slate-950'
       }`}
     >
       <div className="flex min-h-full flex-col">
@@ -175,6 +181,7 @@ export const DashboardLayout = ({ children }) => {
       }`}
     >
       {isCitizen ? <PublicThemeStyles /> : null}
+      {isCitizen ? <CitizenFeedbackInbox /> : null}
 
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}
@@ -190,7 +197,9 @@ export const DashboardLayout = ({ children }) => {
           className={`flex min-w-0 w-full flex-1 flex-col overflow-hidden ${
             isCitizen
               ? 'bg-transparent'
-              : 'bg-slate-50 dark:bg-slate-950'
+              : isStaffAssignmentRoute
+                ? 'bg-transparent dark:bg-slate-950'
+                : 'bg-slate-50 dark:bg-slate-950'
           }`}
         >
           <Header onMenuToggle={toggleSidebar} />
@@ -199,11 +208,6 @@ export const DashboardLayout = ({ children }) => {
           {shouldWrapFeedbackMessages ? (
             <FeedbackMessagesProvider feedbackId={staffDetailFeedbackId}>
               {renderMainContent()}
-
-              <StaffCommunicationSurface
-                feedbackId={staffDetailFeedbackId}
-                feedbackTitle={location.state?.feedbackTitle || ''}
-              />
             </FeedbackMessagesProvider>
           ) : (
             renderMainContent()

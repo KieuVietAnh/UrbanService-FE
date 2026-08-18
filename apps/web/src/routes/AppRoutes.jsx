@@ -27,6 +27,7 @@ const CommunityMapPage = lazy(() => import('../pages/community/CommunityMapPage'
 const NotificationCenterPage = lazy(() => import('../pages/notifications/NotificationCenterPage').then((m) => ({ default: m.NotificationCenterPage })));
 const ProfilePage = lazy(() => import('../pages/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const SettingsPage = lazy(() => import('../pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const ResidentAreaAlertsPage = lazy(() => import('../pages/alerts/ResidentAreaAlertsPage').then((m) => ({ default: m.ResidentAreaAlertsPage })));
 
 const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then((m) => ({ default: m.AIReviewDetail })));
 const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
@@ -44,6 +45,7 @@ const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWo
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
 const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
 const AreaAlertManagementPage = lazy(() => import('../pages/staff/AreaAlertManagementPage').then((m) => ({ default: m.default })));
+const AreaAlertCreatePage = lazy(() => import('../pages/staff/AreaAlertCreatePage').then((m) => ({ default: m.default })));
 
 const ProviderCandidateCheckerPage = lazy(() => import('../pages/staff/ProviderCandidateCheckerPage').then((m) => ({ default: m.default })));
 
@@ -298,6 +300,15 @@ export const AppRoutes = () => {
           </DashboardLayout>
         </ProtectedRoute>
       } />
+      <Route path="/area-alerts" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SERVICE_USER]}>
+            <DashboardLayout>
+              <ResidentAreaAlertsPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
 
       {/* System Staff Routes */}
       <Route path="/staff/queue" element={
@@ -368,6 +379,15 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
             <DashboardLayout>
               <AreaAlertManagementPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/area-alerts/create" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <AreaAlertCreatePage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

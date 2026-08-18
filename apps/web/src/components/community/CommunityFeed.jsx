@@ -15,7 +15,6 @@ import {
   writeCommunityFeedCache,
 } from '../../services/cache/communityFeedCache';
 import CommunityFeedItem from './CommunityFeedItem';
-import CommentDrawer from './CommentDrawer';
 
 const COMMUNITY_RETURN_STORAGE_KEY = 'urbanmind-community-feed-return';
 const COMMUNITY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -288,7 +287,6 @@ export default function CommunityFeed({
     restoredContext?.feedbackId || null
   );
   const [error, setError] = useState('');
-  const [openCommentsFor, setOpenCommentsFor] = useState(null);
   const isFetchingRef = useRef(false);
   const hasLoadedSnapshotRef = useRef(
     Array.isArray(initialCache?.items) && initialCache.items.length > 0
@@ -922,7 +920,7 @@ export default function CommunityFeed({
     ) - (
       getSupportCount(left) + getCommentCount(left)
     ))
-    .slice(0, 4);
+    .slice(0, 3);
 
   const processingCount = items.filter(
     (item) => PROCESSING_STATUSES.has(item?.status)
@@ -969,10 +967,7 @@ export default function CommunityFeed({
 
   const initialLoading = loading && items.length === 0;
 
-  const openDetail = (item) => {
-    const feedbackId = getItemId(item);
-    if (!feedbackId) return;
-
+  const persistFeedReturnContext = (feedbackId) => {
     writeCommunityFeedCache(cacheOwnerKey, {
       items,
       page,
@@ -998,7 +993,39 @@ export default function CommunityFeed({
       console.warn('Không thể lưu vị trí bảng tin', storageError);
     }
 
+    // Keep the selected feedback on the current history entry as well.
+    // Browser Back can then restore exactly like the in-app Back button,
+    // while sessionStorage remains the fallback for reload/remount cases.
+    navigate(
+      `${location.pathname}${location.search}${location.hash}`,
+      {
+        replace: true,
+        state: {
+          ...(location.state || {}),
+          restoreFeedbackId: feedbackId,
+          preserveScrollOnEnter: true,
+        },
+      }
+    );
+  };
+
+  const openDetail = (item) => {
+    const feedbackId = getItemId(item);
+    if (!feedbackId) return;
+
+    persistFeedReturnContext(feedbackId);
+
     navigate(`/community/feed/${feedbackId}`, {
+      state: { from: '/community/feed' },
+    });
+  };
+
+  const openComments = (feedbackId) => {
+    if (!feedbackId) return;
+
+    persistFeedReturnContext(feedbackId);
+
+    navigate(`/community/feed/${feedbackId}#community-comments`, {
       state: { from: '/community/feed' },
     });
   };
@@ -1313,7 +1340,7 @@ export default function CommunityFeed({
                     String(getItemId(item)) ===
                     String(highlightedFeedbackId)
                   }
-                  onOpenComments={setOpenCommentsFor}
+                  onOpenComments={openComments}
                   onOpen={openDetail}
                 />
               ))}
@@ -1389,7 +1416,7 @@ export default function CommunityFeed({
           ) : null}
         </div>
 
-        <aside className="space-y-4">
+        <aside className="self-stretch">
           <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1446,7 +1473,8 @@ export default function CommunityFeed({
             )}
           </section>
 
-          <section className="overflow-hidden rounded-[24px] border border-primary/18 bg-gradient-to-br from-primary/8 via-[var(--public-surface)] to-secondary/8 p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+          <div className="mt-4 space-y-4 xl:sticky xl:top-24">
+            <section className="overflow-hidden rounded-[24px] border border-primary/18 bg-gradient-to-br from-primary/8 via-[var(--public-surface)] to-secondary/8 p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Lucide.Activity size={19} aria-hidden="true" />
@@ -1501,13 +1529,8 @@ export default function CommunityFeed({
               Mở bản đồ sự cố
             </button>
           </section>
+          </div>
         </aside>
-
-        <CommentDrawer
-          open={Boolean(openCommentsFor)}
-          feedbackId={openCommentsFor}
-          onClose={() => setOpenCommentsFor(null)}
-        />
       </section>
     </>
   );
