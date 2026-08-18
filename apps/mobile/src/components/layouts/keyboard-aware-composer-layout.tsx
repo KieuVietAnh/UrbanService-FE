@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 
