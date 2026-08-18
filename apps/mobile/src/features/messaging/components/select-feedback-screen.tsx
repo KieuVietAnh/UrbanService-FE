@@ -3,7 +3,7 @@ import { View, FlatList, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Text } from '@/components/ui';
+import { AppHeader, Text } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { TicketStatusBadge } from '@/components/ui';
 import { AppErrorState, SkeletonCard } from '@/components/shared';
@@ -69,8 +69,8 @@ export default function SelectFeedbackScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <AppHeader showBack title="Chọn phản ánh" onBack={() => router.back()} />
       <View style={styles.headerSection}>
-        <Text style={styles.title}>Chọn phản ánh</Text>
         <Text style={styles.description}>
           Để nhân viên hỗ trợ chính xác hơn, hãy chọn phản ánh bạn muốn trao đổi.
         </Text>

@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
-import { View, TextInput, Pressable, StyleSheet, LayoutChangeEvent } from 'react-native';
-import Icon from '@expo/vector-icons/Feather';
+import {
+  View,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  LayoutChangeEvent,
+  StyleProp,
+  ViewStyle,
+} from 'react-native';
+import Icon from '@Expo/vector-icons/Feather';
 import { semantics } from '@/theme/semantics';
 
 export default function MessageComposer({
@@ -8,41 +16,51 @@ export default function MessageComposer({
   sending,
   onFocus,
   onHeightChange,
+  containerStyle,
 }: {
   onSend: (text: string) => Promise<void> | void;
   sending?: boolean;
   onFocus?: () => void;
   onHeightChange?: (h: number) => void;
+  containerStyle?: StyleProp<ViewStyle>;
 }) {
   const [text, setText] = useState('');
 
   const handleSend = async () => {
     const trimmed = text.trim();
     if (!trimmed) return;
+
     setText('');
     await onSend(trimmed);
   };
 
   const handleLayout = (e: LayoutChangeEvent) => {
     const h = e.nativeEvent.layout.height || 0;
-    onHeightChange && onHeightChange(h);
+    onHeightChange?.(h);
   };
 
   return (
-    <View style={styles.container} onLayout={handleLayout}>
+    <View
+      style={[styles.container, containerStyle]}
+      onLayout={handleLayout}
+    >
       <TextInput
         style={styles.input}
         placeholder="Viết tin nhắn..."
         placeholderTextColor={semantics.text.lightMuted}
         value={text}
         onChangeText={setText}
-        onFocus={() => onFocus && onFocus()}
+        onFocus={onFocus}
         multiline
       />
+
       <Pressable
         onPress={handleSend}
         disabled={!text.trim() || sending}
-        style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+        style={[
+          styles.sendBtn,
+          (!text.trim() || sending) && styles.sendBtnDisabled,
+        ]}
       >
         <Icon name="send" size={18} color="#FFFFFF" />
       </Pressable>
@@ -60,6 +78,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     backgroundColor: semantics.bg.surface,
   },
+
   input: {
     flex: 1,
     minHeight: 40,
@@ -72,6 +91,7 @@ const styles = StyleSheet.create({
     color: semantics.text.primary,
     textAlignVertical: 'center',
   },
+
   sendBtn: {
     width: 40,
     height: 40,
@@ -80,5 +100,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: semantics.text.lightMuted },
+
+  sendBtnDisabled: {
+    backgroundColor: semantics.text.lightMuted,
+  },
 });

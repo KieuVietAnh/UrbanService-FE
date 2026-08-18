@@ -1,14 +1,17 @@
 import React, {
   useEffect,
   useRef,
+  useState,
 } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useMutation,
@@ -32,6 +35,55 @@ import {
   messagingKeys,
 } from '../api';
 
+const MESSAGE_POLL_INTERVAL_MS = 2000;
+
+const getPersistedMessageId = (
+  message: ChatMessage | null | undefined,
+) => {
+  const record = message as
+    | (ChatMessage & {
+        interactionMessageId?: string | number;
+      })
+    | null
+    | undefined;
+
+  const value =
+    record?.messageId ??
+    record?.interactionMessageId ??
+    record?.id;
+
+  if (
+    !value ||
+    String(value).startsWith('temp-')
+  ) {
+    return null;
+  }
+
+  return String(value);
+};
+
+const dedupeMessages = (
+  items: ChatMessage[],
+) => {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    const persistedId =
+      getPersistedMessageId(item);
+
+    if (!persistedId) {
+      return true;
+    }
+
+    if (seen.has(persistedId)) {
+      return false;
+    }
+
+    seen.add(persistedId);
+    return true;
+  });
+};
+
 export default function FeedbackChatSection({
   feedbackId,
 }: {
@@ -39,7 +91,27 @@ export default function FeedbackChatSection({
 }) {
   const queryClient =
     useQueryClient();
+
   const toast = useToast();
+
+  const [isAppActive, setIsAppActive] =
+    useState(
+      AppState.currentState === 'active',
+    );
+
+  const [
+    isScreenFocused,
+    setIsScreenFocused,
+  ] = useState(true);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setIsScreenFocused(true);
+
+      return () =>
+        setIsScreenFocused(false);
+    }, []),
+  );
 
   const listRef =
     useRef<FlatList<ChatMessage> | null>(
@@ -57,14 +129,89 @@ export default function FeedbackChatSection({
         feedbackId,
       ),
 
-    queryFn: () =>
-      messagingApi.getFeedbackMessages(
-        feedbackId,
-      ),
+    queryFn: async () => {
+      const remoteMessages =
+        await messagingApi.getFeedbackMessages(
+          feedbackId,
+        );
 
-    enabled: Boolean(feedbackId),
-    staleTime: 1000 * 10,
+      const cachedMessages =
+        queryClient.getQueryData<
+          ChatMessage[]
+        >(
+          messagingKeys.feedbackMessages(
+            feedbackId,
+          ),
+        );
+
+      const optimisticMessages =
+        Array.isArray(cachedMessages)
+          ? cachedMessages.filter(
+              (message) =>
+                String(
+                  message.id,
+                ).startsWith('temp-'),
+            )
+          : [];
+
+      return dedupeMessages([
+        ...remoteMessages,
+        ...optimisticMessages,
+      ]);
+    },
+
+    enabled:
+      Boolean(feedbackId) &&
+      isAppActive &&
+      isScreenFocused,
+
+    refetchInterval:
+      isAppActive && isScreenFocused
+        ? MESSAGE_POLL_INTERVAL_MS
+        : false,
+
+    refetchIntervalInBackground: false,
+
+    staleTime: 1000,
   });
+
+  useEffect(() => {
+    const subscription =
+      AppState.addEventListener(
+        'change',
+        (nextState) => {
+          setIsAppActive(
+            nextState === 'active',
+          );
+        },
+      );
+
+    return () =>
+      subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !isAppActive ||
+      !isScreenFocused ||
+      !feedbackId
+    ) {
+      return;
+    }
+
+    void queryClient.refetchQueries({
+      queryKey:
+        messagingKeys.feedbackMessages(
+          feedbackId,
+        ),
+      type: 'active',
+    });
+  }, [
+    feedbackId,
+    isAppActive,
+    isScreenFocused,
+    queryClient,
+  ]);
 
   const scrollToBottom = (
     animated = true,
@@ -130,7 +277,10 @@ export default function FeedbackChatSection({
           ? old
           : [];
 
-        return [...arr, optimistic];
+        return dedupeMessages([
+          ...arr,
+          optimistic,
+        ]);
       });
 
       setTimeout(() => {
@@ -140,7 +290,48 @@ export default function FeedbackChatSection({
       return { tempId };
     },
 
-    onSuccess: () => {
+    onSuccess: (
+      serverMessage,
+      _text,
+      context,
+    ) => {
+      const persistedMessage =
+        serverMessage as ChatMessage | null;
+
+      const persistedId =
+        getPersistedMessageId(
+          persistedMessage,
+        );
+
+      queryClient.setQueryData<
+        ChatMessage[]
+      >(
+        messagingKeys.feedbackMessages(
+          feedbackId,
+        ),
+        (old) => {
+          const current =
+            Array.isArray(old)
+              ? old
+              : [];
+
+          const withoutOptimistic =
+            current.filter(
+              (message) =>
+                message.id !==
+                context?.tempId,
+            );
+
+          return persistedMessage &&
+            persistedId
+            ? dedupeMessages([
+                ...withoutOptimistic,
+                persistedMessage,
+              ])
+            : withoutOptimistic;
+        },
+      );
+
       void queryClient.invalidateQueries({
         queryKey:
           messagingKeys.feedbackMessages(
@@ -167,7 +358,7 @@ export default function FeedbackChatSection({
       }
 
       toast.error(
-        'Unable to send message',
+        'Không thể gửi tin nhắn',
       );
     },
   });
@@ -224,28 +415,40 @@ export default function FeedbackChatSection({
                     );
                   }, 80);
                 }}
+                containerStyle={
+                  styles.feedbackComposer
+                }
               />
             </View>
           </View>
         }
       >
         <View style={styles.wrap}>
-          <View style={styles.headerRow}>
+          <View
+            style={styles.headerRow}
+          >
             <Text
-              style={styles.sectionTitle}
+              style={
+                styles.sectionTitle
+              }
             >
-              Discussion
+              Trao đổi
             </Text>
           </View>
 
-          <View style={styles.chatBody}>
+          <View
+            style={styles.chatBody}
+          >
             <View
               style={styles.listWrap}
             >
               <FlatList
                 ref={listRef}
                 data={messages}
-                keyExtractor={(m, i) =>
+                keyExtractor={(
+                  m,
+                  i,
+                ) =>
                   String(
                     m?.id ??
                       m?.messageId ??
@@ -256,7 +459,9 @@ export default function FeedbackChatSection({
                       }-${i}`,
                   )
                 }
-                renderItem={({ item }) => (
+                renderItem={({
+                  item,
+                }) => (
                   <MessageBubble
                     msg={item}
                   />
@@ -271,28 +476,34 @@ export default function FeedbackChatSection({
                       <ActivityIndicator
                         size="large"
                         color={
-                          semantics.text
-                            .brand
+                          semantics
+                            .text.brand
                         }
                       />
                     </View>
                   ) : isError ? (
                     <AppErrorState
-                      onRetry={refetch}
+                      onRetry={
+                        refetch
+                      }
                     >
-                      Unable to load this
-                      conversation.
+                      Không thể tải
+                      cuộc hội thoại
+                      này.
                     </AppErrorState>
                   ) : (
                     <View
-                      style={styles.empty}
+                      style={
+                        styles.empty
+                      }
                     >
                       <Text
                         style={
                           styles.emptyTitle
                         }
                       >
-                        No conversation yet
+                        Chưa có trao
+                        đổi
                       </Text>
 
                       <Text
@@ -300,9 +511,10 @@ export default function FeedbackChatSection({
                           styles.emptySub
                         }
                       >
-                        You can ask staff
-                        about this
-                        feedback.
+                        Bạn có thể hỏi
+                        nhân viên hỗ
+                        trợ về phản
+                        ánh này.
                       </Text>
                     </View>
                   )
@@ -315,10 +527,14 @@ export default function FeedbackChatSection({
                 keyboardDismissMode="on-drag"
                 onContentSizeChange={() => {
                   setTimeout(() => {
-                    scrollToBottom(true);
+                    scrollToBottom(
+                      true,
+                    );
                   }, 50);
                 }}
-                style={styles.list}
+                style={
+                  styles.list
+                }
               />
             </View>
           </View>
@@ -388,6 +604,16 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
 
+  /*
+   * Chỉ áp dụng cho Feedback Chat.
+   * Giảm padding dọc từ mặc định 8 xuống 5
+   * để composer gọn và thấp hơn một chút.
+   */
+  feedbackComposer: {
+    paddingTop: 5,
+    paddingBottom: 5,
+  },
+
   headerRow: {
     paddingHorizontal: 20,
     paddingTop: 10,
@@ -396,7 +622,8 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontSize: 12,
-    fontFamily: 'Geist-SemiBold',
+    fontFamily:
+      'Geist-SemiBold',
     color:
       semantics.text.lightMuted,
     textTransform: 'uppercase',
@@ -409,16 +636,20 @@ const styles = StyleSheet.create({
   },
 
   emptyTitle: {
-    fontFamily: 'Geist-SemiBold',
+    fontFamily:
+      'Geist-SemiBold',
     fontSize: 14,
-    color: semantics.text.primary,
+    color:
+      semantics.text.primary,
     marginBottom: 6,
   },
 
   emptySub: {
-    fontFamily: 'Geist-Regular',
+    fontFamily:
+      'Geist-Regular',
     fontSize: 13,
-    color: semantics.text.muted,
+    color:
+      semantics.text.muted,
     textAlign: 'center',
   },
 });
