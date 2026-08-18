@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, FlatList, StyleSheet, Text, Platform, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, FlatList, StyleSheet, Text, Platform, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { KeyboardAwareComposerLayout } from '@/components/layouts';
 import MessageBubble, { ChatMessage } from './feedback-message-bubble';
 import MessageComposer from './message-composer';
 import { AppErrorState, useToast } from '@/components/shared';
@@ -12,7 +13,6 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
   const qc = useQueryClient();
   const toast = useToast();
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
-  const insets = useSafeAreaInsets();
   const [composerHeight, setComposerHeight] = useState<number>(72);
 
   const {
@@ -78,11 +78,21 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: semantics.bg.surface }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: semantics.bg.surface }} edges={['top']}>
+      <KeyboardAwareComposerLayout
+        composer={
+          <View style={styles.composerContainer}>
+            <View style={styles.composerWrap}>
+              <MessageComposer
+                onSend={handleSend}
+                sending={!feedbackId || sendMutation.isPending || isLoading}
+                onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80)}
+                onHeightChange={(h: number) => setComposerHeight(h)}
+              />
+            </View>
+          </View>
+        }
+      >
         <View style={[styles.wrap, { flex: 1 }]}>
           <View style={styles.headerRow}>
             <Text style={styles.sectionTitle}>Discussion</Text>
@@ -109,7 +119,7 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
                     <Text style={styles.emptySub}>You can ask staff about this feedback.</Text>
                   </View>
                 )}
-                contentContainerStyle={{ paddingVertical: 10, paddingBottom: (composerHeight || 72) + 16 }}
+                contentContainerStyle={{ paddingVertical: 10, paddingBottom: 16 }}
                 nestedScrollEnabled
                 keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => setTimeout(() => scrollToBottom(true), 50)}
@@ -118,19 +128,8 @@ export default function FeedbackChatSection({ feedbackId }: { feedbackId: string
             </View>
           </View>
         </View>
-      </SafeAreaView>
-
-      <SafeAreaView edges={['bottom']} style={styles.composerContainer}>
-        <View style={styles.composerWrap}>
-          <MessageComposer
-            onSend={handleSend}
-            sending={!feedbackId || sendMutation.isPending || isLoading}
-            onFocus={() => setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80)}
-            onHeightChange={(h: number) => setComposerHeight(h)}
-          />
-        </View>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareComposerLayout>
+    </SafeAreaView>
   );
 }
 

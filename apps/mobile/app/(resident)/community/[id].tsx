@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, Platform, RefreshControl, Modal, KeyboardAvoidingView } from 'react-native';
+import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, Platform, RefreshControl, Modal } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAwareComposerLayout } from '@/components/layouts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
@@ -223,13 +224,42 @@ export default function CommunityDetailScreen() {
   const evidenceImages = attachments.map((attachment) => attachment.fileUrl).filter(Boolean) as string[];
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: semantics.bg.app }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <AppHeader showBack title="Chi tiết cộng đồng" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: semantics.bg.app }} edges={['top']}>
+      <AppHeader showBack title="Chi tiết cộng đồng" />
 
+      <KeyboardAwareComposerLayout
+        composer={
+          <View style={styles.composerHost}>
+            <View
+              style={styles.composer}
+              onLayout={handleComposerLayout}
+            >
+              <TextInput
+                ref={(node) => {
+                  commentInputRef.current = node;
+                  setInputAttached(Boolean(node));
+                  debugLog('TextInput ref attached', node);
+                }}
+                style={styles.input}
+                placeholder="Viết bình luận..."
+                value={commentInput}
+                onChangeText={setCommentInput}
+                multiline
+                placeholderTextColor={semantics.text.lightMuted}
+                autoFocus={shouldFocusComposer}
+                onLayout={() => debugLog('TextInput onLayout', { inputRef: commentInputRef.current })}
+              />
+              <Pressable
+                onPress={() => commentInput.trim() && addCommentMutation.mutate(commentInput.trim())}
+                disabled={!commentInput.trim() || addCommentMutation.isPending}
+                style={[styles.sendButton, (!commentInput.trim() || addCommentMutation.isPending) && styles.sendButtonDisabled]}
+              >
+                <Icon name="send" size={18} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </View>
+        }
+      >
         <View style={{ flex: 1 }}>
           <ScrollView
             ref={scrollViewRef}
@@ -357,37 +387,7 @@ export default function CommunityDetailScreen() {
         </View>
       </ScrollView>
         </View>
-      </SafeAreaView>
-
-      <SafeAreaView style={styles.composerHost} edges={['bottom']}>
-        <View
-          style={styles.composer}
-          onLayout={handleComposerLayout}
-        >
-          <TextInput
-            ref={(node) => {
-              commentInputRef.current = node;
-              setInputAttached(Boolean(node));
-              debugLog('TextInput ref attached', node);
-            }}
-            style={styles.input}
-            placeholder="Viết bình luận..."
-            value={commentInput}
-            onChangeText={setCommentInput}
-            multiline
-            placeholderTextColor={semantics.text.lightMuted}
-            autoFocus={shouldFocusComposer}
-            onLayout={() => debugLog('TextInput onLayout', { inputRef: commentInputRef.current })}
-          />
-          <Pressable
-            onPress={() => commentInput.trim() && addCommentMutation.mutate(commentInput.trim())}
-            disabled={!commentInput.trim() || addCommentMutation.isPending}
-            style={[styles.sendButton, (!commentInput.trim() || addCommentMutation.isPending) && styles.sendButtonDisabled]}
-          >
-            <Icon name="send" size={18} color="#FFFFFF" />
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      </KeyboardAwareComposerLayout>
 
       <Modal visible={Boolean(selectedImage)} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
@@ -397,7 +397,7 @@ export default function CommunityDetailScreen() {
           {selectedImage ? <Image source={{ uri: selectedImage }} style={styles.fullImage} resizeMode="contain" /> : null}
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

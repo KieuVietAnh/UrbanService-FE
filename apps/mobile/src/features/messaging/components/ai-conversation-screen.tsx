@@ -8,7 +8,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
@@ -19,6 +19,7 @@ import { AppErrorState } from '@/components/shared';
 import MessageComposer from './message-composer';
 import { semantics } from '@/theme/semantics';
 import { useToast } from '@/components/shared';
+import { KeyboardAwareComposerLayout } from '@/components/layouts';
 import type { AiMessage } from '../types/messaging.types';
 import { messagingApi, messagingKeys } from '../api';
 
@@ -95,7 +96,6 @@ export default function AiConversationDetailScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
   const router = useRouter();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<AiMessage> | null>(null);
   const queryClient = useQueryClient();
   const [composerHeight, setComposerHeight] = useState(72);
@@ -240,15 +240,26 @@ export default function AiConversationDetailScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <AppHeader showBack title="AI Assistant" subtitle="Câu chuyện của bạn" />
 
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          {isError && messages.length === 0 ? (
-            <AppErrorState onRetry={refetch}>
-              {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
-            </AppErrorState>
-          ) : (
+        {isError && messages.length === 0 ? (
+          <AppErrorState onRetry={refetch}>
+            {getErrorMessage(error) || 'Không thể tải hội thoại AI.'}
+          </AppErrorState>
+        ) : (
+          <KeyboardAwareComposerLayout
+            composer={
+              <View style={styles.composerContainer}>
+                <View style={styles.composerWrap}>
+                  <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
+                  <MessageComposer
+                    onSend={handleSend}
+                    sending={sendMutation.isPending || isLoading}
+                    onFocus={() => scrollToBottom(true)}
+                    onHeightChange={(height) => setComposerHeight(height)}
+                  />
+                </View>
+              </View>
+            }
+          >
             <View style={styles.container}>
               <View style={styles.chatBody}>
                 <FlatList
@@ -259,7 +270,7 @@ export default function AiConversationDetailScreen() {
                   contentContainerStyle={{
                     paddingVertical: 10,
                     paddingHorizontal: 0,
-                    paddingBottom: (composerHeight || 72) + 16,
+                    paddingBottom: 16,
                     flexGrow: 1,
                   }}
                   showsVerticalScrollIndicator={false}
@@ -287,21 +298,9 @@ export default function AiConversationDetailScreen() {
                   )}
                 />
               </View>
-
-              <SafeAreaView style={styles.composerContainer} edges={['bottom']}>
-                <View style={styles.composerWrap}>
-                  <Text style={styles.composerLabel}>Gửi câu hỏi đến AI</Text>
-                  <MessageComposer
-                    onSend={handleSend}
-                    sending={sendMutation.isPending || isLoading}
-                    onFocus={() => scrollToBottom(true)}
-                    onHeightChange={(height) => setComposerHeight(height)}
-                  />
-                </View>
-              </SafeAreaView>
             </View>
-          )}
-        </KeyboardAvoidingView>
+          </KeyboardAwareComposerLayout>
+        )}
       </SafeAreaView>
     </View>
   );

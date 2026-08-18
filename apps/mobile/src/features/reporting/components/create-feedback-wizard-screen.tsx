@@ -97,7 +97,7 @@ function StepDescription({
 
       <Text style={styles.wizardSubtitle}>Mô tả càng chi tiết, xử lý càng chính xác.</Text>
 
-      
+
 
       <View style={styles.formCard}>
         <AppInput
@@ -293,7 +293,7 @@ function StepLocation({
       <Text style={styles.wizardTitle}>Vị trí xảy ra</Text>
       <Text style={styles.wizardSubtitle}>Chọn khu vực và xác định vị trí cụ thể để xử lý đúng phạm vi.</Text>
 
-      
+
 
       <View style={styles.locationPanel}>
 
@@ -471,7 +471,7 @@ function StepAttachments({
       <Text style={styles.wizardTitle}>Minh chứng</Text>
       <Text style={styles.wizardSubtitle}>Thêm ảnh hoặc video giúp nhân viên hiểu rõ vấn đề hơn. Tối đa 5 tệp, tổng không quá 20 MB.</Text>
 
-      
+
 
       <View style={styles.uploadPanel}>
         <View style={styles.sectionHeaderRow}>
@@ -625,11 +625,7 @@ function StepReview({
         ))}
       </View>
 
-      <View style={{ marginTop: 16 }}>
-        <AppButton size="lg" onPress={onSubmit} loading={submitting} fullWidth>
-          Gửi phản ánh
-        </AppButton>
-      </View>
+
     </View>
   );
 }
@@ -676,17 +672,17 @@ export default function CreateFeedbackWizardScreen() {
         feedbackApi.getCategories(),
       ]);
       if (!active) return;
-      
+
       const loadedAreas = areasResult.status === 'fulfilled' && Array.isArray(areasResult.value) ? areasResult.value : [];
       const loadedCategories = categoriesResult.status === 'fulfilled' && Array.isArray(categoriesResult.value) ? categoriesResult.value : [];
-      
+
       setAreas(loadedAreas);
       setCategories(loadedCategories);
-      
+
       if (__DEV__ && loadedAreas.length === 0) {
         console.warn('No areas loaded from API');
       }
-      
+
       setAreasLoading(false);
     };
     loadOptions();
@@ -772,13 +768,13 @@ export default function CreateFeedbackWizardScreen() {
     return errors;
   };
 
-    const isStepValid = useMemo(() => {
-      if (step === 1) return Object.keys(validateStep(1)).length === 0;
-      if (step === 2) return Object.keys(validateStep(2)).length === 0;
-      if (step === 3) return Object.keys(validateStep(3)).length === 0;
-      // step 4 (review) requires all previous steps valid
-      return Object.keys({ ...validateStep(1), ...validateStep(2), ...validateStep(3) }).length === 0;
-    }, [step, title, description, areaId, latitude, longitude, attachments.length, categoryId]);
+  const isStepValid = useMemo(() => {
+    if (step === 1) return Object.keys(validateStep(1)).length === 0;
+    if (step === 2) return Object.keys(validateStep(2)).length === 0;
+    if (step === 3) return Object.keys(validateStep(3)).length === 0;
+    // step 4 (review) requires all previous steps valid
+    return Object.keys({ ...validateStep(1), ...validateStep(2), ...validateStep(3) }).length === 0;
+  }, [step, title, description, areaId, latitude, longitude, attachments.length, categoryId]);
 
   const replaceErrors = (errors: Record<string, string>) => {
     setFieldErrors((current) => ({ ...current, ...errors }));
@@ -964,19 +960,19 @@ export default function CreateFeedbackWizardScreen() {
       const response = await feedbackApi.create(payload);
       const createdFeedback = extractCreatedFeedback(response);
       const newFeedbackId = extractFeedbackId(response);
-      
+
       await AsyncStorage.removeItem(`${DRAFT_STORAGE_PREFIX}:mobile`);
       // Invalidate all feedback-related queries so lists refresh (tickets, stats, feeds)
       qc.invalidateQueries({ queryKey: reportingKeys.lists() });
       qc.invalidateQueries({ queryKey: communityKeys.feeds() });
-      
+
       // Pre-populate query cache with newly created feedback so detail screen loads instantly
       if (newFeedbackId && createdFeedback) {
         qc.setQueryData(reportingKeys.detail(String(newFeedbackId)), createdFeedback);
       }
-      
+
       toast.success('Phản ánh đã được gửi thành công!');
-      
+
       // Navigate to newly created ticket detail instead of list
       if (newFeedbackId) {
         router.replace(`/(resident)/tickets/${newFeedbackId}`);
@@ -998,18 +994,18 @@ export default function CreateFeedbackWizardScreen() {
           const fallbackResponse = await feedbackApi.create(fallback);
           const fallbackCreatedFeedback = extractCreatedFeedback(fallbackResponse);
           const fallbackFeedbackId = extractFeedbackId(fallbackResponse);
-          
+
           await AsyncStorage.removeItem(`${DRAFT_STORAGE_PREFIX}:mobile`);
           qc.invalidateQueries({ queryKey: reportingKeys.lists() });
           qc.invalidateQueries({ queryKey: communityKeys.feeds() });
-          
+
           // Pre-populate query cache with newly created feedback
           if (fallbackFeedbackId && fallbackCreatedFeedback) {
             qc.setQueryData(reportingKeys.detail(String(fallbackFeedbackId)), fallbackCreatedFeedback);
           }
-          
+
           toast.success('Phản ánh đã được gửi (không kèm khu vực do lỗi hình dạng).');
-          
+
           // Navigate to newly created ticket detail
           if (fallbackFeedbackId) {
             router.replace(`/(resident)/tickets/${fallbackFeedbackId}`);
@@ -1057,87 +1053,87 @@ export default function CreateFeedbackWizardScreen() {
             keyboardDismissMode="interactive"
             contentInsetAdjustmentBehavior="never"
           >
-          {step === 1 && (
-            <StepDescription
-              title={title}
-              description={description}
-              onTitleChange={(value) => {
-                setTitle(value);
-                clearFieldError('title');
-              }}
-              onDescChange={(value) => {
-                setDescription(value);
-                clearFieldError('description');
-              }}
-              titleError={fieldErrors.title}
-              descriptionError={fieldErrors.description}
-              loading={classificationLoading}
-            />
-          )}
-          {step === 2 && (
-            <StepLocation
-              areaId={areaId}
-              areas={areas}
-              locationText={locationText}
-              latitude={latitude}
-              longitude={longitude}
-              onAreaChange={(value) => {
-                setAreaId(value);
-                clearFieldError('areaId');
-              }}
-              onLocationChange={(value) => {
+            {step === 1 && (
+              <StepDescription
+                title={title}
+                description={description}
+                onTitleChange={(value) => {
+                  setTitle(value);
+                  clearFieldError('title');
+                }}
+                onDescChange={(value) => {
+                  setDescription(value);
+                  clearFieldError('description');
+                }}
+                titleError={fieldErrors.title}
+                descriptionError={fieldErrors.description}
+                loading={classificationLoading}
+              />
+            )}
+            {step === 2 && (
+              <StepLocation
+                areaId={areaId}
+                areas={areas}
+                locationText={locationText}
+                latitude={latitude}
+                longitude={longitude}
+                onAreaChange={(value) => {
+                  setAreaId(value);
+                  clearFieldError('areaId');
+                }}
+                onLocationChange={(value) => {
 
-                setLocationText(value);
-                clearFieldError('location');
-              }}
-              onLatitudeChange={(value) => {
-                const next = value === '' ? null : Number(value);
-                setLatitude(Number.isFinite(next) ? next : null);
-                clearFieldError('location');
-              }}
-              onLongitudeChange={(value) => {
-                const next = value === '' ? null : Number(value);
-                setLongitude(Number.isFinite(next) ? next : null);
-                clearFieldError('location');
-              }}
-              onUseCurrentLocation={handleUseCurrentLocation}
-              loading={areasLoading}
-              error={fieldErrors.areaId}
-              duplicateWarning={showDuplicateWarning ? 'Một số phản ánh gần vị trí này đã tồn tại. Vui lòng kiểm tra trước khi gửi.' : undefined}
-              duplicates={duplicates}
-              locationError={fieldErrors.location}
-              latitudeError={fieldErrors.location}
-              longitudeError={fieldErrors.location}
-            />
-          )}
-          {step === 3 && (
-            <StepAttachments
-              attachments={attachments}
-              onAdd={handleAddAttachment}
-              onRemove={handleRemoveAttachment}
-              error={fieldErrors.attachments}
-            />
-          )}
-          {step === 4 && (
-            <StepReview
-              title={title}
-              description={description}
-              categoryName={selectedCategory?.categoryName ?? selectedCategory?.name}
-              areaName={selectedArea?.areaName ?? selectedArea?.name}
-              locationText={locationText}
-              priority={priority}
-              attachments={attachments}
-              duplicates={duplicates}
-              onSubmit={handleSubmit}
-              submitting={submitting}
-            />
-          )}
-          {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
+                  setLocationText(value);
+                  clearFieldError('location');
+                }}
+                onLatitudeChange={(value) => {
+                  const next = value === '' ? null : Number(value);
+                  setLatitude(Number.isFinite(next) ? next : null);
+                  clearFieldError('location');
+                }}
+                onLongitudeChange={(value) => {
+                  const next = value === '' ? null : Number(value);
+                  setLongitude(Number.isFinite(next) ? next : null);
+                  clearFieldError('location');
+                }}
+                onUseCurrentLocation={handleUseCurrentLocation}
+                loading={areasLoading}
+                error={fieldErrors.areaId}
+                duplicateWarning={showDuplicateWarning ? 'Một số phản ánh gần vị trí này đã tồn tại. Vui lòng kiểm tra trước khi gửi.' : undefined}
+                duplicates={duplicates}
+                locationError={fieldErrors.location}
+                latitudeError={fieldErrors.location}
+                longitudeError={fieldErrors.location}
+              />
+            )}
+            {step === 3 && (
+              <StepAttachments
+                attachments={attachments}
+                onAdd={handleAddAttachment}
+                onRemove={handleRemoveAttachment}
+                error={fieldErrors.attachments}
+              />
+            )}
+            {step === 4 && (
+              <StepReview
+                title={title}
+                description={description}
+                categoryName={selectedCategory?.categoryName ?? selectedCategory?.name}
+                areaName={selectedArea?.areaName ?? selectedArea?.name}
+                locationText={locationText}
+                priority={priority}
+                attachments={attachments}
+                duplicates={duplicates}
+                onSubmit={handleSubmit}
+                submitting={submitting}
+              />
+            )}
+            {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
       <View style={[styles.bottomBar, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
-          {step > 1 && (
+        {step > 1 && (
           <AppButton variant="outline" size="lg" onPress={goBack} className="flex-1">
             Quay lại
           </AppButton>
@@ -1153,7 +1149,7 @@ export default function CreateFeedbackWizardScreen() {
           }
           return (
             <AppButton size="lg" onPress={handleSubmit} disabled={!isStepValid} loading={submitting} className="flex-1" rightIcon={<Icon name="send" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />}>
-              Gửi phản ánh
+              Gửi
             </AppButton>
           );
         })()}
