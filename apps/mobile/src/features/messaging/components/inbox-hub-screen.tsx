@@ -22,6 +22,7 @@ import React, {
 } from 'react';
 import {
   View,
+  AppState,
   FlatList,
   Pressable,
   StyleSheet,
@@ -570,6 +571,7 @@ const SUPPORT_FEEDBACK_FILTERS = {
   sortBy: 'updatedAt',
   sortOrder: 'desc' as const,
 };
+const SUPPORT_INBOX_POLL_INTERVAL_MS = 10000;
 
 export default function InboxScreen() {
   const router = useRouter();
@@ -582,6 +584,17 @@ export default function InboxScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const user = useAuthStore((s) => s.user);
   const authReady = useAuthStore((s) => s.hasHydrated);
+  const [isAppActive, setIsAppActive] = useState(
+    AppState.currentState === 'active',
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      setIsAppActive(nextState === 'active');
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   // focus handled after queries are declared so we can trigger refetches
 
@@ -613,7 +626,7 @@ export default function InboxScreen() {
       const raw = await queryClient.fetchQuery({
         queryKey: reportingKeys.list(SUPPORT_FEEDBACK_FILTERS),
         queryFn: () => feedbackApi.list(SUPPORT_FEEDBACK_FILTERS),
-        staleTime: 1000 * 60 * 5,
+        staleTime: 0,
       });
       const items: any[] = Array.isArray(raw) ? raw : (raw?.items ?? []);
 
@@ -629,7 +642,7 @@ export default function InboxScreen() {
             const msgs = await queryClient.fetchQuery({
               queryKey: messagingKeys.feedbackMessages(feedbackId),
               queryFn: () => messagingApi.getFeedbackMessages(feedbackId),
-              staleTime: 1000 * 60 * 5,
+              staleTime: 0,
             });
             if (msgs.length === 0) return null; // skip feedbacks with no conversation
             return { item, feedbackId, msgs };
@@ -641,7 +654,7 @@ export default function InboxScreen() {
       );
 
       if (messageProbeCount > 0 && messageProbeFailures === messageProbeCount) {
-        throw new Error('Unable to load support conversations');
+        throw new Error('Không thể tải hội thoại hỗ trợ');
       }
 
       const withMsgs = checked.filter(Boolean) as Array<{ item: any; feedbackId: string; msgs: any[] }>;
@@ -701,9 +714,13 @@ export default function InboxScreen() {
       return threads;
     },
     retry: false,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes to avoid redundant fetches
+    staleTime: 1000,
     gcTime: 1000 * 60 * 30,
-    enabled: authReady && !!user && activeTab === 'support',
+    refetchInterval: isAppActive && activeTab === 'support'
+      ? SUPPORT_INBOX_POLL_INTERVAL_MS
+      : false,
+    refetchIntervalInBackground: false,
+    enabled: authReady && !!user && activeTab === 'support' && isAppActive,
   });
 
   const hasFocusedOnce = useRef(false);
