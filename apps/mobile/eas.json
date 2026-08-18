@@ -15,10 +15,15 @@
     },
     "production": {
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "ios": {
         "autoIncrement": true
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "@EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "@EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID",
+        "GOOGLE_MAPS_API_KEY": "@GOOGLE_MAPS_API_KEY"
       }
     },
     "development": {
