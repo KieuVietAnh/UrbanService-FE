@@ -12,6 +12,7 @@ module.exports = ({ config }) => ({
   plugins: [
     './plugins/withGoogleMapsAndroidManifest.js',
     'expo-router',
+    ['expo-system-ui', { userInterfaceStyle: 'light' }],
   ],
   extra: {
     ...config.extra,

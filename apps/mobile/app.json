@@ -6,7 +6,7 @@
     "scheme": "urbanmind",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-     "icon": "./assets/icon.png",
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -29,22 +29,28 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
+      ],
+      "edgeToEdgeEnabled": true
     },
     "web": {},
     "plugins": [
       "./plugins/withGoogleMapsAndroidManifest.js",
-      "expo-router"
+      "expo-router",
+      [
+        "expo-system-ui",
+        {
+          "userInterfaceStyle": "light"
+        }
+      ]
     ],
     "extra": {
       "EXPO_PUBLIC_API_URL": "https://api.urbanservice.me",
-      
-      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "353963599123-7vtdpcp0okkrhrr2va9q4p4lbsndl6si.apps.googleusercontent.com",
-      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "353963599123-ofbl3aoivkest6llsjh68qqrimp8p6eg.apps.googleusercontent.com",
+      "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "${EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID}",
+      "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID}",
       "GOOGLE_MAPS_API_KEY": "${GOOGLE_MAPS_API_KEY}",
       "router": {},
       "eas": {
-        "projectId": "34fad211-1fae-4e82-ac99-11700199868e"
+        "projectId": "e2aa5856-818a-4988-9a42-f3b9e8b315c1"
       }
     }
   }

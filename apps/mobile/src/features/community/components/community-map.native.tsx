@@ -9,7 +9,7 @@ import {
   Dimensions,
   FlatList,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
@@ -106,6 +106,7 @@ export default function CommunityMapNative() {
   const router = useRouter();
   const mapRef = useRef<any>(null);
   const clusterRef = useRef<any>(null);
+  const insets = useSafeAreaInsets();
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [areaModalOpen, setAreaModalOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
@@ -476,7 +477,7 @@ export default function CommunityMapNative() {
 
         {!(feedbackListVisible || Boolean(selectedIncident)) && (
           <Pressable
-            style={styles.feedbackExplorerButton}
+            style={[styles.feedbackExplorerButton, { bottom: 88 + insets.bottom }]}
             onPress={handleOpenFeedbackExplorer}
             accessibilityLabel="Danh sách phản ánh"
           >
@@ -485,7 +486,7 @@ export default function CommunityMapNative() {
         )}
         {!(feedbackListVisible || Boolean(selectedIncident)) && (
           <Pressable
-            style={styles.locateButton}
+            style={[styles.locateButton, { bottom: 88 + insets.bottom }]}
             onPress={async () => {
               try {
                 setLocating(true);
@@ -927,7 +928,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     flex: 1,
     justifyContent: 'space-between',
-    paddingBottom: 82,
+    paddingBottom: 8,
   },
   sheetHeader: {
     marginBottom: 14,

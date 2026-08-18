@@ -17,7 +17,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
@@ -165,6 +165,7 @@ export default function TicketDetailScreen() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
 
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
@@ -546,7 +547,7 @@ export default function TicketDetailScreen() {
       </ScrollView>
 
       {/* Resolution Review Card / Bottom Action Bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(spacing['7'] as number, insets.bottom + 8) }]}>
         <View style={{ flex: 1 }}>
           <AppButton
             variant="outline"
@@ -607,7 +608,7 @@ export default function TicketDetailScreen() {
           )}
         />
 
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.msgInputRow}>
             <TextInput
               style={styles.msgInput}

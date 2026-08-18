@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "007a0d44-ec41-4ce4-bcf6-ba09b3919b8c"
+      }
+    },
+    "android": {
+      "package": "com.richdesusteam.urbanmindmonorepo"
+    }
+  }
+}

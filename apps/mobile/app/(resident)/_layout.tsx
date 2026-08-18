@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import '../../global.css';
 import { Stack, usePathname, useRouter, type Href } from 'expo-router';
 import {
@@ -13,6 +13,9 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withTiming,
+  useDerivedValue,
+  interpolateColor,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
@@ -74,10 +77,40 @@ function TabItem({
   onPress: () => void;
 }) {
   const scale = useSharedValue(1);
+  const activeAnim = useSharedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    activeAnim.value = withTiming(active ? 1 : 0, { duration: 200 });
+  }, [active]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
+
+  const itemStyle = useAnimatedStyle(() => ({
+    flex: 1 + activeAnim.value * 0.4, // Active tab dynamically expands by 40%
+  }));
+
+  const pillStyle = useAnimatedStyle(() => {
+    return {
+      backgroundColor: activeAnim.value > 0.05
+        ? interpolateColor(
+            activeAnim.value,
+            [0, 1],
+            ['rgba(255, 255, 255, 0)', colors.primarySoft]
+          )
+        : 'transparent',
+      paddingHorizontal: 10 + activeAnim.value * 6, // dynamic padding horizontal 10 -> 16
+    };
+  });
+
+  const labelStyle = useAnimatedStyle(() => {
+    return {
+      opacity: activeAnim.value,
+      maxWidth: activeAnim.value * 72, // smooth slide open max 72px
+      marginLeft: activeAnim.value * 6, // dynamic margin/gap
+    };
+  });
 
   const handlePress = () => {
     scale.value = withSpring(0.88, { damping: 12, stiffness: 400 }, () => {
@@ -98,26 +131,26 @@ function TabItem({
   }
 
   return (
-    <Pressable onPress={handlePress} style={styles.tabItem}>
-      <Animated.View style={animStyle}>
-        <View style={[styles.tabIconWrap, active && styles.tabIconActive]}>
+    <Animated.View style={[styles.tabItem, itemStyle]}>
+      <Pressable onPress={handlePress} style={styles.pressableArea}>
+        <Animated.View style={[styles.pillContainer, pillStyle, animStyle]}>
           <Icon
             name={item.icon}
             size={20}
             color={active ? colors.primary : '#94A3B8'}
-            strokeWidth={active ? 2.5 : 1.8}
+            strokeWidth={active ? 2.2 : 1.8}
           />
-        </View>
-        <Text
-          style={[
-            styles.tabLabel,
-            active ? styles.tabLabelActive : styles.tabLabelInactive,
-          ]}
-        >
-          {item.label}
-        </Text>
-      </Animated.View>
-    </Pressable>
+          <Animated.View style={[{ overflow: 'hidden' }, labelStyle]}>
+            <Text
+              numberOfLines={1}
+              style={styles.tabLabelActive}
+            >
+              {item.label}
+            </Text>
+          </Animated.View>
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -232,33 +265,27 @@ const styles = StyleSheet.create({
     height: RESIDENT_TAB_BAR_HEIGHT,
   },
   tabItem: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
   },
-  tabIconWrap: {
-    width: 44,
-    height: 28,
-    borderRadius: 14,
+  pressableArea: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
   },
-  tabIconActive: {
-    backgroundColor: colors.primarySoft,
-  },
-  tabLabel: {
-    fontSize: 10,
-    textAlign: 'center',
-    fontFamily: 'Geist-Medium',
+  pillContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 42,
+    borderRadius: 21,
   },
   tabLabelActive: {
     color: colors.primary,
     fontFamily: 'Geist-SemiBold',
-  },
-  tabLabelInactive: {
-    color: '#94A3B8',
+    fontSize: 11,
   },
   fabWrap: {
     flex: 1,
