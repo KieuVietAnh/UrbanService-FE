@@ -3,7 +3,7 @@ import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { LoadingSpinner, CompletionDocumentsCard, ConfirmationModal } from '@urbanmind/shared-ui';
+import { LoadingSpinner, ConfirmationModal } from '@urbanmind/shared-ui';
 import {
   canTransitionProviderReportStatus,
   normalizeProviderReportStatus,
@@ -28,6 +28,21 @@ const formatContactDateTime = (value) => {
     if (Number.isNaN(date.getTime())) return 'Không xác định';
     return date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch { return 'Không xác định'; }
+};
+
+const getProviderReportStatusLabel = (status) => {
+  const normalized = String(status || '').trim();
+  const labels = {
+    Assigned: 'Đã phân công',
+    Reported: 'Đã tiếp nhận',
+    InProgress: 'Đang xử lý',
+    Done: 'Đã hoàn tất',
+    NeedRework: 'Cần làm lại',
+    SubmittedForApproval: 'Chờ phê duyệt',
+    Approved: 'Đã phê duyệt',
+  };
+
+  return labels[normalized] || normalized || 'Không rõ';
 };
 
 const normalizePositiveInt = (value) => {
@@ -68,11 +83,10 @@ const isSuccessfulCoordinatorContact = (contactResult) => {
 /* ─── Step definitions ───────────────────────────────────────────────────── */
 
 const STEPS = [
-  { id: 'overview',              label: 'Tổng quan',            icon: Lucide.LayoutDashboard, description: 'Thông tin nhà thầu & cập nhật trạng thái' },
-  { id: 'contact-logs',         label: 'Lịch sử liên hệ',      icon: Lucide.Phone,           description: 'Ghi nhận lịch sử liên hệ với nhà thầu'  },
-  { id: 'completion-documents', label: 'Tài liệu hoàn thành',  icon: Lucide.FileText,        description: 'Tải lên tài liệu bằng chứng hoàn thành'  },
-  { id: 'resolution',           label: 'Kết quả xử lý',        icon: Lucide.CheckSquare,     description: 'Gửi kết quả xử lý chờ phê duyệt',  requiresInProgress: true },
-  { id: 'submitted',            label: 'Chờ phê duyệt',        icon: Lucide.Send,            description: 'Đã gửi — chờ quản lý phê duyệt',    terminal: true },
+  { id: 'overview',      label: 'Tổng quan',       icon: Lucide.LayoutDashboard, description: 'Thông tin nhà thầu & cập nhật trạng thái' },
+  { id: 'contact-logs',  label: 'Lịch sử liên hệ', icon: Lucide.Phone,           description: 'Ghi nhận lịch sử liên hệ với nhà thầu' },
+  { id: 'resolution',    label: 'Kết quả xử lý',   icon: Lucide.CheckSquare,     description: 'Nhập kết quả, ảnh và tài liệu hoàn thành', requiresInProgress: true },
+  { id: 'submitted',     label: 'Chờ phê duyệt',   icon: Lucide.Send,            description: 'Đã gửi — chờ quản lý phê duyệt', terminal: true },
 ];
 
 /* ─── Design tokens (inline so only this file changes) ───────────────────── */
@@ -96,7 +110,7 @@ const fieldLabel = {
 /* ─── Sub-components ─────────────────────────────────────────────────────── */
 
 /** Vertical wizard-style progress rail on the left side */
-const WizardRail = ({ steps, currentIndex, maxReached, isResolutionSubmitted, canAccessCompletionDocuments, canAccessResolution, onGoTo }) => (
+const WizardRail = ({ steps, currentIndex, maxReached, isResolutionSubmitted, canAccessResolution, onGoTo }) => (
   <nav
     aria-label="Workflow progress"
     style={{
@@ -115,8 +129,7 @@ const WizardRail = ({ steps, currentIndex, maxReached, isResolutionSubmitted, ca
       const isCurrent   = idx === currentIndex;
       const isFuture    = idx > currentIndex && idx <= maxReached;
       const statusLocked =
-        (step.id === 'completion-documents' && !canAccessCompletionDocuments) ||
-        (step.id === 'resolution' && !canAccessResolution && !isResolutionSubmitted);
+        step.id === 'resolution' && !canAccessResolution && !isResolutionSubmitted;
       const isLocked = idx > maxReached || statusLocked;
       const isClickable = isPast || isCurrent || isFuture; /* can go back or re-visit reached */
 
@@ -184,7 +197,7 @@ const WizardRail = ({ steps, currentIndex, maxReached, isResolutionSubmitted, ca
               )}
               {step.requiresInProgress && !canAccessResolution && !isResolutionSubmitted && (
                 <div style={{ fontSize: '0.6875rem', color: 'var(--color-warning)', fontWeight: 600, lineHeight: 1.3, marginTop: '1px' }}>
-                  Yêu cầu trạng thái: InProgress
+                  Yêu cầu trạng thái: Đang xử lý
                 </div>
               )}
             </div>
@@ -283,6 +296,7 @@ export const ProviderReportWorkspacePage = () => {
   /* ── Core state ─────────────────────────────────────────────────────────── */
   const [report,        setReport]        = useState(initialReport);
   const [loading,       setLoading]       = useState(true);
+  const [feedbackDetail, setFeedbackDetail] = useState(null);
 
   /* ── Wizard navigation ──────────────────────────────────────────────────── */
   const [stepIndex,     setStepIndex]     = useState(0);
@@ -300,10 +314,9 @@ export const ProviderReportWorkspacePage = () => {
 
   /* ── Completion documents ───────────────────────────────────────────────── */
   const [documents,          setDocuments]          = useState([]);
-  const [documentsLoading,   setDocumentsLoading]   = useState(false);
-  const [documentsError,     setDocumentsError]     = useState('');
-  const [uploadingDocuments, setUploadingDocuments] = useState(false);
-  const [uploadError,        setUploadError]        = useState('');
+  const [, setDocumentsLoading] = useState(false);
+  const [, setDocumentsError] = useState('');
+  const [, setUploadError] = useState('');
   const [documentDescription, setDocumentDescription] = useState('');
   const [selectedDocumentFile, setSelectedDocumentFile] = useState(null);
 
@@ -390,6 +403,33 @@ export const ProviderReportWorkspacePage = () => {
   }, [providerReportId, feedbackIdFromState]);
 
   useEffect(() => {
+    let active = true;
+
+    const loadFeedbackDetail = async () => {
+      const feedbackId = extractFeedbackId(report);
+
+      if (!feedbackId) {
+        if (active) setFeedbackDetail(null);
+        return;
+      }
+
+      try {
+        const detail = await managementFeedbackApi.getFeedbackById(feedbackId);
+        if (active) setFeedbackDetail(detail || null);
+      } catch (err) {
+        console.error('Failed to load feedback detail', err);
+        if (active) setFeedbackDetail(null);
+      }
+    };
+
+    loadFeedbackDetail();
+
+    return () => {
+      active = false;
+    };
+  }, [extractFeedbackId, report]);
+
+  useEffect(() => {
     if (!providerReportId) return;
     hasUserChosenStepRef.current = false;
     try {
@@ -465,7 +505,7 @@ export const ProviderReportWorkspacePage = () => {
     const load = async () => {
       if (
         !providerReportId ||
-        !['completion-documents', 'resolution', 'submitted'].includes(activeStepId)
+        !['resolution', 'submitted'].includes(activeStepId)
       ) return;
       setDocumentsLoading(true); setDocumentsError('');
       try {
@@ -553,12 +593,54 @@ export const ProviderReportWorkspacePage = () => {
   const providerPhone   = report?.phoneNumber || coordinator?.phone || provider?.phoneNumber || '—';
   const providerEmail   = report?.email || coordinator?.email || provider?.email || '—';
   const currentStatus   = normalizeProviderReportStatus(report?.status || report?.reportStatus || '');
-  const isResolutionSubmitted = existingResolutions.length > 0;
-  const canAccessCompletionDocuments = ['InProgress', 'Done'].includes(currentStatus);
-  const canAccessResolution = ['InProgress', 'Done'].includes(currentStatus);
-  const canSubmitResolution = currentStatus === 'InProgress' && !isResolutionSubmitted;
+
+  const latestResolution =
+    [...existingResolutions]
+      .sort(
+        (a, b) =>
+          new Date(b?.resolvedAt || b?.updatedAt || 0) -
+          new Date(a?.resolvedAt || a?.updatedAt || 0)
+      )[0] || null;
+
+  const feedbackStatus = String(feedbackDetail?.status || '').trim();
+  const resolutionStatus = String(latestResolution?.status || '').trim();
+
+  const isNeedRework =
+    feedbackStatus === 'NeedRework' ||
+    resolutionStatus === 'NeedRework';
+
+  const isAwaitingApproval =
+    feedbackStatus === 'SubmittedForApproval' ||
+    resolutionStatus === 'SubmittedForApproval';
+
+  const isApproved =
+    feedbackStatus === 'Approved' ||
+    resolutionStatus === 'Approved';
+
+  const isResolutionSubmitted =
+    isAwaitingApproval ||
+    isApproved;
+
+  const canAccessResolution =
+    ['InProgress', 'Done'].includes(currentStatus) ||
+    isNeedRework;
+
+  const canSubmitResolution =
+    currentStatus === 'InProgress' &&
+    (!latestResolution || isNeedRework);
+
   const canReviewContactLogs = ['Reported', 'InProgress', 'Done'].includes(currentStatus);
-  const canUploadCompletionDocuments = currentStatus === 'InProgress';
+
+
+  useEffect(() => {
+    if (!isNeedRework || !latestResolution) return;
+
+    setResolutionForm({
+      resolutionSummary: latestResolution.resolutionSummary || '',
+      actionTaken: latestResolution.actionTaken || '',
+      resultNote: latestResolution.resultNote || '',
+    });
+  }, [isNeedRework, latestResolution]);
 
   const statusHistoryItems = (() => {
     const history = Array.isArray(report?.statusHistory)
@@ -595,29 +677,77 @@ export const ProviderReportWorkspacePage = () => {
         )
       );
 
-    const hasDocs = documents.length > 0;
-    const isInProgress = ['InProgress', 'Done'].includes(currentStatus);
-    const isDone = currentStatus === 'Done';
+    const hasReachedProcessing =
+      ['InProgress', 'Done'].includes(currentStatus) ||
+      isNeedRework ||
+      isResolutionSubmitted;
+
+    const hasReachedSubmission =
+      isResolutionSubmitted ||
+      currentStatus === 'Done';
 
     return [
-      { label: 'Báo cáo nhận', completed: Boolean(report) },
       {
-        label: 'Đã liên hệ coordinator',
-        completed: hasSuccessfulContact || isInProgress || isDone
+        label: 'Tiếp nhận',
+        state: report ? 'completed' : 'pending',
+        detail: report ? 'Đã tiếp nhận báo cáo' : 'Chưa tiếp nhận',
       },
-      { label: 'Đang xử lý', completed: isInProgress || isDone },
-      { label: 'Tài liệu/minh chứng đã có', completed: hasDocs || isResolutionSubmitted || isDone },
-      { label: 'Đã gửi kết quả chờ duyệt', completed: isResolutionSubmitted || isDone },
+      {
+        label: 'Liên hệ điều phối viên',
+        state: hasSuccessfulContact || hasReachedProcessing ? 'completed' : 'pending',
+        detail: hasSuccessfulContact || hasReachedProcessing
+          ? 'Đã liên hệ thành công'
+          : 'Chưa hoàn tất liên hệ',
+      },
+      isNeedRework
+        ? {
+            label: 'Cần làm lại kết quả',
+            state: 'rework',
+            detail: 'Quản lý yêu cầu cập nhật kết quả',
+          }
+        : {
+            label: hasReachedProcessing ? 'Đang xử lý' : 'Xử lý',
+            state: hasReachedSubmission
+              ? 'completed'
+              : hasReachedProcessing
+                ? 'current'
+                : 'pending',
+            detail: hasReachedSubmission
+              ? 'Đã hoàn tất xử lý'
+              : hasReachedProcessing
+                ? 'Đang thực hiện'
+                : 'Chưa bắt đầu',
+          },
+      {
+        label: isNeedRework ? 'Gửi lại kết quả' : 'Gửi kết quả',
+        state: hasReachedSubmission && !isNeedRework ? 'completed' : 'pending',
+        detail: hasReachedSubmission && !isNeedRework
+          ? 'Đã gửi kết quả chờ phê duyệt'
+          : isNeedRework
+            ? 'Chưa gửi lại để phê duyệt'
+            : 'Chưa gửi phê duyệt',
+      },
     ];
   })();
 
   const visibleSteps = STEPS;
 
   const workflowAction = (() => {
+    if (isNeedRework) {
+      return {
+        title: 'Cập nhật lại kết quả xử lý',
+        description: 'Quản lý đã yêu cầu làm lại. Hãy chỉnh sửa kết quả và tải bộ minh chứng mới trước khi gửi lại.',
+        actionLabel: 'Đi tới kết quả cần làm lại',
+        targetStep: 'resolution',
+        nextStatus: null,
+        disabled: false,
+      };
+    }
+
     if (currentStatus === 'InProgress') {
       return {
         title: 'Gửi kết quả xử lý',
-        description: 'Đã liên hệ coordinator thành công. Staff có thể bổ sung minh chứng nếu cần, rồi gửi kết quả xử lý để chờ quản lý phê duyệt.',
+        description: 'Đã liên hệ coordinator thành công. Staff có thể nhập kết quả, đính kèm ảnh/tài liệu và gửi một lần để chờ quản lý phê duyệt.',
         actionLabel: 'Đi tới kết quả xử lý',
         targetStep: 'resolution',
         nextStatus: null,
@@ -638,7 +768,7 @@ export const ProviderReportWorkspacePage = () => {
 
       return {
         title: 'Liên hệ điều phối viên',
-        description: 'Tạo nhật ký liên hệ coordinator. Chỉ kết quả liên hệ thành công mới mở bước Submit Resolution; nếu cần liên hệ lại thì báo cáo vẫn ở Reported.',
+        description: 'Tạo nhật ký liên hệ điều phối viên. Chỉ khi liên hệ thành công mới mở bước gửi kết quả; nếu cần liên hệ lại thì báo cáo vẫn ở trạng thái Đã tiếp nhận.',
         actionLabel: 'Tạo nhật ký liên hệ',
         targetStep: 'contact-logs',
         nextStatus: null,
@@ -651,15 +781,22 @@ export const ProviderReportWorkspacePage = () => {
   useEffect(() => {
     if (!visibleSteps.length) return;
 
-    /*
-     * Khi vừa mở/reload trang:
-     * - nếu đã submit resolution hoặc report đã Done thì mặc định mở bước 5/5.
-     *
-     * Sau đó nếu người dùng chủ động click lại bước 1-4 thì cho phép xem read-only,
-     * không ép quay trở lại bước 5.
-     */
     if (
-      (isResolutionSubmitted || currentStatus === 'Done') &&
+      isNeedRework &&
+      !hasUserChosenStepRef.current
+    ) {
+      const resolutionIndex = STEPS.findIndex((step) => step.id === 'resolution');
+
+      if (resolutionIndex >= 0 && activeStepId !== 'resolution') {
+        setStepIndex(resolutionIndex);
+        setMaxReached((prev) => Math.max(prev, resolutionIndex));
+      }
+
+      return;
+    }
+
+    if (
+      isResolutionSubmitted &&
       !hasUserChosenStepRef.current
     ) {
       const submittedIndex = STEPS.findIndex((step) => step.id === 'submitted');
@@ -689,7 +826,13 @@ export const ProviderReportWorkspacePage = () => {
 
     setStepIndex(fallbackSafeIndex);
     setMaxReached((prev) => Math.max(prev, fallbackSafeIndex));
-  }, [activeStepId, currentStatus, isResolutionSubmitted, visibleSteps]);
+  }, [
+    activeStepId,
+    currentStatus,
+    isNeedRework,
+    isResolutionSubmitted,
+    visibleSteps,
+  ]);
 
   /* ════════════════════════════════════════════════════════════════════════
      Event handlers (all logic unchanged)
@@ -727,46 +870,6 @@ export const ProviderReportWorkspacePage = () => {
     setUploadError('');
   };
 
-  const handleDocumentSubmit = async (event) => {
-    event.preventDefault();
-    const file = selectedDocumentFile;
-    const desc = String(documentDescription || '').trim();
-
-    if (!file) {
-      setUploadError('Vui lòng chọn một tệp để tải lên.');
-      return;
-    }
-
-    if (!desc) {
-      setUploadError('Vui lòng nhập mô tả cho tài liệu.');
-      return;
-    }
-
-    const ext = String(file.name || '').split('.').pop()?.toLowerCase();
-    const supported = ['jpg', 'jpeg', 'png', 'pdf'];
-    const supportedMime = ['image/jpeg', 'image/png', 'application/pdf'];
-    if (!supported.includes(ext) && !supportedMime.includes(file.type)) {
-      setUploadError('Chỉ hỗ trợ tệp JPG, PNG hoặc PDF.');
-      return;
-    }
-
-    setUploadingDocuments(true);
-    setUploadError('');
-
-    try {
-      await managementFeedbackApi.uploadCompletionDocument(providerReportId, file, { fileName: file.name, description: desc });
-      const res = await managementFeedbackApi.getProviderReportCompletionDocuments(providerReportId);
-      setDocuments(Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : Array.isArray(res?.data) ? res.data : []);
-      setDocumentDescription('');
-      setSelectedDocumentFile(null);
-      openToast('Đã gửi tài liệu', 'Tài liệu hoàn thành đã được gửi thành công.');
-    } catch (err) {
-      console.error('Upload failed', err);
-      setUploadError(err?.message || 'Không thể tải lên tài liệu.');
-    } finally {
-      setUploadingDocuments(false);
-    }
-  };
 
   const handleResolutionImagesChange = (event) => {
     const files = Array.from(event.target.files || []);
@@ -844,7 +947,7 @@ export const ProviderReportWorkspacePage = () => {
         setReport((prev) => prev ? { ...prev, status: nextStatus } : prev);
       }
       if (auto) {
-        openToast('Tự động cập nhật trạng thái', `Trạng thái đã chuyển sang ${nextStatus}.`);
+        openToast('Tự động cập nhật trạng thái', `Trạng thái đã chuyển sang ${getProviderReportStatusLabel(nextStatus)}.`);
       } else {
         openToast('Đã cập nhật trạng thái', 'Trạng thái báo cáo xử lý đã được cập nhật.');
       }
@@ -1033,6 +1136,18 @@ if (!transitionResult) {
 
     const summary = String(resolutionForm.resolutionSummary || '').trim();
     const action  = String(resolutionForm.actionTaken       || '').trim();
+
+    if (selectedDocumentFile) {
+      const ext = String(selectedDocumentFile.name || '').split('.').pop()?.toLowerCase();
+      const supported = ['jpg', 'jpeg', 'png', 'pdf'];
+      const supportedMime = ['image/jpeg', 'image/png', 'application/pdf'];
+
+      if (!supported.includes(ext) && !supportedMime.includes(selectedDocumentFile.type)) {
+        setResolutionError('Tài liệu hoàn thành chỉ hỗ trợ JPG, PNG hoặc PDF.');
+        return;
+      }
+    }
+
     if (!summary || !action) {
       setResolutionError('Vui lòng nhập Tóm tắt kết quả và Hành động đã thực hiện.');
       return;
@@ -1043,7 +1158,7 @@ if (!transitionResult) {
 
   const handleSubmitResolution = async () => {
     if (!canSubmitResolution) {
-      setResolutionError('Báo cáo không còn ở trạng thái cho phép gửi kết quả mới.');
+      setResolutionError('Báo cáo không còn ở trạng thái cho phép gửi kết quả.');
       setConfirmingResolutionSubmit(false);
       return;
     }
@@ -1073,17 +1188,36 @@ if (!transitionResult) {
       return;
     }
 
+    const newImages = resolutionImages.filter(
+      (image) => image?.file instanceof File
+    );
+
+    const hasNewDocument = selectedDocumentFile instanceof File;
+    const hasNewEvidence = newImages.length > 0 || hasNewDocument;
+
+    if (isNeedRework && !hasNewEvidence) {
+      setResolutionError(
+        'Khi gửi lại kết quả sau yêu cầu làm lại, vui lòng tải ít nhất một ảnh hoặc tài liệu hoàn thành mới.'
+      );
+      setConfirmingResolutionSubmit(false);
+      return;
+    }
+
     setSubmittingResolution(true);
     setResolutionError('');
 
     try {
       /*
-       * 1. Upload ảnh thật lên Cloudinary/completion_documents trước.
-       *    Không gửi blob URL vào submit-resolution vì blob chỉ tồn tại trong browser.
+       * Rework: chỉ khi staff thực sự gửi lại mới xóa bộ minh chứng cũ.
+       * Sau đó upload toàn bộ bộ mới bằng API completion-documents hiện có.
        */
-      for (const image of resolutionImages) {
-        if (!(image?.file instanceof File)) continue;
+      if (isNeedRework) {
+        await managementFeedbackApi.clearProviderReportCompletionDocuments(
+          currentProviderReportId
+        );
+      }
 
+      for (const image of newImages) {
         await managementFeedbackApi.uploadCompletionDocument(
           currentProviderReportId,
           image.file,
@@ -1094,10 +1228,23 @@ if (!transitionResult) {
         );
       }
 
+      if (hasNewDocument) {
+        await managementFeedbackApi.uploadCompletionDocument(
+          currentProviderReportId,
+          selectedDocumentFile,
+          {
+            fileName: selectedDocumentFile.name,
+            description:
+              String(documentDescription || '').trim() ||
+              'Tài liệu hoàn thành xử lý',
+          }
+        );
+      }
+
       /*
-       * 2. Submit resolution và liên kết đúng Provider Report.
-       *    imageUrls để rỗng vì ảnh đã được lưu qua completion-documents.
-       *    Làm vậy tránh backend tạo CompletionDocument trùng lần nữa.
+       * Backend tự phân biệt:
+       * - InProgress + chưa có resolution => CREATE lần đầu.
+       * - NeedRework => UPDATE chính resolution cũ.
        */
       await managementFeedbackApi.submitResolution(feedbackId, {
         providerReportId: currentProviderReportId,
@@ -1107,12 +1254,16 @@ if (!transitionResult) {
         imageUrls: [],
       });
 
-      /*
-       * 3. Refresh dữ liệu thật từ backend.
-       */
-      const [refreshedResolutions, refreshedDocuments] = await Promise.all([
+      const [
+        refreshedResolutions,
+        refreshedDocuments,
+        refreshedReport,
+        refreshedFeedback,
+      ] = await Promise.all([
         loadExistingResolutions(feedbackId, { active: true }),
         managementFeedbackApi.getProviderReportCompletionDocuments(currentProviderReportId),
+        managementFeedbackApi.getProviderReportById(currentProviderReportId, feedbackId),
+        managementFeedbackApi.getFeedbackById(feedbackId),
       ]);
 
       const normalizedDocuments = Array.isArray(refreshedDocuments)
@@ -1125,20 +1276,16 @@ if (!transitionResult) {
 
       setDocuments(normalizedDocuments);
 
-      if (Array.isArray(refreshedResolutions) && refreshedResolutions.length > 0) {
+      if (refreshedReport) {
+        setReport(refreshedReport);
+      }
+
+      if (refreshedFeedback) {
+        setFeedbackDetail(refreshedFeedback);
+      }
+
+      if (Array.isArray(refreshedResolutions)) {
         setExistingResolutions(refreshedResolutions);
-      } else {
-        setExistingResolutions([
-          {
-            providerReportId: currentProviderReportId,
-            resolutionSummary: summary,
-            actionTaken: action,
-            resultNote: result,
-            status: 'SubmittedForApproval',
-            createdByStaffUserName: 'Bạn',
-            resolvedAt: new Date().toISOString(),
-          },
-        ]);
       }
 
       resolutionImages.forEach((image) => {
@@ -1146,20 +1293,28 @@ if (!transitionResult) {
           URL.revokeObjectURL(image.previewUrl);
         }
       });
+
       setResolutionImages([]);
+      setSelectedDocumentFile(null);
+      setDocumentDescription('');
 
       openToast(
-        'Đã gửi kết quả xử lý',
-        'Kết quả và hình ảnh hoàn thành đã được gửi chờ quản lý phê duyệt.'
+        isNeedRework ? 'Đã gửi lại kết quả xử lý' : 'Đã gửi kết quả xử lý',
+        isNeedRework
+          ? 'Kết quả đã được cập nhật và bộ minh chứng mới đã thay thế bộ cũ.'
+          : 'Kết quả và minh chứng hoàn thành đã được gửi chờ quản lý phê duyệt.'
       );
 
       const submittedIdx = STEPS.findIndex((step) => step.id === 'submitted');
-      goTo(submittedIdx);
+
+      hasUserChosenStepRef.current = true;
+      setStepIndex(submittedIdx);
+      setMaxReached((prev) => Math.max(prev, submittedIdx));
     } catch (err) {
-      console.error('Submit resolution failed', err);
+      console.error('Submit / rework resolution failed', err);
       setResolutionError(
         err?.message ||
-        'Không thể gửi kết quả xử lý. Vui lòng kiểm tra ảnh, Provider Report và thử lại.'
+        'Không thể gửi kết quả xử lý. Vui lòng kiểm tra ảnh, tài liệu và thử lại.'
       );
     } finally {
       setSubmittingResolution(false);
@@ -1225,7 +1380,7 @@ if (!transitionResult) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
             <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
-              {currentStatus || 'Không rõ'}
+              {getProviderReportStatusLabel(currentStatus)}
             </Badge>
             {feedbackId && (
               <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
@@ -1259,7 +1414,6 @@ if (!transitionResult) {
             currentIndex={visibleStepIndex}
             maxReached={maxReached}
             isResolutionSubmitted={isResolutionSubmitted}
-            canAccessCompletionDocuments={canAccessCompletionDocuments}
             canAccessResolution={canAccessResolution}
             onGoTo={(idx) => {
               const globalIdx = STEPS.findIndex((s) => s.id === visibleSteps[idx].id);
@@ -1285,23 +1439,83 @@ if (!transitionResult) {
           <section style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: '1.25rem 1.25rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#2563eb' }}>Guided workflow</div>
-                <h2 style={{ margin: '0.25rem 0 0.35rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Theo dõi tiến trình xử lý theo từng bước</h2>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: '#475569', lineHeight: 1.55 }}>Mỗi hành động đều có gợi ý bước tiếp theo, nhưng trạng thái vẫn được cập nhật thủ công theo quy trình hiện có.</p>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#2563eb' }}>Tiến trình xử lý</div>
+                <h2 style={{ margin: '0.25rem 0 0.35rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Theo dõi tiến độ xử lý báo cáo</h2>
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#475569', lineHeight: 1.55 }}>Theo dõi tiến độ xử lý của báo cáo từ lúc tiếp nhận đến khi gửi kết quả phê duyệt.</p>
               </div>
             </div>
 
             <div style={{ padding: '0.25rem 1.25rem 1.25rem' }}>
-              <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-                {workflowChecklist.map((step, index) => (
-                  <div key={step.label} style={{ padding: '0.8rem 0.9rem', borderRadius: '0.95rem', border: `1px solid ${step.completed ? 'rgba(4,120,87,0.2)' : 'rgba(203,213,225,0.75)'}`, backgroundColor: step.completed ? 'rgba(236,253,245,0.8)' : '#fff' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', fontWeight: 700, color: step.completed ? '#047857' : '#334155' }}>
-                      {step.completed ? <Lucide.CheckCircle2 size={15} /> : <Lucide.Circle size={15} />}
-                      <span>{step.label}</span>
+              <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))' }}>
+                {workflowChecklist.map((step, index) => {
+                  const isCompleted = step.state === 'completed';
+                  const isCurrent = step.state === 'current';
+                  const isRework = step.state === 'rework';
+
+                  const borderColor = isCompleted
+                    ? 'rgba(4,120,87,0.22)'
+                    : isCurrent
+                      ? 'rgba(37,99,235,0.28)'
+                      : isRework
+                        ? 'rgba(217,119,6,0.32)'
+                        : 'rgba(203,213,225,0.75)';
+
+                  const backgroundColor = isCompleted
+                    ? 'rgba(236,253,245,0.82)'
+                    : isCurrent
+                      ? 'rgba(239,246,255,0.92)'
+                      : isRework
+                        ? 'rgba(255,247,237,0.95)'
+                        : '#fff';
+
+                  const accentColor = isCompleted
+                    ? '#047857'
+                    : isCurrent
+                      ? '#2563eb'
+                      : isRework
+                        ? '#b45309'
+                        : '#64748b';
+
+                  const StepIcon = isCompleted
+                    ? Lucide.CheckCircle2
+                    : isCurrent
+                      ? Lucide.CircleDot
+                      : isRework
+                        ? Lucide.RotateCcw
+                        : Lucide.Circle;
+
+                  const stateLabel = isCompleted
+                    ? 'Hoàn tất'
+                    : isCurrent
+                      ? 'Hiện tại'
+                      : isRework
+                        ? 'Cần xử lý lại'
+                        : 'Chưa hoàn tất';
+
+                  return (
+                    <div
+                      key={step.label}
+                      style={{
+                        padding: '0.9rem 1rem',
+                        borderRadius: '0.95rem',
+                        border: `1px solid ${borderColor}`,
+                        backgroundColor,
+                        minHeight: '104px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', fontWeight: 750, color: accentColor }}>
+                        <StepIcon size={16} />
+                        <span>{step.label}</span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: accentColor, fontWeight: 700, marginTop: '0.45rem' }}>
+                        {index + 1}. {stateLabel}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.2rem', lineHeight: 1.4 }}>
+                        {step.detail}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.35rem' }}>{index + 1}. {step.completed ? 'Đã hoàn tất' : 'Chưa hoàn tất'}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </section>
@@ -1354,7 +1568,7 @@ if (!transitionResult) {
                 sub="Xem lại thông tin nhà thầu và cập nhật trạng thái báo cáo trước khi tiếp tục."
                 action={
                   <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
-                    {currentStatus || 'Không rõ'}
+                    {getProviderReportStatusLabel(currentStatus)}
                   </Badge>
                 }
               />
@@ -1383,7 +1597,7 @@ if (!transitionResult) {
                         </div>
                         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap', paddingBottom: idx < statusHistoryItems.length - 1 ? '0.75rem' : 0 }}>
                           <div>
-                            <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>{item.status || 'Không rõ'}</div>
+                            <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>{getProviderReportStatusLabel(item.status)}</div>
                             {item.note && <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: '1px' }}>{item.note}</div>}
                           </div>
                           {item.updatedAt && <span style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0, marginTop: '2px' }}>{formatContactDateTime(item.updatedAt)}</span>}
@@ -1512,127 +1726,20 @@ if (!transitionResult) {
                   totalSteps={totalVisible}
                   onBack={goBack}
                   onNext={goNext}
-                  nextLabel="Tiếp tục: Tài liệu hoàn thành"
-                  nextDisabled={!canAccessCompletionDocuments}
-                  nextVariant={!canAccessCompletionDocuments ? 'ghost' : 'primary'}
+                  nextLabel="Tiếp tục: Kết quả xử lý"
+                  nextDisabled={!canAccessResolution}
+                  nextVariant={!canAccessResolution ? 'ghost' : 'primary'}
                 />
               </section>
             </div>
           )}
 
-          {/* ══ STEP 3: COMPLETION DOCUMENTS ═════════════════════════════ */}
-          {activeStepId === 'completion-documents' && (
-            <section aria-labelledby="docs-title" style={{ ...card, overflow: 'hidden' }}>
-              <SectionHeader
-                title="Tài liệu hoàn thành"
-                sub={canUploadCompletionDocuments ? 'Tải lên bằng chứng hoàn thành từ nhà thầu trước khi tiếp tục.' : 'Bước này có thể xem lại nội dung tài liệu đã tải lên sau khi báo cáo được hoàn tất.'}
-                action={canUploadCompletionDocuments ? null : (
-                  <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
-                    {currentStatus === 'Done' ? 'Đã gửi kết quả' : 'Xem lại'}
-                  </Badge>
-                )}
-              />
-
-              <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                {canUploadCompletionDocuments ? (
-                  <form onSubmit={handleDocumentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                      <span style={fieldLabel}>Mô tả <span style={{ color: 'var(--color-danger)' }}>*</span></span>
-                      <textarea value={documentDescription} onChange={(e) => setDocumentDescription(e.target.value)} placeholder="Mô tả chi tiết về tài liệu hoàn thành..." rows={3} maxLength={1000} className="textarea textarea-bordered w-full" required />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
-                        <span>Hỗ trợ: JPG, PNG, PDF</span>
-                        <span>{documentDescription.trim().length}/1000</span>
-                      </div>
-                    </label>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" style={{ display: 'none' }} onChange={handleDocumentFileChange} />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
-                          <Lucide.FolderPlus size={14} /> Chọn tệp
-                        </Button>
-                        <div style={{ minHeight: '1.1rem', color: selectedDocumentFile ? '#0f172a' : '#6b7280', fontSize: '0.9rem' }}>
-                          {selectedDocumentFile ? selectedDocumentFile.name : 'Chưa chọn tệp nào'}
-                        </div>
-                      </div>
-
-                      <Button type="submit" variant="primary" size="sm" disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', alignSelf: 'flex-start' }}>
-                        {uploadingDocuments ? <span className="loading loading-spinner loading-xs" /> : <Lucide.CheckCircle2 size={14} />}
-                        {uploadingDocuments ? 'Đang gửi...' : 'Gửi tài liệu'}
-                      </Button>
-                    </div>
-
-                    {uploadError && <ErrorAlert message={uploadError} onClose={() => setUploadError('')} />}
-                  </form>
-                ) : (
-                  <div
-                    style={{
-                      borderRadius: '0.875rem',
-                      border: '1px solid rgba(203,213,225,0.9)',
-                      backgroundColor: 'rgba(248,250,252,0.7)',
-                      padding: '1rem 1rem',
-                      color: '#475569',
-                      lineHeight: 1.6,
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '0.625rem',
-                    }}
-                  >
-                    <Lucide.Lock size={15} style={{ flexShrink: 0, marginTop: '3px', color: '#64748b' }} />
-                    <div>
-                      <strong style={{ color: '#334155' }}>Chỉ xem.</strong>{' '}
-                      Báo cáo đã gửi kết quả nên không thể tải thêm hoặc chỉnh sửa tài liệu hoàn thành.
-                      Bạn vẫn có thể xem và mở các tài liệu đã gửi bên dưới.
-                    </div>
-                  </div>
-                )}
-
-                {documentsLoading ? (
-                  <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}><LoadingSpinner /></div>
-                ) : documentsError ? (
-                  <ErrorAlert message={documentsError} onClose={() => setDocumentsError('')} />
-                ) : documents.length === 0 ? (
-                  <div style={{ borderRadius: '0.875rem', border: '1px dashed rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.7)', padding: '3rem 1rem', textAlign: 'center' }}>
-                    <Lucide.FileText size={28} style={{ margin: '0 auto 0.625rem', color: '#94a3b8' }} aria-hidden="true" />
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>Chưa có tài liệu nào được tải lên.</div>
-                  </div>
-                ) : (
-                  <CompletionDocumentsCard
-                    documents={documents}
-                    onPreview={openImagePreview}
-                    onDownload={handleDocumentDownload}
-                    emptyMessage="Chưa có tài liệu hoàn thành nào được tải lên."
-                  />
-                )}
-              </div>
-
-              <StepFooter
-                currentIndex={visibleStepIndex}
-                totalSteps={totalVisible}
-                onBack={goBack}
-                onNext={goNext}
-                nextLabel="Tiếp tục: Kết quả xử lý"
-                nextDisabled={!canAccessResolution}
-              />
-
-              {/* Gate explanation when Resolution is locked */}
-              {!canAccessResolution && !isResolutionSubmitted && (
-                <div style={{ margin: '0 1.25rem 1rem', padding: '0.75rem 1rem', borderRadius: '0.875rem', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(180,83,9,0.18)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
-                  <Lucide.AlertTriangle size={15} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
-                  <div style={{ fontSize: '0.8125rem', color: 'var(--color-warning)', lineHeight: 1.45 }}>
-                    <strong>Bước tiếp theo bị khóa.</strong> Bạn cần tạo nhật ký liên hệ coordinator thành công để báo cáo chuyển sang <strong>InProgress</strong> trước khi gửi Kết quả xử lý.
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* ══ STEP 4: RESOLUTION ═══════════════════════════════════════ */}
+          {/* ══ STEP 3: RESOLUTION + ATTACHMENTS ═════════════════════════ */}
           {activeStepId === 'resolution' && (
             <section aria-labelledby="resolution-title" style={{ ...card, overflow: 'hidden' }}>
               <SectionHeader
                 title="Kết quả xử lý"
-                sub="Gửi kết quả xử lý cuối cùng để chuyển sang trạng thái chờ quản lý phê duyệt."
+                sub="Nhập kết quả, đính kèm ảnh và tài liệu hoàn thành rồi gửi một lần để chờ quản lý phê duyệt."
                 action={
                   existingResolutions.length > 0 ? (
                     <button type="button" className="btn btn-outline btn-sm" onClick={() => setResolutionPreviewOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
@@ -1644,6 +1751,30 @@ if (!transitionResult) {
 
               <div style={{ padding: '1rem 1.25rem' }}>
                 {resolutionError && <div style={{ marginBottom: '0.75rem' }}><ErrorAlert message={resolutionError} onClose={() => setResolutionError('')} /></div>}
+
+                {isNeedRework && (
+                  <div
+                    style={{
+                      marginBottom: '1rem',
+                      padding: '0.875rem 1rem',
+                      borderRadius: '0.875rem',
+                      backgroundColor: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      display: 'flex',
+                      gap: '0.625rem',
+                      alignItems: 'flex-start',
+                      color: '#92400e',
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    <Lucide.RotateCcw size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <div>
+                      <strong>Quản lý yêu cầu làm lại.</strong>{' '}
+                      Hãy chỉnh sửa kết quả xử lý và tải bộ ảnh/tài liệu hoàn thành mới.
+                      Khi gửi lại, toàn bộ minh chứng cũ sẽ được thay thế bằng bộ mới.
+                    </div>
+                  </div>
+                )}
 
                 {isResolutionSubmitted && (
                   <div
@@ -1681,7 +1812,7 @@ if (!transitionResult) {
                   <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem 0' }}><LoadingSpinner /></div>
                 ) : resolutionsError ? (
                   <ErrorAlert message={resolutionsError} onClose={() => setResolutionsError('')} />
-                ) : existingResolutions.length > 0 ? (
+                ) : isResolutionSubmitted ? (
                   /* Already submitted — read-only */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.25rem 0.65rem', borderRadius: '9999px', backgroundColor: 'var(--color-success-bg)', border: '1px solid rgba(4,120,87,0.15)', color: 'var(--color-success)', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', width: 'fit-content' }}>
@@ -1729,10 +1860,64 @@ if (!transitionResult) {
                         </div>
                       </div>
                     )}
+                    {documents.filter((doc) => !imageDocuments.includes(doc)).length > 0 && (
+                      <div style={{ borderRadius: '0.875rem', border: '1px solid rgba(203,213,225,0.7)', backgroundColor: 'rgba(248,250,252,0.6)', padding: '0.875rem 1rem' }}>
+                        <div style={{ ...fieldLabel, marginBottom: '0.625rem' }}>Tài liệu hoàn thành</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {documents
+                            .filter((doc) => !imageDocuments.includes(doc))
+                            .map((doc, index) => (
+                              <button
+                                key={doc?.completionDocumentId || index}
+                                type="button"
+                                onClick={() => handleDocumentDownload(doc)}
+                                style={{
+                                  width: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.625rem',
+                                  padding: '0.75rem 0.875rem',
+                                  borderRadius: '0.75rem',
+                                  border: '1px solid rgba(203,213,225,0.7)',
+                                  backgroundColor: '#fff',
+                                  color: '#334155',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                <Lucide.FileText size={16} color="#64748b" />
+                                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {doc?.fileName || doc?.description || `Tài liệu ${index + 1}`}
+                                </span>
+                                <Lucide.ExternalLink size={14} color="#94a3b8" />
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   /* Resolution form */
                   <form onSubmit={handleResolutionFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                    {isNeedRework && documents.length > 0 && (
+                      <div
+                        style={{
+                          borderRadius: '0.875rem',
+                          border: '1px solid rgba(245,158,11,0.25)',
+                          backgroundColor: 'rgba(255,251,235,0.75)',
+                          padding: '0.875rem 1rem',
+                        }}
+                      >
+                        <div style={{ ...fieldLabel, marginBottom: '0.4rem', color: '#92400e' }}>
+                          Minh chứng hiện tại
+                        </div>
+                        <div style={{ fontSize: '0.8125rem', color: '#92400e', lineHeight: 1.5 }}>
+                          Hiện có {documents.length} ảnh/tài liệu. Bộ này vẫn được giữ để đối chiếu.
+                          Khi gửi lại kết quả, hệ thống sẽ xóa bộ hiện tại và thay bằng bộ minh chứng mới.
+                        </div>
+                      </div>
+                    )}
+
                     {[
                       { key: 'resolutionSummary', label: 'Tóm tắt kết quả',         placeholder: 'Tóm tắt kết quả xử lý...', required: true },
                       { key: 'actionTaken',       label: 'Hành động đã thực hiện', placeholder: 'Các bước công việc đã thực hiện...', required: true },
@@ -1782,6 +1967,105 @@ if (!transitionResult) {
                       )}
                     </div>
 
+                    <div
+                      style={{
+                        marginTop: '0.25rem',
+                        borderRadius: '0.875rem',
+                        border: '1px solid rgba(203,213,225,0.8)',
+                        backgroundColor: 'rgba(248,250,252,0.65)',
+                        padding: '0.875rem 1rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.75rem',
+                      }}
+                    >
+                      <div>
+                        <div style={fieldLabel}>Tài liệu hoàn thành</div>
+                        <div style={{ fontSize: '0.8125rem', color: '#64748b', lineHeight: 1.5 }}>
+                          Đính kèm thêm JPG, PNG hoặc PDF. Tài liệu sẽ được gửi cùng lúc với ảnh và kết quả xử lý.
+                        </div>
+                      </div>
+
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                        <span style={fieldLabel}>
+                          Mô tả tài liệu
+                          <span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0 }}> (tùy chọn)</span>
+                        </span>
+                        <textarea
+                          value={documentDescription}
+                          onChange={(e) => setDocumentDescription(e.target.value)}
+                          placeholder="Ví dụ: Biên bản nghiệm thu, tài liệu xác nhận..."
+                          rows={2}
+                          maxLength={1000}
+                          className="textarea textarea-bordered w-full"
+                          disabled={!canSubmitResolution || submittingResolution}
+                        />
+                      </label>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={handleDocumentFileChange}
+                        disabled={!canSubmitResolution || submittingResolution}
+                      />
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={!canSubmitResolution || submittingResolution}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                        >
+                          <Lucide.Paperclip size={14} />
+                          Chọn tài liệu
+                        </Button>
+
+                        <div
+                          style={{
+                            minHeight: '1.1rem',
+                            color: selectedDocumentFile ? '#0f172a' : '#6b7280',
+                            fontSize: '0.875rem',
+                            flex: 1,
+                            minWidth: '180px',
+                          }}
+                        >
+                          {selectedDocumentFile
+                            ? selectedDocumentFile.name
+                            : 'Chưa chọn tài liệu bổ sung'}
+                        </div>
+
+                        {selectedDocumentFile && (
+                          <button
+                            type="button"
+                            aria-label="Bỏ tài liệu đã chọn"
+                            onClick={() => {
+                              setSelectedDocumentFile(null);
+                              setUploadError('');
+                            }}
+                            disabled={submittingResolution}
+                            style={{
+                              width: '30px',
+                              height: '30px',
+                              borderRadius: '0.5rem',
+                              border: '1px solid rgba(203,213,225,0.8)',
+                              backgroundColor: '#fff',
+                              color: '#64748b',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: submittingResolution ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            <Lucide.X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
                       <Button
                         type="submit"
@@ -1791,7 +2075,7 @@ if (!transitionResult) {
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
                       >
                         {submittingResolution ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={13} />}
-                        {submittingResolution ? 'Đang gửi...' : 'Gửi kết quả xử lý'}
+                        {submittingResolution ? 'Đang gửi...' : isNeedRework ? 'Gửi lại kết quả xử lý' : 'Gửi kết quả xử lý'}
                       </Button>
                     </div>
                   </form>
@@ -1807,7 +2091,7 @@ if (!transitionResult) {
             </section>
           )}
 
-          {/* ══ STEP 5: AWAITING APPROVAL (terminal) ═════════════════════ */}
+          {/* ══ STEP 4: AWAITING APPROVAL (terminal) ═════════════════════ */}
           {activeStepId === 'submitted' && isResolutionSubmitted && (
             <section style={{ ...card, overflow: 'hidden' }}>
               <SectionHeader
@@ -1908,6 +2192,50 @@ if (!transitionResult) {
                           </button>
                         );
                       })}
+                    </div>
+                  </div>
+                )}
+                {documents.filter((doc) => !imageDocuments.includes(doc)).length > 0 && (
+                  <div
+                    style={{
+                      borderRadius: '0.875rem',
+                      border: '1px solid rgba(203,213,225,0.7)',
+                      backgroundColor: 'rgba(248,250,252,0.6)',
+                      padding: '0.875rem 1rem',
+                    }}
+                  >
+                    <div style={{ ...fieldLabel, marginBottom: '0.625rem' }}>
+                      Tài liệu hoàn thành
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {documents
+                        .filter((doc) => !imageDocuments.includes(doc))
+                        .map((doc, index) => (
+                          <button
+                            key={doc?.completionDocumentId || index}
+                            type="button"
+                            onClick={() => handleDocumentDownload(doc)}
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.625rem',
+                              padding: '0.75rem 0.875rem',
+                              borderRadius: '0.75rem',
+                              border: '1px solid rgba(203,213,225,0.7)',
+                              backgroundColor: '#fff',
+                              color: '#334155',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <Lucide.FileText size={16} color="#64748b" />
+                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {doc?.fileName || doc?.description || `Tài liệu ${index + 1}`}
+                            </span>
+                            <Lucide.ExternalLink size={14} color="#94a3b8" />
+                          </button>
+                        ))}
                     </div>
                   </div>
                 )}
@@ -2076,7 +2404,7 @@ if (!transitionResult) {
                         color: '#0f172a',
                       }}
                     >
-                      Gửi kết quả xử lý
+                      {isNeedRework ? 'Gửi lại kết quả xử lý' : 'Gửi kết quả xử lý'}
                     </h3>
 
                     <p
@@ -2087,8 +2415,9 @@ if (!transitionResult) {
                         color: '#64748b',
                       }}
                     >
-                      Xác nhận gửi kết quả xử lý này để quản lý phê duyệt.
-                      Sau khi gửi, nội dung sẽ chuyển sang trạng thái chờ duyệt.
+                      {isNeedRework
+                        ? 'Xác nhận cập nhật kết quả xử lý. Bộ ảnh/tài liệu mới sẽ thay thế toàn bộ minh chứng hiện tại và kết quả được gửi lại để quản lý phê duyệt.'
+                        : 'Xác nhận gửi kết quả xử lý này để quản lý phê duyệt. Sau khi gửi, nội dung sẽ chuyển sang trạng thái chờ duyệt.'}
                     </p>
                   </div>
 
@@ -2151,7 +2480,7 @@ if (!transitionResult) {
                       ? <span className="loading loading-spinner loading-xs" />
                       : <Lucide.Send size={14} />
                     }
-                    {submittingResolution ? 'Đang gửi...' : 'Xác nhận gửi'}
+                    {submittingResolution ? 'Đang gửi...' : isNeedRework ? 'Xác nhận gửi lại' : 'Xác nhận gửi'}
                   </Button>
                 </div>
               </div>
