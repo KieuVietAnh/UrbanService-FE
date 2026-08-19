@@ -328,6 +328,9 @@ export const Header = ({ onMenuToggle }) => {
       profile: 'Hồ sơ',
       settings: 'Cài đặt',
       new: 'Thêm điều phối viên',
+      'request-info': 'Yêu cầu bổ sung thông tin',
+      history: 'Lịch sử phân công',
+      'provider-reports': 'Báo cáo xử lý',
     };
 
     if (location.pathname === '/dashboard') {
@@ -374,10 +377,13 @@ export const Header = ({ onMenuToggle }) => {
 
           const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
           const isCoordinatorId = /^\d+$/.test(path) && (location.pathname.startsWith('/management/coordinators/') || location.pathname.startsWith('/staff/coordinators/'));
+          const isProviderReportId = /^\d+$/.test(path) && location.pathname.startsWith('/staff/provider-reports/');
           const segmentName = index > 0 && location.pathname.startsWith('/staff/duplicates/')
             ? 'Chi tiết trường hợp nghi trùng'
             : isFeedbackId
               ? 'Chi tiết phản ánh'
+            : isProviderReportId
+              ? `Báo cáo #${path}`
             : isCoordinatorId
               ? 'Chi tiết điều phối viên'
             : path === 'feedbacks' && location.state?.fromStaffConversations
@@ -396,12 +402,16 @@ export const Header = ({ onMenuToggle }) => {
             sentiment: '/analytics/sentiment',
             settings: '/settings',
             coordinators: location.pathname.startsWith('/staff/coordinators') ? '/staff/coordinators' : '/management/coordinators',
+            feedbacks: location.pathname.startsWith('/staff/feedbacks') ? '/staff/feedbacks' : '/management/feedbacks',
             'area-alerts': '/staff/area-alerts',
             duplicates: '/staff/duplicates',
+            'provider-reports': '/staff/feedbacks',
           };
 
           const breadcrumbLink = path === 'feedbacks' && location.state?.fromStaffConversations
             ? '/staff/conversations'
+            : isFeedbackId && location.pathname.startsWith('/staff/feedbacks/')
+              ? `/staff/feedbacks/${path}`
             : path === 'sla' && location.pathname.startsWith('/analytics/')
               ? '/analytics/sla'
               : breadcrumbLinkMap[path];

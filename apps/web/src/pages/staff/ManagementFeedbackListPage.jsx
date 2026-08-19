@@ -663,22 +663,6 @@ export default function ManagementFeedbackListPage() {
     };
   }, [loading, feedbacks, location.state]);
 
-  const openProviderReport = async (feedbackId) => {
-    try {
-      const reports = await managementFeedbackApi.getProviderReports(feedbackId);
-      const report = Array.isArray(reports) ? reports[0] : (reports && typeof reports === 'object' ? reports : null);
-      const providerReportId = report?.providerReportId || report?.id || report?.providerReport?.providerReportId || report?.providerReportId;
-      if (providerReportId) {
-        navigate(`/staff/provider-reports/${providerReportId}`, { state: { feedbackId, providerReport: report } });
-      } else {
-        setError('Không tìm thấy báo cáo xử lý cho phản ánh này.');
-      }
-    } catch (err) {
-      console.error('Failed to open provider report', err);
-      setError('Không thể mở báo cáo xử lý. Vui lòng thử lại.');
-    }
-  };
-
   const handleResetFilters = () => {
     setSearch('');
     setStatus('');
@@ -924,14 +908,6 @@ export default function ManagementFeedbackListPage() {
                   const feedbackId = item.feedbackId || item.id;
                   const parentFeedbackId = item.parentTicketId || item.parentFeedbackId || null;
                   const isConfirmedDuplicate = Boolean(parentFeedbackId);
-                  const canOpenReport = (
-                    !isConfirmedDuplicate
-                    && (
-                      item.status === managementTypes.feedbackStatus.ASSIGNED
-                      || item.status === managementTypes.feedbackStatus.IN_PROGRESS
-                    )
-                  );
-
                   return (
                     <tr
                       key={feedbackId}
@@ -1033,21 +1009,6 @@ export default function ManagementFeedbackListPage() {
 
                       <td className="px-2 py-[18px] text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {canOpenReport ? (
-                            <button
-                              type="button"
-                              title="Mở báo cáo xử lý"
-                              aria-label="Mở báo cáo xử lý"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openProviderReport(feedbackId);
-                              }}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-blue-50 hover:text-blue-700"
-                            >
-                              <Lucide.FileText size={16} aria-hidden="true" />
-                            </button>
-                          ) : null}
-
                           <button
                             type="button"
                             title="Xem chi tiết"

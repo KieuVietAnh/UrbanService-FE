@@ -83,6 +83,7 @@ export const ManagementFeedbackDetailPage = () => {
   const [relatedFeedbacks, setRelatedFeedbacks] = useState([]);
   const [relatedFeedbacksLoading, setRelatedFeedbacksLoading] = useState(false);
   const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
+  const [providerReport, setProviderReport] = useState(null);
 
   const resolvedLocationText = useResolvedLocationText({
     locationText: feedback?.locationText,
@@ -159,6 +160,7 @@ export const ManagementFeedbackDetailPage = () => {
   const [notificationToast, setNotificationToast] = useState({ open: false, message: '', sub: '' });
   const [notificationActivities, setNotificationActivities] = useState([]);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [showCitizenNotification, setShowCitizenNotification] = useState(false);
 
   // Internal communication
   const [messageDraft, setMessageDraft] = useState('');
@@ -194,9 +196,10 @@ export const ManagementFeedbackDetailPage = () => {
         setLoading(false);
 
         const linkedFeedbackId = feedbackRes?.feedbackId || feedbackId;
-        const [categoriesRes, candidatesRes] = await Promise.allSettled([
+        const [categoriesRes, candidatesRes, providerReportsRes] = await Promise.allSettled([
           toolsApi.getCategories(),
           managementFeedbackApi.getProviderCandidates(linkedFeedbackId),
+          managementFeedbackApi.getProviderReports(linkedFeedbackId),
         ]);
 
         if (!active) return;
@@ -211,6 +214,18 @@ export const ManagementFeedbackDetailPage = () => {
         } else {
           setCandidates([]);
           setCandidatesLoadError(candidatesRes.reason?.message || 'Không thể tải danh sách đơn vị xử lý.');
+        }
+
+        if (providerReportsRes.status === 'fulfilled') {
+          const reports = providerReportsRes.value;
+          const firstReport = Array.isArray(reports)
+            ? reports[0] || null
+            : reports && typeof reports === 'object'
+              ? reports
+              : null;
+          setProviderReport(firstReport);
+        } else {
+          setProviderReport(null);
         }
 
         // Debug: log urgency-related fields so we can see why the button may be hidden
@@ -316,7 +331,23 @@ export const ManagementFeedbackDetailPage = () => {
       };
 
       await managementFeedbackApi.updateFeedback(feedbackId, payload);
-      setFeedback(prev => ({ ...prev, ...payload }));
+
+      const selectedCategory = categories.find(
+        (category) => String(category?.categoryId ?? '') === String(payload.categoryId ?? ''),
+      );
+      const selectedCategoryName = selectedCategory
+        ? selectedCategory.categoryName
+          || selectedCategory.name
+          || selectedCategory.categoryType
+          || selectedCategory.type
+          || ''
+        : '';
+
+      setFeedback((prev) => ({
+        ...prev,
+        ...payload,
+        ...(selectedCategoryName ? { categoryName: selectedCategoryName } : {}),
+      }));
       setIsEditing(false);
     } catch (err) {
       console.error('Failed to update feedback', err);
@@ -559,31 +590,27 @@ export const ManagementFeedbackDetailPage = () => {
     }
   };
 
-  // Open provider report workspace for this feedback
-  const openProviderReportWorkspace = async () => {
-    try {
-      const reports = await managementFeedbackApi.getProviderReports(feedbackId);
-      const report = Array.isArray(reports) ? reports[0] : (reports && typeof reports === 'object' ? reports : null);
-      const providerReportId = report?.providerReportId || report?.id || report?.providerReport?.providerReportId || report?.providerReportId;
-      if (providerReportId) {
-        navigate(`/staff/provider-reports/${providerReportId}`, {
-          state: {
-            feedbackId,
-            providerReport: report,
-          },
-        });
-      } else {
-        setPageMessage({ type: 'error', text: 'Không tìm thấy báo cáo xử lý cho phản ánh này.' });
-      }
-    } catch (err) {
-      console.error('Failed to open provider report workspace', err);
-      setPageMessage({ type: 'error', text: 'Không thể mở báo cáo xử lý.' });
-    }
+  // Open the already-resolved provider report workspace.
+  // The action is only rendered when a real report exists for this feedback.
+  const openProviderReportWorkspace = () => {
+    const providerReportId = providerReport?.providerReportId
+      || providerReport?.id
+      || providerReport?.providerReport?.providerReportId;
+
+    if (!providerReportId) return;
+
+    navigate(`/staff/provider-reports/${providerReportId}`, {
+      state: {
+        feedbackId,
+        providerReport,
+      },
+    });
   };
 
   const getStatusLabel = (s) => {
     const labels = {
       [managementTypes.feedbackStatus.SUBMITTED]: 'Đã gửi',
+      [managementTypes.feedbackStatus.AI_REVIEWED]: 'AI đã xem xét',
       [managementTypes.feedbackStatus.VERIFIED]: 'Đã xác minh',
       [managementTypes.feedbackStatus.ASSIGNED]: 'Đã giao',
       [managementTypes.feedbackStatus.IN_PROGRESS]: 'Đang xử lý',
@@ -603,6 +630,7 @@ export const ManagementFeedbackDetailPage = () => {
       'Low': 'Thấp',
       'Medium': 'Trung bình',
       'High': 'Cao',
+      'Urgent': 'Khẩn cấp',
       'Critical': 'Khẩn cấp',
     };
     return labels[p] || p;
@@ -611,7 +639,7 @@ export const ManagementFeedbackDetailPage = () => {
   const isHighOrCriticalUrgency = (currentFeedback) => {
     const urgency = getUrgencyLevel(currentFeedback).toLowerCase();
     // Match common variants like 'High', 'high (ai)', 'HIGH', 'HighUrgency', etc.
-    return urgency.includes('high') || urgency.includes('critical');
+    return urgency.includes('high') || urgency.includes('urgent') || urgency.includes('critical');
   };
 
   const forceShowAreaAlert = (() => {
@@ -718,6 +746,9 @@ export const ManagementFeedbackDetailPage = () => {
   useEffect(() => {
     if (previewAttachmentIndex === null) return undefined;
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const handlePreviewKeyDown = (event) => {
       if (event.key === 'Escape') {
         setPreviewAttachmentIndex(null);
@@ -729,7 +760,10 @@ export const ManagementFeedbackDetailPage = () => {
     };
 
     document.addEventListener('keydown', handlePreviewKeyDown);
-    return () => document.removeEventListener('keydown', handlePreviewKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handlePreviewKeyDown);
+    };
   }, [previewAttachmentIndex, movePreview]);
 
 
@@ -1274,7 +1308,7 @@ export const ManagementFeedbackDetailPage = () => {
         {/* Main Content */}
         <div className="min-w-0 space-y-6">
           {/* Header Card */}
-          <div className="admin-page-hero p-5 sm:p-6">
+          <div className="admin-page-hero p-5 sm:p-6" style={{ overflow: 'visible' }}>
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="mb-3 flex items-center gap-3">
@@ -1553,7 +1587,6 @@ export const ManagementFeedbackDetailPage = () => {
                     onChange={(e) => setEditForm(p => ({ ...p, categoryId: e.target.value }))}
                     className="select select-bordered w-full text-xs h-10 rounded-lg"
                   >
-                    <option value="">Chọn danh mục</option>
                     {categories.map(cat => (
                       <option key={cat.categoryId} value={cat.categoryId}>{getCategoryLabel(cat.categoryName || cat.name || cat.categoryType || cat.type)}</option>
                     ))}
@@ -1566,7 +1599,6 @@ export const ManagementFeedbackDetailPage = () => {
                     onChange={(e) => setEditForm(p => ({ ...p, priority: e.target.value }))}
                     className="select select-bordered w-full text-xs h-10 rounded-lg"
                   >
-                    <option value="">Chọn ưu tiên</option>
                     <option value="Low">Thấp</option>
                     <option value="Medium">Trung bình</option>
                     <option value="High">Cao</option>
@@ -1689,36 +1721,87 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           )}
 
-          {/* Details Grid */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="admin-inset-panel p-4 sm:col-span-2">
-              <div className="admin-section-description uppercase tracking-[0.18em]">Mô tả</div>
-              <div className="mt-2 text-sm font-semibold leading-6 text-slate-900 whitespace-pre-line">{feedback.description || 'Không có mô tả'}</div>
-            </div>
-            <div className="admin-inset-panel p-4">
-              <div className="admin-section-description uppercase tracking-[0.18em]">Người báo cáo</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{feedback.userName || feedback.reporterName}</div>
-            </div>
-            <div className="admin-inset-panel p-4">
-              <div className="admin-section-description uppercase tracking-[0.18em]">Ngày tạo</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{formatDate(feedback.createdAt)}</div>
-            </div>
-            <div className="admin-inset-panel p-4">
-              <div className="admin-section-description uppercase tracking-[0.18em]">Danh mục</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type)}</div>
-            </div>
-            <div className="admin-inset-panel p-4">
-              <div className="admin-section-description uppercase tracking-[0.18em]">Địa điểm</div>
-              <div className="mt-2 text-sm font-semibold leading-6 text-slate-900">{resolvedLocationText}</div>
-              {feedback?.areaName || feedback?.wardName || feedback?.area?.name ? (
-                <div className="mt-1 text-xs text-slate-500">
-                  {feedback?.areaName || feedback?.wardName || feedback?.area?.name}
+          {/* Feedback summary */}
+          <div className="space-y-4">
+            <div className="admin-inset-panel p-5 sm:p-6">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <Lucide.AlignLeft size={17} />
                 </div>
-              ) : null}
+                <div className="min-w-0">
+                  <div className="admin-section-description uppercase tracking-[0.18em]">Mô tả</div>
+                  <div className="mt-2 text-sm font-semibold leading-6 text-slate-900 whitespace-pre-line">
+                    {feedback.description || 'Không có mô tả'}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="admin-inset-panel p-4">
-              <div className="admin-section-description uppercase tracking-[0.18em]">Ngày hạn</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{feedback.dueDate ? formatDate(feedback.dueDate) : 'Chưa có'}</div>
+
+            <div className="admin-panel overflow-hidden">
+              <div className="border-b border-slate-200/80 px-5 py-4 sm:px-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                    <Lucide.Info size={17} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Thông tin phản ánh</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Thông tin chính của hồ sơ tại thời điểm hiện tại.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2">
+                {[
+                  {
+                    label: 'Người báo cáo',
+                    value: feedback.userName || feedback.reporterName || 'Chưa có',
+                    icon: Lucide.UserRound,
+                  },
+                  {
+                    label: 'Ngày tạo',
+                    value: formatDate(feedback.createdAt),
+                    icon: Lucide.CalendarDays,
+                  },
+                  {
+                    label: 'Danh mục',
+                    value: getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type),
+                    icon: Lucide.Tags,
+                  },
+                  {
+                    label: 'Ngày hạn',
+                    value: feedback.dueDate ? formatDate(feedback.dueDate) : 'Chưa có',
+                    icon: Lucide.Clock3,
+                  },
+                ].map(({ label, value, icon: Icon }, index) => (
+                  <div
+                    key={label}
+                    className={`flex min-w-0 items-start gap-3 px-5 py-4 sm:px-6 ${index < 2 ? 'border-b border-slate-100' : ''} ${index % 2 === 0 ? 'sm:border-r sm:border-slate-100' : ''}`}
+                  >
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
+                      <Icon size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</div>
+                      <div className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex min-w-0 items-start gap-3 border-t border-slate-100 px-5 py-4 sm:col-span-2 sm:px-6">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
+                    <Lucide.MapPin size={15} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Địa điểm</div>
+                    <div className="mt-1 break-words text-sm font-semibold leading-6 text-slate-900">{resolvedLocationText}</div>
+                    {feedback?.areaName || feedback?.wardName || feedback?.area?.name ? (
+                      <div className="mt-1 text-xs text-slate-500">
+                        {feedback?.areaName || feedback?.wardName || feedback?.area?.name}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1894,7 +1977,7 @@ export const ManagementFeedbackDetailPage = () => {
           )}
 
           <div className="admin-panel p-5 sm:p-6 space-y-4">
-            <div className="flex flex-wrap items-start gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-sm">
                 <Lucide.BellRing size={18} />
               </div>
@@ -1903,8 +1986,31 @@ export const ManagementFeedbackDetailPage = () => {
                 <h3 className="mt-1 text-lg font-semibold text-slate-900">Thông báo cho người dân</h3>
                 <p className="mt-1 text-sm text-slate-500">Gửi thông báo thủ công tới người dân về trạng thái xử lý phản ánh.</p>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowCitizenNotification((current) => !current)}
+                aria-expanded={showCitizenNotification}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                {showCitizenNotification ? 'Thu gọn' : 'Soạn thông báo'}
+                {showCitizenNotification ? <Lucide.ChevronUp size={16} /> : <Lucide.ChevronDown size={16} />}
+              </button>
             </div>
 
+            {!showCitizenNotification && (
+              <div className="flex flex-wrap items-center gap-2 rounded-[1rem] border border-slate-200/80 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <span>Trạng thái hiện tại:</span>
+                <Badge intent={feedback?.status ? getStatusIntent(feedback.status) : 'neutral'} className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]">
+                  {feedback ? getStatusLabel(feedback.status) : 'Đang tải'}
+                </Badge>
+                {notificationActivities.length > 0 && (
+                  <span className="ml-auto text-xs font-medium text-slate-500">{notificationActivities.length} thông báo đã gửi</span>
+                )}
+              </div>
+            )}
+
+            {showCitizenNotification && (
+              <>
             <div className="rounded-[1.2rem] border border-slate-200/80 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                 <Lucide.Info size={12} />
@@ -2094,6 +2200,8 @@ export const ManagementFeedbackDetailPage = () => {
                   ))}
                 </div>
               </div>
+            )}
+              </>
             )}
           </div>
 
@@ -2345,7 +2453,7 @@ export const ManagementFeedbackDetailPage = () => {
         {/* Sidebar */}
         <div className="col-span-1 space-y-6">
           {/* Timeline Progress */}
-          <div className="admin-panel p-6">
+          <div className="admin-panel p-5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="font-semibold text-slate-900">Tiến độ hồ sơ</h3>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700">
@@ -2367,7 +2475,7 @@ export const ManagementFeedbackDetailPage = () => {
               const currentIndex = TIMELINE_ORDER.indexOf(feedback.status);
 
               return (
-                <div className="mt-4 space-y-3">
+                <div className="mt-4">
                   {TIMELINE_ORDER.map((step, idx) => {
                     const done = currentIndex > idx;
                     const current = currentIndex === idx;
@@ -2375,16 +2483,49 @@ export const ManagementFeedbackDetailPage = () => {
                     const timeLabel = history ? formatDate(history.changedAt) : (step === managementTypes.feedbackStatus.SUBMITTED ? formatDate(feedback.createdAt) : '');
 
                     return (
-                      <div key={step} className="flex items-start gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className={`h-3 w-3 rounded-full border-4 border-white ${done || current ? 'bg-[#0052CC]' : 'bg-slate-200'}`}></div>
+                      <div key={step} className="relative flex gap-3 pb-2.5 last:pb-0">
+                        <div className="relative flex w-4 shrink-0 justify-center">
                           {idx < TIMELINE_ORDER.length - 1 && (
-                            <div className={`mt-1 w-[2px] flex-1 ${done ? 'bg-[#0052CC]' : 'bg-slate-200'}`} style={{ minHeight: 28 }}></div>
+                            <div
+                              className={`absolute left-1/2 top-3 h-[calc(100%+0.625rem)] w-px -translate-x-1/2 ${done ? 'bg-blue-300' : 'bg-slate-200'}`}
+                            />
                           )}
+                          <div
+                            className={`relative z-10 mt-2 h-2.5 w-2.5 rounded-full ring-4 ring-white ${
+                              current
+                                ? 'bg-[#0052CC] shadow-[0_0_0_3px_rgba(0,82,204,0.14)]'
+                                : done
+                                  ? 'bg-blue-400'
+                                  : 'bg-slate-200'
+                            }`}
+                          />
                         </div>
-                        <div className="flex-1 rounded-[1rem] border border-slate-100 bg-slate-50 px-3 py-2">
-                          <div className={`text-sm font-bold ${current ? 'text-slate-900' : 'text-slate-700'}`}>{getStatusLabel(step)}</div>
-                          <div className="mt-1 text-xs text-slate-500">{timeLabel || 'Đang chờ cập nhật'}</div>
+                        <div
+                          className={`min-w-0 flex-1 rounded-xl border px-3 py-2 transition-colors ${
+                            current
+                              ? 'border-blue-200 bg-blue-50/70'
+                              : done
+                                ? 'border-slate-200 bg-white'
+                                : 'border-slate-100 bg-slate-50/70'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div
+                              className={`min-w-0 text-sm font-semibold ${
+                                current ? 'text-[#0052CC]' : done ? 'text-slate-800' : 'text-slate-500'
+                              }`}
+                            >
+                              {getStatusLabel(step)}
+                            </div>
+                            {current && (
+                              <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-blue-700">
+                                Hiện tại
+                              </span>
+                            )}
+                          </div>
+                          <div className={`mt-0.5 text-[11px] ${done || current ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {timeLabel || 'Đang chờ cập nhật'}
+                          </div>
                         </div>
                       </div>
                     );
@@ -2393,9 +2534,14 @@ export const ManagementFeedbackDetailPage = () => {
               );
             })()}
           </div>
-          <div className="admin-panel p-6 space-y-4">
-            <h3 className="font-bold text-slate-900">Hành động tiếp theo</h3>
-            <p className="text-sm text-slate-600">
+          <div className="admin-panel space-y-4 p-5 lg:sticky lg:top-24 lg:z-10">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0052CC]">
+                <Lucide.ListChecks size={18} aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-900">Hành động tiếp theo</h3>
+                <p className="mt-1 text-sm leading-5 text-slate-500">
               {canVerify
                 ? 'Xác minh phản ánh trước khi phân công đội xử lý.'
                 : canAssign
@@ -2403,8 +2549,10 @@ export const ManagementFeedbackDetailPage = () => {
                 : nextStatusOptions.length > 0
                 ? 'Cập nhật trạng thái khi phản ánh đã sẵn sàng cho bước tiếp theo.'
                 : 'Đã hoàn thành hoặc không cần hành động tiếp theo.'}
-            </p>
-            <div className="space-y-3">
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2.5">
               {canVerify && (
                 <Button
                   type="button"
@@ -2463,19 +2611,24 @@ export const ManagementFeedbackDetailPage = () => {
                 <Lucide.History size={14} />
                 Xem lịch sử phân công
               </Button>
-              <Button
-                type="button"
-                onClick={openProviderReportWorkspace}
-                variant="outline"
-                size="sm"
-                className="w-full"
-              >
-                <Lucide.FileText size={14} />
-                Mở báo cáo xử lý
-              </Button>
+              {providerReport ? (
+                <Button
+                  type="button"
+                  onClick={openProviderReportWorkspace}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                >
+                  <Lucide.FileText size={14} />
+                  Mở báo cáo xử lý
+                </Button>
+              ) : null}
               {nextStatusOptions.length > 0 && (
-                <div className="admin-inset-panel p-4">
-                  <div className="text-xs text-slate-500 font-bold mb-2">Trạng thái tiếp theo</div>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3.5">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-500">
+                    <Lucide.ArrowRightCircle size={14} className="text-blue-500" aria-hidden="true" />
+                    Trạng thái tiếp theo
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {nextStatusOptions.map((nextStatus) => (
                       <Badge
@@ -2501,27 +2654,6 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           </div>
 
-          <div className="admin-info-note p-6 space-y-4">
-            <h3 className="font-bold text-slate-900">Thông tin</h3>
-            <div className="space-y-3 text-xs">
-              <div>
-                <div className="text-slate-500 font-bold">Trạng thái</div>
-                <div className="mt-1 font-bold">{getStatusLabel(feedback.status)}</div>
-              </div>
-              <div>
-                <div className="text-slate-500 font-bold">Ưu tiên</div>
-                <div className="mt-1 font-bold">{getPriorityLabel(feedback.priority)}</div>
-              </div>
-              <div>
-                <div className="text-slate-500 font-bold">Danh mục</div>
-                <div className="mt-1 font-bold">{getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type)}</div>
-              </div>
-              <div>
-                <div className="text-slate-500 font-bold">Đơn vị xử lý</div>
-                <div className="mt-1 font-bold">{feedback.operatorName || feedback.assignedOperatorName || 'Chưa phân công'}</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
       ) : null}
@@ -2814,93 +2946,93 @@ export const ManagementFeedbackDetailPage = () => {
         </div>
       ) : null}
 
-      {/* Attachment Preview - same full-screen viewer pattern as Service User */}
+      {/* Attachment Preview */}
       {previewAttachment && typeof document !== 'undefined'
         ? createPortal(
           <div
-            className="fixed inset-0 z-[99999] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-black"
+            className="fixed inset-0 z-[99999] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/20 p-4 backdrop-blur-sm sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="staff-detail-media-preview-title"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setPreviewAttachmentIndex(null);
+              }
+            }}
           >
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-4 bg-gradient-to-b from-black/80 via-black/35 to-transparent px-4 pb-16 pt-4 sm:px-6 sm:pt-5">
-              <div className="min-w-0">
-                <h2
-                  id="staff-detail-media-preview-title"
-                  className="max-w-[72vw] truncate text-sm font-semibold text-white sm:text-base"
+            <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-[1.75rem] border border-white/70 bg-white/95 shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+              <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200/80 px-4 py-3 sm:px-5">
+                <div className="min-w-0">
+                  <h2
+                    id="staff-detail-media-preview-title"
+                    className="truncate text-sm font-semibold text-slate-900 sm:text-base"
+                  >
+                    {previewAttachment?.fileName || previewAttachment?.name || `Tệp đính kèm ${previewAttachmentIndex + 1}`}
+                  </h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {previewAttachmentIndex + 1} / {previewItems.length}
+                    {previewItems.length > 1 ? (
+                      <span className="hidden sm:inline"> · Dùng phím ← → để chuyển tệp</span>
+                    ) : null}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachmentIndex(null)}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                  aria-label="Đóng xem trước"
                 >
-                  {previewAttachment?.fileName || previewAttachment?.name || `Tệp đính kèm ${previewAttachmentIndex + 1}`}
-                </h2>
-                <p className="mt-1 text-xs text-white/65">
-                  {previewAttachmentIndex + 1} / {previewItems.length}
-                  {previewItems.length > 1 ? (
-                    <span className="hidden sm:inline"> · Dùng phím ← → để chuyển tệp</span>
-                  ) : null}
-                </p>
+                  <Lucide.X size={20} aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-50/70 p-3 sm:p-5">
+                {isVideoFile(previewAttachmentUrl) ? (
+                  <video
+                    key={previewAttachmentUrl}
+                    src={previewAttachmentUrl}
+                    controls
+                    autoPlay
+                    playsInline
+                    preload="metadata"
+                    className="block max-h-full max-w-full rounded-xl object-contain"
+                  >
+                    Trình duyệt của bạn không hỗ trợ phát video.
+                  </video>
+                ) : (
+                  <img
+                    key={previewAttachmentUrl}
+                    src={previewAttachmentUrl}
+                    alt={previewAttachment?.fileName || previewAttachment?.name || `Tệp đính kèm ${previewAttachmentIndex + 1}`}
+                    className="block max-h-full max-w-full select-none rounded-xl object-contain shadow-sm"
+                    draggable="false"
+                  />
+                )}
+
+                {previewItems.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => movePreview(-1)}
+                      className="absolute left-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg backdrop-blur transition hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 sm:left-5"
+                      aria-label="Xem tệp trước"
+                    >
+                      <Lucide.ChevronLeft size={24} aria-hidden="true" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => movePreview(1)}
+                      className="absolute right-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg backdrop-blur transition hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 sm:right-5"
+                      aria-label="Xem tệp tiếp theo"
+                    >
+                      <Lucide.ChevronRight size={24} aria-hidden="true" />
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setPreviewAttachmentIndex(null)}
-              className="absolute right-4 top-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white shadow-lg backdrop-blur transition hover:scale-105 hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6 sm:top-5"
-              aria-label="Đóng xem trước"
-            >
-              <Lucide.X size={21} aria-hidden="true" />
-            </button>
-
-            <div
-              className="flex h-full w-full items-center justify-center overflow-hidden px-3 py-3 sm:px-16 sm:py-5"
-              onMouseDown={(event) => {
-                if (event.target === event.currentTarget) {
-                  setPreviewAttachmentIndex(null);
-                }
-              }}
-            >
-              {isVideoFile(previewAttachmentUrl) ? (
-                <video
-                  key={previewAttachmentUrl}
-                  src={previewAttachmentUrl}
-                  controls
-                  autoPlay
-                  playsInline
-                  preload="metadata"
-                  className="block max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] object-contain sm:max-h-[calc(100dvh-40px)] sm:max-w-[calc(100vw-128px)]"
-                >
-                  Trình duyệt của bạn không hỗ trợ phát video.
-                </video>
-              ) : (
-                <img
-                  key={previewAttachmentUrl}
-                  src={previewAttachmentUrl}
-                  alt={previewAttachment?.fileName || previewAttachment?.name || `Tệp đính kèm ${previewAttachmentIndex + 1}`}
-                  className="block max-h-[calc(100dvh-24px)] max-w-[calc(100vw-24px)] select-none object-contain sm:max-h-[calc(100dvh-40px)] sm:max-w-[calc(100vw-128px)]"
-                  draggable="false"
-                />
-              )}
-            </div>
-
-            {previewItems.length > 1 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => movePreview(-1)}
-                  className="absolute left-3 top-1/2 z-30 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white shadow-xl backdrop-blur transition hover:scale-105 hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:left-6 sm:h-14 sm:w-14"
-                  aria-label="Xem tệp trước"
-                >
-                  <Lucide.ChevronLeft size={28} aria-hidden="true" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => movePreview(1)}
-                  className="absolute right-3 top-1/2 z-30 inline-flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white shadow-xl backdrop-blur transition hover:scale-105 hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6 sm:h-14 sm:w-14"
-                  aria-label="Xem tệp tiếp theo"
-                >
-                  <Lucide.ChevronRight size={28} aria-hidden="true" />
-                </button>
-              </>
-            ) : null}
           </div>,
           document.body
         )
