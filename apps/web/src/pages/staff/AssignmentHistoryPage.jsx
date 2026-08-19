@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import PageTransition from '../../components/motion/PageTransition';
 import { EmptyState } from '@urbanmind/shared-ui';
@@ -33,6 +32,23 @@ const formatDate = (value) => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+const getStatusLabel = (status = '') => {
+  const labels = {
+    Submitted: 'Đã gửi',
+    AiReviewed: 'AI đã xem xét',
+    AIReviewed: 'AI đã xem xét',
+    Verified: 'Đã xác minh',
+    Assigned: 'Đã giao',
+    InProgress: 'Đang xử lý',
+    SubmittedForApproval: 'Chờ duyệt',
+    Approved: 'Đã duyệt',
+    NeedsRework: 'Cần sửa lại',
+    Closed: 'Đã đóng',
+    Rejected: 'Không chấp nhận',
+  };
+  return labels[status] || status || '—';
 };
 
 export const AssignmentHistoryPage = () => {
@@ -68,9 +84,7 @@ export const AssignmentHistoryPage = () => {
   }, [feedbackId, hasFeedbackId]);
 
   const assignmentEvents = useMemo(() => {
-    if (!hasFeedbackId) {
-      return [];
-    }
+    if (!hasFeedbackId) return [];
 
     const sourceList = Array.isArray(feedback?.assignmentHistory)
       ? feedback.assignmentHistory
@@ -78,7 +92,7 @@ export const AssignmentHistoryPage = () => {
         ? feedback.assignmentHistories
         : [];
 
-    const normalized = sourceList.map((entry, index) => ({
+    return sourceList.map((entry, index) => ({
       id: entry?.id || entry?.historyId || `${feedbackId}-${index}`,
       type: normalizeEventType(entry),
       title: entry?.title || entry?.note || 'Cập nhật phân công',
@@ -87,29 +101,8 @@ export const AssignmentHistoryPage = () => {
       assignmentDate: entry?.assignmentDate || entry?.changedAt || entry?.assignedAt || feedback?.assignment?.assignedAt || feedback?.updatedAt,
       previousAssignee: entry?.previousAssignee || entry?.previousOperatorName || '—',
       currentAssignee: entry?.currentAssignee || entry?.assignedTo || entry?.assignedToName || entry?.operatorName || feedback?.assignment?.operatorName || 'Chưa phân công',
-      note: entry?.note || entry?.description || entry?.details || 'Cập nhật quyền sở hữu cho phản ánh.',
+      note: entry?.note || entry?.description || entry?.details || 'Không có ghi chú bổ sung.',
     }));
-
-    if (normalized.length > 0) {
-      return normalized;
-    }
-
-    const fallbackAssignee = feedback?.assignment?.operatorName || feedback?.operatorName || feedback?.assignedOperatorName || 'Chưa phân công';
-    const fallbackAssignedBy = feedback?.assignment?.assignedByName || feedback?.assignedByName || 'Hệ thống';
-
-    return [
-      {
-        id: `${feedbackId}-fallback`,
-        type: 'assignment',
-        title: 'Phân công ban đầu',
-        assignedBy: fallbackAssignedBy,
-        assignedTo: fallbackAssignee,
-        assignmentDate: feedback?.assignment?.assignedAt || feedback?.createdAt || feedback?.updatedAt,
-        previousAssignee: '—',
-        currentAssignee: fallbackAssignee,
-        note: feedback?.assignment?.note || 'Phản ánh đã được đưa vào quy trình xử lý hiện tại.',
-      },
-    ];
   }, [feedback, feedbackId, hasFeedbackId]);
 
   const visibleEvents = useMemo(() => {
@@ -134,27 +127,19 @@ export const AssignmentHistoryPage = () => {
   if (!hasFeedbackId) {
     return (
       <PageTransition>
-        <div className="page-container py-4">
-          <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
-            <div className="admin-page-hero p-5 sm:p-7">
-              <div className="space-y-2">
-                <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
-                  <Lucide.History size={14} />
-                  Lịch sử phân công
-                </Badge>
-                <div>
-                  <h1 className="admin-hero-title">Tổng quan lịch sử phân công</h1>
-                  <p className="admin-hero-description mt-2 max-w-2xl">Chọn một phản ánh để xem lịch sử phân công chi tiết, hoặc mở phản ánh từ danh sách phản ánh.</p>
-                </div>
+        <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
+          <div className="admin-page-hero p-5 sm:p-7">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm">
+                <Lucide.History size={26} />
               </div>
-            </div>
-
-            <div className="admin-panel p-5 sm:p-6">
-              <div className="text-sm leading-6 text-slate-600">
-                Trang này hiển thị lịch sử phân công khi bạn truy cập từ chi tiết phản ánh. Vui lòng chọn phản ánh cụ thể để xem các sự kiện phân công, chuyển giao và leo thang.
+              <div>
+                <h1 className="admin-hero-title">Lịch sử phân công</h1>
+                <p className="admin-hero-description mt-2 max-w-2xl">Chọn một phản ánh để xem các lần phân công, chuyển giao và leo thang đã được ghi nhận.</p>
               </div>
             </div>
           </div>
+          <EmptyState title="Chưa chọn phản ánh" description="Mở một phản ánh từ danh sách để xem lịch sử phân công." />
         </div>
       </PageTransition>
     );
@@ -162,54 +147,53 @@ export const AssignmentHistoryPage = () => {
 
   return (
     <PageTransition>
-      <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
+      <div className="admin-page-shell page-container space-y-5 py-4 text-slate-800">
         {error && <ErrorAlert message={error} onClose={() => setError('')} />}
 
         <div className="admin-page-hero p-5 sm:p-7">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-2">
-              <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
-                <Lucide.History size={14} />
-                Lịch sử phân công
-              </Badge>
-              <div>
-                <h1 className="admin-hero-title">Theo dõi thay đổi người phụ trách</h1>
-                <p className="admin-hero-description mt-2 max-w-2xl">Một dòng thời gian rõ ràng cho các lần phân công, chuyển giao và leo thang xử lý, giúp đội vận hành giữ được sự minh bạch và trách nhiệm.</p>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm">
+                <Lucide.History size={26} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="admin-hero-title">Lịch sử phân công</h1>
+                <p className="admin-hero-description mt-2 max-w-2xl">Theo dõi các lần phân công, chuyển giao và leo thang của phản ánh theo đúng dữ liệu đã ghi nhận.</p>
               </div>
             </div>
-            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="ghost" size="sm">
+            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="outline" size="sm" className="shrink-0">
+              <Lucide.ArrowLeft size={15} />
               Quay lại chi tiết
             </Button>
           </div>
         </div>
 
-        <div className="admin-panel p-5 sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="admin-section-title uppercase tracking-[0.24em]">Phản ánh</div>
-              <h2 className="admin-section-title mt-2">{feedback?.title || '—'}</h2>
-              <p className="admin-hero-description mt-2 max-w-2xl">{feedback?.description || 'Không có mô tả bổ sung.'}</p>
+        <section className="admin-panel overflow-hidden">
+          <div className="grid gap-0 lg:grid-cols-[1fr_auto]">
+            <div className="p-5 sm:p-6">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <Lucide.MessageSquareText size={14} />
+                Phản ánh
+              </div>
+              <h2 className="mt-2 text-lg font-bold text-slate-950">{feedback?.title || '—'}</h2>
+              <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">{feedback?.description || 'Không có mô tả bổ sung.'}</p>
             </div>
-            <div className="admin-inset-panel px-4 py-3">
-              <div className="admin-section-description uppercase tracking-[0.24em]">Trạng thái hiện tại</div>
-              <div className="mt-1 text-sm font-semibold text-slate-700">{feedback?.status || '—'}</div>
+            <div className="border-t border-slate-200 p-5 lg:min-w-[210px] lg:border-l lg:border-t-0 sm:p-6">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Trạng thái hiện tại</div>
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                {getStatusLabel(feedback?.status)}
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 p-2 shadow-sm">
           {FILTER_OPTIONS.map((option) => {
             const Icon = option.icon;
             const active = activeFilter === option.id;
             return (
-              <Button
-                key={option.id}
-                type="button"
-                onClick={() => setActiveFilter(option.id)}
-                variant={active ? 'primary' : 'outline'}
-                size="sm"
-                className={active ? 'rounded-full' : 'rounded-full'}
-              >
+              <Button key={option.id} type="button" onClick={() => setActiveFilter(option.id)} variant={active ? 'primary' : 'outline'} size="sm" className="rounded-full">
                 <Icon size={14} />
                 {option.label}
               </Button>
@@ -217,67 +201,56 @@ export const AssignmentHistoryPage = () => {
           })}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {visibleEvents.length === 0 ? (
             <EmptyState
-              title="Chưa có dữ liệu lịch sử"
-              description="Chưa có dữ liệu lịch sử cho bộ lọc này."
+              title="Chưa có lịch sử phân công"
+              description="Hệ thống chưa ghi nhận sự kiện phân công, chuyển giao hoặc leo thang phù hợp với bộ lọc này."
             />
           ) : (
             visibleEvents.map((event, index) => {
               const Icon = event.type === 'escalation' ? Lucide.Siren : event.type === 'reassignment' ? Lucide.RefreshCw : Lucide.UserCheck;
+              const typeLabel = event.type === 'escalation' ? 'Leo thang' : event.type === 'reassignment' ? 'Chuyển giao' : 'Phân công';
               return (
-                <div key={event.id} className="admin-panel relative p-5 sm:p-6">
-                  <div className="absolute left-6 top-6 bottom-[-1.2rem] w-px bg-slate-200" />
-                  <div className="flex gap-4">
-                    <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
-                      <Icon size={18} />
+                <article key={event.id} className="admin-panel relative overflow-hidden p-5">
+                  {index < visibleEvents.length - 1 ? <div className="absolute bottom-[-1rem] left-[2.15rem] top-10 w-px bg-slate-200" /> : null}
+                  <div className="flex gap-3">
+                    <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
+                      <Icon size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{index + 1}. {event.type === 'escalation' ? 'Leo thang' : event.type === 'reassignment' ? 'Chuyển giao' : 'Phân công'}</div>
-                          <h3 className="mt-1 text-lg font-semibold text-slate-900">{event.title}</h3>
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">{index + 1}. {typeLabel}</div>
+                          <h3 className="mt-1 text-base font-bold text-slate-900">{event.title}</h3>
                         </div>
-                        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                        <time className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
                           {formatDate(event.assignmentDate)}
+                        </time>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người phân công</div>
+                          <div className="mt-1 font-semibold text-slate-700">{event.assignedBy}</div>
+                          <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Được phân công cho</div>
+                          <div className="mt-1 font-semibold text-slate-700">{event.assignedTo}</div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người phụ trách cũ</div>
+                          <div className="mt-1 font-semibold text-slate-700">{event.previousAssignee}</div>
+                          <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người phụ trách hiện tại</div>
+                          <div className="mt-1 font-semibold text-slate-700">{event.currentAssignee}</div>
                         </div>
                       </div>
 
-                      <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                        <div className="admin-inset-panel p-4">
-                          <div className="grid gap-3 text-sm">
-                            <div>
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người phân công</div>
-                              <div className="mt-1 font-semibold text-slate-700">{event.assignedBy}</div>
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Được phân công cho</div>
-                              <div className="mt-1 font-semibold text-slate-700">{event.assignedTo}</div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="admin-inset-panel p-4">
-                          <div className="grid gap-3 text-sm">
-                            <div>
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người phụ trách cũ</div>
-                              <div className="mt-1 font-semibold text-slate-700">{event.previousAssignee}</div>
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Người phụ trách hiện tại</div>
-                              <div className="mt-1 font-semibold text-slate-700">{event.currentAssignee}</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="admin-inset-panel mt-4 p-4">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">Ghi chú</div>
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Ghi chú</div>
                         <p className="mt-2 text-sm leading-6 text-slate-600">{event.note}</p>
                       </div>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })
           )}

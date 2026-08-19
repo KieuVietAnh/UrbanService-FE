@@ -86,7 +86,13 @@ export default function CitizenTicketConversation({ currentUserId }) {
     if (!isOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
+    const dashboardScrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+    const previousDashboardOverflow = dashboardScrollContainer?.style.overflowY || '';
+
     document.body.style.overflow = 'hidden';
+    if (dashboardScrollContainer) {
+      dashboardScrollContainer.style.overflowY = 'hidden';
+    }
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
@@ -98,6 +104,9 @@ export default function CitizenTicketConversation({ currentUserId }) {
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      if (dashboardScrollContainer) {
+        dashboardScrollContainer.style.overflowY = previousDashboardOverflow;
+      }
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen]);
@@ -268,7 +277,7 @@ export default function CitizenTicketConversation({ currentUserId }) {
     <div className="fixed inset-x-0 bottom-0 top-[72px] z-[2100]" role="dialog" aria-modal="true" aria-labelledby="ticket-conversation-title">
       <button
         type="button"
-        className="absolute inset-0 bg-slate-950/55"
+        className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]"
         aria-label="Đóng cửa sổ trao đổi"
         onClick={() => setIsOpen(false)}
       />

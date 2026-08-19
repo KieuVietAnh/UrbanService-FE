@@ -21,6 +21,13 @@ export const DashboardLayout = ({ children }) => {
   const isCitizen =
     normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
 
+  const citizenTicketPathSegments = location.pathname.split('/').filter(Boolean);
+  const isCitizenTicketDetailRoute =
+    isCitizen &&
+    citizenTicketPathSegments.length === 2 &&
+    citizenTicketPathSegments[0] === 'tickets' &&
+    !['create', 'archive'].includes(citizenTicketPathSegments[1]);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const mainScrollRef = useRef(null);
 
@@ -181,7 +188,7 @@ export const DashboardLayout = ({ children }) => {
       }`}
     >
       {isCitizen ? <PublicThemeStyles /> : null}
-      {isCitizen ? <CitizenFeedbackInbox /> : null}
+      {isCitizen && !isCitizenTicketDetailRoute ? <CitizenFeedbackInbox /> : null}
 
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}

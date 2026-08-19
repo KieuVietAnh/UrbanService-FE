@@ -2,12 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
+import DelightToast from '../../components/delight/DelightToast';
 import PageTransition from '../../components/motion/PageTransition';
-import { managementTypes } from '@urbanmind/shared-types';
 import { EmptyState } from '@urbanmind/shared-ui';
 import { getCategoryLabel } from '../../utils/categoryLabels';
-import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 
 const TEMPLATE_OPTIONS = [
@@ -33,6 +31,30 @@ const CHECKLIST_ITEMS = [
   'Xác nhận thời điểm xảy ra',
 ];
 
+const formatHistoryTime = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+};
+
+const isStaffMessage = (entry) => {
+  const role = String(entry?.userRole || '').toLowerCase();
+  const senderType = String(entry?.senderType || '').toLowerCase();
+  return role.includes('staff')
+    || role.includes('manager')
+    || role.includes('admin')
+    || role.includes('system')
+    || senderType.includes('staff')
+    || senderType.includes('system');
+};
+
 export const RequestInfoWorkspacePage = () => {
   const { feedbackId } = useParams();
   const navigate = useNavigate();
@@ -48,24 +70,37 @@ export const RequestInfoWorkspacePage = () => {
   const [requestType, setRequestType] = useState('additional-info');
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [requestHistory, setRequestHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
-    const loadFeedback = async () => {
+    const loadWorkspace = async () => {
       try {
         setLoading(true);
+        setHistoryLoading(true);
         setError('');
-        const result = await managementFeedbackApi.getFeedbackById(feedbackId);
-        setFeedback(result);
+        setHistoryError('');
+
+        const [feedbackResult, messageResult] = await Promise.all([
+          managementFeedbackApi.getFeedbackById(feedbackId),
+          managementFeedbackApi.getFeedbackMessages(feedbackId, { includeInternal: false }),
+        ]);
+
+        setFeedback(feedbackResult);
+        setRequestHistory(Array.isArray(messageResult) ? messageResult : []);
       } catch (err) {
-        console.error('Failed to load feedback for request-info', err);
+        console.error('Failed to load request-info workspace', err);
         setError(err?.message || 'Không thể tải thông tin phản ánh.');
+        setHistoryError(err?.message || 'Không thể tải lịch sử yêu cầu.');
       } finally {
         setLoading(false);
+        setHistoryLoading(false);
       }
     };
 
     if (feedbackId) {
-      loadFeedback();
+      loadWorkspace();
     }
   }, [feedbackId]);
 
@@ -108,10 +143,18 @@ export const RequestInfoWorkspacePage = () => {
 
     setSending(true);
     try {
-      await managementFeedbackApi.updateStatus(feedbackId, {
-        status: managementTypes.feedbackStatus.SUBMITTED,
-        note: messageText,
+      await managementFeedbackApi.createFeedbackMessage(feedbackId, {
+        messageText: messageText.trim(),
+        isInternal: false,
       });
+
+      const refreshedMessages = await managementFeedbackApi.getFeedbackMessages(feedbackId, {
+        includeInternal: false,
+      });
+      setRequestHistory(Array.isArray(refreshedMessages) ? refreshedMessages : []);
+      setMessageText('');
+      setSelectedChecklist([]);
+      setDraftSaved(false);
       setMessage({ type: 'success', text: 'Đã gửi yêu cầu thông tin cho người dân.' });
     } catch (err) {
       console.error(err);
@@ -126,8 +169,7 @@ export const RequestInfoWorkspacePage = () => {
       <PageTransition>
         <div className="admin-page-shell page-container space-y-4 py-4">
           <div className="admin-panel animate-pulse p-6">
-            <div className="h-5 w-44 rounded-full bg-slate-100" />
-            <div className="mt-4 h-8 w-2/3 rounded-2xl bg-slate-100" />
+            <div className="h-8 w-2/3 rounded-2xl bg-slate-100" />
             <div className="mt-3 h-4 w-1/2 rounded-full bg-slate-100" />
           </div>
         </div>
@@ -137,149 +179,319 @@ export const RequestInfoWorkspacePage = () => {
 
   return (
     <PageTransition>
-      <div className="admin-page-shell page-container space-y-6 py-4 text-slate-800">
-        {message.type === 'success' && <SuccessAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />}
-        {message.type === 'error' && <ErrorAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />}
-
+      <div className="admin-page-shell page-container space-y-5 py-4 text-slate-800">
         <div className="admin-page-hero p-5 sm:p-7">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-2">
-              <Badge intent="info" className="gap-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em]">
-                <Lucide.MessageSquarePlus size={14} />
-                Yêu cầu thêm thông tin
-              </Badge>
-              <div>
-                <h1 className="admin-hero-title">Workspace yêu cầu bổ sung thông tin</h1>
-                <p className="admin-hero-description mt-2 max-w-2xl">Gửi một yêu cầu rõ ràng, có cấu trúc và có thể hành động ngay cho người dân để rút ngắn vòng lặp xử lý.</p>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-4">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-sky-500 text-white shadow-sm">
+                <Lucide.MessageSquarePlus size={26} strokeWidth={1.9} />
+              </span>
+              <div className="min-w-0">
+                <h1 className="admin-hero-title">Yêu cầu bổ sung thông tin</h1>
+                <p className="admin-hero-description mt-2 max-w-3xl">
+                  Soạn yêu cầu rõ ràng để người dân bổ sung đúng thông tin còn thiếu và giúp hồ sơ tiếp tục được xử lý nhanh hơn.
+                </p>
               </div>
             </div>
-            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="ghost" size="sm" className="rounded-2xl">
+
+            <Button
+              type="button"
+              onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)}
+              variant="outline"
+              size="sm"
+              className="shrink-0 rounded-xl border-slate-200 bg-white/90 px-4 shadow-sm hover:border-blue-200 hover:bg-blue-50"
+            >
+              <Lucide.ArrowLeft size={16} className="mr-2" />
               Quay lại chi tiết
             </Button>
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="space-y-6">
-            <section className="admin-panel p-5 sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <Lucide.FileText size={16} className="text-slate-600" />
-                Tóm tắt phản ánh
-              </div>
-              <div className="admin-inset-panel mt-4 p-4">
-                <p className="admin-section-description uppercase tracking-[0.24em]">Tiêu đề</p>
-                <p className="mt-2 heading-3 text-slate-800">{feedback?.title || '—'}</p>
-                <p className="mt-4 admin-section-description uppercase tracking-[0.24em]">Nội dung</p>
-                <p className="mt-2 body-text">{feedback?.description || 'Không có mô tả.'}</p>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="admin-inset-panel p-3 text-sm">
-                  <p className="admin-section-description uppercase tracking-[0.24em]">Danh mục</p>
-                  <p className="mt-2 font-semibold text-slate-700">{getCategoryLabel(feedback?.categoryName || feedback?.category?.name || feedback?.categoryType || feedback?.type, '—')}</p>
+        <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
+          <div className="space-y-5">
+            <section className="admin-panel overflow-hidden">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <Lucide.FileText size={17} />
+                </span>
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Tóm tắt phản ánh</h2>
+                  <p className="mt-0.5 text-sm text-slate-500">Thông tin chính của hồ sơ đang cần bổ sung.</p>
                 </div>
-                <div className="admin-inset-panel p-3 text-sm">
-                  <p className="admin-section-description uppercase tracking-[0.24em]">Đơn vị xử lý</p>
-                  <p className="mt-2 font-semibold text-slate-700">{feedback?.assignment?.operatorName || 'Chưa phân công'}</p>
+              </div>
+
+              <div className="p-5 sm:p-6">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Tiêu đề</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">{feedback?.title || '—'}</p>
+                  <div className="my-4 h-px bg-slate-200/80" />
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Nội dung</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">{feedback?.description || 'Không có mô tả.'}</p>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      <Lucide.Tags size={14} />
+                      Danh mục
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-slate-800">
+                      {getCategoryLabel(
+                        feedback?.categoryName || feedback?.category?.name || feedback?.categoryType || feedback?.type,
+                        '—'
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      <Lucide.Building2 size={14} />
+                      Đơn vị xử lý
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-slate-800">
+                      {feedback?.assignment?.operatorName || 'Chưa phân công'}
+                    </p>
+                  </div>
                 </div>
               </div>
             </section>
 
-            <section className="admin-panel p-5 sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <Lucide.ListChecks size={16} className="text-slate-600" />
-                Checklist thông tin còn thiếu
+            <section className="admin-panel overflow-hidden">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                    <Lucide.ListChecks size={17} />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-900">Thông tin còn thiếu</h2>
+                    <p className="mt-0.5 text-sm text-slate-500">Đánh dấu những nội dung cần người dân bổ sung.</p>
+                  </div>
+                </div>
+                {selectedChecklist.length > 0 && (
+                  <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                    {selectedChecklist.length} mục
+                  </span>
+                )}
               </div>
-              <div className="mt-4 space-y-2">
+
+              <div className="space-y-2 p-5 sm:p-6">
                 {CHECKLIST_ITEMS.map((item) => {
                   const checked = selectedChecklist.includes(item);
                   return (
-                    <label key={item} className="admin-inset-panel flex cursor-pointer items-center justify-between px-3 py-3 text-sm text-slate-700">
-                      <span>{item}</span>
-                      <input type="checkbox" checked={checked} onChange={() => toggleChecklist(item)} className="checkbox checkbox-primary checkbox-sm" />
-                    </label>
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => toggleChecklist(item)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left text-sm transition ${
+                        checked
+                          ? 'border-blue-200 bg-blue-50/80 text-blue-900'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="font-medium">{item}</span>
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                          checked ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-transparent'
+                        }`}
+                      >
+                        <Lucide.Check size={13} />
+                      </span>
+                    </button>
                   );
                 })}
               </div>
             </section>
 
-            <section className="admin-panel p-5 sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <Lucide.LayoutTemplate size={16} className="text-slate-600" />
-                Mẫu phản hồi đề xuất
+            <section className="admin-panel overflow-hidden">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <Lucide.LayoutTemplate size={17} />
+                </span>
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Mẫu yêu cầu</h2>
+                  <p className="mt-0.5 text-sm text-slate-500">Chọn mẫu phù hợp để điền nhanh nội dung.</p>
+                </div>
               </div>
-              <div className="mt-4 space-y-3">
-                {TEMPLATE_OPTIONS.map((template) => (
-                  <Button key={template.title} type="button" onClick={() => handleApplyTemplate(template)} variant={requestType === template.title ? 'primary' : 'outline'} className={`w-full justify-start rounded-[1.2rem] px-4 py-3 text-left ${requestType === template.title ? 'border-sky-300 bg-sky-50 shadow-sm' : ''}`}>
-                    <span className="flex flex-col items-start">
-                      <span className="text-sm font-semibold text-slate-800">{template.title}</span>
-                      <span className="mt-1 text-sm text-slate-500">{template.body}</span>
-                    </span>
-                  </Button>
-                ))}
+
+              <div className="space-y-3 p-5 sm:p-6">
+                {TEMPLATE_OPTIONS.map((template) => {
+                  const active = requestType === template.title;
+                  return (
+                    <button
+                      key={template.title}
+                      type="button"
+                      onClick={() => handleApplyTemplate(template)}
+                      className={`w-full rounded-2xl border p-4 text-left transition ${
+                        active
+                          ? 'border-blue-200 bg-blue-50/80 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{template.title}</div>
+                          <p className="mt-1.5 line-clamp-2 text-sm leading-5 text-slate-500">{template.body}</p>
+                        </div>
+                        <Lucide.ChevronRight size={17} className={active ? 'text-blue-600' : 'text-slate-300'} />
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </section>
           </div>
 
-          <div className="space-y-6">
-            <section className="admin-panel p-5 sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <Lucide.Edit3 size={16} className="text-slate-600" />
-                Soạn tin nhắn cho công dân
+          <div className="space-y-5">
+            <section className="admin-panel overflow-hidden">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                  <Lucide.PenLine size={17} />
+                </span>
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Soạn yêu cầu cho người dân</h2>
+                  <p className="mt-0.5 text-sm text-slate-500">Kiểm tra nội dung trước khi gửi.</p>
+                </div>
               </div>
-              <div className="mt-4 space-y-4">
-                <div className="admin-inset-panel p-3 text-sm text-slate-600">
-                  <div className="font-semibold text-slate-700">Đang dùng mẫu</div>
-                  <div className="mt-1">{selectedTemplate.title}</div>
+
+              <div className="space-y-4 p-5 sm:p-6">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm">
+                  <div className="min-w-0">
+                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-500">Mẫu đang chọn</span>
+                    <p className="mt-1 truncate font-semibold text-blue-900">{selectedTemplate.title}</p>
+                  </div>
+                  <Lucide.Sparkles size={18} className="shrink-0 text-blue-500" />
                 </div>
 
                 <textarea
-                  rows="8"
+                  rows="10"
                   value={messageText}
-                  onChange={(event) => setMessageText(event.target.value)}
-                  placeholder="Nhập yêu cầu bổ sung thông tin cho công dân..."
-                  className="textarea textarea-bordered w-full rounded-[1.2rem] border-slate-200 bg-white text-sm"
+                  onChange={(event) => {
+                    setMessageText(event.target.value);
+                    setDraftSaved(false);
+                  }}
+                  placeholder="Nhập nội dung yêu cầu bổ sung thông tin cho người dân..."
+                  className="textarea textarea-bordered w-full resize-y rounded-2xl border-slate-200 bg-white p-4 text-sm leading-6 focus:border-blue-300 focus:outline-none"
                 />
 
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" onClick={handleSaveDraft} disabled={saving} variant="outline">
-                    {saving ? <span className="loading loading-spinner" /> : <><Lucide.Save size={16} className="mr-2" />Lưu bản nháp</>}
-                  </Button>
-                  <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="ghost">Hủy</Button>
-                  <Button type="button" onClick={handleSendRequest} disabled={sending} variant="primary">
-                    {sending ? <span className="loading loading-spinner" /> : <><Lucide.Send size={16} className="mr-2" />Gửi yêu cầu</>}
+                {selectedChecklist.length > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Đang yêu cầu bổ sung</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedChecklist.map((item) => (
+                        <span key={item} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" onClick={handleSaveDraft} disabled={saving} variant="outline" className="rounded-xl">
+                      {saving ? (
+                        <span className="loading loading-spinner" />
+                      ) : (
+                        <>
+                          <Lucide.Save size={16} className="mr-2" />
+                          Lưu bản nháp
+                        </>
+                      )}
+                    </Button>
+                    <Button type="button" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} variant="ghost" className="rounded-xl">
+                      Hủy
+                    </Button>
+                  </div>
+
+                  <Button type="button" onClick={handleSendRequest} disabled={sending} variant="primary" className="rounded-xl px-5">
+                    {sending ? (
+                      <span className="loading loading-spinner" />
+                    ) : (
+                      <>
+                        <Lucide.Send size={16} className="mr-2" />
+                        Gửi yêu cầu
+                      </>
+                    )}
                   </Button>
                 </div>
 
                 {draftSaved && (
-                  <div className="admin-info-note p-3 text-sm font-semibold">
-                    Bản nháp đã được lưu sẵn sàng gửi sau.
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                    <span className="inline-flex items-center gap-2">
+                      <Lucide.CheckCircle2 size={16} />
+                      Bản nháp đã được lưu trong phiên làm việc này.
+                    </span>
                   </div>
                 )}
               </div>
             </section>
 
-            <section className="admin-panel p-5 sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <Lucide.Clock3 size={16} className="text-slate-600" />
-                Lịch sử yêu cầu
-              </div>
-              <div className="mt-4 space-y-3">
-                <div className="admin-inset-panel p-4 text-sm text-slate-600">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-800">Yêu cầu mới</span>
-                    <span className="text-[11px] text-slate-400">Mới</span>
-                  </div>
-                  <p className="mt-2">Sẵn sàng gửi cho công dân với nội dung vừa soạn.</p>
+            <section className="admin-panel overflow-hidden">
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <Lucide.Clock3 size={17} />
+                </span>
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Lịch sử yêu cầu</h2>
+                  <p className="mt-0.5 text-sm text-slate-500">Các yêu cầu bổ sung đã gửi trước đây.</p>
                 </div>
-                <EmptyState
-                  title="Chưa có lịch sử yêu cầu"
-                  description="Chưa có lịch sử yêu cầu bổ sung thông tin trước đây cho phản ánh này."
-                />
+              </div>
+              <div className="p-5 sm:p-6">
+                {historyLoading ? (
+                  <div className="space-y-3 animate-pulse">
+                    <div className="h-20 rounded-2xl bg-slate-100" />
+                    <div className="h-20 rounded-2xl bg-slate-100" />
+                  </div>
+                ) : historyError ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {historyError}
+                  </div>
+                ) : requestHistory.filter((entry) => !entry?.isInternal && isStaffMessage(entry)).length === 0 ? (
+                  <EmptyState
+                    title="Chưa có lịch sử yêu cầu"
+                    description="Chưa có yêu cầu hoặc trao đổi công khai nào từ nhân viên cho phản ánh này."
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    {requestHistory
+                      .filter((entry) => !entry?.isInternal && isStaffMessage(entry))
+                      .slice()
+                      .sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0))
+                      .map((entry) => (
+                        <article
+                          key={entry?.interactionMessageId || entry?.id || `${entry?.createdAt}-${entry?.messageText}`}
+                          className="rounded-2xl border border-slate-200 bg-white p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                                <Lucide.Send size={15} />
+                              </span>
+                              {entry?.userFullName || 'Nhân viên'}
+                            </div>
+                            <time className="text-xs font-medium text-slate-400">
+                              {formatHistoryTime(entry?.createdAt)}
+                            </time>
+                          </div>
+                          <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
+                            {entry?.messageText || '—'}
+                          </p>
+                        </article>
+                      ))}
+                  </div>
+                )}
               </div>
             </section>
           </div>
         </div>
       </div>
+      <DelightToast
+        open={Boolean(message.type)}
+        message={message.type === 'error' ? 'Không thể hoàn tất' : 'Thành công'}
+        sub={message.text}
+        variant={message.type === 'error' ? 'error' : 'success'}
+        position="top-right"
+        onClose={() => setMessage({ type: '', text: '' })}
+      />
     </PageTransition>
   );
 };

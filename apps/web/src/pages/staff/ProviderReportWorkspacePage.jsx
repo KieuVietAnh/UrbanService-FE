@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { LoadingSpinner, CompletionDocumentsCard, ConfirmationModal } from '@urbanmind/shared-ui';
+import { LoadingSpinner, ConfirmationModal } from '@urbanmind/shared-ui';
 import { canTransitionProviderReportStatus, normalizeProviderReportStatus } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
@@ -24,6 +25,12 @@ const formatContactDateTime = (value) => {
     return date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch { return 'Không xác định'; }
 };
+
+const getProviderReportStatusLabel = (status) => ({
+  Reported: 'Đã tiếp nhận',
+  InProgress: 'Đang xử lý',
+  Done: 'Đã gửi chờ duyệt',
+}[normalizeProviderReportStatus(status)] || status || 'Không rõ');
 
 const isSuccessfulCoordinatorContact = (contactResult) => {
   const normalized = String(contactResult || '').trim().toLowerCase();
@@ -60,7 +67,7 @@ const isSuccessfulCoordinatorContact = (contactResult) => {
 const STEPS = [
   { id: 'overview',              label: 'Tổng quan',            icon: Lucide.LayoutDashboard, description: 'Thông tin nhà thầu & cập nhật trạng thái' },
   { id: 'contact-logs',         label: 'Lịch sử liên hệ',      icon: Lucide.Phone,           description: 'Ghi nhận lịch sử liên hệ với nhà thầu'  },
-  { id: 'completion-documents', label: 'Tài liệu hoàn thành',  icon: Lucide.FileText,        description: 'Tải lên tài liệu bằng chứng hoàn thành'  },
+  { id: 'completion-documents', label: 'Minh chứng xử lý',    icon: Lucide.FileText,        description: 'Ảnh và tài liệu xác nhận sau xử lý'  },
   { id: 'resolution',           label: 'Kết quả xử lý',        icon: Lucide.CheckSquare,     description: 'Gửi kết quả xử lý chờ phê duyệt',  requiresInProgress: true },
   { id: 'submitted',            label: 'Chờ phê duyệt',        icon: Lucide.Send,            description: 'Đã gửi — chờ quản lý phê duyệt',    terminal: true },
 ];
@@ -172,7 +179,7 @@ const WizardRail = ({ steps, currentIndex, maxReached, isResolutionSubmitted, ca
               )}
               {step.requiresInProgress && !canAccessResolution && (
                 <div style={{ fontSize: '0.6875rem', color: 'var(--color-warning)', fontWeight: 600, lineHeight: 1.3, marginTop: '1px' }}>
-                  Yêu cầu trạng thái: InProgress
+                  Yêu cầu trạng thái: Đang xử lý
                 </div>
               )}
             </div>
@@ -314,6 +321,20 @@ export const ProviderReportWorkspacePage = () => {
   /* ── Image lightbox ─────────────────────────────────────────────────────── */
   const [selectedImage,      setSelectedImage]      = useState(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  useEffect(() => {
+    if (!selectedImage && !resolutionPreviewOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscrollBehavior = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscrollBehavior;
+    };
+  }, [selectedImage, resolutionPreviewOpen]);
 
   /* ── Toast ──────────────────────────────────────────────────────────────── */
   const [toastOpen,     setToastOpen]     = useState(false);
@@ -524,8 +545,9 @@ export const ProviderReportWorkspacePage = () => {
   const providerPhone   = report?.phoneNumber || coordinator?.phone || provider?.phoneNumber || '—';
   const providerEmail   = report?.email || coordinator?.email || provider?.email || '—';
   const currentStatus   = normalizeProviderReportStatus(report?.status || report?.reportStatus || '');
-  const canAccessCompletionDocuments = currentStatus === 'InProgress';
-  const canAccessResolution   = currentStatus === 'InProgress';
+  const canAccessCompletionDocuments = ['InProgress', 'Done'].includes(currentStatus);
+  const canAccessResolution   = ['InProgress', 'Done'].includes(currentStatus);
+  const canSubmitResolution   = currentStatus === 'InProgress';
   const isResolutionSubmitted = existingResolutions.length > 0;
   const canReviewContactLogs = ['Reported', 'InProgress', 'Done'].includes(currentStatus);
   const canUploadCompletionDocuments = currentStatus === 'InProgress';
@@ -557,7 +579,7 @@ export const ProviderReportWorkspacePage = () => {
 
     return [
       { label: 'Báo cáo nhận', completed: Boolean(report) },
-      { label: 'Đã liên hệ coordinator', completed: hasLogs || isInProgress || isDone },
+      { label: 'Đã liên hệ điều phối viên', completed: hasLogs || isInProgress || isDone },
       { label: 'Đang xử lý', completed: isInProgress || isDone },
       { label: 'Tài liệu/minh chứng đã có', completed: hasDocs || isResolutionSubmitted || isDone },
       { label: 'Đã gửi kết quả chờ duyệt', completed: isResolutionSubmitted || isDone },
@@ -569,22 +591,22 @@ export const ProviderReportWorkspacePage = () => {
   const visibleSteps = STEPS;
 
   const workflowAction = (() => {
+    if (isResolutionSubmitted || currentStatus === 'Done') {
+      return {
+        title: 'Kết quả xử lý đã được gửi',
+        description: 'Kết quả xử lý đã được gửi và đang chờ quản lý phê duyệt.',
+        actionLabel: 'Xem kết quả xử lý',
+        targetStep: 'resolution',
+        nextStatus: null,
+        disabled: false,
+      };
+    }
+
     if (currentStatus === 'InProgress') {
       return {
-        title: 'Recommended next action: Submit Resolution',
-        description: 'Đã liên hệ coordinator thành công. Staff có thể bổ sung minh chứng nếu cần, rồi gửi kết quả xử lý để chờ quản lý phê duyệt.',
-        actionLabel: 'Submit Resolution',
-        targetStep: 'resolution',
-        nextStatus: null,
-        disabled: false,
-      };
-    }
-
-    if (currentStatus === 'Done') {
-      return {
-        title: 'Resolution submitted',
-        description: 'Kết quả xử lý đã được gửi và đang chờ quản lý phê duyệt.',
-        actionLabel: 'View Resolution',
+        title: 'Bước tiếp theo: Gửi kết quả xử lý',
+        description: 'Đã liên hệ điều phối viên thành công. Staff có thể bổ sung minh chứng nếu cần, rồi gửi kết quả xử lý để chờ quản lý phê duyệt.',
+        actionLabel: 'Gửi kết quả xử lý',
         targetStep: 'resolution',
         nextStatus: null,
         disabled: false,
@@ -592,9 +614,9 @@ export const ProviderReportWorkspacePage = () => {
     }
 
       return {
-        title: 'Recommended next action: Contact Coordinator',
-        description: 'Tạo nhật ký liên hệ coordinator. Chỉ kết quả liên hệ thành công mới mở bước Submit Resolution; nếu cần liên hệ lại thì báo cáo vẫn ở Reported.',
-        actionLabel: 'Create Contact Log',
+        title: 'Bước tiếp theo: Liên hệ điều phối viên',
+        description: 'Tạo nhật ký liên hệ điều phối viên. Khi liên hệ thành công, báo cáo sẽ chuyển sang bước xử lý và có thể bổ sung minh chứng trước khi gửi kết quả.',
+        actionLabel: 'Tạo nhật ký liên hệ',
         targetStep: 'contact-logs',
         nextStatus: null,
         disabled: false,
@@ -608,7 +630,9 @@ export const ProviderReportWorkspacePage = () => {
     if (hasUserChosenStepRef.current) return;
 
     let fallbackStepId = 'overview';
-    if (['InProgress', 'Done'].includes(currentStatus)) {
+    if (isResolutionSubmitted || currentStatus === 'Done') {
+      fallbackStepId = 'submitted';
+    } else if (currentStatus === 'InProgress') {
       fallbackStepId = 'resolution';
     } else if (currentStatus === 'Reported') {
       fallbackStepId = 'contact-logs';
@@ -620,7 +644,7 @@ export const ProviderReportWorkspacePage = () => {
     const fallbackSafeIndex = fallbackGlobalIndex >= 0 ? fallbackGlobalIndex : 0;
     setStepIndex(fallbackSafeIndex);
     setMaxReached((prev) => Math.max(prev, fallbackSafeIndex));
-  }, [activeStepId, currentStatus, visibleSteps]);
+  }, [activeStepId, currentStatus, isResolutionSubmitted, visibleSteps]);
 
   /* ════════════════════════════════════════════════════════════════════════
      Event handlers (all logic unchanged)
@@ -690,7 +714,7 @@ export const ProviderReportWorkspacePage = () => {
       setDocuments(Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : Array.isArray(res?.data) ? res.data : []);
       setDocumentDescription('');
       setSelectedDocumentFile(null);
-      openToast('Đã gửi tài liệu', 'Tài liệu hoàn thành đã được gửi thành công.');
+      openToast('Đã tải minh chứng', 'Ảnh hoặc tài liệu minh chứng đã được lưu thành công.');
     } catch (err) {
       console.error('Upload failed', err);
       setUploadError(err?.message || 'Không thể tải lên tài liệu.');
@@ -762,7 +786,7 @@ export const ProviderReportWorkspacePage = () => {
       return;
     }
 
-    if (workflowAction.targetStep === 'resolution') {
+    if (workflowAction.targetStep === 'resolution' && currentStatus === 'InProgress' && !isResolutionSubmitted) {
       openToast('Sẵn sàng gửi kết quả xử lý', 'Điền nội dung kết quả xử lý ở bước tiếp theo.');
     }
 
@@ -788,12 +812,12 @@ export const ProviderReportWorkspacePage = () => {
       openToast(
         'Đã lưu lịch sử liên hệ',
         isSuccessfulCoordinatorContact(result)
-          ? 'Liên hệ thành công. Báo cáo sẽ được chuyển sang InProgress để gửi kết quả xử lý.'
+          ? 'Liên hệ thành công. Báo cáo sẽ được chuyển sang trạng thái Đang xử lý để tiếp tục quy trình.'
           : 'Kết quả cần liên hệ lại/chưa thành công. Chưa thể Submit Resolution.'
       );
       setLogForm({ contactMethod: '', contactResult: '', contactNote: '', contactedAt: toLocalDateTimeValue() });
       if (shouldAutoTransition) {
-        await performStatusTransition('InProgress', 'Tự động chuyển trạng thái sau khi tạo nhật ký liên hệ coordinator đầu tiên.', { auto: true });
+        await performStatusTransition('InProgress', 'Tự động chuyển trạng thái sau khi tạo nhật ký liên hệ điều phối viên đầu tiên.', { auto: true });
       }
     } catch (err) { console.error('Save log failed', err); setLogFormError(err?.message || 'Không thể lưu bản ghi liên hệ.'); }
     finally { setLogSaving(false); }
@@ -883,45 +907,52 @@ export const ProviderReportWorkspacePage = () => {
       style={{ minHeight: '100vh', padding: '1.25rem 1rem 3rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}
     >
       {/* ── Page header ─────────────────────────────────────────────────── */}
-      <header style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.875rem 1.25rem', flexWrap: 'wrap', borderBottom: '1px solid rgba(203,213,225,0.5)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              aria-label="Quay lại"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8125rem', fontWeight: 500, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem 0' }}
-            >
-              <Lucide.ChevronLeft size={14} /> Báo cáo xử lý
-            </button>
-            <span style={{ color: '#cbd5e1' }}>/</span>
-            <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#0f172a' }}>
-              {report.providerReportId || report.id || providerReportId}
-            </span>
+      <section
+        className="admin-page-hero"
+        style={{
+          borderRadius: '1.5rem',
+          border: '1px solid rgba(147,197,253,0.45)',
+          background: 'linear-gradient(115deg, rgba(239,246,255,0.98), rgba(236,254,255,0.92) 48%, rgba(219,234,254,0.96))',
+          padding: '1.5rem 1.75rem',
+          boxShadow: '0 14px 34px rgba(37,99,235,0.08)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.25rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '1rem', background: 'linear-gradient(135deg,#2563eb,#06b6d4)', color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: '0 10px 22px rgba(37,99,235,0.2)' }}>
+              <Lucide.ClipboardCheck size={27} aria-hidden="true" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#2563eb' }}>Báo cáo xử lý</div>
+              <h1 style={{ margin: '0.2rem 0 0.35rem', fontSize: 'clamp(1.65rem, 2.4vw, 2.35rem)', lineHeight: 1.1, fontWeight: 850, color: '#0f172a' }}>
+                Báo cáo #{report.providerReportId || report.id || providerReportId}
+              </h1>
+              <p style={{ margin: 0, maxWidth: '780px', fontSize: '0.92rem', lineHeight: 1.55, color: '#64748b' }}>
+                Theo dõi tiến độ của đơn vị xử lý, lưu ảnh/tài liệu minh chứng hoàn thành và gửi kết quả để quản lý phê duyệt.
+              </p>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
             <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
-              {currentStatus || 'Không rõ'}
+              {getProviderReportStatusLabel(currentStatus)}
             </Badge>
             {feedbackId && (
-              <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
-                <Lucide.ExternalLink size={13} /> Mở phản ánh
+              <Button type="button" variant="outline" size="sm" onClick={() => navigate(`/staff/feedbacks/${feedbackId}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', background: 'rgba(255,255,255,0.82)' }}>
+                <Lucide.ArrowLeft size={14} /> Mở phản ánh
               </Button>
             )}
           </div>
         </div>
 
-        {/* Meta strip */}
-        <div style={{ padding: '0.875rem 1.25rem', display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-          <MetaField label="Nhà thầu"       value={providerName}    />
+        <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(148,163,184,0.22)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '1rem' }}>
+          <MetaField label="Nhà thầu" value={providerName} />
           <MetaField label="Điều phối viên" value={coordinatorName} />
-          <MetaField label="Liên hệ"        value={[providerPhone !== '—' ? providerPhone : null, providerEmail !== '—' ? providerEmail : null].filter(Boolean).join(' · ') || '—'} />
+          <MetaField label="Liên hệ" value={[providerPhone !== '—' ? providerPhone : null, providerEmail !== '—' ? providerEmail : null].filter(Boolean).join(' · ') || '—'} />
           <MetaField label="Ngày phân công" value={report.assignedAt || report.assignedDate || report.createdAt ? formatContactDateTime(report.assignedAt || report.assignedDate || report.createdAt) : '—'} />
-          <MetaField label="Mã báo cáo xử lý"    value={report.providerReportId || report.id} mono />
           {feedbackId && <MetaField label="Mã phản ánh" value={feedbackId} mono />}
         </div>
-      </header>
+      </section>
 
       {/* ── Workspace body: rail + step content ─────────────────────────── */}
       <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
@@ -962,9 +993,9 @@ export const ProviderReportWorkspacePage = () => {
           <section style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: '1.25rem 1.25rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#2563eb' }}>Guided workflow</div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#2563eb' }}>QUY TRÌNH XỬ LÝ</div>
                 <h2 style={{ margin: '0.25rem 0 0.35rem', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Theo dõi tiến trình xử lý theo từng bước</h2>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: '#475569', lineHeight: 1.55 }}>Mỗi hành động đều có gợi ý bước tiếp theo, nhưng trạng thái vẫn được cập nhật thủ công theo quy trình hiện có.</p>
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#475569', lineHeight: 1.55 }}>Theo dõi từng bước từ lúc tiếp nhận báo cáo đến khi có minh chứng hoàn thành và gửi kết quả chờ phê duyệt.</p>
               </div>
               <div style={{ minWidth: '180px', padding: '0.75rem 0.9rem', backgroundColor: '#f8fafc', border: '1px solid rgba(203,213,225,0.7)', borderRadius: '0.95rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
@@ -996,7 +1027,7 @@ export const ProviderReportWorkspacePage = () => {
           <section style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: '1rem 1.25rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#2563eb' }}>Recommended next action</div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#2563eb' }}>Bước tiếp theo</div>
                 <h3 style={{ margin: '0.25rem 0 0.35rem', fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>{workflowAction.title}</h3>
                 <p style={{ margin: 0, fontSize: '0.86rem', color: '#475569', lineHeight: 1.55 }}>{workflowAction.description}</p>
                 {workflowAction.missingRequirement && (
@@ -1027,7 +1058,7 @@ export const ProviderReportWorkspacePage = () => {
                 sub="Xem lại thông tin nhà thầu và cập nhật trạng thái báo cáo trước khi tiếp tục."
                 action={
                   <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
-                    {currentStatus || 'Không rõ'}
+                    {getProviderReportStatusLabel(currentStatus)}
                   </Badge>
                 }
               />
@@ -1054,7 +1085,7 @@ export const ProviderReportWorkspacePage = () => {
                         </div>
                         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap', paddingBottom: idx < statusHistoryItems.length - 1 ? '0.75rem' : 0 }}>
                           <div>
-                            <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>{item.status || 'Không rõ'}</div>
+                            <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.9rem' }}>{getProviderReportStatusLabel(item.status)}</div>
                             {item.note && <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: '1px' }}>{item.note}</div>}
                           </div>
                           {item.updatedAt && <span style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0, marginTop: '2px' }}>{formatContactDateTime(item.updatedAt)}</span>}
@@ -1070,7 +1101,7 @@ export const ProviderReportWorkspacePage = () => {
                 totalSteps={totalVisible}
                 onBack={goBack}
                 onNext={goNext}
-                nextLabel="Tiếp tục: Lịch sử liên hệ"
+                nextLabel={currentStatus === 'Reported' ? 'Tiếp tục: Lịch sử liên hệ' : 'Xem lịch sử liên hệ'}
               />
             </section>
           )}
@@ -1137,8 +1168,9 @@ export const ProviderReportWorkspacePage = () => {
                 <div style={{ padding: '1rem 1.25rem' }}>
                   {logFormError && <div style={{ marginBottom: '0.75rem' }}><ErrorAlert message={logFormError} onClose={() => setLogFormError('')} /></div>}
                   {canReviewContactLogs && currentStatus !== 'Reported' ? (
-                    <div style={{ borderRadius: '0.875rem', border: '1px solid rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.7)', padding: '1rem 1rem', color: '#475569', lineHeight: 1.6 }}>
-                      Bước này đã được hoàn tất. Nội dung lịch sử liên hệ ở trên có thể xem lại bất cứ lúc nào để đối chiếu hoặc cập nhật thêm nếu cần.
+                    <div style={{ borderRadius: '0.75rem', border: '1px solid rgba(16,185,129,0.18)', backgroundColor: 'rgba(236,253,245,0.65)', padding: '0.65rem 0.8rem', color: '#475569', lineHeight: 1.5, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                      <Lucide.CheckCircle2 size={14} color='var(--color-success)' aria-hidden='true' />
+                      Bước liên hệ đã hoàn tất. Bạn vẫn có thể xem lại các bản ghi phía trên.
                     </div>
                   ) : (
                     <form onSubmit={handleSaveLog} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
@@ -1181,7 +1213,7 @@ export const ProviderReportWorkspacePage = () => {
                   totalSteps={totalVisible}
                   onBack={goBack}
                   onNext={goNext}
-                  nextLabel="Tiếp tục: Tài liệu hoàn thành"
+                  nextLabel={currentStatus === 'Reported' ? 'Tiếp tục: Minh chứng xử lý' : 'Xem minh chứng xử lý'}
                   nextDisabled={!canAccessCompletionDocuments}
                   nextVariant={!canAccessCompletionDocuments ? 'ghost' : 'primary'}
                 />
@@ -1193,8 +1225,8 @@ export const ProviderReportWorkspacePage = () => {
           {activeStepId === 'completion-documents' && (
             <section aria-labelledby="docs-title" style={{ ...card, overflow: 'hidden' }}>
               <SectionHeader
-                title="Tài liệu hoàn thành"
-                sub={canUploadCompletionDocuments ? 'Tải lên bằng chứng hoàn thành từ nhà thầu trước khi tiếp tục.' : 'Bước này có thể xem lại nội dung tài liệu đã tải lên sau khi báo cáo được hoàn tất.'}
+                title="Ảnh và tài liệu minh chứng sau xử lý"
+                sub={canUploadCompletionDocuments ? 'Tải ảnh hiện trường sau xử lý, biên bản nghiệm thu hoặc tài liệu xác nhận do đơn vị xử lý cung cấp.' : 'Xem lại ảnh và tài liệu minh chứng đã được lưu cho báo cáo xử lý này.'}
                 action={canUploadCompletionDocuments ? null : (
                   <Badge intent={getBadgeIntent(currentStatus)} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]">
                     {currentStatus === 'Done' ? 'Đã gửi kết quả' : 'Xem lại'}
@@ -1205,9 +1237,18 @@ export const ProviderReportWorkspacePage = () => {
               <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                 {canUploadCompletionDocuments ? (
                   <form onSubmit={handleDocumentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', padding: '0.9rem 1rem', borderRadius: '0.95rem', border: '1px solid rgba(59,130,246,0.18)', background: 'rgba(239,246,255,0.72)' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '0.75rem', display: 'grid', placeItems: 'center', background: '#fff', color: '#2563eb', flexShrink: 0 }}>
+                        <Lucide.Images size={18} aria-hidden="true" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 750, color: '#0f172a' }}>Minh chứng hoàn thành từ đơn vị xử lý</div>
+                        <div style={{ marginTop: '0.2rem', fontSize: '0.8rem', lineHeight: 1.5, color: '#64748b' }}>Ưu tiên ảnh hiện trường sau khi khắc phục. Có thể đính kèm thêm PDF biên bản hoặc tài liệu xác nhận.</div>
+                      </div>
+                    </div>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                      <span style={fieldLabel}>Mô tả <span style={{ color: 'var(--color-danger)' }}>*</span></span>
-                      <textarea value={documentDescription} onChange={(e) => setDocumentDescription(e.target.value)} placeholder="Mô tả chi tiết về tài liệu hoàn thành..." rows={3} maxLength={1000} className="textarea textarea-bordered w-full" required />
+                      <span style={fieldLabel}>Mô tả minh chứng <span style={{ color: 'var(--color-danger)' }}>*</span></span>
+                      <textarea value={documentDescription} onChange={(e) => setDocumentDescription(e.target.value)} placeholder="Ví dụ: Ảnh mặt đường sau khi sửa chữa hoàn tất..." rows={3} maxLength={1000} className="textarea textarea-bordered w-full" required />
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
                         <span>Hỗ trợ: JPG, PNG, PDF</span>
                         <span>{documentDescription.trim().length}/1000</span>
@@ -1218,7 +1259,7 @@ export const ProviderReportWorkspacePage = () => {
                       <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" style={{ display: 'none' }} onChange={handleDocumentFileChange} />
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                         <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
-                          <Lucide.FolderPlus size={14} /> Chọn tệp
+                          <Lucide.ImagePlus size={14} /> Chọn ảnh / tài liệu
                         </Button>
                         <div style={{ minHeight: '1.1rem', color: selectedDocumentFile ? '#0f172a' : '#6b7280', fontSize: '0.9rem' }}>
                           {selectedDocumentFile ? selectedDocumentFile.name : 'Chưa chọn tệp nào'}
@@ -1227,7 +1268,7 @@ export const ProviderReportWorkspacePage = () => {
 
                       <Button type="submit" variant="primary" size="sm" disabled={uploadingDocuments} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', alignSelf: 'flex-start' }}>
                         {uploadingDocuments ? <span className="loading loading-spinner loading-xs" /> : <Lucide.CheckCircle2 size={14} />}
-                        {uploadingDocuments ? 'Đang gửi...' : 'Gửi tài liệu'}
+                        {uploadingDocuments ? 'Đang tải lên...' : 'Tải minh chứng lên'}
                       </Button>
                     </div>
 
@@ -1246,7 +1287,7 @@ export const ProviderReportWorkspacePage = () => {
 
                 {!canUploadCompletionDocuments && (
                   <div style={{ borderRadius: '0.875rem', border: '1px solid rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.7)', padding: '1rem 1rem', color: '#475569', lineHeight: 1.6 }}>
-                    Bước này đã được hoàn tất. Bạn có thể xem lại danh sách tài liệu hoàn thành bên dưới để đối chiếu nội dung trước khi tiếp tục.
+                    Bước minh chứng đã hoàn tất. Bạn có thể xem lại ảnh và tài liệu bên dưới để đối chiếu khi cần.
                   </div>
                 )}
 
@@ -1257,15 +1298,58 @@ export const ProviderReportWorkspacePage = () => {
                 ) : documents.length === 0 ? (
                   <div style={{ borderRadius: '0.875rem', border: '1px dashed rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.7)', padding: '3rem 1rem', textAlign: 'center' }}>
                     <Lucide.FileText size={28} style={{ margin: '0 auto 0.625rem', color: '#94a3b8' }} aria-hidden="true" />
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>Chưa có tài liệu nào được tải lên.</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>Chưa có ảnh hoặc tài liệu minh chứng nào được tải lên.</div>
                   </div>
                 ) : (
-                  <CompletionDocumentsCard
-                    documents={documents}
-                    onPreview={openImagePreview}
-                    onDownload={handleDocumentDownload}
-                    emptyMessage="Chưa có tài liệu hoàn thành nào được tải lên."
-                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.875rem' }}>
+                    {documents.map((doc, index) => {
+                      const url = doc?.fileUrl || doc?.url || doc?.downloadUrl || doc?.documentUrl || '';
+                      const fileName = doc?.fileName || doc?.name || `Minh chứng ${index + 1}`;
+                      const contentType = String(doc?.contentType || doc?.mimeType || '').toLowerCase();
+                      const lowerName = String(fileName).toLowerCase();
+                      const isPdf = contentType.includes('pdf') || lowerName.endsWith('.pdf');
+                      const description = doc?.description || doc?.note || '';
+                      const uploadedBy = doc?.uploadedByName || doc?.uploadedBy || doc?.createdByName || '';
+
+                      return (
+                        <article key={doc?.id || doc?.documentId || `${fileName}-${index}`} style={{ overflow: 'hidden', borderRadius: '1rem', border: '1px solid rgba(203,213,225,0.9)', background: '#fff', boxShadow: '0 8px 22px rgba(15,23,42,0.04)' }}>
+                          {!isPdf && url ? (
+                            <button
+                              type="button"
+                              onClick={() => openImagePreview(doc, index)}
+                              aria-label={`Xem ảnh ${fileName}`}
+                              style={{ display: 'block', width: '100%', padding: 0, border: 0, background: '#eef4fb', cursor: 'zoom-in' }}
+                            >
+                              <img src={url} alt={description || fileName} style={{ display: 'block', width: '100%', height: '180px', objectFit: 'cover' }} />
+                            </button>
+                          ) : (
+                            <div style={{ height: '120px', display: 'grid', placeItems: 'center', background: '#f8fafc', color: '#64748b' }}>
+                              <div style={{ textAlign: 'center' }}>
+                                <Lucide.FileText size={30} style={{ margin: '0 auto 0.4rem' }} aria-hidden="true" />
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700 }}>Tài liệu PDF</div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ padding: '0.85rem 0.95rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 750, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fileName}</div>
+                            {description && <div style={{ fontSize: '0.8rem', lineHeight: 1.45, color: '#64748b' }}>{description}</div>}
+                            {uploadedBy && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Người tải lên: {uploadedBy}</div>}
+                            {url && (
+                              <button
+                                type="button"
+                                onClick={() => isPdf ? handleDocumentDownload(doc) : openImagePreview(doc, index)}
+                                style={{ marginTop: '0.2rem', alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', border: 0, background: 'transparent', color: '#2563eb', padding: 0, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                {isPdf ? <Lucide.Download size={14} /> : <Lucide.Maximize2 size={14} />}
+                                {isPdf ? 'Tải xuống' : 'Xem ảnh'}
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
@@ -1274,7 +1358,7 @@ export const ProviderReportWorkspacePage = () => {
                 totalSteps={totalVisible}
                 onBack={goBack}
                 onNext={goNext}
-                nextLabel="Tiếp tục: Kết quả xử lý"
+                nextLabel={currentStatus === 'InProgress' && !isResolutionSubmitted ? 'Tiếp tục: Kết quả xử lý' : 'Xem kết quả xử lý'}
                 nextDisabled={!canAccessResolution}
               />
 
@@ -1283,7 +1367,7 @@ export const ProviderReportWorkspacePage = () => {
                 <div style={{ margin: '0 1.25rem 1rem', padding: '0.75rem 1rem', borderRadius: '0.875rem', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(180,83,9,0.18)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
                   <Lucide.AlertTriangle size={15} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
                   <div style={{ fontSize: '0.8125rem', color: 'var(--color-warning)', lineHeight: 1.45 }}>
-                    <strong>Bước tiếp theo bị khóa.</strong> Bạn cần tạo nhật ký liên hệ coordinator thành công để báo cáo chuyển sang <strong>InProgress</strong> trước khi gửi Kết quả xử lý.
+                    <strong>Bước tiếp theo đang bị khóa.</strong> Cần có nhật ký liên hệ điều phối viên thành công để báo cáo chuyển sang <strong>Đang xử lý</strong> trước khi gửi kết quả.
                   </div>
                 </div>
               )}
@@ -1308,11 +1392,11 @@ export const ProviderReportWorkspacePage = () => {
               <div style={{ padding: '1rem 1.25rem' }}>
                 {resolutionError && <div style={{ marginBottom: '0.75rem' }}><ErrorAlert message={resolutionError} onClose={() => setResolutionError('')} /></div>}
 
-                {!canAccessResolution && (
+                {!isResolutionSubmitted && !canSubmitResolution && (
                   <div style={{ marginBottom: '1rem', padding: '0.875rem 1rem', borderRadius: '0.875rem', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(180,83,9,0.2)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
                     <Lucide.AlertTriangle size={15} color="var(--color-warning)" style={{ flexShrink: 0, marginTop: '1px' }} />
                     <div style={{ fontSize: '0.8125rem', color: 'var(--color-warning)', lineHeight: 1.45 }}>
-                      <strong>Báo cáo xử lý phải ở trạng thái InProgress</strong> trước khi gửi Kết quả xử lý. Hãy tạo nhật ký liên hệ coordinator thành công trước.
+                      <strong>Báo cáo xử lý phải ở trạng thái Đang xử lý</strong> trước khi gửi kết quả. Hãy tạo nhật ký liên hệ điều phối viên thành công trước.
                     </div>
                   </div>
                 )}
@@ -1354,7 +1438,7 @@ export const ProviderReportWorkspacePage = () => {
                           rows={3}
                           placeholder={placeholder}
                           className="textarea textarea-bordered w-full"
-                          disabled={!canAccessResolution}
+                          disabled={!canSubmitResolution}
                           required={required}
                         />
                       </label>
@@ -1395,7 +1479,7 @@ export const ProviderReportWorkspacePage = () => {
                         type="submit"
                         variant="primary"
                         size="sm"
-                        disabled={submittingResolution || !canAccessResolution}
+                        disabled={submittingResolution || !canSubmitResolution}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
                       >
                         {submittingResolution ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={13} />}
@@ -1441,59 +1525,163 @@ export const ProviderReportWorkspacePage = () => {
       </div>{/* /workspace body */}
 
       {/* ── Image lightbox ───────────────────────────────────────────────── */}
-      {selectedImage && (
-        <div role="dialog" aria-modal="true" aria-label="Image preview"
-          style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(2,6,23,0.88)', padding: '1.5rem 1rem' }}
+      {selectedImage && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Xem ảnh minh chứng"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            zIndex: 2147483647,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(15,23,42,0.24)',
+            backdropFilter: 'blur(7px)',
+            WebkitBackdropFilter: 'blur(7px)',
+            overflow: 'hidden',
+            padding: '1.25rem',
+          }}
           onClick={closeImagePreview}
         >
-          <div style={{ position: 'relative', width: '100%', maxWidth: '56rem', borderRadius: '1.25rem', border: '1px solid rgba(71,85,105,0.5)', backgroundColor: '#0f172a', padding: '0.75rem', boxShadow: '0 25px 60px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.625rem', color: '#cbd5e1', fontSize: '0.875rem' }}>
-              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{imageDocuments[selectedImageIndex]?.fileName || imageDocuments[selectedImageIndex]?.name || 'Xem ảnh'}</div>
-              <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
-                {[{ dir: -1, icon: Lucide.ChevronLeft, label: 'Ảnh trước' }, { dir: 1, icon: Lucide.ChevronRight, label: 'Ảnh tiếp' }].map(({ dir, icon: Icon, label }) => (
-                  <Button key={label} type="button" variant="ghost" size="sm" onClick={() => showImagePreview(dir)} aria-label={label} style={{ color: '#cbd5e1' }}><Icon size={16} /></Button>
+          <div
+            style={{
+              width: 'min(920px, 94vw)',
+              maxHeight: 'calc(100dvh - 2.5rem)',
+              overflow: 'hidden',
+              borderRadius: '1.25rem',
+              border: '1px solid rgba(203,213,225,0.9)',
+              backgroundColor: '#fff',
+              boxShadow: '0 24px 70px rgba(15,23,42,0.28)',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', padding: '1rem 1.125rem', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '2.35rem', height: '2.35rem', borderRadius: '0.8rem', backgroundColor: '#eff6ff', color: '#2563eb', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <Lucide.Image size={18} aria-hidden="true" />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>Ảnh minh chứng xử lý</div>
+                  <div style={{ marginTop: '0.1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem', color: '#64748b' }}>
+                    {imageDocuments[selectedImageIndex]?.fileName || imageDocuments[selectedImageIndex]?.name || 'Ảnh minh chứng'}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+                {imageDocuments.length > 1 && [
+                  { dir: -1, icon: Lucide.ChevronLeft, label: 'Ảnh trước' },
+                  { dir: 1, icon: Lucide.ChevronRight, label: 'Ảnh tiếp' },
+                ].map(({ dir, icon: Icon, label }) => (
+                  <Button key={label} type="button" variant="ghost" size="sm" onClick={() => showImagePreview(dir)} aria-label={label}>
+                    <Icon size={17} />
+                  </Button>
                 ))}
-                <Button type="button" variant="ghost" size="sm" onClick={closeImagePreview} aria-label="Đóng" style={{ color: '#cbd5e1' }}><Lucide.X size={16} /></Button>
+                <Button type="button" variant="ghost" size="sm" onClick={closeImagePreview} aria-label="Đóng">
+                  <Lucide.X size={18} />
+                </Button>
               </div>
             </div>
-            <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '1rem', backgroundColor: '#020617' }}>
-              <img src={selectedImage} alt="Xem trước tài liệu hoàn thành" style={{ maxHeight: '70vh', maxWidth: '100%', objectFit: 'contain' }} />
+
+            <div style={{ padding: '1rem', backgroundColor: '#f8fafc' }}>
+              <div style={{ display: 'flex', height: 'min(72dvh, 720px)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: '0.9rem', border: '1px solid #e2e8f0', backgroundColor: '#fff' }}>
+                <img src={selectedImage} alt="Ảnh minh chứng xử lý" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain', display: 'block' }} />
+              </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {/* ── Modals ───────────────────────────────────────────────────────── */}
-      <ConfirmationModal
-        open={resolutionPreviewOpen}
-        title="Chi tiết kết quả xử lý"
-        message="Thông tin resolution hiện có"
-        confirmLabel="Đóng"
-        cancelLabel="Đóng"
-        onConfirm={() => setResolutionPreviewOpen(false)}
-        onCancel={() => setResolutionPreviewOpen(false)}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', fontSize: '0.875rem', color: '#374151' }}>
-          {[
-            { label: 'Tóm tắt kết quả',           value: existingResolutions[0]?.resolutionSummary || resolutionForm.resolutionSummary },
-            { label: 'Hành động đã thực hiện',    value: existingResolutions[0]?.actionTaken       || resolutionForm.actionTaken       },
-            { label: 'Ghi chú kết quả',           value: existingResolutions[0]?.resultNote        || resolutionForm.resultNote        },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', marginBottom: '0.25rem' }}>{label}</div>
-              <div style={{ fontWeight: 600, color: '#0f172a' }}>{value || '—'}</div>
-            </div>
-          ))}
-          {resolutionImages.length > 0 && (
-            <div>
-              <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', marginBottom: '0.5rem' }}>Hình ảnh</div>
-              <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
-                {resolutionImages.map((img, idx) => <img key={`${img.fileName}-${idx}`} src={img.previewUrl} alt={img.fileName} style={{ height: '5.5rem', width: '100%', borderRadius: '0.625rem', objectFit: 'cover' }} />)}
+      {/* ── Resolution preview ───────────────────────────────────────────── */}
+      {resolutionPreviewOpen && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Xem trước kết quả xử lý"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100dvh',
+            zIndex: 2147483647,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(15,23,42,0.22)',
+            backdropFilter: 'blur(7px)',
+            WebkitBackdropFilter: 'blur(7px)',
+            overflow: 'hidden',
+            padding: '1.25rem',
+          }}
+          onClick={() => setResolutionPreviewOpen(false)}
+        >
+          <div
+            style={{
+              width: 'min(680px, 94vw)',
+              maxHeight: '84vh',
+              overflow: 'hidden',
+              borderRadius: '1.25rem',
+              border: '1px solid rgba(203,213,225,0.9)',
+              backgroundColor: '#fff',
+              boxShadow: '0 24px 70px rgba(15,23,42,0.24)',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '1rem 1.125rem', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                <div style={{ width: '2.35rem', height: '2.35rem', borderRadius: '0.8rem', backgroundColor: '#eff6ff', color: '#2563eb', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <Lucide.ClipboardCheck size={18} aria-hidden="true" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Xem trước kết quả xử lý</h3>
+                  <p style={{ margin: '0.15rem 0 0', fontSize: '0.8rem', color: '#64748b' }}>Kiểm tra thông tin đã ghi nhận trước khi đóng cửa sổ.</p>
+                </div>
               </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setResolutionPreviewOpen(false)} aria-label="Đóng">
+                <Lucide.X size={18} />
+              </Button>
             </div>
-          )}
-        </div>
-      </ConfirmationModal>
+
+            <div style={{ maxHeight: '62vh', overflowY: 'auto', padding: '1rem 1.125rem', display: 'grid', gap: '0.75rem' }}>
+              {[
+                { label: 'Tóm tắt kết quả', value: existingResolutions[0]?.resolutionSummary || resolutionForm.resolutionSummary, icon: Lucide.FileText },
+                { label: 'Hành động đã thực hiện', value: existingResolutions[0]?.actionTaken || resolutionForm.actionTaken, icon: Lucide.CheckCircle2 },
+                { label: 'Ghi chú kết quả', value: existingResolutions[0]?.resultNote || resolutionForm.resultNote, icon: Lucide.MessageSquareText },
+              ].map(({ label, value, icon: Icon }) => (
+                <div key={label} style={{ display: 'flex', gap: '0.75rem', padding: '0.9rem 1rem', borderRadius: '0.9rem', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
+                  <div style={{ width: '2rem', height: '2rem', borderRadius: '0.7rem', backgroundColor: '#fff', color: '#2563eb', display: 'grid', placeItems: 'center', flexShrink: 0, border: '1px solid #e2e8f0' }}>
+                    <Icon size={15} aria-hidden="true" />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>{label}</div>
+                    <div style={{ marginTop: '0.25rem', fontSize: '0.9rem', fontWeight: 650, lineHeight: 1.55, color: '#0f172a', whiteSpace: 'pre-wrap' }}>{value || 'Chưa có thông tin'}</div>
+                  </div>
+                </div>
+              ))}
+
+              {resolutionImages.length > 0 && (
+                <div style={{ paddingTop: '0.25rem' }}>
+                  <div style={{ marginBottom: '0.5rem', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>Hình ảnh</div>
+                  <div style={{ display: 'grid', gap: '0.6rem', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                    {resolutionImages.map((img, idx) => (
+                      <img key={`${img.fileName}-${idx}`} src={img.previewUrl} alt={img.fileName} style={{ height: '6rem', width: '100%', borderRadius: '0.75rem', border: '1px solid #e2e8f0', objectFit: 'cover' }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0.85rem 1.125rem 1rem', borderTop: '1px solid #e2e8f0', backgroundColor: '#fff' }}>
+              <Button type="button" onClick={() => setResolutionPreviewOpen(false)} style={{ minWidth: '6.5rem' }}>Đóng</Button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       <ConfirmationModal
         open={confirmingResolutionSubmit}

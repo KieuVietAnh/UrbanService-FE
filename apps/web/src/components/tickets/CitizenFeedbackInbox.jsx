@@ -351,7 +351,13 @@ export default function CitizenFeedbackInbox() {
     if (!isOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
+    const dashboardScrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+    const previousDashboardOverflow = dashboardScrollContainer?.style.overflowY || '';
+
     document.body.style.overflow = 'hidden';
+    if (dashboardScrollContainer) {
+      dashboardScrollContainer.style.overflowY = 'hidden';
+    }
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
@@ -363,6 +369,9 @@ export default function CitizenFeedbackInbox() {
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      if (dashboardScrollContainer) {
+        dashboardScrollContainer.style.overflowY = previousDashboardOverflow;
+      }
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen]);
@@ -471,7 +480,7 @@ export default function CitizenFeedbackInbox() {
     <div className="fixed inset-x-0 bottom-0 top-[72px] z-[2100]" role="dialog" aria-modal="true" aria-labelledby="citizen-feedback-inbox-title">
       <button
         type="button"
-        className="absolute inset-0 bg-slate-950/55"
+        className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]"
         aria-label="Đóng hộp trao đổi phản ánh"
         onClick={() => setIsOpen(false)}
       />
