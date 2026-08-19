@@ -2,6 +2,35 @@ import { useState, useEffect, useRef } from 'react';
 import { ticketApi } from '../services/api/ticketApi';
 import { signalrService } from '../services/socket/signalrService';
 
+const resolveRole = (r) => {
+  if (!r) return undefined;
+  const raw = String(r || '').toLowerCase();
+  if (raw.includes('service-user') || raw.includes('serviceuser') || raw.includes('citizen') || raw.includes('user')) return 'service-user';
+  if (raw.includes('service-provider') || raw.includes('serviceprovider') || raw.includes('operator')) return 'service-provider';
+  if (raw.includes('system-staff') || raw.includes('systemstaff') || raw.includes('staff')) return 'system-staff';
+  if (raw.includes('administrator') || raw.includes('admin')) return 'administrator';
+  if (raw.includes('interaction-manager') || raw.includes('interactionmanager')) return 'interaction-manager';
+  return undefined;
+};
+
+const getLatestResolution = (resolutions) => {
+  if (!Array.isArray(resolutions) || resolutions.length === 0) return null;
+  return [...resolutions]
+    .filter(Boolean)
+    .sort((a, b) => new Date(b?.resolvedAt || 0).getTime() - new Date(a?.resolvedAt || 0).getTime())[0] || null;
+};
+
+const attachLatestResolution = (ticketData, resolutions) => {
+  if (!ticketData) return ticketData;
+  const safeResolutions = Array.isArray(resolutions) ? resolutions.filter(Boolean) : [];
+  const latestResolution = getLatestResolution(safeResolutions);
+  return {
+    ...ticketData,
+    resolutions: safeResolutions,
+    resolution: ticketData.resolution || latestResolution || null,
+  };
+};
+
 const getRequestStatus = (error) => {
   const rawStatus = error?.status ?? error?.response?.status;
   const status = Number(rawStatus);
@@ -53,22 +82,14 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
       setErrorFeedbackId(null);
       setLoading(true);
       try {
-        const resolveRole = (r) => {
-          if (!r) return undefined;
-          const raw = String(r || '').toLowerCase();
-          if (raw.includes('service-user') || raw.includes('serviceuser') || raw.includes('citizen') || raw.includes('user')) return 'service-user';
-          if (raw.includes('service-provider') || raw.includes('serviceprovider') || raw.includes('operator')) return 'service-provider';
-          if (raw.includes('system-staff') || raw.includes('systemstaff') || raw.includes('staff')) return 'system-staff';
-          if (raw.includes('administrator') || raw.includes('admin')) return 'administrator';
-          if (raw.includes('interaction-manager') || raw.includes('interactionmanager')) return 'interaction-manager';
-          return undefined;
-        };
-
         const role = resolveRole(user?.role);
         const resTicket = detailFetcher
           ? await detailFetcher(feedbackId)
           : await ticketApi.getTicketById(feedbackId, { role });
-        const ticketData = resTicket;
+        const resolutions = role === 'service-user'
+          ? await ticketApi.getResolutions(feedbackId, { role })
+          : [];
+        const ticketData = attachLatestResolution(resTicket, resolutions);
         if (!ticketData) throw new Error('Empty ticket data received');
         if (!active) return;
 
@@ -176,22 +197,14 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
         setErrorFeedbackId(null);
         setLoading(true);
         try {
-          const resolveRole = (r) => {
-            if (!r) return undefined;
-            const raw = String(r || '').toLowerCase();
-            if (raw.includes('service-user') || raw.includes('serviceuser') || raw.includes('citizen') || raw.includes('user')) return 'service-user';
-            if (raw.includes('service-provider') || raw.includes('serviceprovider') || raw.includes('operator')) return 'service-provider';
-            if (raw.includes('system-staff') || raw.includes('systemstaff') || raw.includes('staff')) return 'system-staff';
-            if (raw.includes('administrator') || raw.includes('admin')) return 'administrator';
-            if (raw.includes('interaction-manager') || raw.includes('interactionmanager')) return 'interaction-manager';
-            return undefined;
-          };
-
           const role = resolveRole(user?.role);
           const resTicket = detailFetcher
             ? await detailFetcher(feedbackId)
             : await ticketApi.getTicketById(feedbackId, { role });
-          const ticketData = resTicket;
+          const resolutions = role === 'service-user'
+            ? await ticketApi.getResolutions(feedbackId, { role })
+            : [];
+          const ticketData = attachLatestResolution(resTicket, resolutions);
           if (!ticketData) throw new Error('Empty ticket data received');
           setTicket(ticketData);
           setComments(Array.isArray(ticketData.comments) ? ticketData.comments.filter(Boolean) : []);

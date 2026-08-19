@@ -286,6 +286,12 @@ export const ticketApi = {
     });
   },
 
+  async getResolutions(feedbackId, options = {}) {
+    const response = await axiosClient.get(`${getTicketPath(feedbackId, options.role)}/resolutions`);
+    const payload = response?.data ?? response?.items ?? response?.result ?? response;
+    return Array.isArray(payload) ? payload.filter(Boolean) : [];
+  },
+
   async getHistory(feedbackId, options = {}) {
     const ticket = await this.getTicketById(feedbackId, options);
     return ticket?.statusHistories || [];
