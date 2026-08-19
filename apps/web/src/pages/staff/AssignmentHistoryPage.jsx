@@ -51,41 +51,214 @@ const getStatusLabel = (status = '') => {
   return labels[status] || status || '—';
 };
 
+
+const normalizeList = (value) => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.result)) return value.result;
+  if (Array.isArray(value?.providerReports)) return value.providerReports;
+  return [];
+};
+
+const getProviderName = (report = {}) => {
+  const provider =
+    report?.provider ||
+    report?.operator ||
+    report?.assignedOperator ||
+    {};
+
+  return (
+    report?.providerName ||
+    report?.operatorName ||
+    provider?.operatorName ||
+    provider?.providerName ||
+    provider?.name ||
+    'Chưa xác định đơn vị'
+  );
+};
+
+const getCoordinatorName = (report = {}) => {
+  const coordinator =
+    report?.coordinator ||
+    report?.contact ||
+    {};
+
+  return (
+    report?.coordinatorName ||
+    report?.assignedCoordinatorName ||
+    coordinator?.name ||
+    coordinator?.contactName ||
+    (report?.coordinatorId
+      ? `Điều phối viên #${report.coordinatorId}`
+      : 'Chưa xác định điều phối viên')
+  );
+};
+
+const getReporterName = (report = {}) => (
+  report?.reportedByUserName ||
+  report?.reportedByName ||
+  report?.createdByUserName ||
+  report?.assignedByUserName ||
+  'Nhân viên tiếp nhận'
+);
+
+const getReportAssignedAt = (report = {}) => (
+  report?.assignedAt ||
+  report?.assignedDate ||
+  report?.reportedAt ||
+  report?.createdAt ||
+  report?.updatedAt ||
+  null
+);
+
+const getReportNote = (report = {}) => (
+  report?.reportNote ||
+  report?.note ||
+  report?.description ||
+  'Phản ánh được chuyển tới đơn vị/điều phối viên xử lý.'
+);
+
 export const AssignmentHistoryPage = () => {
   const { feedbackId } = useParams();
   const navigate = useNavigate();
 
   const [feedback, setFeedback] = useState(null);
+  const [providerReports, setProviderReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
   const hasFeedbackId = Boolean(feedbackId);
 
   useEffect(() => {
-    const loadFeedback = async () => {
+    let active = true;
+
+    const loadData = async () => {
       try {
         setLoading(true);
         setError('');
-        const result = await managementFeedbackApi.getFeedbackById(feedbackId);
-        setFeedback(result);
+
+        const [feedbackResult, providerReportsResult] = await Promise.all([
+          managementFeedbackApi.getFeedbackById(feedbackId),
+          managementFeedbackApi.getProviderReports(feedbackId),
+        ]);
+
+        if (!active) return;
+
+        setFeedback(feedbackResult || null);
+
+        const reports = normalizeList(providerReportsResult)
+          .filter(Boolean)
+          .sort((a, b) => {
+            const aTime = new Date(getReportAssignedAt(a) || 0).getTime();
+            const bTime = new Date(getReportAssignedAt(b) || 0).getTime();
+            return aTime - bTime;
+          });
+
+        setProviderReports(reports);
       } catch (err) {
-        console.error('Failed to load feedback for assignment history', err);
-        setError(err?.message || 'Không thể tải lịch sử phân công.');
+        console.error('Failed to load assignment history', err);
+
+        if (active) {
+          setError(
+            err?.message ||
+            'Không thể tải lịch sử phân công.'
+          );
+          setProviderReports([]);
+        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
     if (hasFeedbackId) {
-      loadFeedback();
+      loadData();
     } else {
       setLoading(false);
     }
+
+    return () => {
+      active = false;
+    };
   }, [feedbackId, hasFeedbackId]);
 
   const assignmentEvents = useMemo(() => {
     if (!hasFeedbackId) return [];
 
+    /*
+     * Nguồn chính: feedback_provider_reports.
+     * Đây cũng là dữ liệu mà trang /staff/provider-reports/:id đang dùng,
+     * nên lịch sử phân công sẽ đồng bộ với báo cáo xử lý thực tế.
+     */
+    if (providerReports.length > 0) {
+      return providerReports.map((report, index) => {
+        const previousReport = index > 0
+          ? providerReports[index - 1]
+          : null;
+
+        const currentCoordinator = getCoordinatorName(report);
+        const previousCoordinator = previousReport
+          ? getCoordinatorName(previousReport)
+          : '—';
+
+        const providerName = getProviderName(report);
+        const providerReportId =
+          report?.providerReportId ||
+          report?.id ||
+          null;
+
+        const isFirst = index === 0;
+
+        return {
+          id:
+            providerReportId ||
+            `${feedbackId}-provider-report-${index}`,
+
+          type:
+            isFirst
+              ? 'assignment'
+              : 'reassignment',
+
+          title:
+            isFirst
+              ? `Phân công xử lý cho ${providerName}`
+              : `Chuyển giao xử lý cho ${providerName}`,
+
+          assignedBy:
+            getReporterName(report),
+
+          assignedTo:
+            currentCoordinator,
+
+          assignmentDate:
+            getReportAssignedAt(report),
+
+          previousAssignee:
+            previousCoordinator,
+
+          currentAssignee:
+            currentCoordinator,
+
+          providerName,
+          providerReportId,
+
+          reportStatus:
+            report?.reportStatus ||
+            report?.status ||
+            '',
+
+          note:
+            getReportNote(report),
+        };
+      });
+    }
+
+    /*
+     * Fallback: nếu backend chưa có provider report,
+     * vẫn hỗ trợ assignmentHistory cũ nếu detail API trả về.
+     */
     const sourceList = Array.isArray(feedback?.assignmentHistory)
       ? feedback.assignmentHistory
       : Array.isArray(feedback?.assignmentHistories)
@@ -93,17 +266,78 @@ export const AssignmentHistoryPage = () => {
         : [];
 
     return sourceList.map((entry, index) => ({
-      id: entry?.id || entry?.historyId || `${feedbackId}-${index}`,
-      type: normalizeEventType(entry),
-      title: entry?.title || entry?.note || 'Cập nhật phân công',
-      assignedBy: entry?.assignedBy || entry?.assignedByName || entry?.changedByUserName || 'Hệ thống',
-      assignedTo: entry?.assignedTo || entry?.assignedToName || entry?.operatorName || entry?.currentAssignee || feedback?.assignment?.operatorName || 'Chưa phân công',
-      assignmentDate: entry?.assignmentDate || entry?.changedAt || entry?.assignedAt || feedback?.assignment?.assignedAt || feedback?.updatedAt,
-      previousAssignee: entry?.previousAssignee || entry?.previousOperatorName || '—',
-      currentAssignee: entry?.currentAssignee || entry?.assignedTo || entry?.assignedToName || entry?.operatorName || feedback?.assignment?.operatorName || 'Chưa phân công',
-      note: entry?.note || entry?.description || entry?.details || 'Không có ghi chú bổ sung.',
+      id:
+        entry?.id ||
+        entry?.historyId ||
+        `${feedbackId}-legacy-${index}`,
+
+      type:
+        normalizeEventType(entry),
+
+      title:
+        entry?.title ||
+        entry?.note ||
+        'Cập nhật phân công',
+
+      assignedBy:
+        entry?.assignedBy ||
+        entry?.assignedByName ||
+        entry?.changedByUserName ||
+        'Hệ thống',
+
+      assignedTo:
+        entry?.assignedTo ||
+        entry?.assignedToName ||
+        entry?.operatorName ||
+        entry?.currentAssignee ||
+        feedback?.assignment?.operatorName ||
+        'Chưa phân công',
+
+      assignmentDate:
+        entry?.assignmentDate ||
+        entry?.changedAt ||
+        entry?.assignedAt ||
+        feedback?.assignment?.assignedAt ||
+        feedback?.updatedAt,
+
+      previousAssignee:
+        entry?.previousAssignee ||
+        entry?.previousOperatorName ||
+        '—',
+
+      currentAssignee:
+        entry?.currentAssignee ||
+        entry?.assignedTo ||
+        entry?.assignedToName ||
+        entry?.operatorName ||
+        feedback?.assignment?.operatorName ||
+        'Chưa phân công',
+
+      providerName:
+        entry?.providerName ||
+        entry?.operatorName ||
+        '',
+
+      providerReportId:
+        entry?.providerReportId ||
+        null,
+
+      reportStatus:
+        entry?.reportStatus ||
+        '',
+
+      note:
+        entry?.note ||
+        entry?.description ||
+        entry?.details ||
+        'Không có ghi chú bổ sung.',
     }));
-  }, [feedback, feedbackId, hasFeedbackId]);
+  }, [
+    feedback,
+    feedbackId,
+    hasFeedbackId,
+    providerReports,
+  ]);
 
   const visibleEvents = useMemo(() => {
     if (activeFilter === 'all') return assignmentEvents;
@@ -224,23 +458,62 @@ export const AssignmentHistoryPage = () => {
                           <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">{index + 1}. {typeLabel}</div>
                           <h3 className="mt-1 text-base font-bold text-slate-900">{event.title}</h3>
                         </div>
-                        <time className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
-                          {formatDate(event.assignmentDate)}
-                        </time>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <time className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
+                            {formatDate(event.assignmentDate)}
+                          </time>
+
+                          {event.providerReportId ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                navigate(
+                                  `/staff/provider-reports/${event.providerReportId}`,
+                                  {
+                                    state: {
+                                      feedbackId,
+                                    },
+                                  }
+                                )
+                              }
+                              className="shrink-0"
+                            >
+                              <Lucide.ExternalLink size={13} />
+                              Mở báo cáo
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
 
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="mt-4 grid gap-3 lg:grid-cols-3">
                         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người phân công</div>
                           <div className="mt-1 font-semibold text-slate-700">{event.assignedBy}</div>
-                          <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Được phân công cho</div>
-                          <div className="mt-1 font-semibold text-slate-700">{event.assignedTo}</div>
+
+                          <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Đơn vị xử lý</div>
+                          <div className="mt-1 font-semibold text-slate-700">{event.providerName || '—'}</div>
                         </div>
+
                         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                           <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người phụ trách cũ</div>
                           <div className="mt-1 font-semibold text-slate-700">{event.previousAssignee}</div>
+
                           <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người phụ trách hiện tại</div>
                           <div className="mt-1 font-semibold text-slate-700">{event.currentAssignee}</div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Mã báo cáo xử lý</div>
+                          <div className="mt-1 font-mono font-semibold text-blue-700">
+                            {event.providerReportId || '—'}
+                          </div>
+
+                          <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Trạng thái báo cáo</div>
+                          <div className="mt-1 font-semibold text-slate-700">
+                            {event.reportStatus || '—'}
+                          </div>
                         </div>
                       </div>
 

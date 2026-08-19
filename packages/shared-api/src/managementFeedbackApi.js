@@ -774,6 +774,18 @@ export const managementFeedbackApi = {
     return response;
   },
 
+  async clearProviderReportCompletionDocuments(providerReportId) {
+  const normalizedId = Number(providerReportId);
+
+  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+    throw new Error('providerReportId không hợp lệ.');
+  }
+
+  return axiosClient.delete(
+    `/api/management/provider-reports/${normalizedId}/completion-documents`
+  );
+},
+
   // Verify feedback
   async verifyFeedback(feedbackId, verifyData = {}) {
     const response = await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`, verifyData);

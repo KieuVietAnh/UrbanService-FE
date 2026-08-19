@@ -463,6 +463,17 @@ export const InteractionApprovalDetailPage = () => {
     longitude: feedback?.longitude,
   });
 
+  useEffect(() => {
+    if (!confirmingAction || typeof document === 'undefined') return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [confirmingAction]);
+
   const refreshSlaData = useCallback(async () => {
     if (!feedbackId) return;
 
@@ -876,30 +887,15 @@ export const InteractionApprovalDetailPage = () => {
 
   try {
     if (decision === 'approve') {
-      /*
-       * 1. Manager duyệt kết quả
-       */
-      await managementFeedbackApi.approveFeedback(
-        feedbackId,
-        note
-      );
+  await managementFeedbackApi.approveFeedback(
+    feedbackId,
+    note
+  );
 
-      /*
-       * 2. Chỉ khi DUYỆT mới Complete SLA
-       */
-      await slaApi.completeFeedbackSla(
-        feedbackId,
-        {
-          Note:
-            String(note || '').trim() ||
-            'Manager đã duyệt kết quả xử lý.'
-        }
-      );
-
-      setMessage({
-        type: 'success',
-        text: 'Đã duyệt kết quả xử lý và hoàn thành SLA.'
-      });
+  setMessage({
+    type: 'success',
+    text: 'Đã duyệt kết quả xử lý và hoàn thành SLA.'
+  });
     } else {
       /*
        * Yêu cầu làm lại:
@@ -1293,40 +1289,6 @@ export const InteractionApprovalDetailPage = () => {
             </ol>
           </section>
 
-          {isAwaitingApproval ? (
-            <section className="admin-panel overflow-hidden xl:sticky xl:top-6">
-              <ManagerSectionHeader
-                title="Quyết định duyệt"
-                description="Duyệt hoặc trả lại hồ sơ sau khi kiểm tra kết quả và bằng chứng."
-                icon={Lucide.Gavel}
-              />
-              <form className="space-y-4 p-5 sm:p-6" onSubmit={(event) => event.preventDefault()}>
-                <fieldset>
-                  <legend className="sr-only">Ghi chú phê duyệt</legend>
-                  <label htmlFor="approval-note" className="text-sm font-semibold text-slate-700 dark:text-slate-200">Ghi chú quyết định</label>
-                  <textarea
-                    id="approval-note"
-                    rows="4"
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder="Nội dung cần lưu lại cùng quyết định..."
-                    className="textarea textarea-bordered mt-2 w-full rounded-2xl bg-white text-sm dark:bg-slate-900"
-                  />
-                </fieldset>
-
-                <footer className="grid gap-2">
-                  <button type="button" onClick={() => setConfirmingAction('approve')} disabled={submitting} className="btn admin-primary-action rounded-2xl">
-                    <Lucide.CheckCircle2 size={17} aria-hidden="true" />
-                    Duyệt kết quả
-                  </button>
-                  <button type="button" onClick={() => setConfirmingAction('rework')} disabled={submitting} className="btn admin-secondary-action rounded-2xl text-amber-700">
-                    <Lucide.RotateCcw size={17} aria-hidden="true" />
-                    Yêu cầu làm lại
-                  </button>
-                </footer>
-              </form>
-            </section>
-          ) : null}
         </aside>
       </section>
 
@@ -1387,74 +1349,98 @@ export const InteractionApprovalDetailPage = () => {
       ) : null}
 
       {hasImageComparison || documents.length > 0 ? (
-        <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]" aria-label="Bằng chứng xử lý">
-          {hasImageComparison ? (
-            <article className="admin-panel overflow-hidden">
-              <ManagerSectionHeader
-                title="Đối chiếu hình ảnh"
-                description="So sánh hình ảnh ban đầu và bằng chứng sau xử lý."
-                icon={Lucide.Images}
-              />
-              <section className="grid gap-5 p-5 md:grid-cols-2 sm:p-6">
-                <figure>
-                  <figcaption className="text-xs font-semibold text-slate-600 dark:text-slate-300">Trước xử lý</figcaption>
+        <section className="admin-panel overflow-hidden" aria-labelledby="processing-evidence-title">
+          <ManagerSectionHeader
+            id="processing-evidence-title"
+            title="Bằng chứng hoàn thành"
+            description="Đối chiếu tình trạng trước và sau xử lý, đồng thời kiểm tra toàn bộ tài liệu đơn vị xử lý đã gửi."
+            icon={Lucide.Files}
+          />
+
+          <section className="grid items-stretch gap-5 p-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] sm:p-6">
+            <article className="flex min-h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+              <header className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <span className="admin-mini-icon shrink-0" aria-hidden="true"><Lucide.Images size={17} /></span>
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Đối chiếu hình ảnh</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">So sánh hình ảnh người dân gửi và hình ảnh hoàn thành sau xử lý.</p>
+                  </div>
+                </div>
+              </header>
+
+              <section className="grid flex-1 gap-5 p-5 md:grid-cols-2">
+                <figure className="min-w-0">
+                  <figcaption className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">Trước xử lý</figcaption>
                   <section className="mt-3 grid gap-3">
                     {beforeImages.length > 0 ? beforeImages.map((image, index) => (
-                      <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
-                        <img src={image} alt={`Tình trạng trước xử lý ${index + 1}`} className="h-52 w-full object-cover" />
+                      <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+                        <img src={image} alt={`Tình trạng trước xử lý ${index + 1}`} className="h-56 w-full object-cover transition duration-200 group-hover:scale-[1.02]" />
                       </a>
-                    )) : <p className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">Không có ảnh ban đầu.</p>}
+                    )) : (
+                      <p className="flex h-56 items-center justify-center rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">Không có ảnh ban đầu.</p>
+                    )}
                   </section>
                 </figure>
 
-                <figure>
-                  <figcaption className="text-xs font-semibold text-slate-600 dark:text-slate-300">Sau xử lý</figcaption>
+                <figure className="min-w-0">
+                  <figcaption className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-400">Sau xử lý</figcaption>
                   <section className="mt-3 grid gap-3">
                     {afterImages.length > 0 ? afterImages.map((image, index) => (
-                      <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-emerald-200 dark:border-emerald-800">
-                        <img src={image} alt={`Kết quả sau xử lý ${index + 1}`} className="h-52 w-full object-cover" />
+                      <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20">
+                        <img src={image} alt={`Bằng chứng sau xử lý ${index + 1}`} className="h-56 w-full object-cover transition duration-200 group-hover:scale-[1.02]" />
                       </a>
-                    )) : <p className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">Chưa có ảnh hoàn thành.</p>}
+                    )) : (
+                      <p className="flex h-56 items-center justify-center rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">Chưa có ảnh hoàn thành.</p>
+                    )}
                   </section>
                 </figure>
               </section>
             </article>
-          ) : null}
 
-          {documents.length > 0 ? (
-            <article className="admin-panel overflow-hidden">
-              <ManagerSectionHeader
-                title="Tài liệu hoàn thành"
-                description={`${documents.length} tài liệu do đơn vị xử lý gửi.`}
-                icon={Lucide.Paperclip}
-              />
-              <ul className="divide-y divide-slate-100 p-5 sm:p-6 dark:divide-slate-800">
-                {documents.map((document, index) => (
-                  <li key={document.completionDocumentId || document.fileUrl || index} className="py-4 first:pt-0 last:pb-0">
-                    <article>
-                      <header className="flex items-start gap-3">
-                        <span className="admin-mini-icon shrink-0" aria-hidden="true">
-                          {isImageDocument(document) ? <Lucide.Image size={17} /> : <Lucide.FileText size={17} />}
-                        </span>
-                        <span className="min-w-0">
-                          <h3 className="break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{getFileLabel(document, index)}</h3>
-                          {document.description ? <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{document.description}</p> : null}
-                        </span>
-                      </header>
-                      {document.fileUrl ? (
-                        <footer className="mt-3 pl-11">
-                          <a href={document.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline dark:text-blue-300">
-                            <Lucide.ExternalLink size={14} aria-hidden="true" />
-                            Mở tài liệu
-                          </a>
-                        </footer>
-                      ) : null}
-                    </article>
-                  </li>
-                ))}
-              </ul>
+            <article className="flex min-h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+              <header className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <span className="admin-mini-icon shrink-0" aria-hidden="true"><Lucide.Paperclip size={17} /></span>
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-950 dark:text-white">Tài liệu hoàn thành</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{documents.length} tài liệu do đơn vị xử lý gửi.</p>
+                  </div>
+                </div>
+              </header>
+
+              <div className="flex-1 p-5">
+                {documents.length > 0 ? (
+                  <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {documents.map((document, index) => (
+                      <li key={document.completionDocumentId || document.fileUrl || index} className="py-4 first:pt-0 last:pb-0">
+                        <article className="rounded-xl bg-slate-50/70 p-3 dark:bg-slate-950/40">
+                          <header className="flex items-start gap-3">
+                            <span className="admin-mini-icon shrink-0" aria-hidden="true">
+                              {isImageDocument(document) ? <Lucide.Image size={17} /> : <Lucide.FileText size={17} />}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <h4 className="break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{getFileLabel(document, index)}</h4>
+                              {document.description ? <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{document.description}</p> : null}
+                            </span>
+                          </header>
+                          {document.fileUrl ? (
+                            <footer className="mt-3 pl-11">
+                              <a href={document.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline dark:text-blue-300">
+                                <Lucide.ExternalLink size={14} aria-hidden="true" /> Mở tài liệu
+                              </a>
+                            </footer>
+                          ) : null}
+                        </article>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">Chưa có tài liệu hoàn thành.</p>
+                )}
+              </div>
             </article>
-          ) : null}
+          </section>
         </section>
       ) : null}
 
@@ -1488,6 +1474,33 @@ export const InteractionApprovalDetailPage = () => {
             ))}
           </ol>
         </details>
+      ) : null}
+
+      {isAwaitingApproval ? (
+        <section className="sticky bottom-4 z-30" aria-label="Quyết định duyệt nhanh">
+          <div className="mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-blue-200 bg-white/95 p-3 shadow-[0_16px_45px_rgba(15,23,42,0.18)] backdrop-blur dark:border-blue-900/60 dark:bg-slate-900/95 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" aria-hidden="true">
+                <Lucide.Gavel size={18} />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-slate-950 dark:text-white">Quyết định duyệt</h2>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">Sau khi đối chiếu kết quả và bằng chứng, chọn duyệt hoặc yêu cầu đơn vị xử lý làm lại.</p>
+              </div>
+            </div>
+
+            <div className="grid shrink-0 gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => setConfirmingAction('rework')} disabled={submitting} className="btn admin-secondary-action rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50">
+                <Lucide.RotateCcw size={16} aria-hidden="true" />
+                Yêu cầu làm lại
+              </button>
+              <button type="button" onClick={() => setConfirmingAction('approve')} disabled={submitting} className="btn admin-primary-action rounded-xl">
+                <Lucide.CheckCircle2 size={16} aria-hidden="true" />
+                Duyệt kết quả
+              </button>
+            </div>
+          </div>
+        </section>
       ) : null}
 
       {slaModal && slaModalConfig && typeof document !== 'undefined'
@@ -1666,52 +1679,106 @@ export const InteractionApprovalDetailPage = () => {
         )
         : null}
 
-      {isAwaitingApproval && confirmingAction ? (
-        <dialog open className="modal modal-open bg-transparent" aria-labelledby="approval-dialog-title">
-          <form method="dialog" className="modal-box admin-panel max-w-lg p-6" onSubmit={(event) => event.preventDefault()}>
-            <header className="flex items-start gap-3">
-              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${confirmingAction === 'approve' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`} aria-hidden="true">
-                {confirmingAction === 'approve' ? <Lucide.BadgeCheck size={20} /> : <Lucide.RotateCcw size={20} />}
-              </span>
-              <span>
-                <h2 id="approval-dialog-title" className="text-lg font-semibold text-slate-950 dark:text-white">
-                  {confirmingAction === 'approve' ? 'Xác nhận duyệt kết quả' : 'Yêu cầu nhân viên làm lại'}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  {confirmingAction === 'approve'
-                    ? 'Sau khi duyệt, người dân có thể đánh giá kết quả và đóng phản ánh.'
-                    : 'Lý do sẽ được gửi lại để nhân viên bổ sung hoặc chỉnh sửa kết quả xử lý.'}
-                </p>
-              </span>
-            </header>
+      {isAwaitingApproval && confirmingAction && typeof document !== 'undefined'
+        ? createPortal(
+          <div className="fixed inset-0 z-[10030] flex items-center justify-center p-4 sm:p-6" role="presentation">
+            <button
+              type="button"
+              className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]"
+              aria-label="Đóng hộp thoại"
+              onClick={() => !submitting && setConfirmingAction(null)}
+            />
 
-            {confirmingAction === 'rework' ? (
-              <fieldset className="mt-5">
-                <legend className="sr-only">Lý do yêu cầu làm lại</legend>
-                <label htmlFor="rework-reason" className="text-sm font-semibold text-slate-700 dark:text-slate-200">Lý do làm lại <span className="text-rose-600">*</span></label>
-                <textarea
-                  id="rework-reason"
-                  rows="4"
-                  value={reworkReason}
-                  onChange={(event) => setReworkReason(event.target.value)}
-                  placeholder="Ví dụ: thiếu ảnh hoàn thành, mô tả kết quả chưa rõ..."
-                  className="textarea textarea-bordered mt-2 w-full rounded-2xl bg-white text-sm dark:bg-slate-900"
-                  required
-                />
-              </fieldset>
-            ) : null}
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="approval-dialog-title"
+              className="relative z-10 w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
+                <div className="flex items-start gap-3">
+                  <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${confirmingAction === 'approve' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}`} aria-hidden="true">
+                    {confirmingAction === 'approve' ? <Lucide.BadgeCheck size={20} /> : <Lucide.RotateCcw size={20} />}
+                  </span>
+                  <div>
+                    <h2 id="approval-dialog-title" className="text-lg font-semibold text-slate-950 dark:text-white">
+                      {confirmingAction === 'approve' ? 'Xác nhận duyệt kết quả' : 'Yêu cầu đơn vị xử lý làm lại'}
+                    </h2>
+                    <p className="mt-1.5 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                      {confirmingAction === 'approve'
+                        ? 'Xác nhận kết quả sau khi đã kiểm tra nội dung xử lý, hình ảnh và tài liệu hoàn thành.'
+                        : 'Nêu rõ nội dung cần bổ sung hoặc chỉnh sửa. Lý do này sẽ được gửi lại cho đơn vị xử lý.'}
+                    </p>
+                  </div>
+                </div>
 
-            <footer className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setConfirmingAction(null)} className="btn admin-secondary-action rounded-2xl" disabled={submitting}>Hủy</button>
-              <button type="button" onClick={() => handleDecision(confirmingAction)} className="btn admin-primary-action rounded-2xl" disabled={submitting}>
-                {submitting ? <span className="loading loading-spinner loading-sm" /> : null}
-                {confirmingAction === 'approve' ? 'Xác nhận duyệt' : 'Gửi yêu cầu làm lại'}
-              </button>
-            </footer>
-          </form>
-          <button type="button" className="modal-backdrop cursor-default" aria-label="Đóng hộp thoại" onClick={() => setConfirmingAction(null)} />
-        </dialog>
-      ) : null}
+                <button
+                  type="button"
+                  onClick={() => setConfirmingAction(null)}
+                  disabled={submitting}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  aria-label="Đóng"
+                >
+                  <Lucide.X size={18} />
+                </button>
+              </header>
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleDecision(confirmingAction);
+                }}
+              >
+                <div className="space-y-5 px-6 py-5">
+                  {confirmingAction === 'approve' ? (
+                    <label className="block">
+                      <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Ghi chú quyết định <span className="font-normal text-slate-400">(không bắt buộc)</span></span>
+                      <textarea
+                        rows="4"
+                        value={note}
+                        onChange={(event) => setNote(event.target.value)}
+                        placeholder="Nhập ghi chú kèm quyết định nếu cần..."
+                        className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-blue-900/40"
+                      />
+                    </label>
+                  ) : (
+                    <label className="block">
+                      <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Lý do làm lại <span className="text-rose-600">*</span></span>
+                      <textarea
+                        rows="4"
+                        value={reworkReason}
+                        onChange={(event) => setReworkReason(event.target.value)}
+                        placeholder="Ví dụ: thiếu ảnh hoàn thành, mô tả kết quả chưa rõ..."
+                        className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-amber-900/40"
+                        required
+                        autoFocus
+                      />
+                    </label>
+                  )}
+
+                  <div className={`flex items-start gap-3 rounded-2xl border p-4 ${confirmingAction === 'approve' ? 'border-blue-100 bg-blue-50/70 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200'}`}>
+                    {confirmingAction === 'approve' ? <Lucide.Info size={18} className="mt-0.5 shrink-0" /> : <Lucide.TriangleAlert size={18} className="mt-0.5 shrink-0" />}
+                    <p className="text-sm leading-6">
+                      {confirmingAction === 'approve'
+                        ? 'Sau khi duyệt, hồ sơ chuyển sang trạng thái đã duyệt và người dân có thể tiếp tục bước đánh giá/đóng phản ánh theo quy trình.'
+                        : 'SLA tiếp tục được theo dõi trong thời gian đơn vị xử lý bổ sung và gửi lại kết quả.'}
+                    </p>
+                  </div>
+                </div>
+
+                <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-950/30 sm:flex-row sm:justify-end">
+                  <button type="button" onClick={() => setConfirmingAction(null)} className="btn admin-secondary-action rounded-2xl" disabled={submitting}>Hủy</button>
+                  <button type="submit" className={`btn rounded-2xl text-white ${confirmingAction === 'approve' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-amber-600 hover:bg-amber-700'}`} disabled={submitting}>
+                    {submitting ? <span className="loading loading-spinner loading-sm" /> : null}
+                    {confirmingAction === 'approve' ? 'Xác nhận duyệt' : 'Gửi yêu cầu làm lại'}
+                  </button>
+                </footer>
+              </form>
+            </section>
+          </div>,
+          document.body
+        )
+        : null}
     </article>
   );
 };
