@@ -57,6 +57,100 @@ export const slaApi = {
     return unwrapApiData(response);
   },
 
+  async startFeedbackSla(feedbackId) {
+  const response = await axiosClient.post(
+    `/api/slas/feedback/${feedbackId}/start`
+  );
+  return unwrapApiData(response);
+},
+
+async getCurrentFeedbackSla(feedbackId) {
+  const response = await axiosClient.get(
+    `/api/slas/feedback/${feedbackId}`
+  );
+  return unwrapApiData(response);
+},
+
+async markResponded(
+  feedbackId,
+  note = null
+) {
+  const response =
+    await axiosClient.patch(
+      `/api/slas/feedback/${feedbackId}/responded`,
+      JSON.stringify(note),
+      {
+        headers: {
+          'Content-Type':
+            'application/json'
+        }
+      }
+    );
+
+  return unwrapApiData(response);
+},
+
+async pauseFeedbackSla(feedbackId, payload) {
+  const response = await axiosClient.post(
+    `/api/slas/feedback/${feedbackId}/pause`,
+    payload
+  );
+  return unwrapApiData(response);
+},
+
+async resumeFeedbackSla(feedbackId, payload) {
+  const response = await axiosClient.post(
+    `/api/slas/feedback/${feedbackId}/resume`,
+    payload
+  );
+  return unwrapApiData(response);
+},
+
+async completeFeedbackSla(feedbackId, payload) {
+  const response = await axiosClient.post(
+    `/api/slas/feedback/${feedbackId}/complete`,
+    payload
+  );
+  return unwrapApiData(response);
+},
+
+async recalculateFeedbackSla(feedbackId, payload) {
+  const response = await axiosClient.post(
+    `/api/slas/feedback/${feedbackId}/recalculate`,
+    payload
+  );
+  return unwrapApiData(response);
+},
+
+async cancelFeedbackSla(feedbackId, note = null) {
+  const response = await axiosClient.post(
+    `/api/slas/feedback/${feedbackId}/cancel`,
+    note
+  );
+  return unwrapApiData(response);
+},
+
+async checkSlaViolation(feedbackSlaId) {
+  const response = await axiosClient.post(
+    `/api/slas/${feedbackSlaId}/check`
+  );
+  return unwrapApiData(response);
+},
+
+async getFeedbackSlaStatus(feedbackId) {
+  const response = await axiosClient.get(
+    `/api/slas/feedback/${feedbackId}/status`
+  );
+  return unwrapApiData(response);
+},
+
+async getFeedbackSlaTimeline(feedbackId) {
+  const response = await axiosClient.get(
+    `/api/slas/feedback/${feedbackId}/timeline`
+  );
+  return unwrapApiData(response);
+},
+
   async getDashboardOverview() {
     const response = await axiosClient.get('/api/slas/dashboard/overview');
     return unwrapApiData(response);

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import * as signalR from '@microsoft/signalr';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
+import { slaApi } from '@urbanmind/shared-api';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import { ManagerEmptyState, ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
 import { getStatusLabel, managementTypes, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
@@ -77,6 +80,155 @@ const formatDateTime = (value) => {
   });
 };
 
+
+
+const formatSlaCountdown = (value) => {
+  const totalSeconds = Math.max(0, Math.floor(Number(value) || 0));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const hh = String(hours + (days * 24)).padStart(2, '0');
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+
+  return `${hh}:${mm}:${ss}`;
+};
+
+const formatPauseDuration = (pause) => {
+  const pausedAtMs = pause?.pausedAt
+    ? new Date(pause.pausedAt).getTime()
+    : NaN;
+
+  const resumedAtMs = pause?.resumedAt
+    ? new Date(pause.resumedAt).getTime()
+    : NaN;
+
+  if (!Number.isFinite(pausedAtMs)) {
+    return '—';
+  }
+
+  // Nếu chưa resume thì lịch sử hiện tại vẫn đang tạm dừng.
+  if (!Number.isFinite(resumedAtMs)) {
+    return 'Đang tạm dừng';
+  }
+
+  const totalSeconds = Math.max(
+    0,
+    Math.round((resumedAtMs - pausedAtMs) / 1000)
+  );
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts = [];
+
+  if (hours > 0) {
+    parts.push(`${hours} giờ`);
+  }
+
+  if (minutes > 0) {
+    parts.push(`${minutes} phút`);
+  }
+
+  if (seconds > 0 || parts.length === 0) {
+    parts.push(`${seconds} giây`);
+  }
+
+  return parts.join(' ');
+};
+
+const getSignalRAccessToken = () => {
+  if (typeof window === 'undefined') return '';
+
+  const storages = [window.localStorage, window.sessionStorage];
+  const directKeys = [
+    'accessToken',
+    'access_token',
+    'token',
+    'authToken',
+    'jwtToken',
+  ];
+
+  for (const storage of storages) {
+    for (const key of directKeys) {
+      const value = storage.getItem(key);
+      if (value) return value.replace(/^Bearer\s+/i, '').trim();
+    }
+
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (!key) continue;
+
+      const raw = storage.getItem(key);
+      if (!raw || (!raw.startsWith('{') && !raw.startsWith('['))) continue;
+
+      try {
+        const parsed = JSON.parse(raw);
+        const candidates = [
+          parsed?.accessToken,
+          parsed?.access_token,
+          parsed?.token,
+          parsed?.authToken,
+          parsed?.jwtToken,
+          parsed?.state?.accessToken,
+          parsed?.state?.access_token,
+          parsed?.state?.token,
+          parsed?.auth?.accessToken,
+          parsed?.auth?.token,
+          parsed?.user?.accessToken,
+          parsed?.user?.token,
+        ];
+
+        const token = candidates.find(Boolean);
+        if (token) return String(token).replace(/^Bearer\s+/i, '').trim();
+      } catch {
+        // Bỏ qua storage không phải JSON hợp lệ.
+      }
+    }
+  }
+
+  return '';
+};
+
+const getSlaHubUrl = () => {
+  const envBaseUrl = (
+    import.meta.env.VITE_API_BASE_URL ||
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_BACKEND_URL ||
+    ''
+  ).replace(/\/$/, '');
+
+  return envBaseUrl
+    ? `${envBaseUrl}/hubs/sla`
+    : '/hubs/sla';
+};
+
+const getSlaBadgeClass = (status) => {
+  const value = String(status || '').toLowerCase();
+  if (value.includes('breach')) return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (value.includes('met') || value.includes('completed')) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (value.includes('warning')) return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (value.includes('paused')) return 'border-slate-200 bg-slate-100 text-slate-700';
+  return 'border-blue-200 bg-blue-50 text-blue-700';
+};
+
+const getSlaStatusLabel = (status) => {
+  const value = String(status || '').trim().toLowerCase();
+
+  if (value === 'running') return 'Đang chạy';
+  if (value === 'paused') return 'Tạm dừng';
+  if (value === 'completed') return 'Đã hoàn thành';
+  if (value === 'cancelled' || value === 'canceled') return 'Đã hủy';
+  if (value === 'met') return 'Đạt SLA';
+  if (value === 'pending') return 'Đang theo dõi';
+  if (value === 'warning') return 'Sắp đến hạn';
+  if (value === 'breached') return 'Vi phạm SLA';
+
+  return status || 'Chưa xác định';
+};
 
 const getHeaderStatusTone = (status) => {
   if ([
@@ -280,12 +432,30 @@ export const InteractionApprovalDetailPage = () => {
   const [providerReport, setProviderReport] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [resolutions, setResolutions] = useState([]);
+  const [slaDetail, setSlaDetail] = useState(null);
+  const [slaStatus, setSlaStatus] = useState(null);
+  const [slaClock, setSlaClock] = useState({
+    responseSeconds: 0,
+    resolutionSeconds: 0,
+    syncedAt: 0,
+    status: '',
+  });
+  const [clockTick, setClockTick] = useState(() => Date.now());
+  const [slaTimeline, setSlaTimeline] = useState([]);
+  const [slaError, setSlaError] = useState('');
+  const [slaActionLoading, setSlaActionLoading] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [note, setNote] = useState('');
   const [reworkReason, setReworkReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState(null);
+  const [slaModal, setSlaModal] = useState(null);
+  const [pauseReasonOpen, setPauseReasonOpen] = useState(false);
+  const [slaModalForm, setSlaModalForm] = useState({
+    reasonCode: 'WaitingCitizen',
+    note: '',
+  });
   const resolvedLocationText = useResolvedLocationText({
     locationText: feedback?.locationText,
     areaName: feedback?.areaName || feedback?.wardName,
@@ -293,14 +463,72 @@ export const InteractionApprovalDetailPage = () => {
     longitude: feedback?.longitude,
   });
 
+  const refreshSlaData = useCallback(async () => {
+    if (!feedbackId) return;
+
+    const [
+      slaDetailResult,
+      slaStatusResult,
+      slaTimelineResult,
+    ] = await Promise.allSettled([
+      slaApi.getCurrentFeedbackSla(feedbackId),
+      slaApi.getFeedbackSlaStatus(feedbackId),
+      slaApi.getFeedbackSlaTimeline(feedbackId),
+    ]);
+
+    const nextDetail =
+      slaDetailResult.status === 'fulfilled'
+        ? slaDetailResult.value
+        : null;
+
+    const nextStatus =
+      slaStatusResult.status === 'fulfilled'
+        ? slaStatusResult.value
+        : null;
+
+    const nextTimeline =
+      slaTimelineResult.status === 'fulfilled' &&
+      Array.isArray(slaTimelineResult.value)
+        ? slaTimelineResult.value
+        : [];
+
+    if (slaDetailResult.status === 'fulfilled') {
+      setSlaDetail(nextDetail);
+    }
+
+    if (slaStatusResult.status === 'fulfilled') {
+      setSlaStatus(nextStatus);
+    }
+
+    if (slaTimelineResult.status === 'fulfilled') {
+      setSlaTimeline(nextTimeline);
+    }
+
+    setSlaError(
+      slaDetailResult.status === 'rejected' &&
+      slaStatusResult.status === 'rejected'
+        ? 'Phản ánh này chưa có SLA hoặc không thể tải dữ liệu SLA.'
+        : ''
+    );
+  }, [feedbackId]);
+
   const loadFeedback = useCallback(async () => {
     setLoading(true);
     try {
       const detail = await managementFeedbackApi.getFeedbackById(feedbackId);
       setFeedback(detail);
-      const [reportResult, resolutionsResult] = await Promise.allSettled([
+      const [
+        reportResult,
+        resolutionsResult,
+        slaDetailResult,
+        slaStatusResult,
+        slaTimelineResult,
+      ] = await Promise.allSettled([
         managementFeedbackApi.getProviderReports(feedbackId),
         managementFeedbackApi.getResolutions(feedbackId),
+        slaApi.getCurrentFeedbackSla(feedbackId),
+        slaApi.getFeedbackSlaStatus(feedbackId),
+        slaApi.getFeedbackSlaTimeline(feedbackId),
       ]);
 
       const reportList = reportResult.status === 'fulfilled'
@@ -309,6 +537,19 @@ export const InteractionApprovalDetailPage = () => {
       const resolutionList = resolutionsResult.status === 'fulfilled'
         ? normalizeResolutions(resolutionsResult.value)
         : [];
+
+      setSlaDetail(slaDetailResult.status === 'fulfilled' ? slaDetailResult.value : null);
+      setSlaStatus(slaStatusResult.status === 'fulfilled' ? slaStatusResult.value : null);
+      setSlaTimeline(
+        slaTimelineResult.status === 'fulfilled' && Array.isArray(slaTimelineResult.value)
+          ? slaTimelineResult.value
+          : []
+      );
+      setSlaError(
+        slaDetailResult.status === 'rejected' && slaStatusResult.status === 'rejected'
+          ? 'Phản ánh này chưa có SLA hoặc không thể tải dữ liệu SLA.'
+          : ''
+      );
       const selectedResolution = pickLatestResolution(resolutionList);
       const selectedReport = pickProviderReport(reportList, selectedResolution?.providerReportId);
 
@@ -339,6 +580,105 @@ export const InteractionApprovalDetailPage = () => {
   useEffect(() => {
     if (feedbackId) loadFeedback();
   }, [feedbackId, loadFeedback]);
+
+  useEffect(() => {
+    if (!slaStatus) return;
+
+    setSlaClock({
+      responseSeconds: Math.max(
+        0,
+        Number(slaStatus.responseRemainingSeconds) || 0
+      ),
+      resolutionSeconds: Math.max(
+        0,
+        Number(slaStatus.resolutionRemainingSeconds) || 0
+      ),
+      syncedAt: Date.now(),
+      status: String(slaStatus.status || ''),
+    });
+
+    setClockTick(Date.now());
+  }, [
+    slaStatus?.feedbackSlaId,
+    slaStatus?.serverTime,
+    slaStatus?.status,
+    slaStatus?.responseRemainingSeconds,
+    slaStatus?.resolutionRemainingSeconds,
+  ]);
+
+  useEffect(() => {
+    const isRunning =
+      String(slaClock.status || '').toLowerCase() === 'running';
+
+    if (!isRunning) {
+      return undefined;
+    }
+
+    const timerId = window.setInterval(() => {
+      setClockTick(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [slaClock.status, slaClock.syncedAt]);
+
+  useEffect(() => {
+    if (!feedbackId) return undefined;
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(getSlaHubUrl(), {
+        accessTokenFactory: () => getSignalRAccessToken(),
+      })
+      .withAutomaticReconnect()
+      .configureLogging(signalR.LogLevel.Warning)
+      .build();
+
+    let disposed = false;
+
+    connection.on('SlaUpdated', async (payload) => {
+      const updatedFeedbackId = String(
+        payload?.feedbackId ??
+        payload?.FeedbackId ??
+        ''
+      );
+
+      if (
+        !updatedFeedbackId ||
+        updatedFeedbackId.toLowerCase() !== String(feedbackId).toLowerCase()
+      ) {
+        return;
+      }
+
+      try {
+        await refreshSlaData();
+      } catch (error) {
+        console.warn('Không thể đồng bộ lại SLA sau SignalR event.', error);
+      }
+    });
+
+    const startConnection = async () => {
+      try {
+        await connection.start();
+
+        if (!disposed) {
+          console.info('SLA SignalR connected.');
+        }
+      } catch (error) {
+        if (!disposed) {
+          console.warn('Không thể kết nối SLA SignalR.', error);
+        }
+      }
+    };
+
+    startConnection();
+
+    return () => {
+      disposed = true;
+      connection.off('SlaUpdated');
+      connection.stop().catch(() => {});
+    };
+  }, [feedbackId, refreshSlaData]);
 
   const latestResolution = pickLatestResolution(
     resolutions.length > 0
@@ -417,34 +757,191 @@ export const InteractionApprovalDetailPage = () => {
     return visibleMilestones;
   }, [activeTimelineIndex, fallbackTimeline, feedback]);
 
-  const handleDecision = async (decision) => {
-    const normalizedReworkReason = (reworkReason || note).trim();
-    if (decision === 'rework' && !normalizedReworkReason) {
-      setMessage({ type: 'error', text: 'Vui lòng nhập lý do yêu cầu làm lại.' });
-      setConfirmingAction(null);
+  const runSlaAction = async (key, action, successText) => {
+    if (slaActionLoading) return;
+    setSlaActionLoading(key);
+    try {
+      await action();
+      setMessage({ type: 'success', text: successText });
+      await loadFeedback();
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.message || 'Không thể cập nhật SLA.' });
+    } finally {
+      setSlaActionLoading('');
+    }
+  };
+
+  const openSlaModal = (type) => {
+    setMessage({ type: '', text: '' });
+    setPauseReasonOpen(false);
+    setSlaModalForm({
+      reasonCode: type === 'pause' ? 'WaitingCitizen' : 'Other',
+      note: '',
+    });
+    setSlaModal(type);
+  };
+
+  const closeSlaModal = () => {
+    if (slaActionLoading) return;
+    setPauseReasonOpen(false);
+    setSlaModal(null);
+    setSlaModalForm({
+      reasonCode: 'WaitingCitizen',
+      note: '',
+    });
+  };
+
+  const handlePauseSla = () => openSlaModal('pause');
+  const handleResumeSla = () => openSlaModal('resume');
+  const handleCancelSla = () => openSlaModal('cancel');
+
+  const handleSubmitSlaModal = async () => {
+    const noteValue = String(slaModalForm.note || '').trim();
+
+    if (slaModal === 'pause') {
+      const allowedPauseReasons = new Set([
+        'WaitingCitizen',
+        'ForceMajeure',
+        'ExternalDependency',
+        'SystemMaintenance',
+        'Other',
+      ]);
+
+      if (!allowedPauseReasons.has(slaModalForm.reasonCode)) {
+        setMessage({ type: 'error', text: 'Vui lòng chọn lý do tạm dừng hợp lệ.' });
+        return;
+      }
+
+      await runSlaAction(
+        'pause',
+        () => slaApi.pauseFeedbackSla(feedbackId, {
+          ReasonCode: slaModalForm.reasonCode,
+          ReasonNote: noteValue || null,
+        }),
+        'Đã tạm dừng SLA.'
+      );
+      setSlaModal(null);
       return;
     }
 
-    setSubmitting(true);
-    try {
-      if (decision === 'approve') {
-        await managementFeedbackApi.approveFeedback(feedbackId, note);
-        setMessage({ type: 'success', text: 'Đã duyệt kết quả xử lý.' });
-      } else {
-        await managementFeedbackApi.requestRework(feedbackId, normalizedReworkReason);
-        setMessage({ type: 'success', text: 'Đã gửi yêu cầu làm lại.' });
+    if (slaModal === 'resume') {
+      await runSlaAction(
+        'resume',
+        () => slaApi.resumeFeedbackSla(feedbackId, {
+          Note: noteValue || null,
+        }),
+        'Đã tiếp tục SLA.'
+      );
+      setSlaModal(null);
+      return;
+    }
+
+    if (slaModal === 'cancel') {
+      if (!noteValue) {
+        setMessage({ type: 'error', text: 'Vui lòng nhập lý do hủy SLA.' });
+        return;
       }
-      await loadFeedback();
-      navigate('/manager/approvals', { state: { refreshKey: Date.now() } });
-    } catch (err) {
-      console.error('Failed to complete approval decision', err);
-      setMessage({ type: 'error', text: err?.message || 'Không thể cập nhật quyết định duyệt.' });
-    } finally {
-      setSubmitting(false);
-      setConfirmingAction(null);
-      setReworkReason('');
+
+      await runSlaAction(
+        'cancel',
+        () => slaApi.cancelFeedbackSla(feedbackId, noteValue),
+        'Đã hủy SLA.'
+      );
+      setSlaModal(null);
     }
   };
+
+  const handleCheckSlaViolation = async () => {
+    const feedbackSlaId = slaDetail?.feedbackSlaId;
+    if (!feedbackSlaId) {
+      setMessage({ type: 'error', text: 'Không tìm thấy Feedback SLA ID.' });
+      return;
+    }
+    await runSlaAction('check', () => slaApi.checkSlaViolation(feedbackSlaId), 'Đã kiểm tra vi phạm SLA.');
+  };
+
+  const handleDecision = async (decision) => {
+  const normalizedReworkReason = (reworkReason || note).trim();
+
+  if (decision === 'rework' && !normalizedReworkReason) {
+    setMessage({
+      type: 'error',
+      text: 'Vui lòng nhập lý do yêu cầu làm lại.'
+    });
+    setConfirmingAction(null);
+    return;
+  }
+
+  setSubmitting(true);
+
+  try {
+    if (decision === 'approve') {
+      /*
+       * 1. Manager duyệt kết quả
+       */
+      await managementFeedbackApi.approveFeedback(
+        feedbackId,
+        note
+      );
+
+      /*
+       * 2. Chỉ khi DUYỆT mới Complete SLA
+       */
+      await slaApi.completeFeedbackSla(
+        feedbackId,
+        {
+          Note:
+            String(note || '').trim() ||
+            'Manager đã duyệt kết quả xử lý.'
+        }
+      );
+
+      setMessage({
+        type: 'success',
+        text: 'Đã duyệt kết quả xử lý và hoàn thành SLA.'
+      });
+    } else {
+      /*
+       * Yêu cầu làm lại:
+       * - KHÔNG complete SLA
+       * - SLA vẫn Running
+       */
+      await managementFeedbackApi.requestRework(
+        feedbackId,
+        normalizedReworkReason
+      );
+
+      setMessage({
+        type: 'success',
+        text: 'Đã gửi yêu cầu làm lại. SLA tiếp tục được theo dõi.'
+      });
+    }
+
+    await loadFeedback();
+
+    navigate('/manager/approvals', {
+      state: {
+        refreshKey: Date.now()
+      }
+    });
+  } catch (err) {
+    console.error(
+      'Failed to complete approval decision',
+      err
+    );
+
+    setMessage({
+      type: 'error',
+      text:
+        err?.message ||
+        'Không thể cập nhật quyết định duyệt.'
+    });
+  } finally {
+    setSubmitting(false);
+    setConfirmingAction(null);
+    setReworkReason('');
+  }
+};
 
   if (loading) {
     return (
@@ -487,6 +984,80 @@ export const InteractionApprovalDetailPage = () => {
   const hasImageComparison = afterImages.length > 0;
   const olderResolutions = resolutions.filter((resolution) => resolution !== latestResolution);
 
+  const isSlaRunning =
+    String(slaClock.status || '').toLowerCase() === 'running';
+
+  const elapsedSeconds =
+    isSlaRunning && slaClock.syncedAt
+      ? Math.max(
+          0,
+          Math.floor(
+            (clockTick - slaClock.syncedAt) / 1000
+          )
+        )
+      : 0;
+
+  const responseCountdownSeconds =
+    String(slaStatus?.responseStatus || '').toLowerCase() === 'pending'
+      ? Math.max(
+          0,
+          slaClock.responseSeconds - elapsedSeconds
+        )
+      : 0;
+
+  const resolutionCountdownSeconds =
+    String(slaStatus?.resolutionStatus || '').toLowerCase() === 'pending'
+      ? Math.max(
+          0,
+          slaClock.resolutionSeconds - elapsedSeconds
+        )
+      : 0;
+
+  const SLA_PAUSE_REASONS = [
+    { value: 'WaitingCitizen', label: 'Chờ phản hồi từ người dân' },
+    { value: 'ForceMajeure', label: 'Sự kiện bất khả kháng' },
+    { value: 'ExternalDependency', label: 'Phụ thuộc đơn vị bên ngoài' },
+    { value: 'SystemMaintenance', label: 'Bảo trì hệ thống' },
+    { value: 'Other', label: 'Lý do khác' },
+  ];
+
+  const slaModalConfig = (() => {
+    if (slaModal === 'pause') {
+      return {
+        title: 'Tạm dừng SLA',
+        description: 'Đồng hồ SLA sẽ ngừng tính trong thời gian tạm dừng.',
+        Icon: Lucide.PauseCircle,
+        iconClass: 'bg-amber-50 text-amber-700',
+        confirmLabel: 'Tạm dừng SLA',
+        confirmClass: 'btn rounded-2xl bg-amber-600 text-white hover:bg-amber-700',
+      };
+    }
+
+    if (slaModal === 'resume') {
+      return {
+        title: 'Tiếp tục SLA',
+        description: 'SLA sẽ tiếp tục chạy và deadline được điều chỉnh theo tổng thời gian đã tạm dừng.',
+        Icon: Lucide.PlayCircle,
+        iconClass: 'bg-emerald-50 text-emerald-700',
+        confirmLabel: 'Tiếp tục SLA',
+        confirmClass: 'btn rounded-2xl bg-emerald-600 text-white hover:bg-emerald-700',
+      };
+    }
+
+    if (slaModal === 'cancel') {
+      return {
+        title: 'Hủy SLA',
+        description: 'Thao tác này dừng SLA hiện tại. Chỉ sử dụng khi phản ánh thực sự không còn cần được theo dõi theo SLA.',
+        Icon: Lucide.XCircle,
+        iconClass: 'bg-rose-50 text-rose-700',
+        confirmLabel: 'Xác nhận hủy SLA',
+        confirmClass: 'btn rounded-2xl bg-rose-600 text-white hover:bg-rose-700',
+      };
+    }
+
+    return null;
+  })();
+
   return (
     <article className="admin-page-shell space-y-6">
       {message.type === 'success' ? (
@@ -510,6 +1081,140 @@ export const InteractionApprovalDetailPage = () => {
           </button>
         )}
       />
+
+
+      <section className="admin-panel overflow-hidden" aria-labelledby="sla-detail-title">
+        <ManagerSectionHeader
+          id="sla-detail-title"
+          title="SLA của phản ánh"
+          description="Theo dõi chính sách, thời hạn phản hồi, thời hạn hoàn thành, cảnh báo, vi phạm và lịch sử SLA."
+          icon={Lucide.TimerReset}
+          actions={(
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getSlaBadgeClass(slaStatus?.status || slaDetail?.status)}`}>
+                {getSlaStatusLabel(slaStatus?.status || slaDetail?.status || 'Chưa có SLA')}
+              </span>
+              {String(slaStatus?.status || slaDetail?.status || '').toLowerCase() === 'paused' ? (
+                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={handleResumeSla} disabled={Boolean(slaActionLoading)}>
+                  <Lucide.Play size={15} /> {slaActionLoading === 'resume' ? 'Đang tiếp tục...' : 'Tiếp tục SLA'}
+                </button>
+              ) : (
+                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={handlePauseSla} disabled={Boolean(slaActionLoading) || !slaDetail?.feedbackSlaId}>
+                  <Lucide.Pause size={15} /> {slaActionLoading === 'pause' ? 'Đang tạm dừng...' : 'Tạm dừng SLA'}
+                </button>
+              )}
+              <button type="button" className="btn admin-secondary-action rounded-xl" onClick={handleCheckSlaViolation} disabled={Boolean(slaActionLoading) || !slaDetail?.feedbackSlaId}>
+                <Lucide.ShieldCheck size={15} /> {slaActionLoading === 'check' ? 'Đang kiểm tra...' : 'Kiểm tra vi phạm'}
+              </button>
+              <button type="button" className="btn rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={handleCancelSla} disabled={Boolean(slaActionLoading) || !slaDetail?.feedbackSlaId}>
+                <Lucide.XCircle size={15} /> {slaActionLoading === 'cancel' ? 'Đang hủy...' : 'Hủy SLA'}
+              </button>
+            </div>
+          )}
+        />
+
+        {slaError && !slaDetail && !slaStatus ? (
+          <div className="p-5 sm:p-6">
+            <ErrorAlert title="Không có dữ liệu SLA" message={slaError} onClose={() => setSlaError('')} />
+          </div>
+        ) : (
+          <section className="space-y-6 p-5 sm:p-6">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Chính sách SLA</p>
+                <h3 className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{slaDetail?.policyName || '—'}</h3>
+                <p className="mt-2 text-xs text-slate-500">{slaDetail?.priority || feedback.priority || '—'} · {slaDetail?.categoryName || feedback.categoryName || '—'}</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Mã SLA</p>
+                <h3 className="mt-2 font-mono text-sm font-semibold text-blue-700 dark:text-blue-300">{slaDetail?.feedbackSlaId || '—'}</h3>
+                <p className="mt-2 text-xs text-slate-500">{slaDetail?.isCurrent === false ? 'SLA lịch sử' : 'SLA hiện tại'}</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Bắt đầu</p>
+                <h3 className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{formatDateTime(slaDetail?.startedAt || slaStatus?.startedAt)}</h3>
+                <p className="mt-2 text-xs text-slate-500">{slaDetail?.startedByUserName || 'Hệ thống / không xác định'}</p>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tổng thời gian tạm dừng</p>
+                <h3 className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{Number(slaDetail?.totalPausedMinutes || 0)} phút</h3>
+                <p className="mt-2 text-xs text-slate-500">{Array.isArray(slaDetail?.pauseHistories) ? slaDetail.pauseHistories.length : 0} lần tạm dừng</p>
+              </article>
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-2">
+              <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950/40">
+                <header className="flex items-center justify-between gap-3">
+                  <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Phản hồi đầu tiên</p><h3 className="mt-1 text-base font-semibold">Thời hạn phản hồi</h3></div>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getSlaBadgeClass(slaStatus?.responseStatus || slaDetail?.responseStatus)}`}>{getSlaStatusLabel(slaStatus?.responseStatus || slaDetail?.responseStatus || 'Pending')}</span>
+                </header>
+                <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <MetaItem label="Hạn xử lý">{formatDateTime(slaDetail?.responseDueAt || slaStatus?.responseDueAt)}</MetaItem>
+                  <MetaItem label="Thời điểm phản hồi">{formatDateTime(slaDetail?.respondedAt)}</MetaItem>
+                  <MetaItem label="Còn lại">
+                    <span className="font-mono text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                      {formatSlaCountdown(responseCountdownSeconds)}
+                    </span>
+                  </MetaItem>
+                  <MetaItem label="Vi phạm">{slaStatus?.isResponseBreached || slaDetail?.isResponseBreached ? 'Có' : 'Không'}</MetaItem>
+                </dl>
+              </article>
+
+              <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950/40">
+                <header className="flex items-center justify-between gap-3">
+                  <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Hoàn thành xử lý</p><h3 className="mt-1 text-base font-semibold">Thời hạn hoàn thành</h3></div>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getSlaBadgeClass(slaStatus?.resolutionStatus || slaDetail?.resolutionStatus)}`}>{getSlaStatusLabel(slaStatus?.resolutionStatus || slaDetail?.resolutionStatus || 'Pending')}</span>
+                </header>
+                <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <MetaItem label="Hạn xử lý">{formatDateTime(slaDetail?.resolutionDueAt || slaStatus?.resolutionDueAt)}</MetaItem>
+                  <MetaItem label="Thời điểm hoàn thành">{formatDateTime(slaDetail?.resolvedAt)}</MetaItem>
+                  <MetaItem label="Còn lại">
+                    <span className="font-mono text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                      {formatSlaCountdown(resolutionCountdownSeconds)}
+                    </span>
+                  </MetaItem>
+                  <MetaItem label="Vi phạm">{slaStatus?.isResolutionBreached || slaDetail?.isResolutionBreached ? 'Có' : 'Không'}</MetaItem>
+                </dl>
+              </article>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
+              <article>
+                <div className="flex items-center gap-2"><Lucide.History size={17} className="text-blue-600" /><h3 className="text-sm font-semibold">Lịch sử SLA</h3></div>
+                {slaTimeline.length > 0 ? (
+                  <div className="mt-4 max-h-[410px] overflow-y-auto pr-2 [scrollbar-gutter:stable]"><ol className="space-y-3">
+                    {slaTimeline.map((event, index) => (
+                      <li key={event.slaEventId || `${event.eventType}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{event.eventType || 'Sự kiện SLA'}</strong><time className="text-[11px] text-slate-400">{formatDateTime(event.createdAt)}</time></div>
+                        {event.note ? <p className="mt-2 text-xs leading-5 text-slate-500">{event.note}</p> : null}
+                        <p className="mt-1 text-[11px] text-slate-400">{event.triggeredByUserName || event.triggerSource || 'Hệ thống'}</p>
+                      </li>
+                    ))}
+                  </ol></div>
+                ) : <p className="mt-4 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Chưa có sự kiện SLA.</p>}
+              </article>
+
+              <article>
+                <div className="flex items-center gap-2"><Lucide.PauseCircle size={17} className="text-amber-600" /><h3 className="text-sm font-semibold">Lịch sử tạm dừng</h3></div>
+                {Array.isArray(slaDetail?.pauseHistories) && slaDetail.pauseHistories.length > 0 ? (
+                  <div className="mt-4 max-h-[410px] overflow-y-auto pr-2 [scrollbar-gutter:stable]"><ul className="space-y-3">
+                    {slaDetail.pauseHistories.map((pause, index) => (
+                      <li key={pause.slaPauseHistoryId || index} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <dl className="grid gap-3 sm:grid-cols-2">
+                          <MetaItem label="Thời điểm tạm dừng">{formatDateTime(pause.pausedAt)}</MetaItem>
+                          <MetaItem label="Thời điểm tiếp tục">{formatDateTime(pause.resumedAt)}</MetaItem>
+                          <MetaItem label="Thời gian tạm dừng">{formatPauseDuration(pause)}</MetaItem>
+                          <MetaItem label="Lý do">{pause.reasonNote || pause.reasonCode || 'Không có ghi chú'}</MetaItem>
+                        </dl>
+                      </li>
+                    ))}
+                  </ul></div>
+                ) : <p className="mt-4 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">SLA chưa từng được tạm dừng.</p>}
+              </article>
+            </div>
+          </section>
+        )}
+      </section>
 
       <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.5fr)]">
         <article className="admin-panel overflow-hidden" aria-labelledby="feedback-overview-title">
@@ -784,6 +1489,182 @@ export const InteractionApprovalDetailPage = () => {
           </ol>
         </details>
       ) : null}
+
+      {slaModal && slaModalConfig && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeSlaModal();
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="sla-action-dialog-title"
+              className="w-full max-w-xl overflow-visible rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <header className="flex items-start gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${slaModalConfig.iconClass}`} aria-hidden="true">
+                  {slaModal === 'pause' ? <Lucide.PauseCircle size={21} /> : null}
+                  {slaModal === 'resume' ? <Lucide.PlayCircle size={21} /> : null}
+                  {slaModal === 'cancel' ? <Lucide.XCircle size={21} /> : null}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 id="sla-action-dialog-title" className="text-xl font-semibold text-slate-950 dark:text-white">
+                        {slaModalConfig.title}
+                      </h2>
+                      <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                        {slaModalConfig.description}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={closeSlaModal}
+                      disabled={Boolean(slaActionLoading)}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
+                      aria-label="Đóng"
+                    >
+                      <Lucide.X size={19} />
+                    </button>
+                  </div>
+                </div>
+              </header>
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleSubmitSlaModal();
+                }}
+              >
+                <div className="space-y-5 px-6 py-5">
+                  {slaModal === 'pause' ? (
+                    <div className="relative">
+                      <label className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        Lý do tạm dừng <span className="text-rose-600">*</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setPauseReasonOpen((current) => !current)}
+                        className={`mt-2 flex h-12 w-full items-center justify-between rounded-2xl border bg-white px-4 text-left text-sm font-medium transition dark:bg-slate-950 ${
+                          pauseReasonOpen
+                            ? 'border-blue-500 ring-2 ring-blue-100 dark:ring-blue-900/40'
+                            : 'border-slate-300 hover:border-slate-400 dark:border-slate-700'
+                        }`}
+                        aria-haspopup="listbox"
+                        aria-expanded={pauseReasonOpen}
+                      >
+                        <span className="truncate text-slate-800 dark:text-slate-100">
+                          {SLA_PAUSE_REASONS.find((reason) => reason.value === slaModalForm.reasonCode)?.label || 'Chọn lý do tạm dừng'}
+                        </span>
+                        <Lucide.ChevronDown
+                          size={17}
+                          className={`shrink-0 text-slate-400 transition-transform ${pauseReasonOpen ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+
+                      {pauseReasonOpen ? (
+                        <div
+                          className="absolute left-0 right-0 top-full z-[10010] mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+                          role="listbox"
+                        >
+                          {SLA_PAUSE_REASONS.map((reason) => {
+                            const selected = reason.value === slaModalForm.reasonCode;
+                            return (
+                              <button
+                                key={reason.value}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                onClick={() => {
+                                  setSlaModalForm((current) => ({
+                                    ...current,
+                                    reasonCode: reason.value,
+                                  }));
+                                  setPauseReasonOpen(false);
+                                }}
+                                className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                                  selected
+                                    ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+                                    : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+                                }`}
+                              >
+                                <span>{reason.label}</span>
+                                {selected ? <Lucide.Check size={16} /> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      {slaModal === 'cancel' ? 'Lý do hủy' : 'Ghi chú'}
+                      {slaModal === 'cancel' ? <span className="text-rose-600"> *</span> : null}
+                    </span>
+
+                    <textarea
+                      rows="4"
+                      value={slaModalForm.note}
+                      onChange={(event) => setSlaModalForm((current) => ({
+                        ...current,
+                        note: event.target.value,
+                      }))}
+                      placeholder={
+                        slaModal === 'pause'
+                          ? 'Nhập ghi chú chi tiết nếu cần...'
+                          : slaModal === 'resume'
+                            ? 'Nhập ghi chú khi tiếp tục nếu cần...'
+                            : 'Nhập lý do hủy SLA...'
+                      }
+                      className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-blue-900/40"
+                      required={slaModal === 'cancel'}
+                    />
+                  </label>
+
+                  {slaModal === 'cancel' ? (
+                    <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-200">
+                      <Lucide.TriangleAlert size={18} className="mt-0.5 shrink-0" />
+                      <p className="text-sm leading-6">
+                        Sau khi xác nhận, SLA hiện tại sẽ chuyển sang trạng thái hủy.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <footer className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-950/30">
+                  <button
+                    type="button"
+                    onClick={closeSlaModal}
+                    disabled={Boolean(slaActionLoading)}
+                    className="btn admin-secondary-action rounded-2xl"
+                  >
+                    Đóng
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={Boolean(slaActionLoading)}
+                    className={slaModalConfig.confirmClass}
+                  >
+                    {slaActionLoading ? <span className="loading loading-spinner loading-sm" /> : null}
+                    {slaModalConfig.confirmLabel}
+                  </button>
+                </footer>
+              </form>
+            </section>
+          </div>,
+          document.body
+        )
+        : null}
 
       {isAwaitingApproval && confirmingAction ? (
         <dialog open className="modal modal-open bg-transparent" aria-labelledby="approval-dialog-title">
