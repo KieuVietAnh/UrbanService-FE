@@ -171,7 +171,7 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     await verifyRouteAndPage(
       page,
       heatmapRoute,
-      page.getByRole('heading', { name: /Bản đồ nhiệt phản ánh đô thị|Bản đồ nhiệt/i }).first(),
+      page.getByRole('heading', { name: /Bản đồ điểm nóng|Bản đồ nhiệt phản ánh đô thị|Bản đồ nhiệt/i }).first(),
       'heatmap dashboard'
     );
 
