@@ -173,10 +173,13 @@ export const FeedbackDetailPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [initialCachedDetail] = useState(() => peekAdminFeedbackDetail(feedbackId));
-  const [feedback, setFeedback] = useState(() => ({
-    ...(location.state?.feedback || {}),
-    ...(normalizeResponse(initialCachedDetail) || {}),
-  }));
+  const [feedback, setFeedback] = useState(() => {
+    const initialFeedback = {
+      ...(location.state?.feedback || {}),
+      ...(normalizeResponse(initialCachedDetail) || {}),
+    };
+    return Object.keys(initialFeedback).length > 0 ? initialFeedback : null;
+  });
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(() => !initialCachedDetail);
   const [detailResolved, setDetailResolved] = useState(() => Boolean(initialCachedDetail));
@@ -214,6 +217,11 @@ export const FeedbackDetailPage = () => {
         setDetailResolved(true);
       } catch (err) {
         if (!isLatestRequest()) return;
+        const status = Number(err?.status ?? err?.response?.status);
+        if (status === 400 || status === 404) {
+          setFeedback(null);
+          setDetailResolved(false);
+        }
         setError(err?.message || 'Không thể tải chi tiết phản ánh.');
       } finally {
         if (isLatestRequest()) setLoading(false);

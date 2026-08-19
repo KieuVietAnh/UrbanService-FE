@@ -10,7 +10,14 @@ import {
   filterAdminFeedbacksByMetric,
   normalizeAdminFeedbackMetric,
 } from '../../utils/adminFeedbackMetrics';
-import { peekAdminFeedbackDetail, prefetchAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
+import {
+  peekAdminFeedbackDetail,
+  prefetchAdminFeedbackDetail,
+} from '../../services/cache/adminFeedbackDetailCache';
+import {
+  createAdminFeedbackDeleteGuard,
+  deleteAdminFeedbackAndReconcile,
+} from '../../services/adminFeedbackDeletion';
 
 
 const ADMIN_FEEDBACK_SNAPSHOT_KEY = 'adminFeedbackListSnapshot';
@@ -140,6 +147,15 @@ const formatDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('vi-VN');
+};
+
+const getDeleteErrorMessage = (error) => {
+  const responseData = error?.response?.data;
+  return (typeof responseData === 'string' ? responseData : '') ||
+    responseData?.msg ||
+    responseData?.message ||
+    error?.message ||
+    'Không thể xóa phản ánh. Vui lòng thử lại.';
 };
 
 const getAreaName = (feedback) => {
@@ -344,6 +360,10 @@ export const FeedbackManagement = () => {
   const feedbackRequestIdRef = useRef(0);
   const highlightTimerRef = useRef(null);
   const lastWrittenQueryRef = useRef('');
+  const deleteGuardRef = useRef(createAdminFeedbackDeleteGuard());
+  const deleteDialogRef = useRef(null);
+  const deleteTriggerRef = useRef(null);
+  const deleteSuccessTimerRef = useRef(null);
   const [filters, setFilters] = useState(initialFilters);
   const [allFeedbacks, setAllFeedbacks] = useState(() => (
     Array.isArray(initialSnapshot?.allFeedbacks)
@@ -352,6 +372,7 @@ export const FeedbackManagement = () => {
         ? initialSnapshot.feedbacks
         : []
   ));
+  const allFeedbacksRef = useRef(allFeedbacks);
   const [categories, setCategories] = useState(() => initialSnapshot?.categories || []);
   const [feedbackSummary, setFeedbackSummary] = useState(() => (
     initialSnapshot?.feedbackSummary || calculateAdminFeedbackSummary(
@@ -359,9 +380,14 @@ export const FeedbackManagement = () => {
       initialSnapshot?.totalItems
     )
   ));
+  const feedbackSummaryRef = useRef(feedbackSummary);
   const [loading, setLoading] = useState(() => allFeedbacks.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [feedbackToDelete, setFeedbackToDelete] = useState(null);
+  const [deletingFeedbackId, setDeletingFeedbackId] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSuccess, setDeleteSuccess] = useState('');
   const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(
     restoredContext?.feedbackId || ''
   );
@@ -391,6 +417,8 @@ export const FeedbackManagement = () => {
         completed: Number(summaryResponse?.completed ?? fallbackSummary.completed) || 0,
       };
 
+      allFeedbacksRef.current = nextAllFeedbacks;
+      feedbackSummaryRef.current = nextSummary;
       setAllFeedbacks(nextAllFeedbacks);
       setFeedbackSummary(nextSummary);
     } catch (err) {
@@ -580,8 +608,126 @@ export const FeedbackManagement = () => {
     });
   }, [locationFilter, metricFilter, navigate, pageNumber, searchTerm, statusFilter]);
 
+  const handleRequestFeedbackDelete = useCallback((event, feedback) => {
+    event.stopPropagation();
+    if (deleteGuardRef.current.isRunning()) return;
+
+    const feedbackId = feedback?.feedbackId || feedback?.id;
+    if (!feedbackId) return;
+
+    deleteTriggerRef.current = event.currentTarget;
+    setFeedbackToDelete(feedback);
+    setDeleteError('');
+  }, []);
+
+  const handleCloseDeleteDialog = useCallback(() => {
+    if (deleteGuardRef.current.isRunning()) return;
+    setFeedbackToDelete(null);
+    setDeleteError('');
+  }, []);
+
+  useEffect(() => {
+    if (!feedbackToDelete) return undefined;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleDeleteDialogKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleCloseDeleteDialog();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = Array.from(deleteDialogRef.current?.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) || []);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      } else if (!deleteDialogRef.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? lastElement : firstElement).focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleDeleteDialogKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDeleteDialogKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      if (deleteTriggerRef.current?.isConnected) {
+        deleteTriggerRef.current.focus();
+      }
+      deleteTriggerRef.current = null;
+    };
+  }, [feedbackToDelete, handleCloseDeleteDialog]);
+
+  const handleDismissDeleteSuccess = useCallback(() => {
+    if (deleteSuccessTimerRef.current) {
+      window.clearTimeout(deleteSuccessTimerRef.current);
+      deleteSuccessTimerRef.current = null;
+    }
+    setDeleteSuccess('');
+  }, []);
+
+  const handleConfirmFeedbackDelete = useCallback(async () => {
+    const feedback = feedbackToDelete;
+    const feedbackId = feedback?.feedbackId || feedback?.id;
+    if (!feedbackId || deleteGuardRef.current.isRunning()) return;
+
+    const normalizedFeedbackId = String(feedbackId);
+    await deleteGuardRef.current.run(async () => {
+      setDeletingFeedbackId(normalizedFeedbackId);
+      setDeleteError('');
+
+      try {
+        const reconciled = await deleteAdminFeedbackAndReconcile({
+          feedbackId,
+          feedbacks: allFeedbacksRef.current,
+          summary: feedbackSummaryRef.current,
+        });
+        feedbackRequestIdRef.current += 1;
+        allFeedbacksRef.current = reconciled.feedbacks;
+        feedbackSummaryRef.current = reconciled.summary;
+        setAllFeedbacks(reconciled.feedbacks);
+        setFeedbackSummary(reconciled.summary);
+        setFeedbackToDelete(null);
+
+        if (deleteSuccessTimerRef.current) {
+          window.clearTimeout(deleteSuccessTimerRef.current);
+        }
+        setDeleteSuccess(`Đã xóa vĩnh viễn phản ánh ${formatFeedbackId(feedbackId)}.`);
+        deleteSuccessTimerRef.current = window.setTimeout(() => {
+          setDeleteSuccess('');
+          deleteSuccessTimerRef.current = null;
+        }, 5000);
+
+        void fetchFeedbacks({ background: true });
+      } catch (deleteRequestError) {
+        console.error('Failed to delete feedback', deleteRequestError);
+        setDeleteError(getDeleteErrorMessage(deleteRequestError));
+        void fetchFeedbacks({ background: true });
+      } finally {
+        setDeletingFeedbackId('');
+      }
+    });
+  }, [feedbackToDelete, fetchFeedbacks]);
+
   useEffect(() => () => {
     if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
+    if (deleteSuccessTimerRef.current) window.clearTimeout(deleteSuccessTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -812,12 +958,12 @@ export const FeedbackManagement = () => {
             <table className="table w-full table-fixed text-sm">
               <colgroup>
                 <col className="w-[11%]" />
-                <col className="w-[34%]" />
+                <col className="w-[30%]" />
                 <col className="w-[15%]" />
                 <col className="w-[9%]" />
                 <col className="w-[13%]" />
                 <col className="w-[10%]" />
-                <col className="w-[8%]" />
+                <col className="w-[12%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90 text-xs font-semibold uppercase tracking-[0.04em] text-slate-500 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
@@ -867,16 +1013,34 @@ export const FeedbackManagement = () => {
                       <td className="whitespace-nowrap px-4 py-4"><StatusBadge status={feedback.status} /></td>
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-500 dark:text-slate-400">{formatDate(feedback.createdAt)}</td>
                       <td className="px-3 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleOpenFeedbackDetail(feedback);
-                          }}
-                          className="btn btn-ghost h-9 min-h-0 whitespace-nowrap rounded-xl px-3 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                        >
-                          Chi tiết
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            title="Xóa phản ánh"
+                            aria-label={`Xóa phản ánh ${formatFeedbackId(feedbackId)}`}
+                            disabled={Boolean(deletingFeedbackId)}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onFocus={(event) => event.stopPropagation()}
+                            onClick={(event) => handleRequestFeedbackDelete(event, feedback)}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingFeedbackId === String(feedbackId) ? (
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-rose-200 border-t-rose-600" aria-hidden="true" />
+                            ) : (
+                              <Lucide.Trash2 size={16} aria-hidden="true" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenFeedbackDetail(feedback);
+                            }}
+                            className="btn btn-ghost h-9 min-h-0 whitespace-nowrap rounded-xl px-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                          >
+                            Chi tiết
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -947,6 +1111,124 @@ export const FeedbackManagement = () => {
           </div>
         )}
       </section>
+
+      {deleteSuccess ? (
+        <div
+          className="fixed right-4 top-20 z-[110] w-[min(420px,calc(100vw-32px))] sm:right-6"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-2xl shadow-slate-900/10 dark:border-emerald-900 dark:bg-slate-950">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <Lucide.CheckCircle2 size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Xóa thành công</p>
+                <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">{deleteSuccess}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissDeleteSuccess}
+                className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Đóng thông báo"
+              >
+                <Lucide.X size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {feedbackToDelete ? (
+        <div
+          ref={deleteDialogRef}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-feedback-title"
+          aria-describedby="delete-feedback-description"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full cursor-default bg-slate-950/45 backdrop-blur-[2px]"
+            onClick={handleCloseDeleteDialog}
+            aria-label="Đóng hộp thoại xóa phản ánh"
+            tabIndex={-1}
+          />
+
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 p-6 dark:border-slate-800 dark:bg-slate-900/80">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 ring-1 ring-rose-100 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20">
+                  <Lucide.Trash2 size={20} />
+                </span>
+                <div className="min-w-0">
+                  <h3 id="delete-feedback-title" className="text-xl font-semibold text-slate-950 dark:text-slate-100">
+                    Xóa vĩnh viễn phản ánh
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {formatFeedbackId(feedbackToDelete.feedbackId || feedbackToDelete.id)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseDeleteDialog}
+                disabled={Boolean(deletingFeedbackId)}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-200/70 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Đóng"
+              >
+                <Lucide.X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div id="delete-feedback-description" className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-sm leading-6 text-rose-800 dark:border-rose-900 dark:bg-rose-500/10 dark:text-rose-200">
+                <p className="font-semibold">Hành động này không thể hoàn tác.</p>
+                <p className="mt-1">
+                  Phản ánh “{feedbackToDelete.title || 'Không có tiêu đề'}” sẽ bị xóa vĩnh viễn khỏi hệ thống.
+                </p>
+              </div>
+
+              {deleteError ? (
+                <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-white p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-slate-900 dark:text-rose-300" role="alert">
+                  <Lucide.AlertCircle className="mt-0.5 shrink-0" size={18} />
+                  <div>
+                    <p className="font-semibold">Chưa thể xóa phản ánh</p>
+                    <p className="mt-1 leading-5">{deleteError}</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/70 px-6 py-4 sm:flex-row sm:justify-end dark:border-slate-800 dark:bg-slate-900/60">
+              <button
+                type="button"
+                onClick={handleCloseDeleteDialog}
+                disabled={Boolean(deletingFeedbackId)}
+                autoFocus
+                className="btn btn-outline h-11 rounded-xl border-slate-300 px-4 text-sm disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmFeedbackDelete}
+                disabled={Boolean(deletingFeedbackId)}
+                className="btn h-11 rounded-xl border-0 bg-rose-600 px-4 text-sm font-semibold text-white shadow-lg shadow-rose-600/20 hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingFeedbackId ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden="true" />
+                ) : (
+                  <Lucide.Trash2 size={16} />
+                )}
+                {deletingFeedbackId ? 'Đang xóa...' : deleteError ? 'Thử lại' : 'Xóa vĩnh viễn'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
     </div>
   );

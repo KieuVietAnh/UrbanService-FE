@@ -1,7 +1,8 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  managementFeedbackApi,
   normalizeAiReviewedPayload,
   normalizeStaffFeedbackUpdatePayload,
   normalizeFeedbackListParams,
@@ -11,6 +12,7 @@ import {
   canTransitionProviderReportStatus,
   resolveProviderReportById,
 } from './managementFeedbackApi.js';
+import { axiosClient } from './axiosClient.js';
 import { normalizeCommentsResponse } from './ticketApiHelpers.js';
 
 test('normalizeAiReviewedPayload maps ai-reviewed payloads to queue-ready items', () => {
@@ -189,4 +191,26 @@ test('resolveProviderReportById finds the matching report from feedback-level pa
   assert.equal(resolveProviderReportById(payload, 8)?.providerReportId, 8);
   assert.equal(resolveProviderReportById(payload, '7')?.reportStatus, 'Assigned');
   assert.equal(resolveProviderReportById([], 8), null);
+});
+
+test('deleteFeedback uses the management DELETE contract and accepts a 204 response body', async () => {
+  const deleteRequest = mock.method(axiosClient, 'delete', async () => undefined);
+
+  try {
+    const result = await managementFeedbackApi.deleteFeedback('  feedback-123  ');
+
+    assert.equal(result, undefined);
+    assert.equal(deleteRequest.mock.callCount(), 1);
+    assert.deepEqual(deleteRequest.mock.calls[0].arguments, [
+      '/api/management/feedbacks/feedback-123',
+    ]);
+
+    await assert.rejects(
+      () => managementFeedbackApi.deleteFeedback('   '),
+      /feedbackId/
+    );
+    assert.equal(deleteRequest.mock.callCount(), 1);
+  } finally {
+    deleteRequest.mock.restore();
+  }
 });

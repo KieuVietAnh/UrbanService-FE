@@ -314,6 +314,9 @@ importers:
 
   packages/shared-api:
     dependencies:
+      '@urbanmind/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
       axios:
         specifier: ^1.17.0
         version: 1.17.0

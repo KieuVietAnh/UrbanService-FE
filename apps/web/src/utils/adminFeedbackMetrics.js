@@ -78,6 +78,47 @@ export const calculateAdminFeedbackSummary = (feedbacks = [], explicitTotal) => 
   return summary;
 };
 
+export const reconcileAdminFeedbackDeletion = (feedbacks = [], summary = {}, feedbackId) => {
+  const items = Array.isArray(feedbacks) ? feedbacks : [];
+  const normalizedFeedbackId = String(feedbackId ?? '').trim();
+  const deletedFeedback = items.find((feedback) => (
+    String(feedback?.feedbackId ?? feedback?.id ?? '') === normalizedFeedbackId
+  ));
+
+  if (!normalizedFeedbackId || !deletedFeedback) {
+    return { feedbacks: items, summary };
+  }
+
+  const nextFeedbacks = items.filter((feedback) => (
+    String(feedback?.feedbackId ?? feedback?.id ?? '') !== normalizedFeedbackId
+  ));
+  const fallbackSummary = calculateAdminFeedbackSummary(items);
+  const currentTotal = Number(summary?.total);
+  const nextSummary = {
+    ...summary,
+    total: Math.max(
+      0,
+      (Number.isFinite(currentTotal) ? currentTotal : fallbackSummary.total) - 1
+    ),
+  };
+  const normalizedStatus = normalizeStatus(deletedFeedback?.status);
+  const statusMetric = Object.entries(STATUS_GROUPS).find(([, statuses]) => (
+    statuses.has(normalizedStatus)
+  ))?.[0];
+
+  if (statusMetric) {
+    const currentMetricValue = Number(summary?.[statusMetric]);
+    nextSummary[statusMetric] = Math.max(
+      0,
+      (Number.isFinite(currentMetricValue)
+        ? currentMetricValue
+        : fallbackSummary[statusMetric]) - 1
+    );
+  }
+
+  return { feedbacks: nextFeedbacks, summary: nextSummary };
+};
+
 
 export const normalizeAdminFeedbackMetric = (value) => (
   ADMIN_FEEDBACK_METRIC_KEYS.includes(String(value || ''))

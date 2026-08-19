@@ -5,6 +5,7 @@
   "type": "module",
   "main": "src/index.js",
   "dependencies": {
+    "@urbanmind/shared-types": "workspace:*",
     "axios": "^1.17.0"
   }
 }

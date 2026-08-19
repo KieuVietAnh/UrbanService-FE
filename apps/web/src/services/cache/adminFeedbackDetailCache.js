@@ -5,6 +5,7 @@ const CATEGORY_TTL = 5 * 60 * 1000;
 
 const detailCache = new Map();
 const detailRequests = new Map();
+const detailGenerations = new Map();
 let categoryCache = null;
 let categoryRequest = null;
 
@@ -12,15 +13,27 @@ const isFresh = (entry, ttl) => (
   Boolean(entry) && Date.now() - Number(entry.savedAt || 0) < ttl
 );
 
+const normalizeDetailKey = (feedbackId) => String(feedbackId ?? '').trim().toLowerCase();
+
 export const peekAdminFeedbackDetail = (feedbackId) => {
-  if (!feedbackId) return null;
-  const entry = detailCache.get(String(feedbackId));
+  const key = normalizeDetailKey(feedbackId);
+  if (!key) return null;
+  const entry = detailCache.get(key);
   return isFresh(entry, DETAIL_TTL) ? entry.value : null;
 };
 
+export const invalidateAdminFeedbackDetail = (feedbackId) => {
+  const key = normalizeDetailKey(feedbackId);
+  if (!key) return;
+
+  detailGenerations.set(key, (detailGenerations.get(key) || 0) + 1);
+  detailCache.delete(key);
+  detailRequests.delete(key);
+};
+
 export const loadAdminFeedbackDetail = async (feedbackId, { force = false } = {}) => {
-  if (!feedbackId) return null;
-  const key = String(feedbackId);
+  const key = normalizeDetailKey(feedbackId);
+  if (!key) return null;
   const cached = detailCache.get(key);
 
   if (!force && isFresh(cached, DETAIL_TTL)) {
@@ -31,14 +44,22 @@ export const loadAdminFeedbackDetail = async (feedbackId, { force = false } = {}
     return detailRequests.get(key);
   }
 
-  const request = managementFeedbackApi
-    .getFeedbackById(feedbackId)
+  const requestGeneration = (detailGenerations.get(key) || 0) + 1;
+  detailGenerations.set(key, requestGeneration);
+
+  let request;
+  request = managementFeedbackApi
+    .getFeedbackById(key)
     .then((response) => {
-      detailCache.set(key, { value: response, savedAt: Date.now() });
+      if (detailGenerations.get(key) === requestGeneration) {
+        detailCache.set(key, { value: response, savedAt: Date.now() });
+      }
       return response;
     })
     .finally(() => {
-      detailRequests.delete(key);
+      if (detailRequests.get(key) === request) {
+        detailRequests.delete(key);
+      }
     });
 
   detailRequests.set(key, request);

@@ -18,6 +18,8 @@
     "dev:mobile:android": "pnpm --dir apps/mobile android",
     "dev:proxy": "pnpm --dir dev-proxy start",
     "test": "node --test packages/shared-utils/src/index.test.js packages/shared-types/src/roleMap.test.js packages/shared-api/src/toolsApi.test.js apps/web/src/components/public/citizenAiFeedbackDraft.test.js",
+    "test:admin-feedback-delete": "node --test apps/web/src/services/adminFeedbackDeletion.test.js apps/web/src/services/cache/adminFeedbackDetailCache.test.js apps/web/src/utils/adminFeedbackMetrics.test.js",
+    "test:admin-feedback-delete-api": "node --test --test-name-pattern=deleteFeedback packages/shared-api/src/managementFeedbackApi.test.js",
     "test:e2e": "pnpm --dir apps/web test:e2e",
     "test:e2e:ui": "pnpm --dir apps/web test:e2e:ui",
     "test:e2e:report": "pnpm --dir apps/web test:e2e:report"

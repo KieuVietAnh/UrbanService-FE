@@ -164,7 +164,6 @@ export default function ManagementFeedbackListPage() {
   const [workflowTotalsLoading, setWorkflowTotalsLoading] = useState(() => !initialReturnSnapshot?.workflowTotals);
   const [restoredFeedbackId, setRestoredFeedbackId] = useState('');
   const [openFilterMenu, setOpenFilterMenu] = useState(null);
-  const [deletingFeedbackId, setDeletingFeedbackId] = useState('');
 
   // Load categories
   useEffect(() => {
@@ -684,54 +683,6 @@ export default function ManagementFeedbackListPage() {
     };
   }, [loading, feedbacks, location.state]);
 
-  const handleDeleteFeedback = async (event, item) => {
-    event.stopPropagation();
-
-    const feedbackId = item?.feedbackId || item?.id;
-    if (!feedbackId || deletingFeedbackId) return;
-
-    const confirmed = window.confirm(
-      `Bạn có chắc chắn muốn xóa phản ánh ${formatFeedbackId(feedbackId)}? Hành động này không thể hoàn tác.`
-    );
-    if (!confirmed) return;
-
-    setDeletingFeedbackId(String(feedbackId));
-    setError('');
-
-    try {
-      await managementFeedbackApi.deleteFeedback(feedbackId);
-
-      const deletedStatus = normalizeStatusValue(item?.status);
-      const isLastItemOnPage = feedbacks.length === 1 && currentPage > 1;
-
-      setFeedbacks((currentFeedbacks) => currentFeedbacks.filter((feedback) => (
-        String(feedback.feedbackId || feedback.id) !== String(feedbackId)
-      )));
-      setTotalCount((currentTotal) => Math.max(0, (Number(currentTotal) || 0) - 1));
-      setWorkflowTotals((currentTotals) => {
-        if (!deletedStatus || !Object.prototype.hasOwnProperty.call(currentTotals, deletedStatus)) {
-          return currentTotals;
-        }
-
-        return {
-          ...currentTotals,
-          [deletedStatus]: Math.max(0, (Number(currentTotals[deletedStatus]) || 0) - 1),
-        };
-      });
-
-      if (isLastItemOnPage) {
-        setCurrentPage((page) => Math.max(1, page - 1));
-      } else {
-        await Promise.all([fetchFeedbacks(), fetchWorkflowTotals()]);
-      }
-    } catch (err) {
-      console.error('Failed to delete feedback', err);
-      setError('Không thể xóa phản ánh. Vui lòng thử lại.');
-    } finally {
-      setDeletingFeedbackId('');
-    }
-  };
-
   const handleResetFilters = () => {
     setSearch('');
     setStatus('');
@@ -1096,20 +1047,6 @@ export default function ManagementFeedbackListPage() {
 
                       <td className="px-2 py-[18px] text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            title="Xóa phản ánh"
-                            aria-label={`Xóa phản ánh ${formatFeedbackId(feedbackId)}`}
-                            disabled={deletingFeedbackId === String(feedbackId)}
-                            onClick={(event) => handleDeleteFeedback(event, item)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {deletingFeedbackId === String(feedbackId) ? (
-                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-600" aria-hidden="true" />
-                            ) : (
-                              <Lucide.Trash2 size={16} aria-hidden="true" />
-                            )}
-                          </button>
                           <button
                             type="button"
                             title="Xem chi tiết"
