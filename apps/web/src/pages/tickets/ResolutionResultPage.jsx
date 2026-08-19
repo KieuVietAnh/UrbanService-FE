@@ -52,6 +52,17 @@ const isVideoUrl = (url = '') => {
   return ['.mp4', '.webm', '.ogg', '.mov', '.m4v'].some((ext) => v.includes(ext));
 };
 
+const isImageDocument = (document) => {
+  const fileType = String(document?.fileType || '').toLowerCase();
+  const fileUrl = String(document?.fileUrl || '').toLowerCase();
+
+  return (
+    fileType.startsWith('image/') ||
+    fileType === 'image' ||
+    /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/.test(fileUrl)
+  );
+};
+
 const normalizeImageList = (value) => {
   if (!value) return [];
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -301,15 +312,13 @@ export const ResolutionResultPage = () => {
   }, [ticket, getAttachmentUrl]);
 
   const afterImages = useMemo(() => {
-    const candidates = [
-      ticket?.resolution?.afterAttachments,
-      ticket?.resolution?.attachments,
-      ticket?.resolution?.evidenceAttachments,
-      ticket?.resolution?.imageUrls,
-    ];
-    return candidates
-      .flatMap((entry) => normalizeImageList(entry))
-      .map((f) => getAttachmentUrl(f))
+    const documents = Array.isArray(ticket?.resolution?.completionDocuments)
+      ? ticket.resolution.completionDocuments
+      : [];
+
+    return documents
+      .filter(isImageDocument)
+      .map((document) => getAttachmentUrl(document))
       .filter(Boolean);
   }, [ticket, getAttachmentUrl]);
 
