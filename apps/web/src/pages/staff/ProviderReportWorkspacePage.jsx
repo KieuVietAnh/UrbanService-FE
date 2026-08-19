@@ -3,7 +3,7 @@ import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { LoadingSpinner, CompletionDocumentsCard, ConfirmationModal } from '@urbanmind/shared-ui';
+import { LoadingSpinner, ConfirmationModal } from '@urbanmind/shared-ui';
 import {
   canTransitionProviderReportStatus,
   normalizeProviderReportStatus,
@@ -314,9 +314,9 @@ export const ProviderReportWorkspacePage = () => {
 
   /* ── Completion documents ───────────────────────────────────────────────── */
   const [documents,          setDocuments]          = useState([]);
-  const [documentsLoading,   setDocumentsLoading]   = useState(false);
-  const [documentsError,     setDocumentsError]     = useState('');
-  const [uploadError,        setUploadError]        = useState('');
+  const [, setDocumentsLoading] = useState(false);
+  const [, setDocumentsError] = useState('');
+  const [, setUploadError] = useState('');
   const [documentDescription, setDocumentDescription] = useState('');
   const [selectedDocumentFile, setSelectedDocumentFile] = useState(null);
 
@@ -640,11 +640,7 @@ export const ProviderReportWorkspacePage = () => {
       actionTaken: latestResolution.actionTaken || '',
       resultNote: latestResolution.resultNote || '',
     });
-  }, [
-    isNeedRework,
-    latestResolution?.resolutionId,
-    latestResolution?.resolvedAt,
-  ]);
+  }, [isNeedRework, latestResolution]);
 
   const statusHistoryItems = (() => {
     const history = Array.isArray(report?.statusHistory)

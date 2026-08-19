@@ -593,29 +593,23 @@ export const InteractionApprovalDetailPage = () => {
   }, [feedbackId, loadFeedback]);
 
   useEffect(() => {
-    if (!slaStatus) return;
+  if (!slaStatus) return;
 
-    setSlaClock({
-      responseSeconds: Math.max(
-        0,
-        Number(slaStatus.responseRemainingSeconds) || 0
-      ),
-      resolutionSeconds: Math.max(
-        0,
-        Number(slaStatus.resolutionRemainingSeconds) || 0
-      ),
-      syncedAt: Date.now(),
-      status: String(slaStatus.status || ''),
-    });
+  setSlaClock({
+    responseSeconds: Math.max(
+      0,
+      Number(slaStatus.responseRemainingSeconds) || 0
+    ),
+    resolutionSeconds: Math.max(
+      0,
+      Number(slaStatus.resolutionRemainingSeconds) || 0
+    ),
+    syncedAt: Date.now(),
+    status: String(slaStatus.status || ''),
+  });
 
-    setClockTick(Date.now());
-  }, [
-    slaStatus?.feedbackSlaId,
-    slaStatus?.serverTime,
-    slaStatus?.status,
-    slaStatus?.responseRemainingSeconds,
-    slaStatus?.resolutionRemainingSeconds,
-  ]);
+  setClockTick(Date.now());
+}, [slaStatus]);
 
   useEffect(() => {
     const isRunning =
