@@ -66,6 +66,19 @@ const shortenFeedbackId = (value = '') => {
 const AI_QUEUE_CACHE_KEY = 'staff-ai-review-queue-cache-v2';
 const AI_QUEUE_CACHE_TTL = 60 * 1000;
 
+const hasPreciseLocation = (ticket = {}) => {
+  const latitude = ticket?.latitude ?? ticket?.lat;
+  const longitude = ticket?.longitude ?? ticket?.lng ?? ticket?.long;
+  return latitude !== null
+    && latitude !== undefined
+    && latitude !== ''
+    && longitude !== null
+    && longitude !== undefined
+    && longitude !== ''
+    && Number.isFinite(Number(latitude))
+    && Number.isFinite(Number(longitude));
+};
+
 const readAiQueueCache = () => {
   try {
     const raw = sessionStorage.getItem(AI_QUEUE_CACHE_KEY);
@@ -104,6 +117,7 @@ export const AIReviewDetail = () => {
     Array.isArray(initialQueueCache?.categories) ? initialQueueCache.categories : []
   ));
   const [urgencyFilter, setUrgencyFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
   const [showUrgencyDropdown, setShowUrgencyDropdown] = useState(false);
   
   // Edit variables
@@ -204,11 +218,18 @@ export const AIReviewDetail = () => {
 
   const displayedTickets = useMemo(() => {
     return tickets.filter((t) => {
-      if (!urgencyFilter) return true;
-      const urgency = getTicketPriority(t);
-      return urgency === normalizePriority(urgencyFilter);
+      if (urgencyFilter) {
+        const urgency = getTicketPriority(t);
+        if (urgency !== normalizePriority(urgencyFilter)) return false;
+      }
+
+      if (locationFilter === 'withoutPreciseLocation') {
+        return !hasPreciseLocation(t);
+      }
+
+      return true;
     });
-  }, [tickets, urgencyFilter]);
+  }, [tickets, urgencyFilter, locationFilter]);
 
   useEffect(() => {
     if (!displayedTickets || displayedTickets.length === 0) {
@@ -414,8 +435,8 @@ export const AIReviewDetail = () => {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => { setUrgencyFilter(''); setShowUrgencyDropdown(false); }}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${urgencyFilter === '' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
+                      onClick={() => { setUrgencyFilter(''); setLocationFilter(''); setShowUrgencyDropdown(false); }}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${urgencyFilter === '' && locationFilter === '' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
                     >
                       Tất cả
                     </button>
@@ -429,6 +450,24 @@ export const AIReviewDetail = () => {
                         {getUrgencyLabel(urgency)}
                       </button>
                     ))}
+                  </div>
+
+                  <p className="mb-2 mt-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Vị trí</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setLocationFilter(''); setShowUrgencyDropdown(false); }}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${locationFilter === '' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
+                    >
+                      Tất cả vị trí
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setLocationFilter('withoutPreciseLocation'); setShowUrgencyDropdown(false); }}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${locationFilter === 'withoutPreciseLocation' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
+                    >
+                      Chưa có tọa độ chính xác
+                    </button>
                   </div>
                 </div>
               ) : null}
@@ -457,6 +496,12 @@ export const AIReviewDetail = () => {
                     </div>
                     <h3 className="mt-2 line-clamp-2 text-sm font-bold leading-5 text-slate-900">{ticket.title || 'Không có tiêu đề'}</h3>
                     <p className="mt-1 truncate text-xs text-slate-500">{ticket.locationText || 'Chưa có địa điểm'}</p>
+                    {!hasPreciseLocation(ticket) ? (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                        <Lucide.MapPinOff size={11} aria-hidden="true" />
+                        Chưa có tọa độ chính xác
+                      </p>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${getUrgencyBadgeClass(urgency)}`}>
                         {getUrgencyLabel(urgency)}

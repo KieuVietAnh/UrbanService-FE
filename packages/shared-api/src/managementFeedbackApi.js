@@ -84,6 +84,7 @@ export const normalizeFeedbackListParams = (params = {}) => {
   const pageSize = Number(params?.PageSize ?? params?.pageSize ?? 10);
   const status = params?.Status ?? params?.status;
   const categoryId = params?.CategoryId ?? params?.categoryId;
+  const hasPreciseLocation = params?.HasPreciseLocation ?? params?.hasPreciseLocation;
   const search = params?.Search ?? params?.search;
 
   if (Number.isFinite(pageNumber) && pageNumber > 0) {
@@ -102,6 +103,10 @@ export const normalizeFeedbackListParams = (params = {}) => {
 
   if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
     normalized.CategoryId = categoryId;
+  }
+
+  if (hasPreciseLocation !== undefined && hasPreciseLocation !== null && hasPreciseLocation !== '') {
+    normalized.HasPreciseLocation = hasPreciseLocation === true || hasPreciseLocation === 'true';
   }
 
   if (search !== undefined && search !== null && search !== '') {
@@ -422,6 +427,16 @@ export const managementFeedbackApi = {
   async updateFeedback(feedbackId, updateData) {
     const normalizedPayload = normalizeStaffFeedbackUpdatePayload(updateData);
     const response = await axiosClient.put(`/api/management/feedbacks/${feedbackId}`, normalizedPayload);
+    return response;
+  },
+
+  async deleteFeedback(feedbackId) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) {
+      throw new Error('Thiếu feedbackId để xóa phản ánh.');
+    }
+
+    const response = await axiosClient.delete(`/api/management/feedbacks/${normalizedFeedbackId}`);
     return response;
   },
 

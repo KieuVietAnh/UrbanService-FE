@@ -97,6 +97,20 @@ const PRIORITY_META = {
 const getStatusMeta = (status) => STATUS_META[normalizeFeedbackEnum(status)];
 const getPriorityMeta = (priority) => PRIORITY_META[normalizeFeedbackEnum(priority)];
 
+const hasPreciseLocation = (feedback = {}) => {
+  const latitude = feedback?.latitude ?? feedback?.lat ?? feedback?.location?.latitude ?? feedback?.location?.lat;
+  const longitude = feedback?.longitude ?? feedback?.lng ?? feedback?.long ?? feedback?.location?.longitude ?? feedback?.location?.lng;
+
+  return latitude !== null &&
+    latitude !== undefined &&
+    latitude !== '' &&
+    longitude !== null &&
+    longitude !== undefined &&
+    longitude !== '' &&
+    Number.isFinite(Number(latitude)) &&
+    Number.isFinite(Number(longitude));
+};
+
 
 const getCategoryName = (feedback, categories = []) => {
   const safeCategories = Array.isArray(categories) ? categories : [];
@@ -306,6 +320,7 @@ export const FeedbackManagement = () => {
     group: normalizeAdminFeedbackMetric(params.get('metric')),
     status: params.get('status') || 'all',
     search: params.get('search') || '',
+    locationFilter: params.get('locationFilter') || 'all',
     page: Math.max(1, Number(params.get('page')) || 1),
   }), []);
 
@@ -317,6 +332,7 @@ export const FeedbackManagement = () => {
         ),
         status: restoredContext.statusFilter ?? initialUrlFilters.status,
         search: restoredContext.searchTerm ?? initialUrlFilters.search,
+        locationFilter: restoredContext.locationFilter ?? initialUrlFilters.locationFilter,
         page: Math.max(
           1,
           Number(restoredContext.pageNumber ?? initialUrlFilters.page) || 1
@@ -426,9 +442,11 @@ export const FeedbackManagement = () => {
     return source.filter((feedback) => {
       if (filters.status !== 'all' && String(feedback?.status) !== String(filters.status)) return false;
       if (filters.status === 'all' && !filterAdminFeedbacksByMetric([feedback], filters.group).length) return false;
+      if (filters.locationFilter === 'withPreciseLocation' && !hasPreciseLocation(feedback)) return false;
+      if (filters.locationFilter === 'withoutPreciseLocation' && hasPreciseLocation(feedback)) return false;
       return feedbackMatchesSearch(feedback, filters.search, categories);
     });
-  }, [allFeedbacks, categories, filters.group, filters.search, filters.status]);
+  }, [allFeedbacks, categories, filters.group, filters.locationFilter, filters.search, filters.status]);
 
   const pagination = useMemo(() => {
     const totalItems = matchingFeedbacks.length;
@@ -454,6 +472,7 @@ export const FeedbackManagement = () => {
   const statusFilter = filters.status;
   const metricFilter = filters.group;
   const pageNumber = pagination.pageNumber;
+  const locationFilter = filters.locationFilter || 'all';
   const stats = feedbackSummary;
 
   useEffect(() => {
@@ -466,6 +485,7 @@ export const FeedbackManagement = () => {
     if (filters.status !== 'all') nextParams.set('status', filters.status);
     else if (filters.group !== 'total') nextParams.set('metric', filters.group);
     if (filters.search.trim()) nextParams.set('search', filters.search.trim());
+    if (filters.locationFilter && filters.locationFilter !== 'all') nextParams.set('locationFilter', filters.locationFilter);
     if (filters.page > 1) nextParams.set('page', String(filters.page));
 
     const nextQuery = nextParams.toString();
@@ -485,6 +505,7 @@ export const FeedbackManagement = () => {
       current.group === urlFilters.group &&
       current.status === urlFilters.status &&
       current.search === urlFilters.search &&
+      current.locationFilter === urlFilters.locationFilter &&
       current.page === urlFilters.page
         ? current
         : urlFilters
@@ -499,10 +520,11 @@ export const FeedbackManagement = () => {
       searchTerm,
       statusFilter,
       metricFilter,
+      locationFilter,
       feedbackSummary,
       ...pagination,
     });
-  }, [allFeedbacks, categories, feedbackSummary, feedbacks, metricFilter, pagination, searchTerm, statusFilter]);
+  }, [allFeedbacks, categories, feedbackSummary, feedbacks, locationFilter, metricFilter, pagination, searchTerm, statusFilter]);
 
   const updateFilters = useCallback((patch) => {
     setFilters((current) => ({ ...current, ...patch }));
@@ -539,6 +561,7 @@ export const FeedbackManagement = () => {
           statusFilter,
           metricFilter,
           pageNumber,
+          locationFilter,
           scrollY,
         })
       );
@@ -555,7 +578,7 @@ export const FeedbackManagement = () => {
         from: '/management/feedbacks',
       },
     });
-  }, [metricFilter, navigate, pageNumber, searchTerm, statusFilter]);
+  }, [locationFilter, metricFilter, navigate, pageNumber, searchTerm, statusFilter]);
 
   useEffect(() => () => {
     if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current);
@@ -694,7 +717,7 @@ export const FeedbackManagement = () => {
               </p>
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap xl:w-auto">
               <label className="relative block min-w-0 flex-1 xl:w-80">
                 <span className="sr-only">Tìm kiếm phản ánh</span>
                 <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -730,6 +753,20 @@ export const FeedbackManagement = () => {
                   ))}
                 </select>
               </label>
+
+              <label className="relative block sm:w-64">
+                <span className="sr-only">Lọc theo vị trí</span>
+                <Lucide.MapPin className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
+                <select
+                  value={locationFilter}
+                  onChange={(event) => updateFilters({ locationFilter: event.target.value, page: 1 })}
+                  className="select h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-700 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="all">Tất cả vị trí</option>
+                  <option value="withPreciseLocation">Có tọa độ chính xác</option>
+                  <option value="withoutPreciseLocation">Chưa có tọa độ chính xác</option>
+                </select>
+              </label>
             </div>
           </div>
         </div>
@@ -755,14 +792,14 @@ export const FeedbackManagement = () => {
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không tìm thấy phản ánh phù hợp</h3>
             <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-              {searchTerm || statusFilter !== 'all' || metricFilter !== 'total'
-                ? 'Thử xóa từ khóa hoặc chọn nhóm trạng thái khác.'
+              {searchTerm || statusFilter !== 'all' || metricFilter !== 'total' || locationFilter !== 'all'
+                ? 'Thử xóa từ khóa hoặc chọn bộ lọc khác.'
                 : 'Danh sách chưa có dữ liệu để hiển thị.'}
             </p>
-            {(searchTerm || statusFilter !== 'all' || metricFilter !== 'total') && (
+            {(searchTerm || statusFilter !== 'all' || metricFilter !== 'total' || locationFilter !== 'all') && (
               <button
                 type="button"
-                onClick={() => updateFilters({ search: '', status: 'all', group: 'total', page: 1 })}
+                onClick={() => updateFilters({ search: '', status: 'all', group: 'total', locationFilter: 'all', page: 1 })}
                 className="btn btn-outline mt-5 h-10 rounded-xl border-slate-300 px-4 text-sm dark:border-slate-700"
               >
                 <Lucide.RotateCcw size={15} />

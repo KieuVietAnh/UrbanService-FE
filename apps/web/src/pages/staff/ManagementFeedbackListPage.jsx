@@ -38,6 +38,20 @@ const getFeedbackLocationText = (item) => (
   ''
 );
 
+const hasPreciseLocation = (item = {}) => {
+  const latitude = item?.latitude ?? item?.lat ?? item?.location?.latitude ?? item?.location?.lat;
+  const longitude = item?.longitude ?? item?.lng ?? item?.long ?? item?.location?.longitude ?? item?.location?.lng;
+
+  return latitude !== null &&
+    latitude !== undefined &&
+    latitude !== '' &&
+    longitude !== null &&
+    longitude !== undefined &&
+    longitude !== '' &&
+    Number.isFinite(Number(latitude)) &&
+    Number.isFinite(Number(longitude));
+};
+
 const FilterDropdown = ({
   menuId,
   value,
@@ -126,6 +140,7 @@ export default function ManagementFeedbackListPage() {
   const [search, setSearch] = useState(() => initialReturnSnapshot?.search || '');
   const [status, setStatus] = useState(() => initialReturnSnapshot?.status || '');
   const [categoryId, setCategoryId] = useState(() => initialReturnSnapshot?.categoryId || '');
+  const [locationFilter, setLocationFilter] = useState(() => initialReturnSnapshot?.locationFilter || 'all');
 
   const normalizeStatusValue = useCallback((value) => {
     if (!value) return '';
@@ -149,6 +164,7 @@ export default function ManagementFeedbackListPage() {
   const [workflowTotalsLoading, setWorkflowTotalsLoading] = useState(() => !initialReturnSnapshot?.workflowTotals);
   const [restoredFeedbackId, setRestoredFeedbackId] = useState('');
   const [openFilterMenu, setOpenFilterMenu] = useState(null);
+  const [deletingFeedbackId, setDeletingFeedbackId] = useState('');
 
   // Load categories
   useEffect(() => {
@@ -197,7 +213,10 @@ export default function ManagementFeedbackListPage() {
         const matchesSearch = !search || `${item.title || ''} ${item.description || ''} ${item.feedbackId || ''}`.toLowerCase().includes(search.toLowerCase());
         const matchesStatus = !normalizedSelectedStatus || normalizedStatus === normalizedSelectedStatus;
         const matchesCategory = !categoryId || String(item.categoryId ?? item.category?.categoryId ?? '') === String(categoryId);
-        return matchesSearch && matchesStatus && matchesCategory;
+        const matchesLocation = locationFilter === 'all' ||
+          (locationFilter === 'withPreciseLocation' && hasPreciseLocation(item)) ||
+          (locationFilter === 'withoutPreciseLocation' && !hasPreciseLocation(item));
+        return matchesSearch && matchesStatus && matchesCategory && matchesLocation;
       });
 
       setFeedbacks(filteredItems);
@@ -210,7 +229,7 @@ export default function ManagementFeedbackListPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, search, status, categoryId, normalizeStatusValue]);
+  }, [currentPage, pageSize, search, status, categoryId, locationFilter, normalizeStatusValue]);
 
   useEffect(() => {
     fetchFeedbacks();
@@ -367,7 +386,7 @@ export default function ManagementFeedbackListPage() {
     }
 
     setCurrentPage(1);
-  }, [search, status, categoryId]);
+  }, [search, status, categoryId, locationFilter]);
 
   const categoryFilterOptions = useMemo(() => [
     { value: '', label: 'Tất cả danh mục' },
@@ -534,6 +553,7 @@ export default function ManagementFeedbackListPage() {
       search,
       status,
       categoryId,
+      locationFilter,
       scrollY: scrollContainer?.scrollTop || 0,
       feedbacks,
       totalCount,
@@ -570,6 +590,7 @@ export default function ManagementFeedbackListPage() {
     search,
     status,
     categoryId,
+    locationFilter,
     feedbacks,
     totalCount,
     workflowTotals,
@@ -663,10 +684,59 @@ export default function ManagementFeedbackListPage() {
     };
   }, [loading, feedbacks, location.state]);
 
+  const handleDeleteFeedback = async (event, item) => {
+    event.stopPropagation();
+
+    const feedbackId = item?.feedbackId || item?.id;
+    if (!feedbackId || deletingFeedbackId) return;
+
+    const confirmed = window.confirm(
+      `Bạn có chắc chắn muốn xóa phản ánh ${formatFeedbackId(feedbackId)}? Hành động này không thể hoàn tác.`
+    );
+    if (!confirmed) return;
+
+    setDeletingFeedbackId(String(feedbackId));
+    setError('');
+
+    try {
+      await managementFeedbackApi.deleteFeedback(feedbackId);
+
+      const deletedStatus = normalizeStatusValue(item?.status);
+      const isLastItemOnPage = feedbacks.length === 1 && currentPage > 1;
+
+      setFeedbacks((currentFeedbacks) => currentFeedbacks.filter((feedback) => (
+        String(feedback.feedbackId || feedback.id) !== String(feedbackId)
+      )));
+      setTotalCount((currentTotal) => Math.max(0, (Number(currentTotal) || 0) - 1));
+      setWorkflowTotals((currentTotals) => {
+        if (!deletedStatus || !Object.prototype.hasOwnProperty.call(currentTotals, deletedStatus)) {
+          return currentTotals;
+        }
+
+        return {
+          ...currentTotals,
+          [deletedStatus]: Math.max(0, (Number(currentTotals[deletedStatus]) || 0) - 1),
+        };
+      });
+
+      if (isLastItemOnPage) {
+        setCurrentPage((page) => Math.max(1, page - 1));
+      } else {
+        await Promise.all([fetchFeedbacks(), fetchWorkflowTotals()]);
+      }
+    } catch (err) {
+      console.error('Failed to delete feedback', err);
+      setError('Không thể xóa phản ánh. Vui lòng thử lại.');
+    } finally {
+      setDeletingFeedbackId('');
+    }
+  };
+
   const handleResetFilters = () => {
     setSearch('');
     setStatus('');
     setCategoryId('');
+    setLocationFilter('all');
     setCurrentPage(1);
   };
 
@@ -821,7 +891,7 @@ export default function ManagementFeedbackListPage() {
 
           </div>
 
-          <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(320px,1.5fr)_220px_220px_auto]">
+          <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(320px,1.5fr)_200px_200px_220px_auto]">
               <label className="relative block min-w-0 flex-1 xl:w-full">
                 <span className="sr-only">Tìm kiếm phản ánh</span>
                 <Lucide.Search
@@ -856,6 +926,23 @@ export default function ManagementFeedbackListPage() {
                 setOpenMenu={setOpenFilterMenu}
               />
 
+              <FilterDropdown
+                menuId="location"
+                value={locationFilter}
+                options={[
+                  { value: 'all', label: 'Tất cả vị trí' },
+                  { value: 'withPreciseLocation', label: 'Có tọa độ chính xác' },
+                  { value: 'withoutPreciseLocation', label: 'Chưa có tọa độ chính xác' },
+                ]}
+                onChange={(value) => {
+                  setLocationFilter(value);
+                  setCurrentPage(1);
+                }}
+                label="Lọc theo vị trí"
+                openMenu={openFilterMenu}
+                setOpenMenu={setOpenFilterMenu}
+              />
+
               <Button
                 type="button"
                 onClick={handleResetFilters}
@@ -881,13 +968,13 @@ export default function ManagementFeedbackListPage() {
             <table className="table w-full table-fixed text-sm">
               <colgroup>
                 <col className="w-[12%]" />
-                <col className="w-[29%]" />
+                <col className="w-[26%]" />
                 <col className="w-[13%]" />
                 <col className="w-[13%]" />
                 <col className="w-[9%]" />
                 <col className="w-[11%]" />
                 <col className="w-[9%]" />
-                <col className="w-[4%]" />
+                <col className="w-[7%]" />
               </colgroup>
 
               <thead>
@@ -1009,6 +1096,20 @@ export default function ManagementFeedbackListPage() {
 
                       <td className="px-2 py-[18px] text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            title="Xóa phản ánh"
+                            aria-label={`Xóa phản ánh ${formatFeedbackId(feedbackId)}`}
+                            disabled={deletingFeedbackId === String(feedbackId)}
+                            onClick={(event) => handleDeleteFeedback(event, item)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingFeedbackId === String(feedbackId) ? (
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-600" aria-hidden="true" />
+                            ) : (
+                              <Lucide.Trash2 size={16} aria-hidden="true" />
+                            )}
+                          </button>
                           <button
                             type="button"
                             title="Xem chi tiết"
