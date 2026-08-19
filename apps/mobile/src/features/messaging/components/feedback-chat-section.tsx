@@ -42,7 +42,9 @@ const getPersistedMessageId = (
 ) => {
   const record = message as
     | (ChatMessage & {
-        interactionMessageId?: string | number;
+        interactionMessageId?:
+          | string
+          | number;
       })
     | null
     | undefined;
@@ -104,19 +106,20 @@ export default function FeedbackChatSection({
     setIsScreenFocused,
   ] = useState(true);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      setIsScreenFocused(true);
-
-      return () =>
-        setIsScreenFocused(false);
-    }, []),
-  );
-
   const listRef =
     useRef<FlatList<ChatMessage> | null>(
       null,
     );
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setIsScreenFocused(true);
+
+      return () => {
+        setIsScreenFocused(false);
+      };
+    }, []),
+  );
 
   const {
     data: messages = [],
@@ -170,11 +173,22 @@ export default function FeedbackChatSection({
         ? MESSAGE_POLL_INTERVAL_MS
         : false,
 
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground:
+      false,
 
     staleTime: 1000,
   });
 
+  /**
+   * Theo dõi trạng thái foreground/background.
+   *
+   * Khi app background:
+   * - dừng polling.
+   *
+   * Khi quay lại foreground:
+   * - query được enable lại.
+   * - effect phía dưới sẽ refetch ngay.
+   */
   useEffect(() => {
     const subscription =
       AppState.addEventListener(
@@ -186,10 +200,17 @@ export default function FeedbackChatSection({
         },
       );
 
-    return () =>
+    return () => {
       subscription.remove();
+    };
   }, []);
 
+  /**
+   * Khi app quay lại foreground hoặc
+   * route được focus lại:
+   *
+   * refetch ngay thay vì chờ 2 giây.
+   */
   useEffect(() => {
     if (
       !isAppActive ||
@@ -223,6 +244,10 @@ export default function FeedbackChatSection({
     });
   };
 
+  /**
+   * Khi có message mới do polling,
+   * scroll xuống message cuối.
+   */
   useEffect(() => {
     if (!messages.length) {
       return undefined;
@@ -232,8 +257,9 @@ export default function FeedbackChatSection({
       scrollToBottom(true);
     }, 150);
 
-    return () =>
+    return () => {
       clearTimeout(timer);
+    };
   }, [messages.length]);
 
   const sendMutation = useMutation({
@@ -245,6 +271,9 @@ export default function FeedbackChatSection({
         messageText,
       ),
 
+    /**
+     * Optimistic message.
+     */
     onMutate: async (
       text: string,
     ) => {
@@ -273,12 +302,13 @@ export default function FeedbackChatSection({
       queryClient.setQueryData<
         ChatMessage[]
       >(queryKey, (old) => {
-        const arr = Array.isArray(old)
-          ? old
-          : [];
+        const current =
+          Array.isArray(old)
+            ? old
+            : [];
 
         return dedupeMessages([
-          ...arr,
+          ...current,
           optimistic,
         ]);
       });
@@ -287,16 +317,27 @@ export default function FeedbackChatSection({
         scrollToBottom(true);
       }, 80);
 
-      return { tempId };
+      return {
+        tempId,
+      };
     },
 
+    /**
+     * Khi POST thành công:
+     * - bỏ temp message
+     * - thêm persisted message
+     * - dedupe
+     * - invalidate chat/inbox cache
+     */
     onSuccess: (
       serverMessage,
       _text,
       context,
     ) => {
       const persistedMessage =
-        serverMessage as ChatMessage | null;
+        serverMessage as
+          | ChatMessage
+          | null;
 
       const persistedId =
         getPersistedMessageId(
@@ -322,13 +363,17 @@ export default function FeedbackChatSection({
                 context?.tempId,
             );
 
-          return persistedMessage &&
+          if (
+            persistedMessage &&
             persistedId
-            ? dedupeMessages([
-                ...withoutOptimistic,
-                persistedMessage,
-              ])
-            : withoutOptimistic;
+          ) {
+            return dedupeMessages([
+              ...withoutOptimistic,
+              persistedMessage,
+            ]);
+          }
+
+          return withoutOptimistic;
         },
       );
 
@@ -388,6 +433,18 @@ export default function FeedbackChatSection({
       edges={['top']}
     >
       <KeyboardAwareComposerLayout
+        /**
+         * Quan trọng:
+         *
+         * Khi keyboard mở, composer được
+         * translate lên.
+         *
+         * avoidContentOverlap đồng thời
+         * điều chỉnh vùng content để
+         * message cuối không nằm phía sau
+         * composer.
+         */
+        avoidContentOverlap
         composer={
           <View
             style={
@@ -408,11 +465,7 @@ export default function FeedbackChatSection({
                 }
                 onFocus={() => {
                   setTimeout(() => {
-                    listRef.current?.scrollToEnd(
-                      {
-                        animated: true,
-                      },
-                    );
+                    scrollToBottom(true);
                   }, 80);
                 }}
                 containerStyle={
@@ -446,17 +499,17 @@ export default function FeedbackChatSection({
                 ref={listRef}
                 data={messages}
                 keyExtractor={(
-                  m,
-                  i,
+                  message,
+                  index,
                 ) =>
                   String(
-                    m?.id ??
-                      m?.messageId ??
-                      m?.tempId ??
+                    message?.id ??
+                      message?.messageId ??
+                      message?.tempId ??
                       `${
-                        m?.createdAt ??
+                        message?.createdAt ??
                         ''
-                      }-${i}`,
+                      }-${index}`,
                   )
                 }
                 renderItem={({
@@ -487,9 +540,8 @@ export default function FeedbackChatSection({
                         refetch
                       }
                     >
-                      Không thể tải
-                      cuộc hội thoại
-                      này.
+                      Không thể tải cuộc
+                      hội thoại này.
                     </AppErrorState>
                   ) : (
                     <View
@@ -502,8 +554,7 @@ export default function FeedbackChatSection({
                           styles.emptyTitle
                         }
                       >
-                        Chưa có trao
-                        đổi
+                        Chưa có trao đổi
                       </Text>
 
                       <Text
@@ -512,9 +563,8 @@ export default function FeedbackChatSection({
                         }
                       >
                         Bạn có thể hỏi
-                        nhân viên hỗ
-                        trợ về phản
-                        ánh này.
+                        nhân viên hỗ trợ
+                        về phản ánh này.
                       </Text>
                     </View>
                   )
@@ -527,14 +577,10 @@ export default function FeedbackChatSection({
                 keyboardDismissMode="on-drag"
                 onContentSizeChange={() => {
                   setTimeout(() => {
-                    scrollToBottom(
-                      true,
-                    );
+                    scrollToBottom(true);
                   }, 50);
                 }}
-                style={
-                  styles.list
-                }
+                style={styles.list}
               />
             </View>
           </View>
@@ -570,6 +616,30 @@ const styles = StyleSheet.create({
       semantics.bg.surface,
   },
 
+  composerWrap: {
+    width: '100%',
+    backgroundColor:
+      semantics.bg.surface,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    alignItems: 'stretch',
+  },
+
+  /**
+   * Riêng Feedback Chat.
+   *
+   * MessageComposer mặc định:
+   * paddingTop: 8
+   * paddingBottom: 8
+   *
+   * Feedback dùng 5/5 để thanh
+   * composer gọn hơn.
+   */
+  feedbackComposer: {
+    paddingTop: 5,
+    paddingBottom: 5,
+  },
+
   chatBody: {
     flex: 1,
   },
@@ -584,7 +654,13 @@ const styles = StyleSheet.create({
 
   listContent: {
     paddingVertical: 10,
+
+    /**
+     * Khoảng cách message cuối với
+     * đáy list khi keyboard đóng.
+     */
     paddingBottom: 16,
+
     flexGrow: 1,
   },
 
@@ -593,25 +669,6 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  composerWrap: {
-    width: '100%',
-    backgroundColor:
-      semantics.bg.surface,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    alignItems: 'stretch',
-  },
-
-  /*
-   * Chỉ áp dụng cho Feedback Chat.
-   * Giảm padding dọc từ mặc định 8 xuống 5
-   * để composer gọn và thấp hơn một chút.
-   */
-  feedbackComposer: {
-    paddingTop: 5,
-    paddingBottom: 5,
   },
 
   headerRow: {
