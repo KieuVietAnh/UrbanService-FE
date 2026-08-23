@@ -6,6 +6,9 @@ test('normalizes feedback payload from API response', () => {
   const payload = {
     duplicateCandidateId: 'candidate-1',
     reason: 'Cùng chủ đề và vị trí gần nhau',
+    currentIncidentId: 'incident-1',
+    suggestedIncidentId: 'incident-2',
+    areInSameIncident: false,
     feedback: {
       feedbackId: 'feedback-1',
       title: 'Đèn đường bị hỏng',
@@ -32,5 +35,8 @@ test('normalizes feedback payload from API response', () => {
   assert.equal(normalized.primaryFeedback.title, 'Đèn đường bị hỏng');
   assert.equal(normalized.duplicateFeedback.feedbackId, 'feedback-2');
   assert.equal(normalized.duplicateFeedback.locationText, 'Gần số 12 Nguyễn Huệ, Quận 1');
+  assert.equal(normalized.currentIncidentId, 'incident-1');
+  assert.equal(normalized.suggestedIncidentId, 'incident-2');
+  assert.equal(normalized.areInSameIncident, false);
   assert.equal(getCandidateReasoning(normalized), 'Cùng chủ đề và vị trí gần nhau');
 });

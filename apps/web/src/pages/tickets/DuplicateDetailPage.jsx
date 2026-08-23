@@ -139,7 +139,7 @@ export const DuplicateDetailPage = () => {
 
   const loadCandidate = useCallback(async () => {
     if (!duplicateCandidateId) {
-      setError('Thiếu mã ứng viên trùng lặp.');
+      setError('Thiếu mã đề xuất ghép Incident.');
       setLoading(false);
       return;
     }
@@ -198,7 +198,7 @@ export const DuplicateDetailPage = () => {
       }
     } catch (err) {
       console.error(err);
-      setError(err?.message || 'Không thể tải chi tiết phản ánh trùng lặp.');
+      setError(err?.message || 'Không thể tải chi tiết đề xuất cùng Incident.');
     } finally {
       setLoading(false);
     }
@@ -227,12 +227,16 @@ export const DuplicateDetailPage = () => {
   const confidenceLabel = getRecommendationText(confidenceValue);
   const statusLabel = getStatusLabel(candidate?.status);
   const candidateIsPending = String(candidate?.status || '').toLowerCase() === 'pending';
+  const currentIncidentId = candidate?.currentIncidentId || candidate?.incidentId || primaryFeedback?.incidentId;
+  const suggestedIncidentId = candidate?.suggestedIncidentId || duplicateFeedback?.incidentId;
+  const areInSameIncident = candidate?.areInSameIncident
+    ?? Boolean(currentIncidentId && suggestedIncidentId && currentIncidentId === suggestedIncidentId);
   const parentStatus = String(duplicateFeedback?.status || '').trim();
   const parentIsEligibleMaster = ELIGIBLE_MASTER_STATUSES.has(parentStatus.toLowerCase());
   const canConfirmDuplicate = candidateIsPending && parentIsEligibleMaster;
   const confirmBlockedMessage = !candidateIsPending
     ? 'Đề xuất này không còn ở trạng thái chờ xử lý.'
-    : `Phản ánh chính đang ở trạng thái ${parentStatus || 'không xác định'} và chưa thể công khai. Hãy duyệt phản ánh chính trước khi xác nhận trùng.`;
+    : `Report đại diện đang ở trạng thái ${parentStatus || 'không xác định'} và chưa thể công khai. Hãy duyệt Report đại diện trước khi xác nhận cùng Incident.`;
 
   const comparisonRows = useMemo(() => {
     const titleA = getTextValue(primaryFeedback?.title, '—');
@@ -336,14 +340,14 @@ export const DuplicateDetailPage = () => {
       navigate('/staff/duplicates', {
         replace: true,
         state: {
-          successMessage: 'Đã xác nhận phản ánh trùng lặp và loại khỏi hàng chờ thành công.',
+          successMessage: 'Đã ghép Report vào Incident hiện có. Nội dung Report vẫn được lưu giữ.',
         },
       });
     } catch (err) {
       console.error(err);
       setPageMessage({
         type: 'error',
-        text: err?.message || 'Không thể xác nhận phản ánh trùng lặp lúc này.',
+        text: err?.message || 'Không thể ghép Report vào Incident lúc này.',
       });
     } finally {
       setConfirmLoading(false);
@@ -363,14 +367,14 @@ export const DuplicateDetailPage = () => {
       navigate('/staff/duplicates', {
         replace: true,
         state: {
-          successMessage: 'Đã xác định hai phản ánh không trùng và loại khỏi hàng chờ.',
+          successMessage: 'Đã giữ hai Report ở hai Incident riêng.',
         },
       });
     } catch (err) {
       console.error(err);
       setPageMessage({
         type: 'error',
-        text: err?.message || 'Không thể từ chối phản ánh trùng lặp lúc này.',
+        text: err?.message || 'Không thể xác nhận hai Report thuộc Incident riêng lúc này.',
       });
     } finally {
       setRejectLoading(false);
@@ -387,8 +391,8 @@ export const DuplicateDetailPage = () => {
       )}
 
       <ManagerPageHeader
-        title="Chi tiết trường hợp nghi trùng"
-        description="So sánh hai phản ánh, kiểm tra bằng chứng AI và đưa ra kết luận cuối cùng."
+        title="Xác nhận Report cùng Incident"
+        description="So sánh hai Report và quyết định ghép vào một Incident hay giữ riêng."
         icon={Lucide.ScanSearch}
         statusLabel="MÃ ĐỀ XUẤT"
         statusValue={duplicateCandidateId ? `${String(duplicateCandidateId).slice(0, 8)}…` : '—'}
@@ -403,7 +407,7 @@ export const DuplicateDetailPage = () => {
       {loading ? (
         <div className="card bg-white border border-slate-200 rounded-3xl p-10 text-center text-sm text-slate-500">
           <span className="loading loading-spinner loading-sm mr-2" />
-          Đang tải chi tiết trường hợp nghi trùng...
+          Đang tải đề xuất cùng Incident...
         </div>
       ) : error ? (
         <div className="card bg-rose-50 border border-rose-200 rounded-3xl p-10 text-center text-sm text-rose-700">
@@ -415,10 +419,21 @@ export const DuplicateDetailPage = () => {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="admin-panel p-4">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Độ tương đồng</div>
               <div className="mt-1.5 text-2xl font-semibold text-slate-950">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</div>
+            </div>
+            <div className="admin-panel p-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Incident</div>
+              <div className="mt-1.5 text-sm font-semibold text-slate-950">
+                {currentIncidentId ? String(currentIncidentId).slice(0, 8) : '—'}
+                <span className="mx-1.5 text-slate-400">→</span>
+                {suggestedIncidentId ? String(suggestedIncidentId).slice(0, 8) : '—'}
+              </div>
+              <div className={`mt-1 text-xs ${areInSameIncident ? 'text-emerald-600' : 'text-slate-500'}`}>
+                {areInSameIncident ? 'Đã cùng Incident' : 'Đang thuộc hai Incident'}
+              </div>
             </div>
             <div className="admin-panel p-4">
               <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Mức tin cậy</div>
@@ -440,7 +455,7 @@ export const DuplicateDetailPage = () => {
                 <Lucide.AlertTriangle size={16} />
               </div>
               <div>
-                <div className="font-semibold">Chưa thể xác nhận phản ánh trùng</div>
+                <div className="font-semibold">Chưa thể ghép Report vào Incident</div>
                 <p className="mt-1 text-slate-700">{confirmBlockedMessage}</p>
               </div>
             </div>
@@ -450,8 +465,8 @@ export const DuplicateDetailPage = () => {
             <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/30 px-5 py-4 sm:px-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Đối chiếu phản ánh</div>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-950">So sánh hai phản ánh</h2>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Đối chiếu Report</div>
+                  <h2 className="mt-1 text-lg font-semibold text-slate-950">Hai Report có cùng sự vụ?</h2>
                 </div>
                 <div className="text-xs font-medium text-slate-500">Giống / Khác được tính theo dữ liệu hiện tại</div>
               </div>
@@ -461,7 +476,7 @@ export const DuplicateDetailPage = () => {
               <article className="p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-500">Phản ánh mới</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-500">Report mới</div>
                     <h3 className="mt-1 line-clamp-2 text-base font-semibold text-slate-950">
                       {getTextValue(primaryFeedback?.title, '—')}
                     </h3>
@@ -486,7 +501,7 @@ export const DuplicateDetailPage = () => {
               <article className="border-t border-slate-200 p-5 sm:p-6 xl:border-t-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Phản ánh nghi là chính</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Report đại diện Incident</div>
                     <h3 className="mt-1 line-clamp-2 text-base font-semibold text-slate-950">
                       {getTextValue(duplicateFeedback?.title, '—')}
                     </h3>
@@ -584,9 +599,9 @@ export const DuplicateDetailPage = () => {
                 <Lucide.AlertTriangle size={16} />
               </div>
               <div className="space-y-2">
-                <h3 className="text-lg font-black text-slate-900">Xác nhận phản ánh trùng lặp?</h3>
+                <h3 className="text-lg font-black text-slate-900">Xác nhận hai Report cùng Incident?</h3>
                 <p className="text-sm text-slate-600">
-                  Hành động này sẽ đánh dấu đề xuất này là trùng lặp và loại khỏi hàng chờ Pending của hệ thống.
+                  Report mới sẽ được ghép vào Incident hiện có. Report không bị xóa và vẫn được giữ làm thông tin bổ sung.
                 </p>
               </div>
             </div>
@@ -621,9 +636,9 @@ export const DuplicateDetailPage = () => {
                 <Lucide.XCircle size={18} />
               </div>
               <div className="space-y-2">
-                <h3 className="text-lg font-black text-slate-900">Xác định hai phản ánh không trùng?</h3>
+                <h3 className="text-lg font-black text-slate-900">Giữ hai Report ở Incident riêng?</h3>
                 <p className="text-sm leading-6 text-slate-600">
-                  Hệ thống sẽ đánh dấu đề xuất này là <strong>Đã từ chối</strong>. Hai phản ánh vẫn được giữ độc lập và không được gộp.
+                  Hệ thống sẽ đánh dấu đề xuất là <strong>Đã từ chối</strong>. Mỗi Report tiếp tục thuộc Incident riêng.
                 </p>
               </div>
             </div>
@@ -666,7 +681,7 @@ export const DuplicateDetailPage = () => {
                 className="btn btn-outline min-h-0 rounded-xl px-4 py-2.5"
               >
                 <Lucide.XCircle size={15} className="mr-1.5" />
-                Không trùng lặp
+                Khác sự vụ
               </button>
               <button
                 type="button"
@@ -676,7 +691,7 @@ export const DuplicateDetailPage = () => {
                 className="btn btn-primary min-h-0 rounded-xl px-4 py-2.5 shadow-md shadow-blue-500/15"
               >
                 <Lucide.CheckCircle2 size={15} className="mr-1.5" />
-                Xác nhận trùng lặp
+                Cùng sự vụ
               </button>
             </div>
           </div>

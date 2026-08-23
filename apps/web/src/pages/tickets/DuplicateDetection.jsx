@@ -311,7 +311,7 @@ export const DuplicateDetection = () => {
       console.error('Failed to load duplicate candidates', err);
       setMessage({
         type: 'error',
-        text: err?.message || 'Không thể tải danh sách phản ánh nghi trùng.',
+        text: err?.message || 'Không thể tải danh sách đề xuất ghép Report vào Incident.',
       });
       setItems((current) => (current.length > 0 ? current : []));
     } finally {
@@ -354,14 +354,14 @@ export const DuplicateDetection = () => {
       ) : null}
 
       <ManagerPageHeader
-        title="Xử lý trùng lặp"
-        description="Kiểm tra các đề xuất nghi trùng do AI phát hiện trước khi xác nhận gộp hoặc giữ phản ánh độc lập."
+        title="Ghép Report vào Incident"
+        description="Kiểm tra hai Report có cùng nói về một sự vụ trước khi ghép vào Incident chung."
         icon={Lucide.ScanSearch}
         statusLabel="ĐANG HIỂN THỊ"
         statusValue={currentFilterLabel}
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Tổng quan trùng lặp">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Tổng quan đề xuất cùng Incident">
         {STATUS_FILTERS.map((filter) => {
           const active = statusFilter === filter.key;
           const Icon = filter.icon;
@@ -385,12 +385,12 @@ export const DuplicateDetection = () => {
               </div>
               <p className="mt-2 text-xs leading-5 text-slate-500">
                 {filter.key === ''
-                  ? 'Tất cả đề xuất trùng lặp trong hệ thống.'
+                  ? 'Tất cả đề xuất Report có thể cùng Incident.'
                   : filter.key === 'Pending'
                     ? 'Các trường hợp đang chờ Staff đưa ra kết luận.'
                     : filter.key === 'Confirmed'
-                      ? 'Các trường hợp đã được xác nhận là trùng.'
-                      : 'Các trường hợp đã được xác định là không trùng.'}
+                      ? 'Các Report đã được xác nhận cùng Incident.'
+                      : 'Các Report được giữ ở Incident riêng.'}
               </p>
             </button>
           );
@@ -401,7 +401,7 @@ export const DuplicateDetection = () => {
         <div className="staff-dark-surface-header border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/35 px-5 py-4 sm:px-6">
           <ManagerSectionHeader
             title={`Danh sách · ${currentFilterLabel}`}
-            description="Mở một trường hợp để so sánh hai phản ánh, xem độ tin cậy và lý do AI."
+            description="Mở đề xuất để so sánh hai Report và quyết định cùng hay khác Incident."
             icon={Lucide.Files}
             actions={(
               <Button type="button" onClick={loadData} variant="ghost" size="sm" disabled={loading}>
@@ -415,7 +415,7 @@ export const DuplicateDetection = () => {
         {loading ? (
           <div className="flex min-h-[280px] items-center justify-center text-sm text-slate-500">
             <span className="mr-2 inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
-            Đang tải danh sách trùng lặp...
+            Đang tải đề xuất cùng Incident...
           </div>
         ) : items.length === 0 ? (
           <div className="px-6 py-14 text-center">
@@ -424,7 +424,7 @@ export const DuplicateDetection = () => {
             </span>
             <h3 className="mt-4 text-base font-semibold text-slate-900">Không có trường hợp phù hợp</h3>
             <p className="mt-1 text-sm text-slate-500">
-              Hiện không có đề xuất trùng lặp ở trạng thái {currentFilterLabel.toLowerCase()}.
+              Hiện không có đề xuất cùng Incident ở trạng thái {currentFilterLabel.toLowerCase()}.
             </p>
           </div>
         ) : (
@@ -441,8 +441,8 @@ export const DuplicateDetection = () => {
                 </colgroup>
                 <thead className="bg-slate-100/80">
                   <tr>
-                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Phản ánh mới</th>
-                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Phản ánh nghi là chính</th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Report mới</th>
+                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Report đại diện Incident</th>
                     <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tương đồng</th>
                     <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Trạng thái</th>
                     <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Phát hiện lúc</th>
@@ -546,7 +546,7 @@ export const DuplicateDetection = () => {
               </p>
 
               {totalPages > 1 ? (
-                <nav className="flex items-center gap-1.5" aria-label="Phân trang danh sách trùng lặp">
+                <nav className="flex items-center gap-1.5" aria-label="Phân trang đề xuất cùng Incident">
                   <button
                     type="button"
                     onClick={() => setPage((value) => Math.max(1, value - 1))}

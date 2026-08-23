@@ -1,6 +1,6 @@
 import { axiosClient } from './axiosClient.js';
 
-const getDuplicateBasePath = () => '/api/staff/feedback-duplicates';
+const getDuplicateBasePath = () => '/api/management/incident-match-candidates';
 
 const normalizeDuplicateItems = (payload) => {
   if (Array.isArray(payload)) return payload;
