@@ -3,6 +3,7 @@ import { axiosClient } from './axiosClient.js';
 const INCIDENT_LIST_ENDPOINT = '/api/management/incidents';
 const INCIDENT_DETAIL_ENDPOINT = '/api/management/incidents/{incidentId}';
 const INCIDENT_TIMELINE_ENDPOINT = '/api/management/incidents/{incidentId}/timeline';
+const INCIDENT_STATUS_ENDPOINT = '/api/management/incidents/{incidentId}/status';
 const INCIDENT_ASSIGNEE_CANDIDATES_ENDPOINT = '/api/management/incidents/{incidentId}/assignee-candidates';
 const INCIDENT_ASSIGN_ENDPOINT = '/api/management/incidents/{incidentId}/assign';
 
@@ -100,6 +101,13 @@ export const normalizeAssignIncidentPayload = (payload = {}) => {
   return normalized;
 };
 
+export const normalizeStartIncidentProcessingPayload = (payload = {}) => {
+  const normalized = { status: 'InProgress' };
+  const note = String(payload?.note ?? '').trim();
+  if (note) normalized.note = note;
+  return normalized;
+};
+
 export const normalizeIncidentTimelineParams = (params = {}) => {
   const normalized = {};
 
@@ -154,6 +162,24 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
     paginated: true,
     defaultPageSize: 20,
   }),
+  statusTransition: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_STATUS_ENDPOINT,
+    requestSchema: 'UpdateIncidentStatusRequest',
+  }),
+  staffStartProcessing: Object.freeze({
+    available: false,
+    fromStatus: 'Assigned',
+    toStatus: 'InProgress',
+    reason: 'role-transition-unconfirmed',
+  }),
+  providerAssignment: Object.freeze({
+    available: false,
+    scope: 'feedback',
+    legacyRequiresFeedbackId: true,
+    authoritativeReportMapping: false,
+    reason: 'incident-provider-api-unavailable',
+  }),
   assigneeCandidates: Object.freeze({
     available: true,
     endpoint: INCIDENT_ASSIGNEE_CANDIDATES_ENDPOINT,
@@ -194,6 +220,16 @@ export const incidentManagementApi = Object.freeze({
     });
 
     return normalizeIncidentTimelineResponse(response);
+  },
+
+  async startIncidentProcessing(incidentId, payload = {}) {
+    const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
+    const response = await axiosClient.patch(
+      `${detailEndpoint}/status`,
+      normalizeStartIncidentProcessingPayload(payload),
+    );
+
+    return normalizeIncidentDetailResponse(response);
   },
 
   async getIncidentAssigneeCandidates(incidentId, options = {}) {
