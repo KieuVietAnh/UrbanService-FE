@@ -32,6 +32,8 @@ const ResidentAreaAlertsPage = lazy(() => import('../pages/alerts/ResidentAreaAl
 const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then((m) => ({ default: m.AIReviewDetail })));
 const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
 const DuplicateDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.DuplicateDetailPage })));
+const IncidentMatchListPage = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.IncidentMatchListPage })));
+const IncidentMatchDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.IncidentMatchDetailPage })));
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
 const StaffIncidentListPage = lazy(() => import('../pages/staff/StaffIncidentListPage').then((m) => ({ default: m.default })));
@@ -59,6 +61,10 @@ const HeatmapDashboard = lazy(() => import('../pages/analytics/HeatmapDashboard'
 const InteractionHistoryMonitoring = lazy(() => import('../pages/analytics/InteractionHistoryMonitoring').then((m) => ({ default: m.InteractionHistoryMonitoring })));
 const InteractionApprovalInboxPage = lazy(() => import('../pages/manager/InteractionApprovalInboxPage').then((m) => ({ default: m.InteractionApprovalInboxPage })));
 const InteractionApprovalDetailPage = lazy(() => import('../pages/manager/InteractionApprovalDetailPage').then((m) => ({ default: m.InteractionApprovalDetailPage })));
+const ManagerReportReviewQueuePage = lazy(() => import('../pages/manager/ManagerReportReviewQueuePage').then((m) => ({ default: m.ManagerReportReviewQueuePage })));
+const ManagerReportReviewDetailPage = lazy(() => import('../pages/manager/ManagerReportReviewDetailPage').then((m) => ({ default: m.ManagerReportReviewDetailPage })));
+const ManagerIncidentListPage = lazy(() => import('../pages/manager/ManagerIncidentListPage').then((m) => ({ default: m.ManagerIncidentListPage })));
+const ManagerIncidentDetailPage = lazy(() => import('../pages/manager/ManagerIncidentDetailPage').then((m) => ({ default: m.ManagerIncidentDetailPage })));
 
 const UserManagement = lazy(() => import('../pages/management/UserManagement').then((m) => ({ default: m.UserManagement })));
 const FeedbackManagement = lazy(() => import('../pages/management/FeedbackManagement').then((m) => ({ default: m.FeedbackManagement })));
@@ -488,6 +494,60 @@ export const AppRoutes = () => {
       } />
 
       {/* Interaction Manager Routes */}
+      <Route path="/manager/incident-matches" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <IncidentMatchListPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/manager/incident-matches/:candidateId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <IncidentMatchDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/manager/reports/review" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagerReportReviewQueuePage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/manager/reports/review/:feedbackId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagerReportReviewDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/manager/incidents" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagerIncidentListPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/manager/incidents/:incidentId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
+            <DashboardLayout>
+              <ManagerIncidentDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/manager/interactions" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>

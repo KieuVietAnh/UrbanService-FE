@@ -5,11 +5,12 @@ import {
   MapContainer,
   Marker,
   Popup,
-  TileLayer,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+import ConfiguredMapTileLayer from '../maps/ConfiguredMapTileLayer';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -321,16 +322,6 @@ export const PublicMapPreview = ({ compact = false }) => {
     setFitRequestKey((current) => current + 1);
   };
 
-  const tileLayer = theme === 'dark'
-    ? {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      }
-    : {
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        attribution: '&copy; OpenStreetMap contributors',
-      };
-
   if (compact) {
     return (
       <>
@@ -360,10 +351,8 @@ export const PublicMapPreview = ({ compact = false }) => {
                 zoomControl
                 className="h-full min-h-[285px] w-full"
               >
-                <TileLayer
+                <ConfiguredMapTileLayer
                   key={theme}
-                  attribution={tileLayer.attribution}
-                  url={tileLayer.url}
                 />
                 <FitPreviewBounds groups={groups} requestKey={fitRequestKey} />
                 {groups.map((group) => {
@@ -563,10 +552,8 @@ export const PublicMapPreview = ({ compact = false }) => {
             zoomControl
             className={`h-full w-full ${compact ? 'min-h-[360px] lg:min-h-[420px]' : 'min-h-[440px] lg:min-h-[520px]'}`}
           >
-            <TileLayer
+            <ConfiguredMapTileLayer
               key={theme}
-              attribution={tileLayer.attribution}
-              url={tileLayer.url}
             />
             <FitPreviewBounds groups={groups} requestKey={fitRequestKey} />
             {groups.map((group) => {

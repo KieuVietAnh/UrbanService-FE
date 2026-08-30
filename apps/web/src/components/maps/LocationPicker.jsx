@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GeoJSON, MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { GeoJSON, MapContainer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+import {
+  MAP_GEOCODING_REVERSE_URL,
+  MAP_GEOCODING_SEARCH_URL,
+} from '../../config/mapConfig';
+import ConfiguredMapTileLayer from './ConfiguredMapTileLayer';
 import * as Lucide from 'lucide-react';
 import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
 import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
 
 const DEFAULT_CENTER = [10.776530, 106.700981];
 const DEFAULT_ZOOM = 14;
-const GEOCODING_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
-const REVERSE_GEOCODING_ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
+const GEOCODING_ENDPOINT = MAP_GEOCODING_SEARCH_URL;
+const REVERSE_GEOCODING_ENDPOINT = MAP_GEOCODING_REVERSE_URL;
 const GEOCODING_CACHE_PREFIX = 'urbanmind:location-search:';
 const REVERSE_GEOCODING_CACHE_PREFIX = 'urbanmind:location-reverse:';
 let lastNominatimRequestAt = 0;
@@ -786,10 +792,7 @@ export const LocationPicker = ({
           className="w-full h-full"
           zoomControl={true}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <ConfiguredMapTileLayer />
           <MapAutoCenter center={center} />
           <MapBoundaryAutoFit boundaryGeoJson={areaBoundary} />
           {areaBoundary ? (

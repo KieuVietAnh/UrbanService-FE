@@ -5,8 +5,17 @@ import {
   normalizeRelatedFeedbacksPayload,
 } from './feedbackRelations.js';
 
+const getAiReviewedPagePayload = (payload = {}) => {
+  if (Array.isArray(payload)) return { items: payload };
+  if (Array.isArray(payload?.items)) return payload;
+  if (Array.isArray(payload?.data?.items)) return payload.data;
+  if (Array.isArray(payload?.result?.items)) return payload.result;
+  return payload || {};
+};
+
 export const normalizeAiReviewedPayload = (payload = {}) => {
-  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const source = getAiReviewedPagePayload(payload);
+  const items = Array.isArray(source?.items) ? source.items : [];
 
   return items.map((item) => {
     const feedback = item?.feedback || {};
@@ -34,15 +43,15 @@ export const normalizeAiReviewedPayload = (payload = {}) => {
 
     const riskNotes = normalizeStringArray(parsedRawResponse?.riskNotes || analysisResult.riskNotes || []);
     const keywords = normalizeStringArray(parsedRawResponse?.keywords || analysisResult.keywords || []);
-    const normalizedTitle = feedback.title || feedback.description || feedback.content || 'Không có tiêu đề';
-    const normalizedDescription = feedback.description || feedback.content || feedback.details || feedback.message || feedback.title || '';
+    const normalizedTitle = feedback.title || feedback.description || feedback.content || 'Chưa có dữ liệu';
+    const normalizedDescription = feedback.description || feedback.content || feedback.details || feedback.message || '';
 
     return {
       ...feedback,
       feedbackId: feedback.feedbackId || feedback.id || item?.feedbackId || '',
       title: normalizedTitle,
       description: normalizedDescription,
-      reporterName: feedback.reporterName || feedback.reporter?.name || feedback.userName || 'Không rõ',
+      reporterName: feedback.reporterName || feedback.reporter?.name || feedback.userName || 'Chưa có dữ liệu',
       locationText: feedback.locationText || feedback.location || feedback.address || '',
       categoryId: feedback.categoryId ?? analysisResult.detectedCategoryId ?? '',
       categoryName: feedback.categoryName || analysisResult.detectedCategoryName || '',
@@ -51,7 +60,7 @@ export const normalizeAiReviewedPayload = (payload = {}) => {
       createdAt: feedback.createdAt || analysisResult.createdAt || null,
       updatedAt: feedback.updatedAt || feedback.updatedDate || null,
       summary: analysisResult.summary || parsedRawResponse?.summary || '',
-      confidenceScore: analysisResult.confidenceScore ?? parsedRawResponse?.confidenceScore ?? 0,
+      confidenceScore: analysisResult.confidenceScore ?? parsedRawResponse?.confidenceScore ?? null,
       sentiment: analysisResult.sentiment || parsedRawResponse?.sentiment || 'Unknown',
       urgencyLevel: analysisResult.urgencyLevel || parsedRawResponse?.urgencyLevel || '',
       detectedCategoryName: analysisResult.detectedCategoryName || parsedRawResponse?.detectedCategoryName || feedback.categoryName || '',
@@ -61,6 +70,30 @@ export const normalizeAiReviewedPayload = (payload = {}) => {
       analysisResult,
     };
   });
+};
+
+export const normalizeAiReviewedPage = (payload = {}) => {
+  const source = getAiReviewedPagePayload(payload);
+  const items = normalizeAiReviewedPayload(source);
+  const pageNumber = Number(source?.pageNumber ?? 1);
+  const pageSize = Number(source?.pageSize ?? items.length ?? 0);
+  const totalItems = Number(source?.totalItems ?? source?.totalCount ?? items.length);
+  const calculatedTotalPages = pageSize > 0 ? Math.ceil(totalItems / pageSize) : 0;
+  const totalPages = Number(source?.totalPages ?? calculatedTotalPages);
+
+  return {
+    items,
+    pageNumber: Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : 1,
+    pageSize: Number.isFinite(pageSize) && pageSize >= 0 ? pageSize : items.length,
+    totalItems: Number.isFinite(totalItems) && totalItems >= 0 ? totalItems : items.length,
+    totalPages: Number.isFinite(totalPages) && totalPages >= 0 ? totalPages : calculatedTotalPages,
+    hasPreviousPage: typeof source?.hasPreviousPage === 'boolean'
+      ? source.hasPreviousPage
+      : pageNumber > 1,
+    hasNextPage: typeof source?.hasNextPage === 'boolean'
+      ? source.hasNextPage
+      : pageNumber < totalPages,
+  };
 };
 
 const normalizeFeedbackStatusValue = (value) => {
@@ -787,8 +820,13 @@ export const managementFeedbackApi = {
 },
 
   // Verify feedback
-  async verifyFeedback(feedbackId, verifyData = {}) {
-    const response = await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`, verifyData);
+  async verifyFeedback(feedbackId, verifyData = null) {
+    const hasPayload = verifyData
+      && typeof verifyData === 'object'
+      && Object.keys(verifyData).length > 0;
+    const response = hasPayload
+      ? await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`, verifyData)
+      : await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`);
     return response;
   },
 
@@ -832,6 +870,14 @@ export const managementFeedbackApi = {
       params: normalizeFeedbackListParams(params),
     });
     return normalizeAiReviewedPayload(response);
+  },
+
+  // Keep the backend pagination contract for Manager review queues.
+  async getAiReviewedFeedbackPage(params = {}) {
+    const response = await axiosClient.get('/api/management/feedbacks/ai-reviewed', {
+      params: normalizeFeedbackListParams(params),
+    });
+    return normalizeAiReviewedPage(response);
   },
 
   // Approve an operator's resolution

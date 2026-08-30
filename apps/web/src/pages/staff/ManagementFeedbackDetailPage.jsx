@@ -18,6 +18,7 @@ import * as Lucide from 'lucide-react';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import RelatedIncidentCard from '../../components/staff/RelatedIncidentCard';
+import { buildExternalMapUrl } from '../../config/mapConfig';
 
 const CITIZEN_NOTIFICATION_TEMPLATES = [
   {
@@ -1823,7 +1824,7 @@ export const ManagementFeedbackDetailPage = () => {
                   <div className="mt-1 text-sm text-slate-500">Xem vị trí trên bản đồ hoặc mở nhanh bằng Google Maps.</div>
                 </div>
                 <a
-                  href={`https://www.google.com/maps/?q=${feedback.latitude},${feedback.longitude}`}
+                  href={buildExternalMapUrl(feedback.latitude, feedback.longitude)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"

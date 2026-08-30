@@ -7,12 +7,13 @@ import {
   MapContainer,
   Marker,
   Popup,
-  TileLayer,
   Tooltip,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+import ConfiguredMapTileLayer from './ConfiguredMapTileLayer';
 import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
 import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
 
@@ -619,10 +620,8 @@ export const IncidentMap = ({
           zoomControl={true}
           preferCanvas={true}
         >
-          <TileLayer
+          <ConfiguredMapTileLayer
             key={theme}
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <PersistMapView onViewStateChange={onViewStateChange} />
           {focusFeedbackId ? (

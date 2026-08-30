@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { MAP_GEOCODING_REVERSE_URL } from '../config/mapConfig';
+
 const CACHE_PREFIX = 'urbanmind:detail-location:';
 let lastReverseRequestAt = 0;
 
@@ -113,7 +115,7 @@ export const useResolvedLocationText = ({
         });
 
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?${params.toString()}`,
+          `${MAP_GEOCODING_REVERSE_URL}?${params.toString()}`,
           { headers: { Accept: 'application/json' } }
         );
 

@@ -26,12 +26,27 @@ export {
   setUnauthorizedHandler,
   refreshAuthSession,
 } from './axiosClient.js';
-export { managementFeedbackApi, normalizeProviderReportStatus, canTransitionProviderReportStatus } from './managementFeedbackApi.js';
-export { duplicateManagementApi } from './duplicateManagementApi.js';
+export {
+  managementFeedbackApi,
+  normalizeAiReviewedPage,
+  normalizeAiReviewedPayload,
+  normalizeFeedbackListParams,
+  normalizeProviderReportStatus,
+  canTransitionProviderReportStatus,
+} from './managementFeedbackApi.js';
+export {
+  duplicateManagementApi,
+  incidentMatchApi,
+  normalizeIncidentMatchPage,
+  normalizeIncidentMatchParams,
+  normalizeIncidentMatchSummary,
+} from './duplicateManagementApi.js';
 export {
   incidentManagementApi,
   INCIDENT_MANAGEMENT_CAPABILITIES,
   normalizeIncidentDetailResponse,
+  normalizeIncidentAssigneeCandidates,
+  normalizeAssignIncidentPayload,
   normalizeIncidentListParams,
   normalizeIncidentListResponse,
   normalizeIncidentTimelineParams,

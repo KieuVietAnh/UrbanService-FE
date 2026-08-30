@@ -51,12 +51,20 @@ export const ManagerMetricCard = ({ label, value, description, icon: Icon = Luci
   </article>
 );
 
-export const ManagerSectionHeader = ({ id, title, description, icon: Icon, actions }) => (
+export const ManagerSectionHeader = ({
+  id,
+  title,
+  description,
+  icon: Icon,
+  iconClassName = 'admin-mini-icon',
+  iconSize = 17,
+  actions,
+}) => (
   <header className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
     <div className="flex min-w-0 items-start gap-3">
       {Icon ? (
-        <span className="admin-mini-icon" aria-hidden="true">
-          <Icon size={17} />
+        <span className={iconClassName} aria-hidden="true">
+          <Icon size={iconSize} />
         </span>
       ) : null}
       <div className="min-w-0">

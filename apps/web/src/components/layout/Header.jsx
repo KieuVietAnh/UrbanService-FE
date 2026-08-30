@@ -321,6 +321,8 @@ export const Header = ({ onMenuToggle }) => {
       conversations: 'Quản lý trao đổi',
       'area-alerts': 'Quản lý cảnh báo khu vực',
       duplicates: 'Xử lý trùng lặp',
+      'incident-matches': 'Đề xuất cùng sự vụ',
+      incidents: location.pathname.startsWith('/manager/incidents') ? 'Quản lý sự vụ' : 'Sự vụ của tôi',
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
       feed: 'Bảng tin',
@@ -376,9 +378,15 @@ export const Header = ({ onMenuToggle }) => {
           if (index === 0 && path === 'dashboard') return null;
 
           const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
+          const isIncidentMatchCandidateId = isFeedbackId && location.pathname.startsWith('/manager/incident-matches/');
+          const isIncidentId = isFeedbackId && (location.pathname.startsWith('/manager/incidents/') || location.pathname.startsWith('/staff/incidents/'));
           const isCoordinatorId = /^\d+$/.test(path) && (location.pathname.startsWith('/management/coordinators/') || location.pathname.startsWith('/staff/coordinators/'));
           const isProviderReportId = /^\d+$/.test(path) && location.pathname.startsWith('/staff/provider-reports/');
-          const segmentName = index > 0 && location.pathname.startsWith('/staff/duplicates/')
+          const segmentName = isIncidentMatchCandidateId
+            ? 'Chi tiết đề xuất'
+            : isIncidentId
+              ? 'Chi tiết sự vụ'
+            : index > 0 && location.pathname.startsWith('/staff/duplicates/')
             ? 'Chi tiết trường hợp nghi trùng'
             : isFeedbackId
               ? 'Chi tiết phản ánh'
@@ -405,6 +413,8 @@ export const Header = ({ onMenuToggle }) => {
             feedbacks: location.pathname.startsWith('/staff/feedbacks') ? '/staff/feedbacks' : '/management/feedbacks',
             'area-alerts': '/staff/area-alerts',
             duplicates: '/staff/duplicates',
+            'incident-matches': '/manager/incident-matches',
+            incidents: location.pathname.startsWith('/manager/incidents') ? '/manager/incidents' : '/staff/incidents',
             'provider-reports': '/staff/feedbacks',
           };
 

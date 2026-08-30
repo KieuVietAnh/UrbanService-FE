@@ -1,52 +1,91 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { duplicateManagementApi } from '@urbanmind/shared-api';
-import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
+import { incidentMatchApi } from '@urbanmind/shared-api';
+import * as Lucide from 'lucide-react';
+import { SuccessAlert } from '../../components/alerts/ErrorAlert';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
-import * as Lucide from 'lucide-react';
-import { ManagerPageHeader, ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
+import LoadingSkeleton from '../../components/design-system/LoadingSkeleton';
+import {
+  ManagerEmptyState,
+  ManagerPageHeader,
+  ManagerSectionHeader,
+} from '../../components/manager/ManagerPageElements';
 import { normalizeDuplicateCandidatePayload } from './duplicateDetailUtils';
 
 const PAGE_SIZE = 10;
-const DUPLICATE_ALL_CACHE_KEY = 'staff-duplicate-all-cache';
-const DUPLICATE_CACHE_DIRTY_KEY = 'staff-duplicate-cache-dirty';
-
-const readDuplicateAllCache = () => {
-  try {
-    const raw = sessionStorage.getItem(DUPLICATE_ALL_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
-
-const writeDuplicateAllCache = (summary, allItems) => {
-  try {
-    sessionStorage.setItem(
-      DUPLICATE_ALL_CACHE_KEY,
-      JSON.stringify({ summary, allItems, savedAt: Date.now() })
-    );
-    sessionStorage.removeItem(DUPLICATE_CACHE_DIRTY_KEY);
-  } catch {
-    // Ignore storage failures.
-  }
-};
-
-const getDuplicateSummarySignature = (summary) => (
-  [summary?.pending, summary?.confirmed, summary?.rejected, summary?.total]
-    .map((value) => Number(value) || 0)
-    .join('|')
-);
 
 const STATUS_FILTERS = [
-  { key: '', label: 'Tổng trường hợp', summaryKey: 'total', icon: Lucide.Layers3, tone: 'blue' },
-  { key: 'Pending', label: 'Chờ xử lý', summaryKey: 'pending', icon: Lucide.Clock3, tone: 'amber' },
-  { key: 'Confirmed', label: 'Đã xác nhận', summaryKey: 'confirmed', icon: Lucide.BadgeCheck, tone: 'emerald' },
-  { key: 'Rejected', label: 'Đã từ chối', summaryKey: 'rejected', icon: Lucide.XCircle, tone: 'rose' },
+  {
+    key: '',
+    label: 'Tất cả đề xuất',
+    summaryKey: 'total',
+    description: 'Toàn bộ đề xuất trong phạm vi quản lý.',
+    icon: Lucide.Layers3,
+    tone: 'blue',
+  },
+  {
+    key: 'Pending',
+    label: 'Chờ đánh giá',
+    summaryKey: 'pending',
+    description: 'Đang chờ Manager đưa ra quyết định.',
+    icon: Lucide.Clock3,
+    tone: 'amber',
+  },
+  {
+    key: 'Confirmed',
+    label: 'Cùng sự vụ',
+    summaryKey: 'confirmed',
+    description: 'Đã xác nhận hai Report cùng sự vụ.',
+    icon: Lucide.BadgeCheck,
+    tone: 'emerald',
+  },
+  {
+    key: 'Rejected',
+    label: 'Khác sự vụ',
+    summaryKey: 'rejected',
+    description: 'Đã xác nhận hai Report thuộc sự vụ riêng.',
+    icon: Lucide.Split,
+    tone: 'rose',
+  },
 ];
 
-const getConfidenceValue = (value) => {
+const TONE_CLASSES = {
+  blue: {
+    active: 'border-blue-300 bg-blue-50/80 ring-2 ring-blue-100',
+    hover: 'hover:border-blue-200 hover:bg-blue-50/35',
+    icon: 'bg-blue-50 text-blue-700',
+  },
+  amber: {
+    active: 'border-amber-300 bg-amber-50/80 ring-2 ring-amber-100',
+    hover: 'hover:border-amber-200 hover:bg-amber-50/35',
+    icon: 'bg-amber-50 text-amber-700',
+  },
+  emerald: {
+    active: 'border-emerald-300 bg-emerald-50/80 ring-2 ring-emerald-100',
+    hover: 'hover:border-emerald-200 hover:bg-emerald-50/35',
+    icon: 'bg-emerald-50 text-emerald-700',
+  },
+  rose: {
+    active: 'border-rose-300 bg-rose-50/80 ring-2 ring-rose-100',
+    hover: 'hover:border-rose-200 hover:bg-rose-50/35',
+    icon: 'bg-rose-50 text-rose-700',
+  },
+};
+
+const getStatusLabel = (status) => ({
+  Pending: 'Chờ đánh giá',
+  Confirmed: 'Cùng sự vụ',
+  Rejected: 'Khác sự vụ',
+}[status] || 'Chưa xác định');
+
+const getStatusIntent = (status) => ({
+  Pending: 'warning',
+  Confirmed: 'success',
+  Rejected: 'danger',
+}[status] || 'neutral');
+
+const getConfidence = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
@@ -54,40 +93,14 @@ const getConfidenceValue = (value) => {
 };
 
 const formatConfidence = (value) => {
-  const confidence = getConfidenceValue(value);
-  return confidence === null ? '—' : `${Math.round(confidence)}%`;
-};
-
-const getStatusLabel = (status) => {
-  switch (status) {
-    case 'Pending':
-      return 'Chờ xử lý';
-    case 'Confirmed':
-      return 'Đã xác nhận';
-    case 'Rejected':
-      return 'Đã từ chối';
-    default:
-      return status || 'Không xác định';
-  }
-};
-
-const getStatusIntent = (status) => {
-  switch (status) {
-    case 'Confirmed':
-      return 'success';
-    case 'Rejected':
-      return 'danger';
-    case 'Pending':
-      return 'warning';
-    default:
-      return 'neutral';
-  }
+  const confidence = getConfidence(value);
+  return confidence === null ? 'Chưa có dữ liệu' : `${Math.round(confidence)}%`;
 };
 
 const formatDateTime = (value) => {
-  if (!value) return '—';
+  if (!value) return 'Chưa có dữ liệu';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return 'Chưa có dữ liệu';
   return date.toLocaleString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
@@ -97,426 +110,318 @@ const formatDateTime = (value) => {
   });
 };
 
-const getFeedback = (item) => item?.primaryFeedback || item?.feedback || {};
-const getParentFeedback = (item) => item?.duplicateFeedback || item?.potentialParentFeedback || {};
-
-const getToneClasses = (tone, active) => {
-  const map = {
-    blue: active
-      ? 'border-blue-300 bg-blue-50/80 ring-2 ring-blue-100'
-      : 'hover:border-blue-200 hover:bg-blue-50/35',
-    amber: active
-      ? 'border-amber-300 bg-amber-50/80 ring-2 ring-amber-100'
-      : 'hover:border-amber-200 hover:bg-amber-50/35',
-    emerald: active
-      ? 'border-emerald-300 bg-emerald-50/80 ring-2 ring-emerald-100'
-      : 'hover:border-emerald-200 hover:bg-emerald-50/35',
-    rose: active
-      ? 'border-rose-300 bg-rose-50/80 ring-2 ring-rose-100'
-      : 'hover:border-rose-200 hover:bg-rose-50/35',
-  };
-  return map[tone] || '';
+const shortId = (value) => {
+  const normalized = String(value ?? '').trim();
+  return normalized ? normalized.slice(0, 8).toUpperCase() : 'Chưa có dữ liệu';
 };
 
-const getIconTone = (tone) => ({
-  blue: 'bg-blue-50 text-blue-600',
-  amber: 'bg-amber-50 text-amber-600',
-  emerald: 'bg-emerald-50 text-emerald-600',
-  rose: 'bg-rose-50 text-rose-600',
-}[tone] || 'bg-slate-100 text-slate-600');
+const getCandidateId = (candidate) => candidate?.duplicateCandidateId || candidate?.id;
+const getNewReport = (candidate) => candidate?.primaryFeedback || candidate?.feedback || {};
+const getRepresentativeReport = (candidate) => (
+  candidate?.duplicateFeedback || candidate?.potentialParentFeedback || {}
+);
 
-export const DuplicateDetection = () => {
+function ConfidenceBadge({ value }) {
+  const confidence = getConfidence(value);
+  const tone = confidence === null
+    ? 'bg-slate-100 text-slate-600'
+    : confidence >= 90
+      ? 'bg-emerald-50 text-emerald-700'
+      : confidence >= 75
+        ? 'bg-blue-50 text-blue-700'
+        : 'bg-amber-50 text-amber-700';
+
+  return (
+    <span className={`inline-flex min-w-16 items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${tone}`}>
+      {formatConfidence(value)}
+    </span>
+  );
+}
+
+function ReportSummary({ report, fallbackTitle }) {
+  return (
+    <div className="min-w-0">
+      <p className="line-clamp-2 font-semibold leading-5 text-slate-900">
+        {report?.title || fallbackTitle || 'Chưa có tiêu đề'}
+      </p>
+      <p className="mt-1 truncate text-xs text-slate-500">
+        Report {shortId(report?.feedbackId || report?.id)} · {report?.areaName || report?.locationText || 'Chưa có dữ liệu khu vực'}
+      </p>
+    </div>
+  );
+}
+
+function MobileCandidateCard({ candidate, detailPath }) {
+  const newReport = getNewReport(candidate);
+  const representativeReport = getRepresentativeReport(candidate);
+  const status = candidate?.status || '';
+
+  return (
+    <article className="space-y-4 border-b border-slate-200 p-5 last:border-b-0">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <Badge intent={getStatusIntent(status)} className="px-2.5 py-1 text-[11px] font-semibold">
+          {getStatusLabel(status)}
+        </Badge>
+        <ConfidenceBadge value={candidate?.confidenceScore} />
+      </header>
+
+      <div className="grid gap-3">
+        <section className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3.5">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">Report mới</p>
+          <ReportSummary report={newReport} />
+        </section>
+        <section className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3.5">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Report đại diện sự vụ đề xuất</p>
+          <ReportSummary report={representativeReport} />
+        </section>
+      </div>
+
+      <dl className="grid grid-cols-2 gap-3 text-xs">
+        <div>
+          <dt className="text-slate-500">Sự vụ hiện tại</dt>
+          <dd className="mt-1 font-semibold text-slate-800">{shortId(candidate?.currentIncidentId || candidate?.incidentId)}</dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">Sự vụ đề xuất</dt>
+          <dd className="mt-1 font-semibold text-slate-800">{shortId(candidate?.suggestedIncidentId)}</dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-slate-500">Cập nhật</dt>
+          <dd className="mt-1 font-semibold text-slate-800">{formatDateTime(candidate?.updatedAt || candidate?.createdAt)}</dd>
+        </div>
+      </dl>
+
+      <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => detailPath(getCandidateId(candidate))}>
+        Xem chi tiết
+        <Lucide.ArrowRight size={15} aria-hidden="true" />
+      </Button>
+    </article>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="space-y-4 p-5 sm:p-6" aria-label="Đang tải danh sách đề xuất" aria-busy="true">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="grid gap-4 rounded-2xl border border-slate-100 p-4 md:grid-cols-[1fr_1fr_100px_120px]">
+          <LoadingSkeleton rows={2} />
+          <LoadingSkeleton rows={2} />
+          <LoadingSkeleton rows={1} />
+          <LoadingSkeleton rows={1} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export const IncidentMatchListPage = ({ basePath = '/manager/incident-matches' }) => {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const [initialAllCache] = useState(() => readDuplicateAllCache());
-  const [summary, setSummary] = useState(() => initialAllCache?.summary || {
-    pending: 0,
-    confirmed: 0,
-    rejected: 0,
-    total: 0,
-  });
-  const [items, setItems] = useState(() => (
-    Array.isArray(initialAllCache?.allItems)
-      ? initialAllCache.allItems.slice(0, PAGE_SIZE)
-      : []
-  ));
+  const activeRequestRef = useRef(null);
+  const [summary, setSummary] = useState({ pending: 0, confirmed: 0, rejected: 0, total: 0 });
+  const [items, setItems] = useState([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState(() => {
-    const cachedCount = Array.isArray(initialAllCache?.allItems)
-      ? initialAllCache.allItems.length
-      : 0;
-    const cachedTotal = Number(initialAllCache?.summary?.total) || cachedCount;
-    return {
-      pageNumber: 1,
-      pageSize: PAGE_SIZE,
-      totalItems: cachedTotal,
-      totalPages: Math.max(1, Math.ceil(cachedCount / PAGE_SIZE)),
-      hasPreviousPage: false,
-      hasNextPage: cachedCount > PAGE_SIZE,
-    };
+  const [pagination, setPagination] = useState({
+    pageNumber: 1,
+    pageSize: PAGE_SIZE,
+    totalItems: 0,
+    totalPages: 0,
+    hasPreviousPage: false,
+    hasNextPage: false,
   });
-  const [loading, setLoading] = useState(() => !Array.isArray(initialAllCache?.allItems));
-  const [message, setMessage] = useState({ type: '', text: '' });
-
-  useEffect(() => {
-    const successMessage = location.state?.successMessage;
-    if (!successMessage) return;
-
-    setMessage({ type: 'success', text: successMessage });
-    navigate(location.pathname, { replace: true, state: {} });
-  }, [location.pathname, location.state, navigate]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState(location.state?.successMessage || '');
 
   const loadData = useCallback(async () => {
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
     setLoading(true);
-    setMessage((current) => current.type === 'success' ? current : { type: '', text: '' });
+    setError('');
 
     try {
-      const summaryResponse = await duplicateManagementApi.getDuplicateSummary();
+      const [summaryResult, pageResult] = await Promise.all([
+        incidentMatchApi.getSummary({ signal: controller.signal }),
+        incidentMatchApi.getCandidates(
+          { Status: statusFilter, Page: page, PageSize: PAGE_SIZE },
+          { signal: controller.signal },
+        ),
+      ]);
+      if (controller.signal.aborted) return;
 
-      const nextSummary = {
-        pending: Number(summaryResponse?.pendingCount ?? summaryResponse?.pending ?? 0) || 0,
-        confirmed: Number(summaryResponse?.confirmedCount ?? summaryResponse?.confirmed ?? 0) || 0,
-        rejected: Number(summaryResponse?.rejectedCount ?? summaryResponse?.rejected ?? 0) || 0,
-        total: Number(summaryResponse?.totalCount ?? summaryResponse?.total ?? 0) || 0,
-      };
-      setSummary(nextSummary);
-
-      if (!statusFilter) {
-        const cachedAll = readDuplicateAllCache();
-        const cachedItems = Array.isArray(cachedAll?.allItems) ? cachedAll.allItems : [];
-        const cacheIsDirty = sessionStorage.getItem(DUPLICATE_CACHE_DIRTY_KEY) === '1';
-        const summaryUnchanged =
-          getDuplicateSummarySignature(cachedAll?.summary)
-          === getDuplicateSummarySignature(nextSummary);
-
-        if (!cacheIsDirty && cachedItems.length > 0 && summaryUnchanged) {
-          const cachedTotalPages = Math.max(1, Math.ceil(cachedItems.length / PAGE_SIZE));
-          const safeCachedPage = Math.min(page, cachedTotalPages);
-          const cachedStartIndex = (safeCachedPage - 1) * PAGE_SIZE;
-
-          setItems(cachedItems.slice(cachedStartIndex, cachedStartIndex + PAGE_SIZE));
-          setPagination({
-            pageNumber: safeCachedPage,
-            pageSize: PAGE_SIZE,
-            totalItems: Number(nextSummary.total) || cachedItems.length,
-            totalPages: cachedTotalPages,
-            hasPreviousPage: safeCachedPage > 1,
-            hasNextPage: safeCachedPage < cachedTotalPages,
-          });
-          return;
-        }
-
-        const statusCounts = [
-          ['Pending', nextSummary.pending],
-          ['Confirmed', nextSummary.confirmed],
-          ['Rejected', nextSummary.rejected],
-        ];
-
-        const fetchAllForStatus = async (status, count) => {
-          if (!count) return [];
-
-          const totalStatusPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
-          const responses = await Promise.all(
-            Array.from({ length: totalStatusPages }, (_, index) => (
-              duplicateManagementApi.getDuplicateCandidates({
-                status,
-                page: index + 1,
-                pageSize: PAGE_SIZE,
-              })
-            ))
-          );
-
-          return responses.flatMap((response) => (
-            Array.isArray(response?.items) ? response.items : []
-          ));
-        };
-
-        const groupedResults = await Promise.all(
-          statusCounts.map(([status, count]) => fetchAllForStatus(status, count))
-        );
-
-        const allItems = groupedResults
-          .flat()
-          .map((item) => normalizeDuplicateCandidatePayload(item))
-          .sort((a, b) => (
-            new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime()
-          ));
-
-        const allTotal = nextSummary.total || allItems.length;
-        const allTotalPages = Math.max(1, Math.ceil(allItems.length / PAGE_SIZE));
-        const safeAllPage = Math.min(page, allTotalPages);
-        const startIndex = (safeAllPage - 1) * PAGE_SIZE;
-        const currentItems = allItems.slice(startIndex, startIndex + PAGE_SIZE);
-
-        writeDuplicateAllCache(nextSummary, allItems);
-        setItems(currentItems);
-        setPagination({
-          pageNumber: safeAllPage,
-          pageSize: PAGE_SIZE,
-          totalItems: allTotal,
-          totalPages: Math.max(1, Math.ceil(allTotal / PAGE_SIZE)),
-          hasPreviousPage: safeAllPage > 1,
-          hasNextPage: safeAllPage < Math.max(1, Math.ceil(allTotal / PAGE_SIZE)),
-        });
-        return;
-      }
-
-      const candidatesResponse = await duplicateManagementApi.getDuplicateCandidates({
-        status: statusFilter,
-        page,
-        pageSize: PAGE_SIZE,
-      });
-
-      const normalizedItems = (
-        Array.isArray(candidatesResponse?.items) ? candidatesResponse.items : []
-      ).map((item) => normalizeDuplicateCandidatePayload(item));
-
-      const rawPagination = candidatesResponse?.pagination || candidatesResponse || {};
-      const summaryTotalForFilter = statusFilter === 'Pending'
-        ? nextSummary.pending
-        : statusFilter === 'Confirmed'
-          ? nextSummary.confirmed
-          : nextSummary.rejected;
-
-      const apiTotalItems = Number(
-        rawPagination?.totalItems
-        ?? rawPagination?.totalCount
-        ?? 0
-      ) || 0;
-
-      const resolvedTotalItems = apiTotalItems > 0
-        ? apiTotalItems
-        : Number(summaryTotalForFilter) > 0
-          ? Number(summaryTotalForFilter)
-          : normalizedItems.length;
-
-      const resolvedPageSize = Number(rawPagination?.pageSize ?? PAGE_SIZE) || PAGE_SIZE;
-      const apiTotalPages = Number(rawPagination?.totalPages ?? 0) || 0;
-      const resolvedTotalPages = apiTotalPages > 0
-        ? apiTotalPages
-        : Math.ceil(resolvedTotalItems / resolvedPageSize);
-
-      setItems(normalizedItems);
-      setPagination({
-        pageNumber: Number(rawPagination?.pageNumber ?? rawPagination?.page ?? page) || page,
-        pageSize: resolvedPageSize,
-        totalItems: resolvedTotalItems,
-        totalPages: resolvedTotalPages,
-        hasPreviousPage: Boolean(rawPagination?.hasPreviousPage ?? page > 1),
-        hasNextPage: Boolean(rawPagination?.hasNextPage ?? page < resolvedTotalPages),
-      });
-    } catch (err) {
-      console.error('Failed to load duplicate candidates', err);
-      setMessage({
-        type: 'error',
-        text: err?.message || 'Không thể tải danh sách đề xuất ghép Report vào Incident.',
-      });
-      setItems((current) => (current.length > 0 ? current : []));
+      setSummary(summaryResult);
+      setItems((pageResult?.items || []).map(normalizeDuplicateCandidatePayload));
+      setPagination(pageResult);
+    } catch (requestError) {
+      if (controller.signal.aborted || requestError?.code === 'ERR_CANCELED') return;
+      setItems([]);
+      setError(requestError?.message || 'Không thể tải danh sách đề xuất');
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [page, statusFilter]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
+    return () => activeRequestRef.current?.abort();
   }, [loadData]);
 
   useEffect(() => {
-    setPage(1);
-  }, [statusFilter]);
+    if (!location.state?.successMessage) return;
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, location.state, navigate]);
 
-  const totalPages = Math.max(1, pagination.totalPages || 1);
+  const totalPages = Math.max(1, Number(pagination?.totalPages) || 1);
   const currentPage = Math.min(page, totalPages);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
+  const currentFilter = STATUS_FILTERS.find((filter) => filter.key === statusFilter) || STATUS_FILTERS[0];
   const visiblePages = useMemo(() => {
-    if (totalPages <= 5) {
-      return Array.from({ length: totalPages }, (_, index) => index + 1);
-    }
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
     const start = Math.min(Math.max(currentPage - 2, 1), totalPages - 4);
     return Array.from({ length: 5 }, (_, index) => start + index);
   }, [currentPage, totalPages]);
 
-  const currentFilterLabel = STATUS_FILTERS.find((filter) => filter.key === statusFilter)?.label || 'Tổng trường hợp';
+  const selectStatus = (status) => {
+    setStatusFilter(status);
+    setPage(1);
+  };
+  const openDetail = (candidateId) => navigate(`${basePath}/${candidateId}`);
 
   return (
-    <div className="admin-page-shell space-y-6">
-      {message.type === 'success' ? (
-        <SuccessAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />
-      ) : null}
-      {message.type === 'error' ? (
-        <ErrorAlert message={message.text} onClose={() => setMessage({ type: '', text: '' })} />
+    <article className="admin-page-shell space-y-6">
+      {successMessage ? (
+        <SuccessAlert message={successMessage} onClose={() => setSuccessMessage('')} />
       ) : null}
 
       <ManagerPageHeader
-        title="Ghép Report vào Incident"
-        description="Kiểm tra hai Report có cùng nói về một sự vụ trước khi ghép vào Incident chung."
+        title="Đề xuất cùng sự vụ"
+        description="Xem các đề xuất của AI và quyết định liệu các Report có đang phản ánh cùng một sự vụ hay không."
         icon={Lucide.ScanSearch}
-        statusLabel="ĐANG HIỂN THỊ"
-        statusValue={currentFilterLabel}
+        statusLabel="Đang hiển thị"
+        statusValue={currentFilter.label}
+        statusTone={statusFilter === 'Pending' ? 'review' : 'info'}
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Tổng quan đề xuất cùng Incident">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Tổng quan đề xuất cùng sự vụ">
         {STATUS_FILTERS.map((filter) => {
-          const active = statusFilter === filter.key;
+          const active = filter.key === statusFilter;
           const Icon = filter.icon;
-
+          const tone = TONE_CLASSES[filter.tone];
           return (
             <button
-              key={filter.label}
+              key={filter.key || 'all'}
               type="button"
-              onClick={() => setStatusFilter(filter.key)}
               aria-pressed={active}
-              className={`admin-panel p-4 text-left transition-all duration-200 ${getToneClasses(filter.tone, active)}`}
+              onClick={() => selectStatus(filter.key)}
+              className={`admin-panel p-4 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${active ? tone.active : tone.hover}`}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-500">{filter.label}</p>
-                  <p className="mt-1.5 text-2xl font-semibold text-slate-950">{summary[filter.summaryKey]}</p>
-                </div>
-                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${getIconTone(filter.tone)}`}>
-                  <Icon size={19} aria-hidden="true" />
+              <span className="flex items-start justify-between gap-4">
+                <span>
+                  <span className="block text-sm font-semibold text-slate-600">{filter.label}</span>
+                  <span className="mt-1.5 block text-2xl font-semibold text-slate-950">{summary[filter.summaryKey]}</span>
                 </span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                {filter.key === ''
-                  ? 'Tất cả đề xuất Report có thể cùng Incident.'
-                  : filter.key === 'Pending'
-                    ? 'Các trường hợp đang chờ Staff đưa ra kết luận.'
-                    : filter.key === 'Confirmed'
-                      ? 'Các Report đã được xác nhận cùng Incident.'
-                      : 'Các Report được giữ ở Incident riêng.'}
-              </p>
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tone.icon}`} aria-hidden="true">
+                  <Icon size={19} />
+                </span>
+              </span>
+              <span className="mt-2 block text-xs leading-5 text-slate-500">{filter.description}</span>
             </button>
           );
         })}
       </section>
 
-      <section className="admin-panel overflow-hidden border-slate-200/90 bg-white/95 shadow-[0_14px_34px_rgba(15,23,42,0.06)]">
-        <div className="staff-dark-surface-header border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/35 px-5 py-4 sm:px-6">
-          <ManagerSectionHeader
-            title={`Danh sách · ${currentFilterLabel}`}
-            description="Mở đề xuất để so sánh hai Report và quyết định cùng hay khác Incident."
-            icon={Lucide.Files}
-            actions={(
-              <Button type="button" onClick={loadData} variant="ghost" size="sm" disabled={loading}>
-                <Lucide.RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-                Làm mới
+      <section className="admin-panel overflow-hidden" aria-labelledby="incident-match-list-title">
+        <ManagerSectionHeader
+          id="incident-match-list-title"
+          title={`Danh sách · ${currentFilter.label}`}
+          description="So sánh Report mới với Report đại diện của sự vụ được đề xuất."
+          icon={Lucide.Files}
+          iconClassName="admin-mini-icon bg-blue-50 text-blue-700"
+          actions={(
+            <Button type="button" variant="ghost" size="sm" disabled={loading} onClick={() => void loadData()}>
+              <Lucide.RefreshCw size={15} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
+              Làm mới
+            </Button>
+          )}
+        />
+
+        {loading ? <ListSkeleton /> : error ? (
+          <ManagerEmptyState
+            icon={Lucide.TriangleAlert}
+            title="Không thể tải danh sách đề xuất"
+            description={error}
+            action={(
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadData()}>
+                <Lucide.RefreshCw size={15} aria-hidden="true" />
+                Thử lại
               </Button>
             )}
           />
-        </div>
-
-        {loading ? (
-          <div className="flex min-h-[280px] items-center justify-center text-sm text-slate-500">
-            <span className="mr-2 inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
-            Đang tải đề xuất cùng Incident...
-          </div>
         ) : items.length === 0 ? (
-          <div className="px-6 py-14 text-center">
-            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-              <Lucide.Inbox size={22} />
-            </span>
-            <h3 className="mt-4 text-base font-semibold text-slate-900">Không có trường hợp phù hợp</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Hiện không có đề xuất cùng Incident ở trạng thái {currentFilterLabel.toLowerCase()}.
-            </p>
-          </div>
+          <ManagerEmptyState
+            icon={Lucide.Inbox}
+            title="Chưa có đề xuất nào"
+            description={statusFilter
+              ? `Chưa có đề xuất ở trạng thái “${currentFilter.label}”.`
+              : 'Các đề xuất cùng sự vụ do AI phát hiện sẽ xuất hiện tại đây.'}
+          />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed divide-y divide-slate-200 text-sm">
+            <div className="divide-y divide-slate-200 xl:hidden">
+              {items.map((candidate) => (
+                <MobileCandidateCard
+                  key={getCandidateId(candidate)}
+                  candidate={candidate}
+                  detailPath={openDetail}
+                />
+              ))}
+            </div>
+
+            <div className="hidden xl:block">
+              <table className="w-full table-fixed text-sm">
+                <caption className="sr-only">Danh sách đề xuất hai Report cùng sự vụ</caption>
                 <colgroup>
-                  <col className="w-[25%]" />
-                  <col className="w-[25%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[16%]" />
                   <col className="w-[10%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[15%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
                   <col className="w-[12%]" />
                 </colgroup>
-                <thead className="bg-slate-100/80">
+                <thead className="border-y border-slate-200 bg-slate-50/85">
                   <tr>
-                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Report mới</th>
-                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Report đại diện Incident</th>
-                    <th className="px-5 py-3.5 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tương đồng</th>
-                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Trạng thái</th>
-                    <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Phát hiện lúc</th>
-                    <th className="px-5 py-3.5 text-right text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Hành động</th>
+                    {['Report mới', 'Report đại diện sự vụ đề xuất', 'Sự vụ', 'Độ tin cậy', 'Trạng thái', 'Cập nhật', ''].map((label) => (
+                      <th key={label || 'action'} scope="col" className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.13em] text-slate-500">
+                        {label || <span className="sr-only">Hành động</span>}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
-
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {items.map((item) => {
-                    const itemId = item.duplicateCandidateId || item.id;
-                    const feedback = getFeedback(item);
-                    const parent = getParentFeedback(item);
-                    const confidence = getConfidenceValue(item.confidenceScore ?? item.confidence);
-                    const status = item.status || 'Pending';
-
+                  {items.map((candidate) => {
+                    const candidateId = getCandidateId(candidate);
+                    const status = candidate?.status || '';
                     return (
-                      <tr
-                        key={itemId}
-                        onClick={() => navigate(`/staff/duplicates/${itemId}`)}
-                        className="cursor-pointer transition-colors hover:bg-blue-50/55"
-                      >
-                        <td className="px-5 py-3.5 align-middle">
-                          <div className="line-clamp-2 font-semibold leading-5 text-slate-900">
-                            {feedback.title || item.primaryTitle || 'Không có tiêu đề'}
-                          </div>
-                          <div className="mt-1 truncate text-xs text-slate-500">
-                            {feedback.areaName || feedback.locationText || 'Chưa xác định khu vực'}
-                          </div>
+                      <tr key={candidateId} className="transition-colors hover:bg-blue-50/40">
+                        <td className="px-4 py-4 align-top"><ReportSummary report={getNewReport(candidate)} /></td>
+                        <td className="px-4 py-4 align-top"><ReportSummary report={getRepresentativeReport(candidate)} /></td>
+                        <td className="px-4 py-4 align-top">
+                          <dl className="space-y-1 text-xs">
+                            <div className="flex items-center gap-2"><dt className="text-slate-500">Hiện tại</dt><dd className="font-semibold text-slate-800">{shortId(candidate?.currentIncidentId || candidate?.incidentId)}</dd></div>
+                            <div className="flex items-center gap-2"><dt className="text-slate-500">Đề xuất</dt><dd className="font-semibold text-slate-800">{shortId(candidate?.suggestedIncidentId)}</dd></div>
+                          </dl>
                         </td>
-
-                        <td className="px-5 py-3.5 align-middle">
-                          <div className="line-clamp-2 font-semibold leading-5 text-slate-900">
-                            {parent.title || item.duplicateTitle || 'Không có tiêu đề'}
-                          </div>
-                          <div className="mt-1 truncate text-xs text-slate-500">
-                            {parent.areaName || parent.locationText || 'Chưa xác định khu vực'}
-                          </div>
+                        <td className="px-4 py-4 align-top"><ConfidenceBadge value={candidate?.confidenceScore} /></td>
+                        <td className="px-4 py-4 align-top">
+                          <Badge intent={getStatusIntent(status)} className="whitespace-nowrap px-2.5 py-1 text-[11px] font-semibold">{getStatusLabel(status)}</Badge>
                         </td>
-
-                        <td className="px-5 py-3.5 text-center align-middle">
-                          <span className={`inline-flex min-w-14 items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            confidence !== null && confidence >= 90
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : confidence !== null && confidence >= 75
-                                ? 'bg-blue-50 text-blue-700'
-                                : 'bg-amber-50 text-amber-700'
-                          }`}>
-                            {formatConfidence(confidence)}
-                          </span>
-                        </td>
-
-                        <td className="px-5 py-3.5 align-middle">
-                          <Badge intent={getStatusIntent(status)} className="whitespace-nowrap px-2.5 py-1 text-[11px] font-semibold">
-                            {getStatusLabel(status)}
-                          </Badge>
-                        </td>
-
-                        <td className="px-5 py-4 align-middle text-slate-600">
-                          {formatDateTime(item.createdAt)}
-                        </td>
-
-                        <td className="px-5 py-3.5 text-right align-middle">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              navigate(`/staff/duplicates/${itemId}`);
-                            }}
-                          className="whitespace-nowrap"
-                          >
-                            Chi tiết
-                            <Lucide.ArrowRight size={14} />
+                        <td className="px-4 py-4 align-top text-xs leading-5 text-slate-600">{formatDateTime(candidate?.updatedAt || candidate?.createdAt)}</td>
+                        <td className="px-4 py-4 text-right align-top">
+                          <Button type="button" variant="outline" size="sm" className="whitespace-nowrap" aria-label={`Xem chi tiết đề xuất ${shortId(candidateId)}`} onClick={() => openDetail(candidateId)}>
+                            Xem chi tiết
+                            <Lucide.ArrowRight size={16} aria-hidden="true" />
                           </Button>
                         </td>
                       </tr>
@@ -526,67 +431,33 @@ export const DuplicateDetection = () => {
               </table>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/55 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <footer className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/55 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500">
-                Hiển thị{' '}
-                <span className="font-semibold text-slate-700">
-                  {items.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–
-                  {items.length === 0
-                    ? 0
-                    : Math.min(
-                        (currentPage - 1) * PAGE_SIZE + items.length,
-                        Math.max(pagination.totalItems, (currentPage - 1) * PAGE_SIZE + items.length)
-                      )}
-                </span>{' '}
-                trong tổng số{' '}
-                <span className="font-semibold text-slate-700">
-                  {Math.max(pagination.totalItems, (currentPage - 1) * PAGE_SIZE + items.length)}
-                </span>{' '}
-                trường hợp
+                Trang <strong className="text-slate-800">{currentPage}</strong> / {totalPages} · {pagination?.totalItems || items.length} đề xuất
               </p>
-
               {totalPages > 1 ? (
-                <nav className="flex items-center gap-1.5" aria-label="Phân trang đề xuất cùng Incident">
-                  <button
-                    type="button"
-                    onClick={() => setPage((value) => Math.max(1, value - 1))}
-                    disabled={currentPage === 1}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label="Trang trước"
-                  >
-                    <Lucide.ChevronLeft size={16} />
+                <nav className="flex flex-wrap items-center gap-1.5" aria-label="Phân trang đề xuất cùng sự vụ">
+                  <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Trang trước">
+                    <Lucide.ChevronLeft size={16} aria-hidden="true" />
                   </button>
-
                   {visiblePages.map((pageNumber) => (
-                    <button
-                      key={pageNumber}
-                      type="button"
-                      onClick={() => setPage(pageNumber)}
-                      className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-semibold transition ${
-                        pageNumber === currentPage
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'
-                      }`}
-                    >
+                    <button key={pageNumber} type="button" onClick={() => setPage(pageNumber)} aria-current={pageNumber === currentPage ? 'page' : undefined} className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${pageNumber === currentPage ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}>
                       {pageNumber}
                     </button>
                   ))}
-
-                  <button
-                    type="button"
-                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                    disabled={currentPage === totalPages}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label="Trang sau"
-                  >
-                    <Lucide.ChevronRight size={16} />
+                  <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage === totalPages} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Trang sau">
+                    <Lucide.ChevronRight size={16} aria-hidden="true" />
                   </button>
                 </nav>
               ) : null}
-            </div>
+            </footer>
           </>
         )}
       </section>
-    </div>
+    </article>
   );
 };
+
+export const DuplicateDetection = () => (
+  <IncidentMatchListPage basePath="/staff/duplicates" />
+);
