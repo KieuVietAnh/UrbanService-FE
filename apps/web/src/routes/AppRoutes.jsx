@@ -34,6 +34,8 @@ const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetectio
 const DuplicateDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.DuplicateDetailPage })));
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
+const StaffIncidentListPage = lazy(() => import('../pages/staff/StaffIncidentListPage').then((m) => ({ default: m.default })));
+const StaffIncidentDetailPage = lazy(() => import('../pages/staff/StaffIncidentDetailPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
 const ConversationQueuePage = lazy(() => import('../pages/staff/ConversationQueuePage').then((m) => ({ default: m.default })));
 const CoordinatorDirectoryPage = lazy(() => import('../pages/staff/CoordinatorDirectoryPage').then((m) => ({ default: m.default })));
@@ -311,6 +313,24 @@ export const AppRoutes = () => {
       } />
 
       {/* System Staff Routes */}
+      <Route path="/staff/incidents" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <StaffIncidentListPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/staff/incidents/:incidentId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
+            <DashboardLayout>
+              <StaffIncidentDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/staff/queue" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>

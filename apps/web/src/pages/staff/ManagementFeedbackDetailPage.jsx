@@ -17,6 +17,7 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
+import RelatedIncidentCard from '../../components/staff/RelatedIncidentCard';
 
 const CITIZEN_NOTIFICATION_TEMPLATES = [
   {
@@ -1185,6 +1186,11 @@ export const ManagementFeedbackDetailPage = () => {
   };
 
   const returnToFeedbackList = useCallback(() => {
+    if (location.state?.fromIncidentId) {
+      navigate(-1);
+      return;
+    }
+
     if (location.state?.fromStaffConversations || location.state?.fromStaffFeedbackList) {
       navigate(-1);
       return;
@@ -1197,9 +1203,11 @@ export const ManagementFeedbackDetailPage = () => {
     });
   }, [location.state, navigate, feedbackId]);
 
-  const detailParentLabel = location.state?.fromStaffConversations
-    ? 'Quản lý trao đổi'
-    : 'Quản lý phản ánh';
+  const detailParentLabel = location.state?.fromIncidentId
+    ? 'Các phản ánh của sự vụ'
+    : location.state?.fromStaffConversations
+      ? 'Quản lý trao đổi'
+      : 'Quản lý phản ánh';
 
   if (loading) {
     return (
@@ -1289,15 +1297,15 @@ export const ManagementFeedbackDetailPage = () => {
                 <Lucide.GitMerge size={20} aria-hidden="true" />
               </span>
               <div>
-                <h2 id="staff-duplicate-feedback-title" className="font-bold text-violet-950">Phản ánh trùng</h2>
+                <h2 id="staff-duplicate-feedback-title" className="font-bold text-violet-950">Phản ánh đã được đối chiếu</h2>
                 <p className="mt-1 text-sm leading-6 text-violet-800">
-                  Phản ánh này đã được đánh dấu trùng và được xử lý theo phản ánh đã có.
+                  Report này vẫn được lưu giữ đầy đủ. Thông tin liên kết với sự vụ được hiển thị bên dưới.
                 </p>
               </div>
             </div>
             <Button type="button" onClick={() => navigate(`/staff/feedbacks/${parentFeedbackId}`)} variant="outline" size="sm">
               <Lucide.ExternalLink size={14} aria-hidden="true" />
-              Xem phản ánh đã có
+              Xem phản ánh tham chiếu
             </Button>
           </div>
         </section>
@@ -1316,7 +1324,7 @@ export const ManagementFeedbackDetailPage = () => {
                     <Lucide.FileText size={20} />
                   </span>
                   <div className="min-w-0">
-                    <div className="admin-section-description uppercase tracking-[0.2em]">Chi tiết phản ánh</div>
+                    <div className="admin-section-description uppercase tracking-[0.2em]">Chi tiết phản ánh / Report</div>
                     <h1 className="admin-hero-title mt-1 break-words">{feedback.title}</h1>
                   </div>
                 </div>
@@ -1324,7 +1332,7 @@ export const ManagementFeedbackDetailPage = () => {
                   {isConfirmedDuplicate ? (
                     <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700">
                       <Lucide.GitMerge size={14} aria-hidden="true" />
-                      Phản ánh trùng
+                      Đã được đối chiếu
                     </span>
                   ) : null}
 
@@ -1744,7 +1752,7 @@ export const ManagementFeedbackDetailPage = () => {
                     <Lucide.Info size={17} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Thông tin phản ánh</h3>
+                    <h3 className="text-sm font-bold text-slate-900">Thông tin phản ánh / Report</h3>
                     <p className="mt-0.5 text-xs text-slate-500">Thông tin chính của hồ sơ tại thời điểm hiện tại.</p>
                   </div>
                 </div>
@@ -2272,7 +2280,7 @@ export const ManagementFeedbackDetailPage = () => {
           {isMasterTicket ? (
           <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Phản ánh liên kết</h3>
+              <h3 className="font-bold text-slate-900">Các Report liên kết</h3>
               <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                 {linkedFeedbacks.length} mục
               </span>
@@ -2289,8 +2297,8 @@ export const ManagementFeedbackDetailPage = () => {
               </div>
             ) : linkedFeedbacks.length === 0 ? (
               <EmptyState
-                title="Chưa có phản ánh liên kết"
-                description="Không có phản ánh con nào được liên kết với phản ánh này."
+                title="Chưa có Report liên kết"
+                description="Không có Report nào được liên kết với hồ sơ này."
               />
             ) : (
               <div className="space-y-3">
@@ -2308,7 +2316,7 @@ export const ManagementFeedbackDetailPage = () => {
                           <div className="flex flex-wrap items-center justify-end gap-2">
                             <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
                               <Lucide.GitMerge size={11} aria-hidden="true" />
-                              Phản ánh trùng
+                              Report đã đối chiếu
                             </span>
                             <span className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</span>
                           </div>
@@ -2336,7 +2344,7 @@ export const ManagementFeedbackDetailPage = () => {
                             className="btn btn-xs btn-outline rounded-lg"
                           >
                             <Lucide.ExternalLink size={12} />
-                            Xem phản ánh con
+                            Xem phản ánh
                           </button>
                         </div>
                       )}
@@ -2351,7 +2359,7 @@ export const ManagementFeedbackDetailPage = () => {
           {isConfirmedDuplicate ? (
           <div className="admin-panel p-6 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Cụm phản ánh trùng</h3>
+              <h3 className="font-bold text-slate-900">Các Report đã đối chiếu</h3>
               <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                 {relatedFeedbacks.length} mục
               </span>
@@ -2380,7 +2388,7 @@ export const ManagementFeedbackDetailPage = () => {
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
                           <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                            {item?.relationType === 'master' ? 'Phản ánh chính đã có' : 'Phản ánh trùng liên quan'}
+                            {item?.relationType === 'master' ? 'Report tham chiếu' : 'Report liên quan'}
                           </div>
                           <div className="font-semibold text-slate-900">{relatedId || '—'}</div>
                         </div>
@@ -2452,6 +2460,10 @@ export const ManagementFeedbackDetailPage = () => {
 
         {/* Sidebar */}
         <div className="col-span-1 space-y-6">
+          <RelatedIncidentCard
+            incidentId={feedback?.incidentId}
+          />
+
           {/* Timeline Progress */}
           <div className="admin-panel p-5">
             <div className="flex items-center justify-between gap-2">
