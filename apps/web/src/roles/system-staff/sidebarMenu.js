@@ -8,6 +8,13 @@ const menuItems = [
     activePatterns: ['/staff/workspace', '/staff/dashboard', '/dashboard']
   },
   {
+    name: 'Sự Vụ Của Tôi',
+    label: 'Sự vụ của tôi',
+    path: '/staff/incidents',
+    icon: 'ClipboardList',
+    activePatterns: ['/staff/incidents']
+  },
+  {
     name: 'Hàng Chờ Kiểm Duyệt AI',
     label: 'Hàng chờ kiểm duyệt AI',
     path: '/staff/queue',
@@ -83,7 +90,7 @@ export const systemStaffSidebarSections = [
   {
     id: 'workspace',
     title: 'Không gian làm việc',
-    items: menuItems.filter((item) => ['Không Gian Làm Việc', 'Hàng Chờ Kiểm Duyệt AI', 'Quản Lý Phản Ánh'].includes(item.name))
+    items: menuItems.filter((item) => ['Không Gian Làm Việc', 'Sự Vụ Của Tôi', 'Hàng Chờ Kiểm Duyệt AI', 'Quản Lý Phản Ánh'].includes(item.name))
   },
   {
     id: 'coordination',
