@@ -10,6 +10,7 @@ import {
   normalizeIncidentDetailResponse,
   normalizeIncidentAssigneeCandidates,
   normalizeAssignIncidentPayload,
+  normalizeStartIncidentProcessingPayload,
   normalizeIncidentListParams,
   normalizeIncidentListResponse,
   normalizeIncidentTimelineParams,
@@ -34,6 +35,14 @@ test('incident list capability follows the checked-in ManagementIncidents contra
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.timeline.paginated, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.timeline.defaultPageSize, 20);
   assert.equal(typeof incidentManagementApi.getIncidentTimeline, 'function');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.statusTransition.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.statusTransition.endpoint, '/api/management/incidents/{incidentId}/status');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.available, false);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.reason, 'role-transition-unconfirmed');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.available, false);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.legacyRequiresFeedbackId, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.authoritativeReportMapping, false);
+  assert.equal(typeof incidentManagementApi.startIncidentProcessing, 'function');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.assigneeCandidates.available, true);
   assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.assigneeCandidates.eligibility, ['areaId', 'categoryId']);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.assignment.available, true);
@@ -222,6 +231,36 @@ test('calls real assignee candidate and assignment endpoints', async () => {
   } finally {
     getMock.mock.restore();
     postMock.mock.restore();
+  }
+});
+
+test('normalizes the dedicated Assigned to InProgress payload without exposing a generic status selector', () => {
+  assert.deepEqual(normalizeStartIncidentProcessingPayload({
+    note: ' Bắt đầu kiểm tra hiện trường ',
+    status: 'Approved',
+  }), {
+    status: 'InProgress',
+    note: 'Bắt đầu kiểm tra hiện trường',
+  });
+  assert.deepEqual(normalizeStartIncidentProcessingPayload(), { status: 'InProgress' });
+});
+
+test('startIncidentProcessing uses the Incident-level status endpoint', async () => {
+  const incident = { incidentId: 'incident-1', status: 'InProgress' };
+  const patchMock = mock.method(axiosClient, 'patch', async () => incident);
+
+  try {
+    const result = await incidentManagementApi.startIncidentProcessing('incident-1', {
+      note: 'Bắt đầu xử lý',
+    });
+
+    assert.deepEqual(patchMock.mock.calls[0].arguments, [
+      '/api/management/incidents/incident-1/status',
+      { status: 'InProgress', note: 'Bắt đầu xử lý' },
+    ]);
+    assert.equal(result, incident);
+  } finally {
+    patchMock.mock.restore();
   }
 });
 

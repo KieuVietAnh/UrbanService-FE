@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import {
@@ -17,6 +17,7 @@ import {
 } from '../../hooks/useStaffIncidentDetail';
 import StaffIncidentReportsPanel from './StaffIncidentReportsPanel';
 import StaffIncidentTimelinePanel from './StaffIncidentTimelinePanel';
+import StaffIncidentProcessingPanel from './StaffIncidentProcessingPanel';
 
 const STATUS_LABELS = Object.freeze({
   new: 'Mới',
@@ -55,6 +56,8 @@ const TAB_ITEMS = Object.freeze([
   { id: 'overview', label: 'Tổng quan', icon: Lucide.LayoutDashboard },
   { id: 'reports', label: 'Các phản ánh', icon: Lucide.MessagesSquare },
   { id: 'timeline', label: 'Dòng thời gian', icon: Lucide.History },
+  { id: 'processing', label: 'Xử lý', icon: Lucide.Wrench },
+  { id: 'resolution', label: 'Kết quả xử lý', icon: Lucide.ClipboardCheck },
 ]);
 
 const EMPTY_VALUE = 'Chưa có dữ liệu';
@@ -195,7 +198,7 @@ function IncidentDetailSkeleton() {
       </header>
 
       <div className="flex gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
-        {[96, 124, 132].map((width) => (
+        {[96, 124, 132, 92, 138].map((width) => (
           <div key={width} className="h-10 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" style={{ width }} />
         ))}
       </div>
@@ -276,9 +279,22 @@ function IncidentDetailState({ state, onRetry }) {
 }
 
 function IncidentTabs({ activeTab, onTabChange, reportCount }) {
+  const navigationRef = useRef(null);
   const tabRefs = useRef([]);
   const parsedReportCount = Number(reportCount);
   const hasReportCount = Number.isFinite(parsedReportCount) && parsedReportCount >= 0;
+
+  useEffect(() => {
+    const selectedIndex = TAB_ITEMS.findIndex((tab) => tab.id === activeTab);
+    const selectedTab = tabRefs.current[selectedIndex];
+    const navigation = navigationRef.current;
+
+    if (!selectedTab || !navigation) return;
+
+    const centeredLeft = selectedTab.offsetLeft
+      - ((navigation.clientWidth - selectedTab.offsetWidth) / 2);
+    navigation.scrollTo({ left: Math.max(0, centeredLeft), behavior: 'auto' });
+  }, [activeTab]);
 
   const handleKeyDown = (event, currentIndex) => {
     let nextIndex = null;
@@ -296,8 +312,8 @@ function IncidentTabs({ activeTab, onTabChange, reportCount }) {
   };
 
   return (
-    <nav className="admin-panel overflow-x-auto p-1.5" aria-label="Điều hướng nội dung sự vụ">
-      <div className="grid min-w-[34rem] grid-cols-3 gap-1.5" role="tablist" aria-label="Nội dung chi tiết sự vụ">
+    <nav ref={navigationRef} className="admin-panel overflow-x-auto p-1.5" aria-label="Điều hướng nội dung sự vụ">
+      <div className="grid min-w-[52rem] grid-cols-5 gap-1.5" role="tablist" aria-label="Nội dung chi tiết sự vụ">
         {TAB_ITEMS.map((tab, index) => {
           const Icon = tab.icon;
           const selected = activeTab === tab.id;
@@ -488,6 +504,24 @@ function OverviewPanel({ incident, capability }) {
   );
 }
 
+function ResolutionPlaceholderPanel() {
+  return (
+    <div
+      id="incident-panel-resolution"
+      role="tabpanel"
+      aria-labelledby="incident-tab-resolution"
+      tabIndex={0}
+      className="focus-visible:outline-none"
+    >
+      <EmptyState
+        icon={Lucide.ClipboardCheck}
+        title="Kết quả xử lý chưa được triển khai"
+        description="Chức năng này sẽ được bổ sung khi backend xác nhận dữ liệu kết quả xử lý ở cấp sự vụ."
+      />
+    </div>
+  );
+}
+
 export default function StaffIncidentDetailPage() {
   const { incidentId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -582,6 +616,10 @@ export default function StaffIncidentDetailPage() {
       {activeTab === 'timeline' ? (
         <StaffIncidentTimelinePanel incidentId={incident?.incidentId || incidentId} />
       ) : null}
+      {activeTab === 'processing' ? (
+        <StaffIncidentProcessingPanel incident={incident} />
+      ) : null}
+      {activeTab === 'resolution' ? <ResolutionPlaceholderPanel /> : null}
     </article>
   );
 }

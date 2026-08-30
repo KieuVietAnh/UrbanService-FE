@@ -47,6 +47,7 @@ export {
   normalizeIncidentDetailResponse,
   normalizeIncidentAssigneeCandidates,
   normalizeAssignIncidentPayload,
+  normalizeStartIncidentProcessingPayload,
   normalizeIncidentListParams,
   normalizeIncidentListResponse,
   normalizeIncidentTimelineParams,
