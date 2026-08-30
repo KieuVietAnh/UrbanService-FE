@@ -69,19 +69,18 @@ function TimelineState({ state, onRetry }) {
   return content ? <EmptyState {...content} /> : null;
 }
 
-function getEventIcon(eventType) {
+function EventIcon({ eventType }) {
   const title = getIncidentEventTitle(eventType);
-  if (title.includes('Phản ánh')) return Lucide.FileText;
-  if (title.includes('phân công')) return Lucide.UserRoundCheck;
-  if (title.includes('Trạng thái')) return Lucide.RefreshCcw;
-  if (title.includes('gộp')) return Lucide.GitMerge;
-  if (title.includes('AI')) return Lucide.Sparkles;
-  if (title.includes('tạo')) return Lucide.Plus;
-  return Lucide.Activity;
+  if (title.includes('Phản ánh')) return <Lucide.FileText size={16} />;
+  if (title.includes('phân công')) return <Lucide.UserRoundCheck size={16} />;
+  if (title.includes('Trạng thái')) return <Lucide.RefreshCcw size={16} />;
+  if (title.includes('gộp')) return <Lucide.GitMerge size={16} />;
+  if (title.includes('AI')) return <Lucide.Sparkles size={16} />;
+  if (title.includes('tạo')) return <Lucide.Plus size={16} />;
+  return <Lucide.Activity size={16} />;
 }
 
 function TimelineEvent({ event, isLast }) {
-  const Icon = getEventIcon(event?.eventType);
   const metadata = getIncidentEventMetadata(event);
   const actorName = String(event?.actorUserName ?? '').trim() || 'Hệ thống';
 
@@ -91,7 +90,7 @@ function TimelineEvent({ event, isLast }) {
         <span className="absolute bottom-[-1.25rem] left-[1.1rem] top-9 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
       ) : null}
       <span className="relative z-10 flex h-9 w-9 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300" aria-hidden="true">
-        <Icon size={16} />
+        <EventIcon eventType={event?.eventType} />
       </span>
 
       <article className="min-w-0 pb-5">
