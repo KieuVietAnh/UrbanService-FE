@@ -20,15 +20,18 @@ const PAGE_SIZE = 20;
 function TimelineSkeleton() {
   return (
     <section className="admin-panel overflow-hidden" aria-busy="true" aria-label="Đang tải dòng thời gian sự vụ">
-      <div className="border-b border-slate-200 px-5 py-5 sm:px-6 dark:border-slate-800">
-        <div className="h-5 w-44 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
-        <div className="mt-2 h-3 w-64 max-w-full animate-pulse rounded-md bg-slate-100 dark:bg-slate-800/70" />
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/65 px-5 py-5 sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
+        <div>
+          <div className="h-5 w-44 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
+          <div className="mt-2 h-3 w-64 max-w-full animate-pulse rounded-md bg-slate-100 dark:bg-slate-800/70" />
+        </div>
+        <div className="h-8 w-24 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
       </div>
-      <div className="px-5 py-2 sm:px-6">
+      <div className="space-y-3 px-5 py-5 sm:px-6">
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-3 py-4">
-            <div className="mt-1 h-3 w-3 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
-            <div>
+          <div key={index} className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3">
+            <div className="h-10 w-10 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
+            <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
               <div className="h-4 w-52 max-w-full animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
               <div className="mt-2 h-3 w-3/4 animate-pulse rounded-md bg-slate-100 dark:bg-slate-800/70" />
               <div className="mt-3 h-3 w-40 animate-pulse rounded-md bg-slate-100 dark:bg-slate-800/70" />
@@ -85,20 +88,21 @@ function TimelineEvent({ event, isLast }) {
   const actorName = String(event?.actorUserName ?? '').trim() || 'Hệ thống';
 
   return (
-    <li className="relative grid grid-cols-[2.25rem_minmax(0,1fr)] gap-3 sm:gap-4">
+    <li className="relative grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 sm:gap-4">
       {!isLast ? (
-        <span className="absolute bottom-[-1.25rem] left-[1.1rem] top-9 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+        <span className="absolute bottom-[-1rem] left-[1.22rem] top-10 w-0.5 bg-blue-100 dark:bg-blue-950/70" aria-hidden="true" />
       ) : null}
-      <span className="relative z-10 flex h-9 w-9 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300" aria-hidden="true">
+      <span className="relative z-10 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.18)]" aria-hidden="true">
         <EventIcon eventType={event?.eventType} />
       </span>
 
-      <article className="min-w-0 pb-5">
+      <article className="min-w-0 rounded-2xl border border-slate-200/90 bg-white/75 p-4 shadow-[0_8px_22px_rgba(15,23,42,0.035)] transition hover:border-blue-200 hover:bg-blue-50/25 sm:p-5 dark:border-slate-800 dark:bg-slate-900/55 dark:hover:border-blue-900 dark:hover:bg-blue-950/10">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <h3 className="text-sm font-bold leading-6 text-slate-950 dark:text-white">
+          <h3 className="text-sm font-black leading-6 text-slate-950 dark:text-white">
             {getIncidentEventTitle(event?.eventType)}
           </h3>
-          <time dateTime={event?.createdAt || undefined} className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
+          <time dateTime={event?.createdAt || undefined} className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            <Lucide.Clock3 size={13} aria-hidden="true" />
             {formatOperationalDateTime(event?.createdAt)}
           </time>
         </div>
@@ -107,13 +111,13 @@ function TimelineEvent({ event, isLast }) {
           {getIncidentEventDescription(event)}
         </p>
 
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-          <span className="inline-flex items-center gap-1.5">
-            <Lucide.UserRound size={13} aria-hidden="true" />
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-950/35">
+            <Lucide.UserRound size={13} className="text-blue-500" aria-hidden="true" />
             Thực hiện bởi: <strong className="font-semibold text-slate-700 dark:text-slate-200">{actorName}</strong>
           </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Lucide.Database size={13} aria-hidden="true" />
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-950/35">
+            <Lucide.Database size={13} className="text-blue-500" aria-hidden="true" />
             Nguồn: <strong className="font-semibold text-slate-700 dark:text-slate-200">
               {event?.feedbackId ? `Report ${formatReportCode(event.feedbackId)}` : 'Sự vụ'}
             </strong>
@@ -121,7 +125,7 @@ function TimelineEvent({ event, isLast }) {
         </div>
 
         {metadata.length > 0 ? (
-          <dl className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-900/50">
+          <dl className="mt-3 grid gap-2.5 rounded-xl border border-blue-100 bg-blue-50/45 px-3.5 py-3 sm:grid-cols-2 dark:border-blue-900/60 dark:bg-blue-950/15">
             {metadata.map((item) => (
               <div key={`${item.label}-${item.value}`} className="min-w-0 text-xs">
                 <dt className="font-medium text-slate-500 dark:text-slate-400">{item.label}</dt>
@@ -169,17 +173,22 @@ export default function StaffIncidentTimelinePanel({ incidentId }) {
 
       {state === STAFF_INCIDENT_TIMELINE_STATE.READY ? (
         <section className="admin-panel overflow-hidden" aria-labelledby="incident-timeline-title">
-          <header className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 dark:border-slate-800">
-            <div>
-              <h2 id="incident-timeline-title" className="admin-section-title">Dòng thời gian sự vụ</h2>
-              <p className="admin-section-description mt-1">Các hoạt động được lấy trực tiếp từ lịch sử sự vụ.</p>
+          <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
+                <Lucide.History size={18} />
+              </span>
+              <div>
+                <h2 id="incident-timeline-title" className="admin-section-title">Dòng thời gian sự vụ</h2>
+                <p className="admin-section-description mt-1">Các hoạt động mới nhất được hiển thị trước.</p>
+              </div>
             </div>
-            <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+            <span className="inline-flex w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200">
               {pagination.totalItems.toLocaleString('vi-VN')} hoạt động
             </span>
           </header>
 
-          <ol className="space-y-1 px-5 py-5 sm:px-6">
+          <ol className="space-y-4 px-5 py-5 sm:px-6">
             {orderedEvents.map((event, index) => (
               <TimelineEvent
                 key={event?.incidentEventId || `${event?.eventType || 'event'}-${event?.createdAt || index}`}
@@ -189,7 +198,7 @@ export default function StaffIncidentTimelinePanel({ incidentId }) {
             ))}
           </ol>
 
-          <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800">
+          <footer className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/65 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400" aria-live="polite">
               Trang {pagination.pageNumber} / {Math.max(1, pagination.totalPages)}
             </p>

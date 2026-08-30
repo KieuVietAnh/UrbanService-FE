@@ -64,13 +64,6 @@ const menuItems = [
     activePatterns: ['/staff/provider-candidates', '/staff/provider-check', '/staff/provider-candidates-checker']
   },
   {
-    name: 'Xử Lý Trùng Lặp',
-    label: 'Xử lý trùng lặp',
-    path: '/staff/duplicates',
-    icon: 'Copy',
-    activePatterns: ['/staff/duplicates', '/staff/duplicate-detection', '/staff/linked-feedbacks']
-  },
-  {
     name: 'Trang Cá Nhân',
     label: 'Trang cá nhân',
     path: '/profile',
@@ -95,7 +88,7 @@ export const systemStaffSidebarSections = [
   {
     id: 'coordination',
     title: 'Điều phối & giám sát',
-    items: menuItems.filter((item) => ['Quản lý Conversation', 'Quản Lý Cảnh Báo Khu Vực', 'Danh bạ Điều phối viên', 'Xử Lý Trùng Lặp'].includes(item.name))
+    items: menuItems.filter((item) => ['Quản lý Conversation', 'Quản Lý Cảnh Báo Khu Vực', 'Danh bạ Điều phối viên'].includes(item.name))
   },
   {
     id: 'system',

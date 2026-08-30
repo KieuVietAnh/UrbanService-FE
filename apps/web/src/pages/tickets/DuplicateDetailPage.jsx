@@ -1,717 +1,579 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { duplicateManagementApi, managementFeedbackApi } from '@urbanmind/shared-api';
-import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
-import Badge from '../../components/design-system/Badge';
-import { getBadgeIntent } from '../../components/design-system/badgeSemantics';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { incidentMatchApi, managementFeedbackApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
+import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
-import { ManagerPageHeader } from '../../components/manager/ManagerPageElements';
-import { normalizeDuplicateCandidatePayload, extractImageUrls } from './duplicateDetailUtils';
+import LoadingSkeleton from '../../components/design-system/LoadingSkeleton';
+import { ManagerEmptyState, ManagerPageHeader } from '../../components/manager/ManagerPageElements';
+import {
+  extractImageUrls,
+  getCandidateReasoning,
+  normalizeDuplicateCandidatePayload,
+} from './duplicateDetailUtils';
 
-// formatDate removed from this file; other pages use their own helpers
+const MISSING_VALUE = 'Chưa có dữ liệu';
+
+const normalizeKey = (value) => String(value ?? '')
+  .trim()
+  .replace(/[-_\s]+/g, '')
+  .toLowerCase();
+
+const CANDIDATE_STATUS_LABELS = {
+  pending: 'Chờ đánh giá',
+  confirmed: 'Cùng sự vụ',
+  rejected: 'Khác sự vụ',
+};
+
+const REPORT_STATUS_LABELS = {
+  submitted: 'Đã gửi',
+  aireviewed: 'Đã được AI phân tích',
+  verified: 'Đã xác nhận',
+  rejected: 'Đã từ chối',
+  assigned: 'Đã phân công',
+  inprogress: 'Đang xử lý',
+  submittedforapproval: 'Chờ duyệt kết quả',
+  needrework: 'Cần xử lý lại',
+  approved: 'Đã duyệt',
+  resolved: 'Đã giải quyết',
+  closed: 'Đã đóng',
+  merged: 'Đã gộp',
+  cancelled: 'Đã hủy',
+};
+
+const PRIORITY_LABELS = {
+  critical: 'Khẩn cấp',
+  urgent: 'Khẩn cấp',
+  high: 'Cao',
+  medium: 'Trung bình',
+  normal: 'Trung bình',
+  low: 'Thấp',
+};
+
+const CHANNEL_LABELS = {
+  web: 'Cổng thông tin',
+  mobile: 'Ứng dụng di động',
+  chatbot: 'Trợ lý AI',
+  ai: 'Trợ lý AI',
+  hotline: 'Đường dây nóng',
+  email: 'Email',
+  manual: 'Nhập thủ công',
+};
+
+const getCandidateStatusLabel = (value) => (
+  CANDIDATE_STATUS_LABELS[normalizeKey(value)] || 'Chưa xác định'
+);
+
+const getCandidateStatusIntent = (value) => ({
+  pending: 'warning',
+  confirmed: 'success',
+  rejected: 'danger',
+}[normalizeKey(value)] || 'neutral');
+
+const getReportStatusLabel = (value) => (
+  REPORT_STATUS_LABELS[normalizeKey(value)] || MISSING_VALUE
+);
+
+const getPriorityLabel = (value) => PRIORITY_LABELS[normalizeKey(value)] || MISSING_VALUE;
+const getChannelLabel = (value) => CHANNEL_LABELS[normalizeKey(value)] || (value || MISSING_VALUE);
 
 const formatDateTime = (value) => {
-  if (!value) return '—';
+  if (!value) return MISSING_VALUE;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  if (Number.isNaN(date.getTime())) return MISSING_VALUE;
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
 };
 
-const getTextValue = (value, fallback = '—') => {
-  if (value === null || value === undefined || value === '') return fallback;
-  if (typeof value === 'string') return value.trim() || fallback;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object') return JSON.stringify(value);
-  return fallback;
-};
-
-const getImageSources = (feedback = {}) => extractImageUrls(feedback || {});
-
-const parseCoordinates = (value) => {
-  if (!value) return null;
-  if (Array.isArray(value) && value.length >= 2) return [Number(value[0]), Number(value[1])];
-  if (typeof value === 'object') {
-    if (value?.lat != null && value?.lng != null) return [Number(value.lat), Number(value.lng)];
-    if (value?.latitude != null && value?.longitude != null) return [Number(value.latitude), Number(value.longitude)];
-    if (Array.isArray(value?.coordinates) && value.coordinates.length >= 2) return [Number(value.coordinates[0]), Number(value.coordinates[1])];
-  }
-  if (typeof value === 'string') {
-    const matches = value.match(/-?\d+(?:\.\d+)?/g);
-    if (matches && matches.length >= 2) return [Number(matches[0]), Number(matches[1])];
-  }
-  return null;
-};
-
-const formatCoordinates = (value) => {
-  const parsed = parseCoordinates(value);
-  if (!parsed) return getTextValue(value, '—');
-  const [lat, lng] = parsed;
-  if (Number.isFinite(lat) && Number.isFinite(lng)) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-  return getTextValue(value, '—');
-};
-
-const getDistanceKm = (coordsA, coordsB) => {
-  if (!coordsA || !coordsB) return Infinity;
-  const [lat1, lon1] = coordsA;
-  const [lat2, lon2] = coordsB;
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-const getStatusClass = (s) => {
-  if (!s) return 'border-slate-200 bg-slate-50 text-slate-700';
-  const key = String(s).trim().toLowerCase();
-  switch (key) {
-    case 'pending':
-      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
-    case 'confirmed':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'rejected':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
-    default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
-  }
-};
-
-const getNormalizedConfidence = (value) => {
+const getConfidence = (value) => {
   if (value === null || value === undefined || value === '') return null;
-  const score = Number(value);
-  if (!Number.isFinite(score)) return null;
-  return score > 1 ? score : score * 100;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.min(100, parsed > 1 ? parsed : parsed * 100));
 };
 
-const getStatusLabel = (status) => {
-  switch (status) {
-    case 'Pending':
-      return 'Chờ xử lý';
-    case 'Confirmed':
-      return 'Đã xác nhận';
-    case 'Rejected':
-      return 'Đã từ chối';
-    default:
-      return status || 'Không xác định';
+const formatConfidence = (value) => {
+  const confidence = getConfidence(value);
+  return confidence === null ? MISSING_VALUE : `${Math.round(confidence)}%`;
+};
+
+const formatId = (value, prefix = '') => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return MISSING_VALUE;
+  return `${prefix}${normalized.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+};
+
+const getCoordinates = (report = {}) => {
+  const latitude = Number(report?.latitude ?? report?.coordinates?.latitude ?? report?.coordinates?.lat);
+  const longitude = Number(report?.longitude ?? report?.coordinates?.longitude ?? report?.coordinates?.lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return MISSING_VALUE;
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+};
+
+const getNewReport = (candidate) => candidate?.primaryFeedback || candidate?.feedback || null;
+const getRepresentativeReport = (candidate) => (
+  candidate?.duplicateFeedback || candidate?.potentialParentFeedback || null
+);
+
+const mergeCandidateReports = (response, primaryDetail, representativeDetail) => (
+  normalizeDuplicateCandidatePayload({
+    ...response,
+    primaryFeedback: primaryDetail || response?.feedback || response?.primaryFeedback || null,
+    duplicateFeedback: representativeDetail
+      || response?.potentialParentFeedback
+      || response?.duplicateFeedback
+      || null,
+  })
+);
+
+const clearLegacyMatchCache = () => {
+  try {
+    window.sessionStorage.removeItem('staff-duplicate-all-cache');
+    window.sessionStorage.setItem('staff-duplicate-cache-dirty', '1');
+  } catch {
+    // The Manager list always reloads from the API when storage is unavailable.
   }
 };
 
-const getRecommendationText = (confidence) => {
-  if (confidence === null) return 'Cần phân tích thêm';
-  if (confidence >= 90) return 'Độ tin cậy cao';
-  if (confidence >= 75) return 'Khả năng trùng';
-  return 'Cần kiểm tra cẩn thận';
-};
+function MetadataItem({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/65 px-3.5 py-3">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm" aria-hidden="true">
+        <Icon size={16} />
+      </span>
+      <dl className="min-w-0">
+        <dt className="text-[11px] font-medium text-slate-500">{label}</dt>
+        <dd className="mt-0.5 break-words text-sm font-semibold text-slate-900">{value || MISSING_VALUE}</dd>
+      </dl>
+    </div>
+  );
+}
 
-const ELIGIBLE_MASTER_STATUSES = new Set([
-  'verified',
-  'assigned',
-  'inprogress',
-  'resolved',
-  'submittedforapproval',
-  'approved',
-  'needrework',
-  'closed',
-]);
-
-export const DuplicateDetailPage = () => {
-  const navigate = useNavigate();
-  const { duplicateCandidateId } = useParams();
-  const [candidate, setCandidate] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [pageMessage, setPageMessage] = useState({ type: '', text: '' });
-  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [confirmLoading, setConfirmLoading] = useState(false);
-  const [rejectLoading, setRejectLoading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
-
-  const loadCandidate = useCallback(async () => {
-    if (!duplicateCandidateId) {
-      setError('Thiếu mã đề xuất ghép Incident.');
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    try {
-      const response = await duplicateManagementApi.getDuplicateById(duplicateCandidateId);
-
-      const normalizedCandidate = normalizeDuplicateCandidatePayload(response || null);
-
-      if (normalizedCandidate) {
-        setCandidate(normalizedCandidate);
-        setLoading(false);
-      }
-
-      // If attachments are stored on the referenced feedback resources, fetch them by id
-      const fbId = response?.feedbackId || response?.feedback?.feedbackId || response?.feedback?.id || response?.feedback?.feedback_id || null;
-      const parentId = response?.potentialParentFeedbackId || response?.potentialParentFeedback?.feedbackId || response?.potentialParentFeedback?.id || response?.potentialParentFeedback?.feedback_id || null;
-
-      let fetchedFb = null;
-      let fetchedParent = null;
-
-      const detailRequests = [
-        fbId ? managementFeedbackApi.getFeedbackById(fbId) : Promise.resolve(null),
-        parentId ? managementFeedbackApi.getFeedbackById(parentId) : Promise.resolve(null),
-      ];
-      const [feedbackResult, parentResult] = await Promise.allSettled(detailRequests);
-
-      fetchedFb = feedbackResult.status === 'fulfilled' ? feedbackResult.value : null;
-      fetchedParent = parentResult.status === 'fulfilled' ? parentResult.value : null;
-
-      const fbUrls = extractImageUrls(fetchedFb || response?.feedback || {});
-      const parentUrls = extractImageUrls(fetchedParent || response?.potentialParentFeedback || {});
-
-
-      // If normalized images empty, populate each side from the corresponding fetched resource
-      const hasPrimaryImages = normalizedCandidate?.primaryFeedback?.images?.length;
-      const hasDuplicateImages = normalizedCandidate?.duplicateFeedback?.images?.length;
-
-      if (!hasPrimaryImages || !hasDuplicateImages) {
-        const patched = {
-          ...normalizedCandidate,
-          primaryFeedback: {
-            ...(normalizedCandidate.primaryFeedback || {}),
-            images: hasPrimaryImages ? normalizedCandidate.primaryFeedback.images : fbUrls,
-          },
-          duplicateFeedback: {
-            ...(normalizedCandidate.duplicateFeedback || {}),
-            images: hasDuplicateImages ? normalizedCandidate.duplicateFeedback.images : parentUrls,
-          },
-        };
-        setCandidate(patched);
-      } else {
-        setCandidate(normalizedCandidate);
-      }
-    } catch (err) {
-      console.error(err);
-      setError(err?.message || 'Không thể tải chi tiết đề xuất cùng Incident.');
-    } finally {
-      setLoading(false);
-    }
-  }, [duplicateCandidateId]);
-
-  useEffect(() => {
-    loadCandidate();
-  }, [loadCandidate]);
-
-  const primaryFeedback = useMemo(() => candidate?.primaryFeedback || null, [candidate]);
-  const duplicateFeedback = useMemo(() => candidate?.duplicateFeedback || null, [candidate]);
-  // reasoning not displayed here; keep helper available in utils if needed
-  const primaryImages = useMemo(() => getImageSources(primaryFeedback), [primaryFeedback]);
-  const duplicateImages = useMemo(() => getImageSources(duplicateFeedback), [duplicateFeedback]);
-  const imageSources = useMemo(() => [...primaryImages, ...duplicateImages], [primaryImages, duplicateImages]);
-
-  useEffect(() => {
-    if (!selectedImage && imageSources.length) {
-      setSelectedImage(imageSources[0]);
-    }
-  }, [imageSources, selectedImage]);
-
-  // refreshImages removed — reload handled by page reload or candidate load
-
-  const confidenceValue = getNormalizedConfidence(candidate?.confidenceScore ?? candidate?.confidence);
-  const confidenceLabel = getRecommendationText(confidenceValue);
-  const statusLabel = getStatusLabel(candidate?.status);
-  const candidateIsPending = String(candidate?.status || '').toLowerCase() === 'pending';
-  const currentIncidentId = candidate?.currentIncidentId || candidate?.incidentId || primaryFeedback?.incidentId;
-  const suggestedIncidentId = candidate?.suggestedIncidentId || duplicateFeedback?.incidentId;
-  const areInSameIncident = candidate?.areInSameIncident
-    ?? Boolean(currentIncidentId && suggestedIncidentId && currentIncidentId === suggestedIncidentId);
-  const parentStatus = String(duplicateFeedback?.status || '').trim();
-  const parentIsEligibleMaster = ELIGIBLE_MASTER_STATUSES.has(parentStatus.toLowerCase());
-  const canConfirmDuplicate = candidateIsPending && parentIsEligibleMaster;
-  const confirmBlockedMessage = !candidateIsPending
-    ? 'Đề xuất này không còn ở trạng thái chờ xử lý.'
-    : `Report đại diện đang ở trạng thái ${parentStatus || 'không xác định'} và chưa thể công khai. Hãy duyệt Report đại diện trước khi xác nhận cùng Incident.`;
-
-  const comparisonRows = useMemo(() => {
-    const titleA = getTextValue(primaryFeedback?.title, '—');
-    const titleB = getTextValue(duplicateFeedback?.title, '—');
-    const descriptionA = getTextValue(primaryFeedback?.description, '—');
-    const descriptionB = getTextValue(duplicateFeedback?.description, '—');
-    const categoryA = getTextValue(primaryFeedback?.categoryName || primaryFeedback?.category?.name, '—');
-    const categoryB = getTextValue(duplicateFeedback?.categoryName || duplicateFeedback?.category?.name, '—');
-    const areaA = getTextValue(primaryFeedback?.areaName || primaryFeedback?.area?.name, '—');
-    const areaB = getTextValue(duplicateFeedback?.areaName || duplicateFeedback?.area?.name, '—');
-    const priorityA = getTextValue(primaryFeedback?.priority, '—');
-    const priorityB = getTextValue(duplicateFeedback?.priority, '—');
-    const reporterA = getTextValue(primaryFeedback?.reporterName || primaryFeedback?.userName || primaryFeedback?.reporter?.name, '—');
-    const reporterB = getTextValue(duplicateFeedback?.reporterName || duplicateFeedback?.userName || duplicateFeedback?.reporter?.name, '—');
-    const createdA = formatDateTime(primaryFeedback?.createdAt || primaryFeedback?.createdDate);
-    const createdB = formatDateTime(duplicateFeedback?.createdAt || duplicateFeedback?.createdDate);
-    const coordinatesA = formatCoordinates(primaryFeedback?.coordinates || primaryFeedback?.locationCoordinates || primaryFeedback?.geo);
-    const coordinatesB = formatCoordinates(duplicateFeedback?.coordinates || duplicateFeedback?.locationCoordinates || duplicateFeedback?.geo);
-    const statusA = getTextValue(primaryFeedback?.status, '—');
-    const statusB = getTextValue(duplicateFeedback?.status, '—');
-
-    const coordsA = parseCoordinates(primaryFeedback?.coordinates || primaryFeedback?.locationCoordinates || primaryFeedback?.geo);
-    const coordsB = parseCoordinates(duplicateFeedback?.coordinates || duplicateFeedback?.locationCoordinates || duplicateFeedback?.geo);
-    const distance = getDistanceKm(coordsA, coordsB);
-    const coordinateMatch = coordsA && coordsB ? (distance <= 0.5 ? 'same' : distance <= 5 ? 'similar' : 'neutral') : coordinatesA === coordinatesB ? 'same' : 'neutral';
-
-    return [
-      { label: 'Tiêu đề', a: titleA, b: titleB, match: titleA === titleB ? 'same' : 'neutral' },
-      { label: 'Mô tả', a: descriptionA, b: descriptionB, match: descriptionA === descriptionB ? 'same' : 'neutral' },
-      { label: 'Danh mục', a: categoryA, b: categoryB, match: categoryA === categoryB ? 'same' : 'neutral' },
-      { label: 'Khu vực', a: areaA, b: areaB, match: areaA === areaB ? 'same' : 'neutral' },
-      { label: 'Ưu tiên', a: priorityA, b: priorityB, match: priorityA === priorityB ? 'same' : 'neutral' },
-      { label: 'Người báo cáo', a: reporterA, b: reporterB, match: reporterA === reporterB ? 'same' : 'neutral' },
-      { label: 'Ngày tạo', a: createdA, b: createdB, match: Math.abs(new Date(primaryFeedback?.createdAt || primaryFeedback?.createdDate) - new Date(duplicateFeedback?.createdAt || duplicateFeedback?.createdDate)) <= 24 * 60 * 60 * 1000 ? 'same' : 'neutral' },
-      { label: 'Tọa độ', a: coordinatesA, b: coordinatesB, match: coordinateMatch },
-      { label: 'Trạng thái', a: statusA, b: statusB, match: statusA === statusB ? 'same' : 'neutral' },
-    ];
-  }, [primaryFeedback, duplicateFeedback]);
-
-  const evidenceItems = useMemo(() => {
-    const categoryMatch = comparisonRows.find((row) => row.label === 'Danh mục')?.match === 'same';
-    const areaMatch = comparisonRows.find((row) => row.label === 'Khu vực')?.match === 'same';
-    const coordinatesMatch = comparisonRows.find((row) => row.label === 'Tọa độ')?.match;
-    const descriptionMatch = comparisonRows.find((row) => row.label === 'Mô tả')?.match === 'same';
-    const timeMatch = comparisonRows.find((row) => row.label === 'Ngày tạo')?.match;
-
-    return [
-      {
-        title: 'Cùng danh mục',
-        description: categoryMatch ? 'Danh mục phản ánh trùng nhau.' : 'Danh mục khác nhau.',
-        confidence: categoryMatch ? 96 : 35,
-        impact: categoryMatch ? 'Cao' : 'Trung bình',
-        active: categoryMatch,
-      },
-      {
-        title: 'Cùng khu vực',
-        description: areaMatch ? 'Khu vực báo cáo trùng nhau.' : 'Khu vực khác nhau.',
-        confidence: areaMatch ? 92 : 38,
-        impact: areaMatch ? 'Cao' : 'Trung bình',
-        active: areaMatch,
-      },
-      {
-        title: 'Tọa độ gần giống',
-        description: coordinatesMatch === 'same' ? 'Tọa độ gần như giống nhau.' : coordinatesMatch === 'similar' ? 'Tọa độ gần nhau.' : 'Tọa độ khác nhau.',
-        confidence: coordinatesMatch === 'same' ? 88 : coordinatesMatch === 'similar' ? 68 : 30,
-        impact: coordinatesMatch === 'same' ? 'Cao' : coordinatesMatch === 'similar' ? 'Trung bình' : 'Thấp',
-        active: coordinatesMatch !== 'neutral',
-      },
-      {
-        title: 'Nội dung tương đồng',
-        description: descriptionMatch ? 'Nội dung trùng khớp.' : 'Nội dung khác biệt.',
-        confidence: descriptionMatch ? 85 : 40,
-        impact: descriptionMatch ? 'Trung bình' : 'Thấp',
-        active: descriptionMatch,
-      },
-      {
-        title: 'Ngày tạo gần nhau',
-        description: timeMatch === 'same' ? 'Ngày tạo gần nhau.' : 'Ngày tạo khác nhau.',
-        confidence: timeMatch === 'same' ? 82 : 30,
-        impact: timeMatch === 'same' ? 'Trung bình' : 'Thấp',
-        active: timeMatch === 'same',
-      },
-    ];
-  }, [comparisonRows]);
-
-  const handleConfirmDuplicate = async () => {
-    if (!duplicateCandidateId) return;
-
-    if (!canConfirmDuplicate) {
-      setPageMessage({ type: 'error', text: confirmBlockedMessage });
-      return;
-    }
-
-    setConfirmLoading(true);
-    setPageMessage({ type: '', text: '' });
-
-    try {
-      await duplicateManagementApi.confirmDuplicateCandidate(duplicateCandidateId);
-      sessionStorage.setItem('staff-duplicate-cache-dirty', '1');
-      setConfirmModalOpen(false);
-      navigate('/staff/duplicates', {
-        replace: true,
-        state: {
-          successMessage: 'Đã ghép Report vào Incident hiện có. Nội dung Report vẫn được lưu giữ.',
-        },
-      });
-    } catch (err) {
-      console.error(err);
-      setPageMessage({
-        type: 'error',
-        text: err?.message || 'Không thể ghép Report vào Incident lúc này.',
-      });
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
-  const handleRejectDuplicate = async () => {
-    if (!duplicateCandidateId) return;
-
-    setRejectLoading(true);
-    setPageMessage({ type: '', text: '' });
-
-    try {
-      await duplicateManagementApi.rejectDuplicateCandidate(duplicateCandidateId);
-      sessionStorage.setItem('staff-duplicate-cache-dirty', '1');
-      setRejectModalOpen(false);
-      navigate('/staff/duplicates', {
-        replace: true,
-        state: {
-          successMessage: 'Đã giữ hai Report ở hai Incident riêng.',
-        },
-      });
-    } catch (err) {
-      console.error(err);
-      setPageMessage({
-        type: 'error',
-        text: err?.message || 'Không thể xác nhận hai Report thuộc Incident riêng lúc này.',
-      });
-    } finally {
-      setRejectLoading(false);
-    }
-  };
+function ReportImageGrid({ images, reportLabel }) {
+  if (!images.length) {
+    return (
+      <div className="flex min-h-36 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-center text-sm text-slate-500">
+        <span>
+          <Lucide.ImageOff size={24} className="mx-auto mb-2 text-slate-400" aria-hidden="true" />
+          Chưa có hình ảnh
+        </span>
+      </div>
+    );
+  }
 
   return (
-    <div className="admin-page-shell space-y-6 pb-6">
-      {pageMessage.type === 'success' && (
-        <SuccessAlert message={pageMessage.text} onClose={() => setPageMessage({ type: '', text: '' })} />
-      )}
-      {pageMessage.type === 'error' && (
-        <ErrorAlert message={pageMessage.text} onClose={() => setPageMessage({ type: '', text: '' })} />
-      )}
+    <div className="grid grid-cols-3 gap-2">
+      {images.slice(0, 3).map((source, index) => (
+        <a
+          key={`${source}-${index}`}
+          href={source}
+          target="_blank"
+          rel="noreferrer"
+          className={`group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${index === 0 ? 'col-span-2 row-span-2 min-h-44' : 'min-h-20'}`}
+          aria-label={`Mở hình ảnh ${index + 1} của ${reportLabel}`}
+        >
+          <img src={source} alt={`Hình ảnh ${index + 1} của ${reportLabel}`} className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+          <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg bg-slate-950/60 text-white opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true">
+            <Lucide.Expand size={14} />
+          </span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function ReportPanel({ accent, eyebrow, report }) {
+  const images = extractImageUrls(report || {});
+  const isBlue = accent === 'blue';
+  const accentClasses = isBlue
+    ? 'border-blue-100 bg-blue-50/55 text-blue-700'
+    : 'border-emerald-100 bg-emerald-50/55 text-emerald-700';
+
+  return (
+    <article className="min-w-0 p-5 sm:p-6">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${accentClasses}`}>{eyebrow}</p>
+          <h2 className="mt-3 text-lg font-semibold leading-7 text-slate-950">{report?.title || 'Chưa có tiêu đề'}</h2>
+          <p className="mt-1 text-xs font-medium text-slate-500">{formatId(report?.feedbackId || report?.id, 'PA-')}</p>
+        </div>
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${isBlue ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`} aria-hidden="true">
+          <Lucide.FileText size={19} />
+        </span>
+      </header>
+
+      <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+        {report?.description || report?.content || MISSING_VALUE}
+      </p>
+
+      <div className="mt-5">
+        <ReportImageGrid images={images} reportLabel={eyebrow.toLowerCase()} />
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <MetadataItem icon={Lucide.UserRound} label="Người gửi" value={report?.reporterName || report?.userName || report?.reportedByName || MISSING_VALUE} />
+        <MetadataItem icon={Lucide.Tags} label="Danh mục" value={report?.categoryName || report?.category?.name || MISSING_VALUE} />
+        <MetadataItem icon={Lucide.MapPin} label="Phường / khu vực" value={report?.areaName || report?.area?.name || MISSING_VALUE} />
+        <MetadataItem icon={Lucide.Navigation} label="Địa chỉ" value={report?.locationText || report?.address || MISSING_VALUE} />
+        <MetadataItem icon={Lucide.Crosshair} label="Tọa độ" value={getCoordinates(report)} />
+        <MetadataItem icon={Lucide.Flag} label="Mức ưu tiên" value={getPriorityLabel(report?.priority)} />
+        <MetadataItem icon={Lucide.Activity} label="Trạng thái Report" value={getReportStatusLabel(report?.status)} />
+        <MetadataItem icon={Lucide.Radio} label="Kênh gửi" value={getChannelLabel(report?.submissionChannel)} />
+        <MetadataItem icon={Lucide.CalendarClock} label="Thời gian gửi" value={formatDateTime(report?.createdAt || report?.createdDate)} />
+        <MetadataItem icon={Lucide.RefreshCw} label="Cập nhật gần nhất" value={formatDateTime(report?.updatedAt)} />
+      </div>
+    </article>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="space-y-5" aria-label="Đang tải đề xuất" aria-busy="true">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => <div key={index} className="admin-panel p-5"><LoadingSkeleton rows={2} /></div>)}
+      </div>
+      <div className="admin-panel grid gap-0 overflow-hidden xl:grid-cols-2">
+        <div className="p-6"><LoadingSkeleton rows={10} /></div>
+        <div className="border-t border-slate-200 p-6 xl:border-l xl:border-t-0"><LoadingSkeleton rows={10} /></div>
+      </div>
+    </div>
+  );
+}
+
+function DecisionDialog({ mode, open, submitting, destinationIncidentId, onClose, onConfirm }) {
+  if (!open) return null;
+  const confirmingSameIncident = mode === 'confirm';
+  const title = confirmingSameIncident
+    ? 'Xác nhận hai Report cùng một sự vụ?'
+    : 'Xác nhận hai Report khác sự vụ?';
+  const body = confirmingSameIncident
+    ? `Report mới vẫn được lưu giữ và sẽ trở thành thông tin bổ sung cho sự vụ ${destinationIncidentId ? formatId(destinationIncidentId, 'SV-') : 'hiện có'}. Không có Report nào bị xóa.`
+    : 'Hai Report sẽ tiếp tục thuộc hai sự vụ riêng biệt. Không có Report nào bị xóa hoặc bị coi là dữ liệu thừa.';
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6">
+      <button type="button" className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]" onClick={onClose} disabled={submitting} aria-label="Đóng hộp thoại" />
+      <section role="dialog" aria-modal="true" aria-labelledby="incident-match-dialog-title" className="relative z-10 w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-5 sm:px-6">
+          <div className="flex items-start gap-3">
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${confirmingSameIncident ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-700'}`} aria-hidden="true">
+              {confirmingSameIncident ? <Lucide.GitMerge size={20} /> : <Lucide.Split size={20} />}
+            </span>
+            <div>
+              <h2 id="incident-match-dialog-title" className="text-lg font-bold text-slate-950">{title}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{body}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={submitting} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-100" aria-label="Đóng">
+            <Lucide.X size={18} aria-hidden="true" />
+          </button>
+        </header>
+        <footer className="flex flex-col-reverse gap-2 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+          <Button type="button" variant="ghost" size="sm" disabled={submitting} onClick={onClose}>Hủy</Button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={onConfirm}
+            className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold text-white transition focus-visible:outline-none focus-visible:ring-4 disabled:cursor-not-allowed disabled:opacity-60 ${confirmingSameIncident ? 'bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-100' : 'bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-100'}`}
+          >
+            {submitting ? <Lucide.LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : confirmingSameIncident ? <Lucide.GitMerge size={16} aria-hidden="true" /> : <Lucide.Split size={16} aria-hidden="true" />}
+            {submitting
+              ? 'Đang xác nhận...'
+              : confirmingSameIncident
+                ? 'Xác nhận cùng sự vụ'
+                : 'Xác nhận khác sự vụ'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+export const IncidentMatchDetailPage = ({
+  listPath = '/manager/incident-matches',
+  canDecide = true,
+}) => {
+  const navigate = useNavigate();
+  const params = useParams();
+  const candidateId = params.candidateId || params.duplicateCandidateId || '';
+  const activeRequestRef = useRef(null);
+  const [candidate, setCandidate] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [notFound, setNotFound] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [dialogMode, setDialogMode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const loadCandidate = useCallback(async () => {
+    activeRequestRef.current?.abort();
+    if (!candidateId) {
+      setCandidate(null);
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    setLoading(true);
+    setLoadError('');
+    setNotFound(false);
+
+    try {
+      const response = await incidentMatchApi.getCandidate(candidateId, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (!response) {
+        setNotFound(true);
+        setCandidate(null);
+        return;
+      }
+
+      const primaryId = response?.feedbackId || response?.feedback?.feedbackId || response?.primaryFeedback?.feedbackId;
+      const representativeId = response?.potentialParentFeedbackId
+        || response?.potentialParentFeedback?.feedbackId
+        || response?.duplicateFeedback?.feedbackId;
+      const [primaryResult, representativeResult] = await Promise.allSettled([
+        primaryId ? managementFeedbackApi.getFeedbackById(primaryId) : Promise.resolve(null),
+        representativeId ? managementFeedbackApi.getFeedbackById(representativeId) : Promise.resolve(null),
+      ]);
+      if (controller.signal.aborted) return;
+
+      setCandidate(mergeCandidateReports(
+        response,
+        primaryResult.status === 'fulfilled' ? primaryResult.value : null,
+        representativeResult.status === 'fulfilled' ? representativeResult.value : null,
+      ));
+    } catch (error) {
+      if (controller.signal.aborted || error?.code === 'ERR_CANCELED') return;
+      setCandidate(null);
+      if (error?.status === 404) setNotFound(true);
+      else setLoadError(error?.message || 'Không thể tải đề xuất');
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [candidateId]);
+
+  useEffect(() => {
+    void loadCandidate();
+    return () => activeRequestRef.current?.abort();
+  }, [loadCandidate, reloadKey]);
+
+  useEffect(() => {
+    if (!dialogMode) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape' && !submitting) setDialogMode('');
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [dialogMode, submitting]);
+
+  const newReport = useMemo(() => getNewReport(candidate), [candidate]);
+  const representativeReport = useMemo(() => getRepresentativeReport(candidate), [candidate]);
+  const candidateIsPending = normalizeKey(candidate?.status) === 'pending';
+  const confidence = getConfidence(candidate?.confidenceScore);
+  const reasoning = getCandidateReasoning(candidate);
+  const currentIncidentId = candidate?.currentIncidentId || candidate?.incidentId || '';
+  const suggestedIncidentId = candidate?.suggestedIncidentId || '';
+
+  const submitDecision = async () => {
+    if (!candidateIsPending || !canDecide || !dialogMode) return;
+    setSubmitting(true);
+    setActionError('');
+    try {
+      if (dialogMode === 'confirm') await incidentMatchApi.confirmCandidate(candidateId);
+      else await incidentMatchApi.rejectCandidate(candidateId);
+
+      clearLegacyMatchCache();
+      const successMessage = dialogMode === 'confirm'
+        ? 'Đã xác nhận các Report cùng một sự vụ'
+        : 'Đã xác nhận các Report thuộc hai sự vụ khác nhau';
+      setDialogMode('');
+      navigate(listPath, { replace: true, state: { successMessage } });
+    } catch (error) {
+      setActionError(error?.message || (dialogMode === 'confirm'
+        ? 'Không thể xác nhận các Report cùng sự vụ'
+        : 'Không thể xác nhận các Report khác sự vụ'));
+      setDialogMode('');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading && !candidate) {
+    return (
+      <article className="admin-page-shell space-y-6">
+        <ManagerPageHeader title="Chi tiết đề xuất cùng sự vụ" description="Đang tải dữ liệu so sánh hai Report." icon={Lucide.ScanSearch} />
+        <DetailSkeleton />
+      </article>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <article className="admin-page-shell space-y-6">
+        <ManagerEmptyState
+          icon={Lucide.FileQuestion}
+          title="Không tìm thấy đề xuất"
+          description="Đề xuất không tồn tại hoặc không còn khả dụng trong phạm vi của bạn."
+          action={<Button type="button" variant="outline" size="sm" onClick={() => navigate(listPath)}>Về danh sách đề xuất</Button>}
+        />
+      </article>
+    );
+  }
+
+  if (loadError || !candidate) {
+    return (
+      <article className="admin-page-shell space-y-6">
+        <ManagerEmptyState
+          icon={Lucide.TriangleAlert}
+          title="Không thể tải đề xuất"
+          description={loadError || 'Đã xảy ra lỗi khi tải dữ liệu đề xuất.'}
+          action={(
+            <Button type="button" variant="outline" size="sm" onClick={() => setReloadKey((value) => value + 1)}>
+              <Lucide.RefreshCw size={15} aria-hidden="true" />
+              Thử lại
+            </Button>
+          )}
+        />
+      </article>
+    );
+  }
+
+  return (
+    <article className="admin-page-shell space-y-6 pb-8">
+      <nav className="flex flex-wrap items-center gap-2 px-1 text-sm font-medium text-slate-500" aria-label="Đường dẫn trang">
+        <Link to={listPath} className="transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200">Đề xuất cùng sự vụ</Link>
+        <Lucide.ChevronRight size={15} aria-hidden="true" />
+        <span className="text-slate-800">Chi tiết đề xuất</span>
+      </nav>
+
+      {actionError ? <ErrorAlert message={actionError} onClose={() => setActionError('')} /> : null}
 
       <ManagerPageHeader
-        title="Xác nhận Report cùng Incident"
-        description="So sánh hai Report và quyết định ghép vào một Incident hay giữ riêng."
+        title="Chi tiết đề xuất cùng sự vụ"
+        description="So sánh Report mới với Report đại diện của sự vụ được đề xuất trước khi ra quyết định."
         icon={Lucide.ScanSearch}
-        statusLabel="MÃ ĐỀ XUẤT"
-        statusValue={duplicateCandidateId ? `${String(duplicateCandidateId).slice(0, 8)}…` : '—'}
+        statusLabel="Trạng thái"
+        statusValue={getCandidateStatusLabel(candidate?.status)}
+        statusTone={candidateIsPending ? 'review' : normalizeKey(candidate?.status) === 'confirmed' ? 'success' : 'info'}
         actions={(
-          <Button type="button" onClick={() => navigate('/staff/duplicates')} variant="ghost" size="sm">
-            <Lucide.ArrowLeft size={16} />
+          <Button type="button" variant="ghost" size="sm" onClick={() => navigate(listPath)}>
+            <Lucide.ArrowLeft size={16} aria-hidden="true" />
             Quay lại danh sách
           </Button>
         )}
       />
 
-      {loading ? (
-        <div className="card bg-white border border-slate-200 rounded-3xl p-10 text-center text-sm text-slate-500">
-          <span className="loading loading-spinner loading-sm mr-2" />
-          Đang tải đề xuất cùng Incident...
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Tóm tắt đề xuất">
+        <div className="admin-panel p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Độ tin cậy AI</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-950">{formatConfidence(candidate?.confidenceScore)}</p>
         </div>
-      ) : error ? (
-        <div className="card bg-rose-50 border border-rose-200 rounded-3xl p-10 text-center text-sm text-rose-700">
-          {error}
+        <div className="admin-panel p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sự vụ hiện tại</p>
+          <p className="mt-2 text-base font-semibold text-slate-950">{formatId(currentIncidentId, 'SV-')}</p>
         </div>
-      ) : !candidate ? (
-        <div className="card bg-white border border-slate-200 rounded-3xl p-10 text-center text-sm text-slate-500">
-          Không tìm thấy dữ liệu cho trường hợp này.
+        <div className="admin-panel p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sự vụ được đề xuất</p>
+          <p className="mt-2 text-base font-semibold text-slate-950">{formatId(suggestedIncidentId, 'SV-')}</p>
         </div>
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="admin-panel p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Độ tương đồng</div>
-              <div className="mt-1.5 text-2xl font-semibold text-slate-950">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</div>
-            </div>
-            <div className="admin-panel p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Incident</div>
-              <div className="mt-1.5 text-sm font-semibold text-slate-950">
-                {currentIncidentId ? String(currentIncidentId).slice(0, 8) : '—'}
-                <span className="mx-1.5 text-slate-400">→</span>
-                {suggestedIncidentId ? String(suggestedIncidentId).slice(0, 8) : '—'}
-              </div>
-              <div className={`mt-1 text-xs ${areInSameIncident ? 'text-emerald-600' : 'text-slate-500'}`}>
-                {areInSameIncident ? 'Đã cùng Incident' : 'Đang thuộc hai Incident'}
-              </div>
-            </div>
-            <div className="admin-panel p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Mức tin cậy</div>
-              <div className="mt-1.5 text-2xl font-semibold text-slate-950">{confidenceLabel}</div>
-            </div>
-            <div className="admin-panel p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Trạng thái</div>
-              <div className="mt-3">
-                <Badge intent={getBadgeIntent(candidate?.status)} className={`${getStatusClass(candidate?.status)} px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em]`}>
-                  {statusLabel}
-                </Badge>
-              </div>
+        <div className="admin-panel p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Kết luận</p>
+          <div className="mt-2"><Badge intent={getCandidateStatusIntent(candidate?.status)} className="px-3 py-1 text-xs font-semibold">{getCandidateStatusLabel(candidate?.status)}</Badge></div>
+        </div>
+      </section>
+
+      <section className="admin-panel overflow-hidden" aria-labelledby="incident-match-comparison-title">
+        <header className="border-b border-slate-200 bg-gradient-to-r from-blue-50/60 via-white to-emerald-50/60 px-5 py-5 sm:px-6">
+          <h2 id="incident-match-comparison-title" className="text-lg font-semibold text-slate-950">So sánh hai Report</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">Mỗi Report vẫn được lưu giữ để cung cấp nội dung, hình ảnh, vị trí và bối cảnh riêng cho sự vụ.</p>
+        </header>
+        <div className="grid divide-y divide-slate-200 xl:grid-cols-2 xl:divide-x xl:divide-y-0">
+          <ReportPanel accent="blue" eyebrow="Report mới" report={newReport} />
+          <ReportPanel accent="emerald" eyebrow="Report đại diện sự vụ được đề xuất" report={representativeReport} />
+        </div>
+      </section>
+
+      <section className="admin-panel overflow-hidden" aria-labelledby="incident-match-ai-title">
+        <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/70 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-700" aria-hidden="true"><Lucide.Sparkles size={18} /></span>
+            <div>
+              <h2 id="incident-match-ai-title" className="text-lg font-semibold text-slate-950">Phân tích của AI</h2>
+              <p className="mt-1 text-sm text-slate-500">Thông tin tham khảo từ đề xuất của backend.</p>
             </div>
           </div>
-
-          {!parentIsEligibleMaster && candidateIsPending && (
-            <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              <div className="flex h-8 w-8 items-center justify-center rounded-2xl status-warning">
-                <Lucide.AlertTriangle size={16} />
-              </div>
-              <div>
-                <div className="font-semibold">Chưa thể ghép Report vào Incident</div>
-                <p className="mt-1 text-slate-700">{confirmBlockedMessage}</p>
-              </div>
-            </div>
+          <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm shadow-sm">
+            <span className="text-slate-500">Độ tin cậy</span>
+            <strong className="text-violet-700">{formatConfidence(candidate?.confidenceScore)}</strong>
+          </div>
+        </header>
+        <div className="p-5 sm:p-6">
+          {reasoning ? (
+            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{reasoning}</p>
+          ) : (
+            <p className="text-sm text-slate-500">Backend chưa cung cấp nội dung giải thích cho đề xuất này.</p>
           )}
-
-          <section className="admin-panel overflow-hidden">
-            <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/30 px-5 py-4 sm:px-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Đối chiếu Report</div>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-950">Hai Report có cùng sự vụ?</h2>
-                </div>
-                <div className="text-xs font-medium text-slate-500">Giống / Khác được tính theo dữ liệu hiện tại</div>
+          {confidence !== null ? (
+            <div className="mt-5" aria-label={`Độ tin cậy ${Math.round(confidence)} phần trăm`}>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-violet-600" style={{ width: `${confidence}%` }} />
               </div>
             </div>
-
-            <div className="grid gap-0 xl:grid-cols-2 xl:divide-x xl:divide-slate-200">
-              <article className="p-5 sm:p-6">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-500">Report mới</div>
-                    <h3 className="mt-1 line-clamp-2 text-base font-semibold text-slate-950">
-                      {getTextValue(primaryFeedback?.title, '—')}
-                    </h3>
-                  </div>
-                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-blue-50 px-2 text-xs font-semibold text-blue-700">A</span>
-                </div>
-
-                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                  {primaryImages.length ? (
-                    <img src={primaryImages[0]} alt="Phản ánh mới" className="h-56 w-full object-cover" />
-                  ) : (
-                    <div className="flex h-56 items-center justify-center text-slate-500">
-                      <div className="text-center text-sm">
-                        <Lucide.ImageOff size={26} className="mx-auto mb-2 text-slate-400" />
-                        Không có ảnh
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </article>
-
-              <article className="border-t border-slate-200 p-5 sm:p-6 xl:border-t-0">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Report đại diện Incident</div>
-                    <h3 className="mt-1 line-clamp-2 text-base font-semibold text-slate-950">
-                      {getTextValue(duplicateFeedback?.title, '—')}
-                    </h3>
-                  </div>
-                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-emerald-50 px-2 text-xs font-semibold text-emerald-700">B</span>
-                </div>
-
-                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                  {duplicateImages.length ? (
-                    <img src={duplicateImages[0]} alt="Phản ánh nghi là chính" className="h-56 w-full object-cover" />
-                  ) : (
-                    <div className="flex h-56 items-center justify-center text-slate-500">
-                      <div className="text-center text-sm">
-                        <Lucide.ImageOff size={26} className="mx-auto mb-2 text-slate-400" />
-                        Không có ảnh
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </article>
-            </div>
-
-            <div className="border-t border-slate-200">
-              <div className="overflow-x-auto">
-                <table className="w-full table-fixed text-sm">
-                  <colgroup>
-                    <col className="w-[16%]" />
-                    <col className="w-[34%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[34%]" />
-                  </colgroup>
-                  <thead className="bg-slate-50/85">
-                    <tr>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Thuộc tính</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Phản ánh mới</th>
-                      <th className="px-5 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">So sánh</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Phản ánh chính</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {comparisonRows.map((row) => (
-                      <tr key={row.label} className="transition-colors hover:bg-slate-50/70">
-                        <td className="px-5 py-3.5 font-semibold text-slate-800">{row.label}</td>
-                        <td className="px-5 py-3.5 text-slate-600">{row.a}</td>
-                        <td className="px-5 py-3.5 text-center">
-                          <Badge
-                            intent={row.match === 'same' ? 'success' : row.match === 'similar' ? 'info' : 'neutral'}
-                            className="whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em]"
-                          >
-                            {row.match === 'same' ? 'Giống' : row.match === 'similar' ? 'Tương đồng' : 'Khác'}
-                          </Badge>
-                        </td>
-                        <td className="px-5 py-3.5 text-slate-600">{row.b}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-
-          <section className="admin-panel overflow-hidden">
-            <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/60 px-5 py-4 md:flex-row md:items-center md:justify-between sm:px-6">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Bằng chứng AI</div>
-                <div className="mt-2 text-lg font-semibold text-slate-900">Bằng chứng hỗ trợ</div>
-              </div>
-              <div className="text-sm text-slate-500">AI là dữ liệu tham khảo, cần kiểm định bởi staff.</div>
-            </div>
-
-            <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-4">
-              {evidenceItems.slice(0, 4).map((item) => (
-                <div key={item.title} className="rounded-2xl border border-slate-200 bg-white p-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-2xl ${item.active ? 'status-success' : 'status-neutral'}`}>
-                      <Lucide.CheckCircle2 size={18} />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">{item.title}</div>
-                      <div className="text-xs text-slate-500">{item.description}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </>
-      )}
-
-      {confirmModalOpen && (
-        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-2xl status-warning">
-                <Lucide.AlertTriangle size={16} />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-black text-slate-900">Xác nhận hai Report cùng Incident?</h3>
-                <p className="text-sm text-slate-600">
-                  Report mới sẽ được ghép vào Incident hiện có. Report không bị xóa và vẫn được giữ làm thông tin bổ sung.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmModalOpen(false)}
-                className="btn btn-sm btn-ghost rounded-lg"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDuplicate}
-                disabled={confirmLoading || !canConfirmDuplicate}
-                className="btn btn-sm bg-[#0052CC] hover:bg-[#0043a4] text-white border-none rounded-lg"
-              >
-                {confirmLoading ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Check size={14} />}
-                {confirmLoading ? 'Đang xác nhận...' : 'Xác nhận'}
-              </button>
-            </div>
-          </div>
+          ) : null}
         </div>
-      )}
+      </section>
 
-      {rejectModalOpen && (
-        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-rose-50 p-2 text-rose-700">
-                <Lucide.XCircle size={18} />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-black text-slate-900">Giữ hai Report ở Incident riêng?</h3>
-                <p className="text-sm leading-6 text-slate-600">
-                  Hệ thống sẽ đánh dấu đề xuất là <strong>Đã từ chối</strong>. Mỗi Report tiếp tục thuộc Incident riêng.
-                </p>
-              </div>
+      {canDecide && candidateIsPending ? (
+        <section className="sticky bottom-4 z-30 rounded-3xl border border-slate-200 bg-white/95 px-4 py-4 shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-5" aria-labelledby="incident-match-decision-title">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Quyết định của Manager</p>
+              <h2 id="incident-match-decision-title" className="mt-1 text-sm font-semibold text-slate-900">Hai Report này có phản ánh cùng một sự vụ không?</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Quyết định không xóa Report; dữ liệu của cả hai Report vẫn được lưu giữ.</p>
             </div>
-
-            <div className="mt-6 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setRejectModalOpen(false)}
-                className="btn btn-sm btn-ghost rounded-lg"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={handleRejectDuplicate}
-                disabled={rejectLoading}
-                className="btn btn-sm bg-rose-600 hover:bg-rose-700 text-white border-none rounded-lg"
-              >
-                {rejectLoading ? <span className="loading loading-spinner loading-xs" /> : <Lucide.XCircle size={14} />}
-                {rejectLoading ? 'Đang từ chối...' : 'Từ chối'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {candidateIsPending ? (
-        <div className="sticky bottom-4 z-30 rounded-[22px] border border-slate-200 bg-white/95 px-4 py-3.5 shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:px-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Kết luận của Staff</div>
-              <div className="mt-1 text-sm font-medium text-slate-600">
-                AI đề xuất độ tương đồng <strong className="text-slate-900">{confidenceValue !== null ? `${Math.round(confidenceValue)}%` : '—'}</strong>. Hãy kiểm tra dữ liệu trước khi quyết định.
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setRejectModalOpen(true)}
-                className="btn btn-outline min-h-0 rounded-xl px-4 py-2.5"
-              >
-                <Lucide.XCircle size={15} className="mr-1.5" />
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button type="button" onClick={() => setDialogMode('reject')} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100">
+                <Lucide.Split size={16} aria-hidden="true" />
                 Khác sự vụ
               </button>
-              <button
-                type="button"
-                onClick={() => setConfirmModalOpen(true)}
-                disabled={!canConfirmDuplicate || confirmLoading}
-                title={!canConfirmDuplicate ? confirmBlockedMessage : undefined}
-                className="btn btn-primary min-h-0 rounded-xl px-4 py-2.5 shadow-md shadow-blue-500/15"
-              >
-                <Lucide.CheckCircle2 size={15} className="mr-1.5" />
+              <Button type="button" size="md" onClick={() => setDialogMode('confirm')}>
+                <Lucide.GitMerge size={17} aria-hidden="true" />
                 Cùng sự vụ
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
+        </section>
       ) : (
-        <div className="admin-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <div className="flex items-center gap-3">
-            <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${candidate?.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-              {candidate?.status === 'Confirmed' ? <Lucide.BadgeCheck size={18} /> : <Lucide.XCircle size={18} />}
-            </span>
+        <section className="admin-panel flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600" aria-hidden="true"><Lucide.LockKeyhole size={17} /></span>
             <div>
-              <div className="text-sm font-semibold text-slate-900">Trường hợp đã được xử lý</div>
-              <div className="mt-0.5 text-xs text-slate-500">Không còn hành động xử lý nào cho đề xuất này.</div>
+              <h2 className="text-sm font-semibold text-slate-900">{candidateIsPending ? 'Chế độ chỉ xem' : 'Đề xuất đã được đánh giá'}</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{candidateIsPending ? 'Quyết định Cùng sự vụ / Khác sự vụ thuộc quyền của Manager.' : 'Không còn hành động quyết định nào cho đề xuất này.'}</p>
             </div>
           </div>
-          <Badge intent={getBadgeIntent(candidate?.status)} className={`${getStatusClass(candidate?.status)} px-3 py-1 text-[11px] font-semibold`}>
-            {statusLabel}
-          </Badge>
-        </div>
+          <Badge intent={getCandidateStatusIntent(candidate?.status)} className="self-start px-3 py-1 text-xs font-semibold sm:self-auto">{getCandidateStatusLabel(candidate?.status)}</Badge>
+        </section>
       )}
-    </div>
+
+      <DecisionDialog
+        mode={dialogMode}
+        open={Boolean(dialogMode)}
+        submitting={submitting}
+        destinationIncidentId={suggestedIncidentId}
+        onClose={() => !submitting && setDialogMode('')}
+        onConfirm={() => void submitDecision()}
+      />
+    </article>
   );
 };
+
+export const DuplicateDetailPage = () => (
+  <IncidentMatchDetailPage listPath="/staff/duplicates" canDecide={false} />
+);

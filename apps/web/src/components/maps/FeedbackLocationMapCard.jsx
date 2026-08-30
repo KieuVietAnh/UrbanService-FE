@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import * as Lucide from 'lucide-react';
 import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
 import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
 import 'leaflet/dist/leaflet.css';
+
+import ConfiguredMapTileLayer from './ConfiguredMapTileLayer';
 
 const markerIcon = new L.Icon({
   iconUrl: markerIconUrl,
@@ -74,6 +76,9 @@ export const FeedbackLocationMapCard = ({
   areaName,
   className = '',
   variant = 'public',
+  externalMapUrl = '',
+  iconClassName = '',
+  iconSize = 18,
 }) => {
   const navigate = useNavigate();
   const lat = Number(latitude);
@@ -84,6 +89,11 @@ export const FeedbackLocationMapCard = ({
   const isAdmin = variant === 'admin';
 
   const openFullMap = () => {
+    if (externalMapUrl && typeof window !== 'undefined') {
+      window.open(externalMapUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     if (isAdmin) {
       navigate('/management/map', {
         state: {
@@ -110,8 +120,8 @@ export const FeedbackLocationMapCard = ({
     <section className={`${isAdmin ? 'admin-panel' : 'rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]'} overflow-hidden ${className}`} aria-labelledby={`feedback-location-${feedbackId}`}>
       <header className={`flex items-start justify-between gap-3 px-5 py-4 sm:px-6 ${isAdmin ? 'border-b border-slate-200 dark:border-white/10' : ''}`}>
         <div className="flex min-w-0 items-start gap-3">
-          <span className={isAdmin ? 'admin-mini-icon' : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary'} aria-hidden="true">
-            <Lucide.MapPinned size={18} />
+          <span className={iconClassName || (isAdmin ? 'admin-mini-icon' : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary')} aria-hidden="true">
+            <Lucide.MapPinned size={iconSize} />
           </span>
           <div className="min-w-0">
             <h2 id={`feedback-location-${feedbackId}`} className={isAdmin ? 'admin-section-title' : 'text-base font-bold'}>Vị trí phản ánh</h2>
@@ -128,9 +138,9 @@ export const FeedbackLocationMapCard = ({
       </header>
 
       {hasCoordinates ? (
-        <button type="button" onClick={openFullMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label="Xem vị trí phản ánh trên bản đồ sự cố">
+        <button type="button" onClick={openFullMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label="Xem vị trí phản ánh trên bản đồ">
           <MapContainer center={position} zoom={16} dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false} boxZoom={false} keyboard={false} zoomControl={false} attributionControl={false} className="pointer-events-none h-full w-full">
-            <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <ConfiguredMapTileLayer />
             <SyncView position={position} />
             <ResizeMap />
             <Marker position={position} icon={markerIcon} />
@@ -141,10 +151,10 @@ export const FeedbackLocationMapCard = ({
           </span>
         </button>
       ) : (
-        <div className="flex h-44 items-center justify-center border-y border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] px-5 text-center">
+        <div className={`flex h-44 items-center justify-center border-y border-dashed px-5 text-center ${isAdmin ? 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50' : 'border-[var(--public-border)] bg-[var(--public-surface-soft)]'}`}>
           <div>
-            <Lucide.MapPin size={24} className="mx-auto text-base-content/30" aria-hidden="true" />
-            <p className="mt-2 text-sm text-base-content/50">Phản ánh chưa có tọa độ để hiển thị trên bản đồ.</p>
+            <Lucide.MapPin size={24} className={`mx-auto ${isAdmin ? 'text-slate-300 dark:text-slate-600' : 'text-base-content/30'}`} aria-hidden="true" />
+            <p className={`mt-2 text-sm ${isAdmin ? 'text-slate-500 dark:text-slate-400' : 'text-base-content/50'}`}>Phản ánh chưa có tọa độ để hiển thị trên bản đồ.</p>
           </div>
         </div>
       )}

@@ -17,9 +17,9 @@ type Props = {
 };
 
 const formatRole = (role?: string) => {
-  if (!role) return 'Cư dân';
+  if (!role) return 'Resident';
   const normalized = role.replace(/[_-]+/g, ' ').trim().toLowerCase();
-  if (normalized === 'resident' || normalized === 'service user') return 'Cư dân';
+  if (normalized === 'resident' || normalized === 'service user') return 'Resident';
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
@@ -88,7 +88,7 @@ export function HomeHeader({ router, areaName }: Props) {
     };
   }, []);
 
-  const fullName = user?.fullName?.trim() || user?.email || 'Cư dân';
+  const fullName = user?.fullName?.trim() || user?.email || 'Resident';
   const avatarUrl = user?.avatarUrl || userAny?.profileImageUrl || null;
   const roleLabel = formatRole(user?.role);
   const locationLabel =

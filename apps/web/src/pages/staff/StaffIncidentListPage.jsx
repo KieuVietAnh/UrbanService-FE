@@ -104,10 +104,11 @@ const collectFilterValues = (incidents, field, selectedValue) => {
   return Array.from(values).sort((left, right) => left.localeCompare(right, 'vi'));
 };
 
-function FilterField({ label, htmlFor, children }) {
+function FilterField({ label, htmlFor, icon: Icon, children }) {
   return (
     <div className="space-y-2">
-      <label htmlFor={htmlFor} className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+      <label htmlFor={htmlFor} className="flex min-h-4 items-center gap-2 whitespace-nowrap text-xs font-bold uppercase tracking-[0.055em] text-slate-500 dark:text-slate-400">
+        {Icon ? <Icon className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" aria-hidden="true" /> : null}
         {label}
       </label>
       {children}
@@ -118,13 +119,16 @@ function FilterField({ label, htmlFor, children }) {
 function IncidentListSkeleton() {
   return (
     <section className="admin-panel overflow-hidden" aria-busy="true" aria-label="Đang tải danh sách sự vụ">
-      <div className="border-b border-slate-200 px-5 py-5 sm:px-6 dark:border-slate-800">
-        <div className="h-5 w-36 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
-        <div className="mt-2 h-3 w-64 max-w-full animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800/70" />
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50/70 px-5 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-950/30">
+        <div>
+          <div className="h-5 w-36 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+          <div className="mt-2 h-3 w-64 max-w-full animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800/70" />
+        </div>
+        <div className="h-8 w-24 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
       </div>
       <div className="divide-y divide-slate-100 dark:divide-slate-800">
         {Array.from({ length: 5 }).map((_, index) => (
-          <div key={index} className="grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(0,2fr)_minmax(13rem,1fr)_auto] lg:items-center">
+          <div key={index} className="grid gap-5 px-5 py-5 sm:px-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(12rem,1fr)_minmax(13rem,1fr)_8rem] xl:items-center">
             <div>
               <div className="h-4 w-24 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
               <div className="mt-3 h-5 w-3/4 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
@@ -134,7 +138,7 @@ function IncidentListSkeleton() {
               <div className="h-7 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
               <div className="h-7 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
             </div>
-            <div className="h-10 w-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+            <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
           </div>
         ))}
       </div>
@@ -196,14 +200,14 @@ export function StaffIncidentListState({ state, hasActiveFilters = false, onRetr
 
 function IncidentBadges({ incident }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      <Badge intent={getStatusIntent(incident?.status)}>
+    <div className="flex flex-wrap gap-1.5">
+      <Badge intent={getStatusIntent(incident?.status)} className="whitespace-nowrap">
         {getEnumLabel(incident?.status, STATUS_LABELS)}
       </Badge>
-      <Badge intent={getPriorityIntent(incident?.priority)}>
+      <Badge intent={getPriorityIntent(incident?.priority)} className="whitespace-nowrap">
         Ưu tiên: {getEnumLabel(incident?.priority, PRIORITY_LABELS)}
       </Badge>
-      <Badge intent={getSeverityIntent(incident?.severity)}>
+      <Badge intent={getSeverityIntent(incident?.severity)} className="whitespace-nowrap">
         Mức độ: {getEnumLabel(incident?.severity, SEVERITY_LABELS)}
       </Badge>
       {incident?.mergedIntoIncidentId ? <Badge intent="neutral">Đã hợp nhất</Badge> : null}
@@ -221,28 +225,43 @@ function IncidentDetailLink({ incidentId }) {
   return (
     <Link
       to={`/staff/incidents/${incidentId}`}
-      className="inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-900/50"
+      className="group/link inline-flex min-h-10 min-w-[8.75rem] items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-[0_8px_18px_rgba(37,99,235,0.18)] transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_12px_24px_rgba(37,99,235,0.24)] active:translate-y-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 dark:bg-blue-500 dark:hover:bg-blue-400"
       aria-label={`Xem chi tiết sự vụ ${incidentCode}`}
     >
       Xem chi tiết
-      <Lucide.ArrowRight size={16} aria-hidden="true" />
+      <Lucide.ArrowRight size={16} className="transition-transform group-hover/link:translate-x-0.5" aria-hidden="true" />
     </Link>
   );
 }
 
-function IncidentList({ incidents }) {
+function IncidentList({ incidents, totalItems }) {
   return (
     <section className="admin-panel overflow-hidden" aria-label="Danh sách sự vụ được giao">
-      <div className="hidden lg:block">
+      <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300" aria-hidden="true">
+            <Lucide.Rows3 size={18} />
+          </span>
+          <div>
+            <h2 id="staff-incident-list-title" className="text-sm font-black text-slate-900 dark:text-slate-100">Danh sách sự vụ</h2>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">Sắp xếp theo dữ liệu backend và phạm vi Staff hiện tại.</p>
+          </div>
+        </div>
+        <span className="inline-flex w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200">
+          {Number(totalItems || 0).toLocaleString('vi-VN')} sự vụ
+        </span>
+      </header>
+
+      <div className="hidden xl:block">
         <table className="table table-fixed w-full text-sm">
           <caption className="sr-only">Các sự vụ được phân công cho tài khoản nhân viên hiện tại</caption>
           <colgroup>
-            <col className="w-[28%]" />
-            <col className="w-[22%]" />
-            <col className="w-[22%]" />
+            <col className="w-[25%]" />
+            <col className="w-[18%]" />
+            <col className="w-[18%]" />
             <col className="w-[10%]" />
             <col className="w-[10%]" />
-            <col className="w-[8%]" />
+            <col className="w-[19%]" />
           </colgroup>
           <thead className="admin-table-head">
             <tr className="text-[11px] font-semibold uppercase tracking-[0.06em]">
@@ -259,39 +278,47 @@ function IncidentList({ incidents }) {
               const incidentId = incident?.incidentId;
               const code = formatIncidentCode(incidentId);
               return (
-                <tr key={incidentId} className="admin-table-row align-middle">
+                <tr key={incidentId} className="admin-table-row group align-middle transition-colors">
                   <th scope="row" className="font-normal">
-                    <p className="text-xs font-bold text-blue-700 dark:text-blue-300" title={incidentId}>{code}</p>
+                    <p className="inline-flex items-center gap-1.5 text-xs font-black tracking-[0.03em] text-blue-700 dark:text-blue-300" title={incidentId}>
+                      <Lucide.Hash size={13} aria-hidden="true" />
+                      {code}
+                    </p>
                     <p className="mt-1.5 line-clamp-2 font-semibold leading-6 text-slate-900 dark:text-slate-100">
                       {incident?.title || 'Chưa có dữ liệu'}
                     </p>
                   </th>
                   <td>
-                    <p className="font-semibold text-slate-800 dark:text-slate-200">
+                    <p className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
+                      <Lucide.MapPin className="h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
                       {incident?.areaName || 'Chưa có dữ liệu'}
                     </p>
-                    <p className="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
+                    <p className="mt-1.5 line-clamp-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
                       {incident?.locationText || getCategoryLabel(incident?.categoryName, 'Chưa có dữ liệu')}
                     </p>
                     {incident?.locationText ? (
-                      <p className="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
+                      <p className="mt-1 line-clamp-1 pl-6 text-xs font-semibold text-slate-600 dark:text-slate-300">
                         {getCategoryLabel(incident?.categoryName, 'Chưa có dữ liệu')}
                       </p>
                     ) : null}
                   </td>
                   <td><IncidentBadges incident={incident} /></td>
                   <td>
-                    <p className="font-bold text-slate-900 dark:text-slate-100">{formatCount(incident?.reportCount)}</p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    <p className="flex items-baseline gap-1.5 font-black text-slate-900 dark:text-slate-100">
+                      <span className="text-lg leading-none">{formatCount(incident?.reportCount)}</span>
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Report</span>
+                    </p>
+                    <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                       {formatCount(incident?.subscriberCount)} người theo dõi
                     </p>
                   </td>
                   <td>
-                    <time dateTime={incident?.updatedAt || incident?.createdAt || undefined} className="text-xs leading-5 text-slate-600 dark:text-slate-300">
+                    <time dateTime={incident?.updatedAt || incident?.createdAt || undefined} className="inline-flex items-start gap-1.5 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                      <Lucide.Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
                       {formatDateTime(incident?.updatedAt || incident?.createdAt)}
                     </time>
                   </td>
-                  <td className="text-right"><IncidentDetailLink incidentId={incidentId} /></td>
+                  <td className="px-3 text-right"><IncidentDetailLink incidentId={incidentId} /></td>
                 </tr>
               );
             })}
@@ -299,45 +326,49 @@ function IncidentList({ incidents }) {
         </table>
       </div>
 
-      <div className="divide-y divide-slate-100 lg:hidden dark:divide-slate-800">
+      <div className="divide-y divide-slate-100 xl:hidden dark:divide-slate-800">
         {incidents.map((incident) => {
           const incidentId = incident?.incidentId;
           return (
-            <article key={incidentId} className="px-5 py-5 sm:px-6">
+            <article key={incidentId} className="relative px-5 py-5 transition-colors hover:bg-blue-50/35 sm:px-6 dark:hover:bg-blue-950/15">
+              <span className="absolute inset-y-5 left-0 w-1 rounded-r-full bg-blue-500" aria-hidden="true" />
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-blue-700 dark:text-blue-300" title={incidentId}>
+                  <p className="inline-flex items-center gap-1.5 text-xs font-black tracking-[0.03em] text-blue-700 dark:text-blue-300" title={incidentId}>
+                    <Lucide.Hash size={13} aria-hidden="true" />
                     {formatIncidentCode(incidentId)}
                   </p>
                   <h3 className="mt-1.5 text-base font-bold leading-6 text-slate-900 dark:text-slate-100">
                     {incident?.title || 'Chưa có dữ liệu'}
                   </h3>
                 </div>
-                <Lucide.BriefcaseBusiness className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/45 dark:text-blue-300" aria-hidden="true">
+                  <Lucide.BriefcaseBusiness className="h-5 w-5" />
+                </span>
               </div>
 
               <div className="mt-4"><IncidentBadges incident={incident} /></div>
 
-              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                <div>
+              <dl className="mt-4 grid gap-2.5 text-sm sm:grid-cols-2">
+                <div className="rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-slate-950/35">
                   <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Phường / Khu vực</dt>
                   <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
                     {incident?.areaName || 'Chưa có dữ liệu'}
                   </dd>
                 </div>
-                <div>
+                <div className="rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-slate-950/35">
                   <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Danh mục</dt>
                   <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
                     {getCategoryLabel(incident?.categoryName, 'Chưa có dữ liệu')}
                   </dd>
                 </div>
-                <div>
+                <div className="rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-slate-950/35">
                   <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Số báo cáo</dt>
                   <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
                     {formatCount(incident?.reportCount)} báo cáo
                   </dd>
                 </div>
-                <div>
+                <div className="rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-slate-950/35">
                   <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Cập nhật lần cuối</dt>
                   <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
                     {formatDateTime(incident?.updatedAt || incident?.createdAt)}
@@ -352,7 +383,7 @@ function IncidentList({ incidents }) {
                 </p>
               ) : null}
 
-              <div className="mt-5"><IncidentDetailLink incidentId={incidentId} /></div>
+              <div className="mt-5 [&>a]:w-full sm:[&>a]:w-auto"><IncidentDetailLink incidentId={incidentId} /></div>
             </article>
           );
         })}
@@ -361,55 +392,86 @@ function IncidentList({ incidents }) {
   );
 }
 
+const buildPageItems = (currentPage, totalPages) => {
+  if (totalPages <= 9) return Array.from({ length: totalPages }, (_, index) => index + 1);
+
+  const startPage = Math.max(2, Math.min(currentPage - 2, totalPages - 5));
+  const endPage = Math.min(totalPages - 1, startPage + 4);
+  const items = [1];
+
+  if (startPage > 2) items.push('ellipsis-start');
+  for (let page = startPage; page <= endPage; page += 1) items.push(page);
+  if (endPage < totalPages - 1) items.push('ellipsis-end');
+  items.push(totalPages);
+
+  return items;
+};
+
 function Pagination({ pagination, pageNumber, pageSize, loading, onPageChange, onPageSizeChange }) {
   const totalPages = Math.max(Number(pagination?.totalPages) || 1, 1);
   const totalItems = Number(pagination?.totalItems) || 0;
+  const currentPage = Math.min(Math.max(Number(pageNumber) || 1, 1), totalPages);
+  const pageItems = buildPageItems(currentPage, totalPages);
 
   return (
-    <footer className="mt-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900/60">
-      <p className="text-sm text-slate-600 dark:text-slate-300">
-        <span className="font-semibold text-slate-900 dark:text-slate-100">{totalItems.toLocaleString('vi-VN')}</span> sự vụ được giao
-      </p>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="staff-incident-page-size" className="text-sm font-medium text-slate-600 dark:text-slate-300">
+    <footer className="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-white/75 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/60">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-600 dark:text-slate-300" aria-live="polite">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{totalItems.toLocaleString('vi-VN')}</span> sự vụ được giao · Trang {currentPage}/{totalPages}
+        </p>
+        <label htmlFor="staff-incident-page-size" className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
           Số dòng
+          <Select
+            id="staff-incident-page-size"
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+            className="h-10 w-20"
+            disabled={loading}
+          >
+            {PAGE_SIZE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
+          </Select>
         </label>
-        <Select
-          id="staff-incident-page-size"
-          value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value))}
-          className="h-10 w-20"
-          disabled={loading}
-        >
-          {PAGE_SIZE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
-        </Select>
-        <span className="px-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          Trang {pageNumber} / {totalPages}
-        </span>
-        <Button
+      </div>
+
+      <nav className="flex flex-wrap items-center justify-center gap-1.5" aria-label="Phân trang danh sách sự vụ được giao">
+        <button
           type="button"
-          variant="outline"
-          size="sm"
           aria-label="Trang trước"
           disabled={loading || !pagination?.hasPreviousPage}
-          onClick={() => onPageChange(Math.max(1, pageNumber - 1))}
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-blue-800 dark:hover:bg-blue-950/40"
         >
           <Lucide.ChevronLeft size={16} aria-hidden="true" />
-          Trước
-        </Button>
-        <Button
+          <span className="hidden sm:inline">Trước</span>
+        </button>
+
+        {pageItems.map((item) => (typeof item === 'number' ? (
+          <button
+            key={item}
+            type="button"
+            disabled={loading}
+            aria-label={`Đến trang ${item}`}
+            aria-current={item === currentPage ? 'page' : undefined}
+            onClick={() => onPageChange(item)}
+            className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl border px-2 text-sm font-black transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60 ${item === currentPage ? 'border-blue-600 bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.2)]' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-blue-800 dark:hover:bg-blue-950/40'}`}
+          >
+            {item}
+          </button>
+        ) : (
+          <span key={item} className="inline-flex h-9 min-w-7 items-center justify-center text-sm font-bold text-slate-400" aria-hidden="true">…</span>
+        )))}
+
+        <button
           type="button"
-          variant="outline"
-          size="sm"
           aria-label="Trang sau"
           disabled={loading || !pagination?.hasNextPage}
-          onClick={() => onPageChange(Math.min(totalPages, pageNumber + 1))}
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          className="inline-flex h-9 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-blue-800 dark:hover:bg-blue-950/40"
         >
-          Sau
+          <span className="hidden sm:inline">Sau</span>
           <Lucide.ChevronRight size={16} aria-hidden="true" />
-        </Button>
-      </div>
+        </button>
+      </nav>
     </footer>
   );
 }
@@ -494,6 +556,15 @@ export default function StaffIncidentListPage() {
     || filters.search
     || filters.includeMerged
   );
+  const activeFilterCount = [
+    filters.areaId,
+    filters.categoryId,
+    filters.status,
+    filters.priority,
+    filters.severity,
+    filters.search,
+    filters.includeMerged,
+  ].filter(Boolean).length;
   const loading = state === STAFF_INCIDENT_LIST_STATE.LOADING;
   const scopeUnavailable = error?.message === 'STAFF_SCOPE_UNAVAILABLE';
 
@@ -524,12 +595,15 @@ export default function StaffIncidentListPage() {
   return (
     <article className="admin-page-shell space-y-6">
       <header className="admin-page-hero px-5 py-6 sm:px-7 sm:py-7">
-        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             <div className="admin-hero-icon">
               <Lucide.ClipboardList size={22} aria-hidden="true" />
             </div>
             <div className="min-w-0">
+              <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-blue-700 dark:text-blue-300">
+                Không gian xử lý công việc
+              </p>
               <h1 className="admin-hero-title">Sự vụ của tôi</h1>
               <p className="admin-hero-description">
                 Theo dõi các sự vụ được phân công, mức độ ưu tiên và tiến độ xử lý.
@@ -537,25 +611,49 @@ export default function StaffIncidentListPage() {
             </div>
           </div>
 
-          <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-blue-200/80 bg-blue-50/80 px-3.5 py-2.5 text-sm font-semibold text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/35 dark:text-blue-200">
-            <Lucide.UserRoundCheck size={17} aria-hidden="true" />
-            Chỉ hiển thị sự vụ được giao cho bạn
-          </div>
+          <aside className="flex w-full max-w-md items-center gap-4 rounded-2xl border border-white/80 bg-white/75 p-3.5 shadow-[0_12px_28px_rgba(30,64,175,0.08)] backdrop-blur-sm lg:w-auto dark:border-slate-700/70 dark:bg-slate-900/65">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.22)]" aria-hidden="true">
+              <Lucide.UserRoundCheck size={20} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Phạm vi hiển thị</p>
+              <p className="mt-0.5 text-sm font-black text-slate-900 dark:text-slate-100">Sự vụ được giao cho bạn</p>
+            </div>
+            <div className="border-l border-slate-200 pl-4 text-right dark:border-slate-700">
+              <p className="text-xl font-black tracking-tight text-blue-700 dark:text-blue-300">
+                {loading ? '…' : Number(pagination?.totalItems || 0).toLocaleString('vi-VN')}
+              </p>
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">sự vụ</p>
+            </div>
+          </aside>
         </div>
       </header>
 
       <section className="admin-panel overflow-hidden" aria-labelledby="staff-incident-filters-title">
-        <header className="border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
-          <h2 id="staff-incident-filters-title" className="admin-section-title">Bộ lọc sự vụ</h2>
-          <p className="admin-section-description mt-1">
-            Tìm và thu hẹp danh sách trong đúng phạm vi công việc được giao.
-          </p>
+        <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-200" aria-hidden="true">
+              <Lucide.ListFilter size={18} />
+            </span>
+            <div>
+              <h2 id="staff-incident-filters-title" className="admin-section-title">Bộ lọc sự vụ</h2>
+              <p className="admin-section-description mt-1">Thu hẹp danh sách trong đúng phạm vi công việc được giao.</p>
+            </div>
+          </div>
+          {activeFilterCount > 0 ? (
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-700 dark:bg-blue-950/55 dark:text-blue-200" aria-live="polite">
+              <Lucide.SlidersHorizontal size={13} aria-hidden="true" />
+              {activeFilterCount} bộ lọc đang áp dụng
+            </span>
+          ) : (
+            <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">Chưa áp dụng bộ lọc</span>
+          )}
         </header>
 
         <form onSubmit={handleSearchSubmit} className="px-5 py-5 sm:px-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(220px,1.5fr)_repeat(5,minmax(0,1fr))]">
+          <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(240px,1.6fr)_repeat(5,minmax(0,1fr))]">
             <div className="sm:col-span-2 lg:col-span-1">
-              <FilterField label="Tìm kiếm" htmlFor="staff-incident-search">
+              <FilterField label="Tìm kiếm" htmlFor="staff-incident-search" icon={Lucide.Search}>
                 <div className="relative">
                   <Lucide.Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                   <Input
@@ -570,28 +668,28 @@ export default function StaffIncidentListPage() {
               </FilterField>
             </div>
 
-            <FilterField label="Trạng thái" htmlFor="staff-incident-status">
+            <FilterField label="Trạng thái" htmlFor="staff-incident-status" icon={Lucide.Activity}>
               <Select id="staff-incident-status" value={filters.status} onChange={(event) => updateFilter('status', event.target.value)} className="h-11">
                 <option value="">Tất cả trạng thái</option>
                 {statusOptions.map((value) => <option key={value} value={value}>{getEnumLabel(value, STATUS_LABELS)}</option>)}
               </Select>
             </FilterField>
 
-            <FilterField label="Mức ưu tiên" htmlFor="staff-incident-priority">
+            <FilterField label="Mức ưu tiên" htmlFor="staff-incident-priority" icon={Lucide.Flag}>
               <Select id="staff-incident-priority" value={filters.priority} onChange={(event) => updateFilter('priority', event.target.value)} className="h-11">
                 <option value="">Tất cả mức ưu tiên</option>
                 {priorityOptions.map((value) => <option key={value} value={value}>{getEnumLabel(value, PRIORITY_LABELS)}</option>)}
               </Select>
             </FilterField>
 
-            <FilterField label="Mức độ nghiêm trọng" htmlFor="staff-incident-severity">
+            <FilterField label="Độ nghiêm trọng" htmlFor="staff-incident-severity" icon={Lucide.TriangleAlert}>
               <Select id="staff-incident-severity" value={filters.severity} onChange={(event) => updateFilter('severity', event.target.value)} className="h-11">
                 <option value="">Tất cả mức độ</option>
                 {severityOptions.map((value) => <option key={value} value={value}>{getEnumLabel(value, SEVERITY_LABELS)}</option>)}
               </Select>
             </FilterField>
 
-            <FilterField label="Phường / Khu vực" htmlFor="staff-incident-area">
+            <FilterField label="Phường / Khu vực" htmlFor="staff-incident-area" icon={Lucide.MapPin}>
               <Select id="staff-incident-area" value={filters.areaId} onChange={(event) => updateFilter('areaId', event.target.value)} className="h-11">
                 <option value="">Tất cả khu vực</option>
                 {areas.map((area) => (
@@ -602,7 +700,7 @@ export default function StaffIncidentListPage() {
               </Select>
             </FilterField>
 
-            <FilterField label="Danh mục" htmlFor="staff-incident-category">
+            <FilterField label="Danh mục" htmlFor="staff-incident-category" icon={Lucide.Tags}>
               <Select id="staff-incident-category" value={filters.categoryId} onChange={(event) => updateFilter('categoryId', event.target.value)} className="h-11">
                 <option value="">Tất cả danh mục</option>
                 {categories.map((category) => (
@@ -614,8 +712,8 @@ export default function StaffIncidentListPage() {
             </FilterField>
           </div>
 
-          <div className="mt-5 flex flex-col gap-4 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+          <div className="mt-5 flex flex-col gap-4 rounded-2xl bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:bg-slate-950/35">
+            <label className="flex min-h-10 cursor-pointer items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 className="checkbox checkbox-sm checkbox-primary"
@@ -625,12 +723,12 @@ export default function StaffIncidentListPage() {
               Bao gồm sự vụ đã hợp nhất
             </label>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button type="button" variant="ghost" size="sm" onClick={handleResetFilters} disabled={!hasActiveFilters && !draftSearch}>
                 <Lucide.RotateCcw size={16} aria-hidden="true" />
                 Xóa bộ lọc
               </Button>
-              <Button type="submit" size="sm">
+              <Button type="submit" size="sm" className="admin-primary-action min-w-[7.5rem]">
                 <Lucide.Search size={16} aria-hidden="true" />
                 Tìm kiếm
               </Button>
@@ -639,27 +737,16 @@ export default function StaffIncidentListPage() {
         </form>
       </section>
 
-      <section aria-labelledby="staff-incident-list-title">
-        <div className="mb-3 flex flex-col gap-2 px-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 id="staff-incident-list-title" className="text-base font-bold text-slate-900 dark:text-slate-100">
-              Danh sách sự vụ
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Dữ liệu sự vụ được lọc theo tài khoản nhân viên hiện tại.
-            </p>
-          </div>
-          {loading && incidents.length > 0 ? (
-            <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-              <Lucide.LoaderCircle size={15} className="animate-spin" aria-hidden="true" />
-              Đang làm mới
-            </span>
-          ) : null}
-        </div>
-
+      <section aria-label="Danh sách sự vụ được giao" className="relative">
+        {loading && incidents.length > 0 ? (
+          <span className="absolute right-5 top-5 z-10 inline-flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <Lucide.LoaderCircle size={15} className="animate-spin" aria-hidden="true" />
+            Đang làm mới
+          </span>
+        ) : null}
         {state === STAFF_INCIDENT_LIST_STATE.READY ? (
           <>
-            <IncidentList incidents={incidents} />
+            <IncidentList incidents={incidents} totalItems={pagination?.totalItems} />
             <Pagination
               pagination={pagination}
               pageNumber={pageNumber}

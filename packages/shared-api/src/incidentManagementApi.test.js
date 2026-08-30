@@ -8,6 +8,8 @@ import {
   INCIDENT_MANAGEMENT_CAPABILITIES,
   incidentManagementApi,
   normalizeIncidentDetailResponse,
+  normalizeIncidentAssigneeCandidates,
+  normalizeAssignIncidentPayload,
   normalizeIncidentListParams,
   normalizeIncidentListResponse,
   normalizeIncidentTimelineParams,
@@ -32,6 +34,12 @@ test('incident list capability follows the checked-in ManagementIncidents contra
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.timeline.paginated, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.timeline.defaultPageSize, 20);
   assert.equal(typeof incidentManagementApi.getIncidentTimeline, 'function');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.assigneeCandidates.available, true);
+  assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.assigneeCandidates.eligibility, ['areaId', 'categoryId']);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.assignment.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.assignment.supportsReassignment, false);
+  assert.equal(typeof incidentManagementApi.getIncidentAssigneeCandidates, 'function');
+  assert.equal(typeof incidentManagementApi.assignIncident, 'function');
 });
 
 test('normalizeIncidentListParams maps only supported Swagger query parameters', () => {
@@ -159,6 +167,61 @@ test('getIncidentById rejects an empty Incident identifier before making a reque
     assert.equal(getMock.mock.callCount(), 0);
   } finally {
     getMock.mock.restore();
+  }
+});
+
+test('normalizes the documented assignee candidate collection', () => {
+  const candidate = {
+    userId: 'staff-1',
+    staffName: 'Nguyễn Văn A',
+    email: 'staff@example.com',
+    areaId: 4,
+    areaName: 'Phường 5',
+    categoryId: 7,
+    categoryName: 'Cây xanh',
+    isPrimary: true,
+  };
+
+  assert.deepEqual(normalizeIncidentAssigneeCandidates([candidate]), [candidate]);
+  assert.deepEqual(normalizeIncidentAssigneeCandidates({ data: [candidate] }), [candidate]);
+  assert.deepEqual(normalizeIncidentAssigneeCandidates(null), []);
+});
+
+test('normalizes only the documented Incident assignment payload', () => {
+  assert.deepEqual(normalizeAssignIncidentPayload({
+    staffUserId: ' staff-1 ',
+    reason: ' Phù hợp khu vực ',
+    workload: 10,
+  }), {
+    staffUserId: 'staff-1',
+    reason: 'Phù hợp khu vực',
+  });
+  assert.throws(() => normalizeAssignIncidentPayload({}), /staffUserId is required/);
+});
+
+test('calls real assignee candidate and assignment endpoints', async () => {
+  const getMock = mock.method(axiosClient, 'get', async () => []);
+  const postMock = mock.method(axiosClient, 'post', async () => ({
+    incidentId: 'incident-1',
+    assignedStaffUserId: 'staff-1',
+  }));
+
+  try {
+    await incidentManagementApi.getIncidentAssigneeCandidates('incident-1');
+    const assigned = await incidentManagementApi.assignIncident('incident-1', {
+      staffUserId: 'staff-1',
+    });
+
+    assert.equal(getMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1/assignee-candidates');
+    assert.equal(getMock.mock.calls[0].arguments[1].signal, undefined);
+    assert.deepEqual(postMock.mock.calls[0].arguments, [
+      '/api/management/incidents/incident-1/assign',
+      { staffUserId: 'staff-1' },
+    ]);
+    assert.equal(assigned.assignedStaffUserId, 'staff-1');
+  } finally {
+    getMock.mock.restore();
+    postMock.mock.restore();
   }
 });
 

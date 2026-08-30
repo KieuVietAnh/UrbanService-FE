@@ -3,6 +3,8 @@ import { axiosClient } from './axiosClient.js';
 const INCIDENT_LIST_ENDPOINT = '/api/management/incidents';
 const INCIDENT_DETAIL_ENDPOINT = '/api/management/incidents/{incidentId}';
 const INCIDENT_TIMELINE_ENDPOINT = '/api/management/incidents/{incidentId}/timeline';
+const INCIDENT_ASSIGNEE_CANDIDATES_ENDPOINT = '/api/management/incidents/{incidentId}/assignee-candidates';
+const INCIDENT_ASSIGN_ENDPOINT = '/api/management/incidents/{incidentId}/assign';
 
 const buildIncidentDetailEndpoint = (incidentId) => {
   const normalizedIncidentId = String(incidentId ?? '').trim();
@@ -81,6 +83,23 @@ export const normalizeIncidentDetailResponse = (response = null) => {
   return payload;
 };
 
+export const normalizeIncidentAssigneeCandidates = (response = []) => {
+  const payload = response?.data ?? response;
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+};
+
+export const normalizeAssignIncidentPayload = (payload = {}) => {
+  const staffUserId = String(payload?.staffUserId ?? '').trim();
+  if (!staffUserId) throw new TypeError('staffUserId is required');
+
+  const normalized = { staffUserId };
+  const reason = String(payload?.reason ?? '').trim();
+  if (reason) normalized.reason = reason;
+  return normalized;
+};
+
 export const normalizeIncidentTimelineParams = (params = {}) => {
   const normalized = {};
 
@@ -135,6 +154,16 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
     paginated: true,
     defaultPageSize: 20,
   }),
+  assigneeCandidates: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_ASSIGNEE_CANDIDATES_ENDPOINT,
+    eligibility: Object.freeze(['areaId', 'categoryId']),
+  }),
+  assignment: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_ASSIGN_ENDPOINT,
+    supportsReassignment: false,
+  }),
 });
 
 export const incidentManagementApi = Object.freeze({
@@ -165,5 +194,24 @@ export const incidentManagementApi = Object.freeze({
     });
 
     return normalizeIncidentTimelineResponse(response);
+  },
+
+  async getIncidentAssigneeCandidates(incidentId, options = {}) {
+    const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
+    const response = await axiosClient.get(`${detailEndpoint}/assignee-candidates`, {
+      signal: options?.signal,
+    });
+
+    return normalizeIncidentAssigneeCandidates(response);
+  },
+
+  async assignIncident(incidentId, payload = {}) {
+    const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
+    const response = await axiosClient.post(
+      `${detailEndpoint}/assign`,
+      normalizeAssignIncidentPayload(payload),
+    );
+
+    return normalizeIncidentDetailResponse(response);
   },
 });

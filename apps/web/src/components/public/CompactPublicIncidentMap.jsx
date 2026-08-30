@@ -4,12 +4,13 @@ import {
   MapContainer,
   Marker,
   Popup,
-  TileLayer,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
 import * as Lucide from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
+
+import ConfiguredMapTileLayer from '../maps/ConfiguredMapTileLayer';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const DEFAULT_CENTER = [10.77653, 106.700981];
@@ -218,16 +219,6 @@ const CompactPublicIncidentMap = ({
     [items]
   );
 
-  const tileLayer = theme === 'dark'
-    ? {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      }
-    : {
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        attribution: '&copy; OpenStreetMap contributors',
-      };
-
   const statusText = loading
     ? 'Đang tải vị trí'
     : error
@@ -247,10 +238,8 @@ const CompactPublicIncidentMap = ({
           zoomControl
           className="h-full min-h-[320px] w-full"
         >
-          <TileLayer
+          <ConfiguredMapTileLayer
             key={theme}
-            attribution={tileLayer.attribution}
-            url={tileLayer.url}
           />
           <FitCompactBounds incidents={incidents} />
 

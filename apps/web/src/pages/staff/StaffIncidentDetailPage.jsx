@@ -10,6 +10,7 @@ import {
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import EmptyState from '../../components/design-system/EmptyState';
+import IncidentLocationMapCard from '../../components/maps/IncidentLocationMapCard';
 import {
   STAFF_INCIDENT_DETAIL_STATE,
   useStaffIncidentDetail,
@@ -120,9 +121,9 @@ function Breadcrumbs() {
 
 function SectionHeading({ id, icon: Icon, title, description }) {
   return (
-    <header className="flex items-start gap-3 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
-      <span className="admin-mini-icon" aria-hidden="true">
-        <Icon size={17} />
+    <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
+        <Icon size={18} />
       </span>
       <div className="min-w-0">
         <h2 id={id} className="admin-section-title">{title}</h2>
@@ -134,9 +135,13 @@ function SectionHeading({ id, icon: Icon, title, description }) {
 
 function MetadataRow({ label, value, icon: Icon, valueClassName = '' }) {
   return (
-    <div className="grid gap-2 py-3.5 sm:grid-cols-[minmax(9rem,0.7fr)_minmax(0,1.3fr)] sm:gap-5">
-      <dt className="flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-        {Icon ? <Icon size={16} className="shrink-0" aria-hidden="true" /> : null}
+    <div className="grid gap-2 py-4 sm:grid-cols-[minmax(10rem,0.72fr)_minmax(0,1.28fr)] sm:items-start sm:gap-5">
+      <dt className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+        {Icon ? (
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-blue-600 dark:bg-slate-800 dark:text-blue-300" aria-hidden="true">
+            <Icon size={14} />
+          </span>
+        ) : null}
         {label}
       </dt>
       <dd className={`min-w-0 text-sm font-semibold leading-6 text-slate-900 dark:text-slate-100 ${valueClassName}`}>
@@ -146,15 +151,34 @@ function MetadataRow({ label, value, icon: Icon, valueClassName = '' }) {
   );
 }
 
-function ClassificationItem({ label, children }) {
+function ClassificationItem({ label, icon: Icon, children }) {
   return (
-    <div className="min-w-0 border-b border-slate-100 px-5 py-4 last:border-b-0 sm:px-6 dark:border-slate-800/80">
-      <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-        {label}
-      </dt>
-      <dd className="mt-2 min-w-0 text-sm font-semibold leading-6 text-slate-900 dark:text-slate-100">
-        {children}
-      </dd>
+    <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30">
+      <div className="flex items-start gap-3">
+        {Icon ? (
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-blue-300 dark:ring-slate-700" aria-hidden="true">
+            <Icon size={16} />
+          </span>
+        ) : null}
+        <div className="min-w-0">
+          <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
+          <dd className="mt-1.5 min-w-0 text-sm font-bold leading-6 text-slate-900 dark:text-slate-100">{children}</dd>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeaderFact({ icon: Icon, label, value }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 px-4 py-3.5 sm:px-5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
+        <Icon size={16} />
+      </span>
+      <dl className="min-w-0">
+        <dt className="text-[11px] font-bold uppercase tracking-[0.055em] text-slate-500 dark:text-slate-400">{label}</dt>
+        <dd className="mt-0.5 truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={value}>{value}</dd>
+      </dl>
     </div>
   );
 }
@@ -272,8 +296,8 @@ function IncidentTabs({ activeTab, onTabChange, reportCount }) {
   };
 
   return (
-    <div className="overflow-x-auto border-b border-slate-200 dark:border-slate-800">
-      <div className="flex min-w-max gap-1" role="tablist" aria-label="Nội dung chi tiết sự vụ">
+    <nav className="admin-panel overflow-x-auto p-1.5" aria-label="Điều hướng nội dung sự vụ">
+      <div className="grid min-w-[34rem] grid-cols-3 gap-1.5" role="tablist" aria-label="Nội dung chi tiết sự vụ">
         {TAB_ITEMS.map((tab, index) => {
           const Icon = tab.icon;
           const selected = activeTab === tab.id;
@@ -293,19 +317,19 @@ function IncidentTabs({ activeTab, onTabChange, reportCount }) {
               tabIndex={selected ? 0 : -1}
               onClick={() => onTabChange(tab.id)}
               onKeyDown={(event) => handleKeyDown(event, index)}
-              className={`relative inline-flex min-h-12 items-center gap-2 rounded-t-xl px-4 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-100 dark:focus-visible:ring-blue-950 ${
+              className={`group/tab relative inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:focus-visible:ring-blue-950 ${
                 selected
-                  ? 'bg-blue-50/70 text-blue-700 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-blue-600 dark:bg-blue-950/25 dark:text-blue-300'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
+                  ? 'bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.2)]'
+                  : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-blue-950/35 dark:hover:text-blue-200'
               }`}
             >
-              <Icon size={17} aria-hidden="true" />
+              <Icon size={17} className="shrink-0" aria-hidden="true" />
               {label}
             </button>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 }
 
@@ -317,6 +341,8 @@ function OverviewPanel({ incident, capability }) {
   const areaName = String(incident?.areaName ?? '').trim() || EMPTY_VALUE;
   const categoryName = String(incident?.categoryName ?? '').trim() || EMPTY_VALUE;
   const assignedStaffName = String(incident?.assignedStaffName ?? '').trim();
+  const latitude = incident?.latitude ?? incident?.lat;
+  const longitude = incident?.longitude ?? incident?.lng;
 
   return (
     <div
@@ -324,7 +350,7 @@ function OverviewPanel({ incident, capability }) {
       role="tabpanel"
       aria-labelledby="incident-tab-overview"
       tabIndex={0}
-      className="grid gap-5 focus-visible:outline-none xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.75fr)]"
+      className="grid gap-5 focus-visible:outline-none xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.78fr)]"
     >
       <div className="min-w-0 space-y-5">
         <section className="admin-panel overflow-hidden" aria-labelledby="incident-identity-title">
@@ -346,11 +372,20 @@ function OverviewPanel({ incident, capability }) {
             <MetadataRow
               label="Tọa độ"
               icon={Lucide.Crosshair}
-              value={formatCoordinates(incident?.latitude, incident?.longitude)}
+              value={formatCoordinates(latitude, longitude)}
               valueClassName="font-mono"
             />
           </dl>
         </section>
+
+        <IncidentLocationMapCard
+          incidentId={incident?.incidentId}
+          latitude={latitude}
+          longitude={longitude}
+          locationText={incident?.locationText}
+          areaName={incident?.areaName}
+          tone="blue"
+        />
 
         <section className="admin-panel overflow-hidden" aria-labelledby="incident-classification-title">
           <SectionHeading
@@ -359,25 +394,25 @@ function OverviewPanel({ incident, capability }) {
             title="Phân loại"
             description="Phạm vi, danh mục và mức độ cần ưu tiên theo dữ liệu sự vụ."
           />
-          <dl className="grid sm:grid-cols-2">
-            <ClassificationItem label="Phường / Khu vực">{areaName}</ClassificationItem>
-            <ClassificationItem label="Danh mục">{categoryName}</ClassificationItem>
-            <ClassificationItem label="Trạng thái">
+          <dl className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+            <ClassificationItem label="Phường / Khu vực" icon={Lucide.MapPinned}>{areaName}</ClassificationItem>
+            <ClassificationItem label="Danh mục" icon={Lucide.Tags}>{categoryName}</ClassificationItem>
+            <ClassificationItem label="Trạng thái" icon={Lucide.Activity}>
               <Badge intent={getStatusIntent(incident?.status)}>
                 {getEnumLabel(incident?.status, STATUS_LABELS)}
               </Badge>
             </ClassificationItem>
-            <ClassificationItem label="Mức ưu tiên">
+            <ClassificationItem label="Mức ưu tiên" icon={Lucide.Flag}>
               <Badge intent={getPriorityIntent(incident?.priority)}>
                 {getEnumLabel(incident?.priority, PRIORITY_LABELS)}
               </Badge>
             </ClassificationItem>
-            <ClassificationItem label="Mức độ nghiêm trọng">
+            <ClassificationItem label="Mức độ nghiêm trọng" icon={Lucide.TriangleAlert}>
               <Badge intent={getSeverityIntent(incident?.severity)}>
                 {getEnumLabel(incident?.severity, SEVERITY_LABELS)}
               </Badge>
             </ClassificationItem>
-            <ClassificationItem label="Trạng thái gộp">
+            <ClassificationItem label="Trạng thái gộp" icon={Lucide.GitMerge}>
               {incident?.mergedIntoIncidentId ? (
                 <span className="space-y-1">
                   <Badge intent="neutral">Đã gộp</Badge>
@@ -400,13 +435,13 @@ function OverviewPanel({ incident, capability }) {
             description="Phân công, số lượng phản ánh và các mốc thời gian của sự vụ."
           />
 
-          <div className="border-b border-slate-100 px-5 py-5 sm:px-6 dark:border-slate-800/80">
-            <div className="flex items-start gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300" aria-hidden="true">
-                <Lucide.UserRoundCheck size={18} />
+          <div className="border-b border-slate-100 p-4 sm:p-5 dark:border-slate-800/80">
+            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50/75 p-4 dark:border-blue-900/70 dark:bg-blue-950/30">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.2)]" aria-hidden="true">
+                <Lucide.UserRoundCheck size={19} />
               </span>
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
                   Staff phụ trách
                 </p>
                 <p className="mt-1 break-words text-sm font-bold leading-6 text-slate-900 dark:text-slate-100">
@@ -417,13 +452,13 @@ function OverviewPanel({ incident, capability }) {
           </div>
 
           <dl className="divide-y divide-slate-100 px-5 sm:px-6 dark:divide-slate-800/80">
-            <MetadataRow label="Số phản ánh" value={formatCount(incident?.reportCount)} />
-            <MetadataRow label="Người theo dõi" value={formatCount(incident?.subscriberCount)} />
-            <MetadataRow label="Thời gian tạo" value={formatDateTime(incident?.createdAt)} />
-            <MetadataRow label="Cập nhật gần nhất" value={formatDateTime(incident?.updatedAt)} />
-            <MetadataRow label="Hạn dự kiến" value={formatDateTime(incident?.dueDate)} />
-            <MetadataRow label="Đã giải quyết lúc" value={formatDateTime(incident?.resolvedAt)} />
-            <MetadataRow label="Đã đóng lúc" value={formatDateTime(incident?.closedAt)} />
+            <MetadataRow label="Số phản ánh" icon={Lucide.MessagesSquare} value={formatCount(incident?.reportCount)} />
+            <MetadataRow label="Người theo dõi" icon={Lucide.UsersRound} value={formatCount(incident?.subscriberCount)} />
+            <MetadataRow label="Thời gian tạo" icon={Lucide.CalendarPlus} value={formatDateTime(incident?.createdAt)} />
+            <MetadataRow label="Cập nhật gần nhất" icon={Lucide.RefreshCw} value={formatDateTime(incident?.updatedAt)} />
+            <MetadataRow label="Hạn dự kiến" icon={Lucide.CalendarClock} value={formatDateTime(incident?.dueDate)} />
+            <MetadataRow label="Đã giải quyết lúc" icon={Lucide.CircleCheckBig} value={formatDateTime(incident?.resolvedAt)} />
+            <MetadataRow label="Đã đóng lúc" icon={Lucide.Archive} value={formatDateTime(incident?.closedAt)} />
           </dl>
         </section>
 
@@ -436,11 +471,14 @@ function OverviewPanel({ incident, capability }) {
           />
           <div className="px-5 py-5 sm:px-6">
             {!capability.incidentLevelSla ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/50" role="note">
-                <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Chưa có API SLA theo sự vụ</p>
-                <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  SLA hiện chưa được backend cung cấp ở cấp Incident.
-                </p>
+              <div className="flex items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/50" role="note">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700" aria-hidden="true">
+                  <Lucide.TimerOff size={17} />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Chưa có API SLA theo sự vụ</p>
+                  <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">SLA hiện chưa được backend cung cấp ở cấp Incident.</p>
+                </div>
               </div>
             ) : null}
           </div>
@@ -476,35 +514,56 @@ export default function StaffIncidentDetailPage() {
   }
 
   const incidentTitle = String(incident?.title ?? '').trim() || 'Sự vụ chưa có tiêu đề';
+  const areaName = String(incident?.areaName ?? '').trim() || EMPTY_VALUE;
+  const categoryName = String(incident?.categoryName ?? '').trim() || EMPTY_VALUE;
+  const assignedStaffName = String(incident?.assignedStaffName ?? '').trim() || 'Chưa có Staff phụ trách';
 
   return (
     <article className="admin-page-shell space-y-5 pb-6">
       <Breadcrumbs />
 
-      <header className="border-b border-slate-200 pb-6 dark:border-slate-800">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 font-mono text-xs font-semibold text-slate-500 dark:text-slate-400">
-              <span>{formatIncidentCode(incident?.incidentId)}</span>
-              {incident?.mergedIntoIncidentId ? <span aria-hidden="true">•</span> : null}
-              {incident?.mergedIntoIncidentId ? <span>Đã gộp</span> : null}
+      <header className="admin-page-hero p-0">
+        <div className="px-5 py-6 sm:px-7 sm:py-7">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <span className="admin-hero-icon" aria-hidden="true">
+                <Lucide.BriefcaseBusiness size={23} />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-lg bg-blue-100 px-2.5 py-1 font-mono text-xs font-black tracking-[0.04em] text-blue-700 dark:bg-blue-950/55 dark:text-blue-300">
+                    {formatIncidentCode(incident?.incidentId)}
+                  </span>
+                  {incident?.mergedIntoIncidentId ? <Badge intent="neutral">Đã gộp</Badge> : null}
+                </div>
+                <h1 className="mt-3 max-w-4xl text-2xl font-black tracking-[-0.03em] text-slate-950 sm:text-3xl dark:text-white">
+                  {incidentTitle}
+                </h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Không gian theo dõi thông tin, các phản ánh liên quan và toàn bộ hoạt động của sự vụ.
+                </p>
+              </div>
             </div>
-            <h1 className="mt-2 max-w-4xl text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl dark:text-white">
-              {incidentTitle}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Tổng hợp thông tin nhận diện, phân loại và phân công của sự vụ.
-            </p>
-          </div>
 
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <Badge intent={getStatusIntent(incident?.status)} className="px-3 py-1.5 text-xs">
-              Trạng thái: {getEnumLabel(incident?.status, STATUS_LABELS)}
-            </Badge>
-            <Badge intent={getPriorityIntent(incident?.priority)} className="px-3 py-1.5 text-xs">
-              Ưu tiên: {getEnumLabel(incident?.priority, PRIORITY_LABELS)}
-            </Badge>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 lg:max-w-xs lg:justify-end">
+              <Badge intent={getStatusIntent(incident?.status)} className="px-3 py-1.5 text-xs">
+                Trạng thái: {getEnumLabel(incident?.status, STATUS_LABELS)}
+              </Badge>
+              <Badge intent={getPriorityIntent(incident?.priority)} className="px-3 py-1.5 text-xs">
+                Ưu tiên: {getEnumLabel(incident?.priority, PRIORITY_LABELS)}
+              </Badge>
+              <Badge intent={getSeverityIntent(incident?.severity)} className="px-3 py-1.5 text-xs">
+                Mức độ: {getEnumLabel(incident?.severity, SEVERITY_LABELS)}
+              </Badge>
+            </div>
           </div>
+        </div>
+
+        <div className="grid border-t border-slate-200/80 bg-white/55 sm:grid-cols-2 xl:grid-cols-4 dark:border-slate-700/80 dark:bg-slate-950/20">
+          <HeaderFact icon={Lucide.MapPin} label="Phường / Khu vực" value={areaName} />
+          <HeaderFact icon={Lucide.Tags} label="Danh mục" value={categoryName} />
+          <HeaderFact icon={Lucide.UserRoundCheck} label="Staff phụ trách" value={assignedStaffName} />
+          <HeaderFact icon={Lucide.RefreshCw} label="Cập nhật gần nhất" value={formatDateTime(incident?.updatedAt)} />
         </div>
       </header>
 

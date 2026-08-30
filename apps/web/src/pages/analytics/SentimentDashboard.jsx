@@ -130,7 +130,14 @@ export const SentimentDashboard = () => {
   if (loading) {
     return (
       <article className="admin-page-shell space-y-6" aria-busy="true" aria-label="Đang tải phân tích cảm xúc">
-        <header className="admin-page-hero h-32 animate-pulse" />
+        <ManagerPageHeader
+          title="Cảm xúc người dân"
+          description="Theo dõi sắc thái trong các phản ánh đã được AI phân tích để nhận biết tín hiệu cần ưu tiên."
+          icon={Lucide.BrainCircuit}
+          statusLabel="Trạng thái dữ liệu"
+          statusValue="Đang tải"
+          statusTone="warning"
+        />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => <article key={index} className="admin-stat-card h-36 animate-pulse" />)}
         </section>
