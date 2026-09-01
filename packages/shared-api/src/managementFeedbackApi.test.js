@@ -200,6 +200,8 @@ test('normalizeFeedbackListParams converts AI Reviewed to the backend-compatible
   });
 
   assert.deepEqual(normalized, {
+    PageNumber: 1,
+    PageSize: 10,
     Status: 'AiReviewed',
   });
 });
@@ -229,22 +231,21 @@ test('normalizeCommentsResponse resolves comments from a ticket detail payload s
   assert.deepEqual(normalized, [{ id: 'c-1', content: 'hello' }]);
 });
 
-test('provider report status helpers enforce the Reported → Contacted → Accepted → InProgress → Done workflow', () => {
+test('provider report status helpers enforce the Swagger-backed Reported → InProgress → terminal workflow', () => {
   assert.equal(normalizeProviderReportStatus('reported'), 'Reported');
-  assert.equal(normalizeProviderReportStatus('contacted'), 'Contacted');
-  assert.equal(normalizeProviderReportStatus('accepted'), 'Accepted');
+  assert.equal(normalizeProviderReportStatus('contacted'), 'InProgress');
+  assert.equal(normalizeProviderReportStatus('accepted'), 'InProgress');
   assert.equal(normalizeProviderReportStatus('in_progress'), 'InProgress');
   assert.equal(normalizeProviderReportStatus('done'), 'Done');
   assert.equal(normalizeProviderReportStatus('completed'), 'Done');
   assert.equal(normalizeProviderReportStatus('failed'), 'Failed');
   assert.equal(normalizeProviderReportStatus('cancelled'), 'Cancelled');
 
-  assert.equal(canTransitionProviderReportStatus('Reported', 'Contacted'), true);
-  assert.equal(canTransitionProviderReportStatus('Contacted', 'Accepted'), true);
-  assert.equal(canTransitionProviderReportStatus('Accepted', 'InProgress'), true);
+  assert.equal(canTransitionProviderReportStatus('Reported', 'InProgress'), true);
   assert.equal(canTransitionProviderReportStatus('InProgress', 'Done'), true);
   assert.equal(canTransitionProviderReportStatus('InProgress', 'Failed'), true);
-  assert.equal(canTransitionProviderReportStatus('Reported', 'InProgress'), false);
+  assert.equal(canTransitionProviderReportStatus('InProgress', 'Cancelled'), true);
+  assert.equal(canTransitionProviderReportStatus('Reported', 'Done'), false);
   assert.equal(canTransitionProviderReportStatus('Done', 'InProgress'), false);
 });
 
@@ -258,7 +259,7 @@ test('normalizeProviderContactLogPayload converts local datetime values and trim
 
   assert.equal(normalized.contactMethod, 'Phone');
   assert.equal(normalized.contactResult, 'Reached');
-  assert.equal(normalized.contactNote, null);
+  assert.equal(Object.hasOwn(normalized, 'contactNote'), false);
   assert.equal(normalized.contactedAt, new Date('2026-07-20T16:30').toISOString());
 });
 

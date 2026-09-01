@@ -10,7 +10,7 @@ export const notificationApi = {
   },
 
   /** Mark a single notification as read */
-  async markRead(notificationId: string): Promise<void> {
+  async markRead(notificationId: number): Promise<void> {
     await sharedNotificationApi.markNotificationAsRead(notificationId);
   },
 

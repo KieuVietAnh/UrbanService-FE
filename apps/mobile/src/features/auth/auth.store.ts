@@ -66,7 +66,7 @@ const withRequestTimeout = <T>(request: Promise<T>, timeoutMs = 60000): Promise<
 export const useAuthStore = create<AuthState>()(
   devtools(
     persist(
-      (set, _get) => ({
+      (set, get) => ({
         user: null,
         isLoading: false,
         error: null,
@@ -150,9 +150,14 @@ export const useAuthStore = create<AuthState>()(
         verifyOtp: async (otp: string) => {
           set({ isLoading: true, error: null });
           try {
-            const user = await withRequestTimeout(AuthService.verifyOtp(otp));
-            // Merge verified status
-            const updatedUser = { ...user, isVerified: true };
+            const requestUser = get().user;
+            if (!requestUser) throw new Error('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
+            await withRequestTimeout(AuthService.verifyOtp(otp));
+            const activeUser = get().user;
+            if (!activeUser || activeUser.id !== requestUser.id) {
+              throw new Error('Phiên đăng nhập đã thay đổi. Vui lòng xác thực lại bằng tài khoản hiện tại.');
+            }
+            const updatedUser = { ...activeUser, isVerified: true };
             set({ user: updatedUser, isLoading: false });
             return updatedUser;
           } catch (err: unknown) {
@@ -190,10 +195,8 @@ export const useAuthStore = create<AuthState>()(
         partialize: (state) => ({
           user: state.user ? { ...state.user, token: '' } : null,
         }) as AuthState,
-        onRehydrateStorage: () => (state) => {
-          if (state) {
-            state.hasHydrated = true;
-          }
+        onRehydrateStorage: () => () => {
+          useAuthStore.setState({ hasHydrated: true });
         },
       }
     )

@@ -1,5 +1,7 @@
 # Yêu cầu Backend: Staff xử lý Incident và phân công đơn vị xử lý
 
+> Ghi chú cập nhật 01/09/2026: đây là tài liệu yêu cầu lịch sử và toàn bộ phần bên dưới được giữ lại để truy vết quyết định, không còn là danh sách blocker hiện tại. `swagger.json` hiện đã có cập nhật trạng thái Incident, Provider assignment/liên hệ/minh chứng, resolutions theo Incident và SLA status theo Feedback; mobile đã tích hợp bắt đầu xử lý `Assigned → InProgress`, gửi kết quả ban đầu, gửi lại khi `NeedRework` và SLA riêng của từng Feedback/Report. Xem [trạng thái triển khai mobile](../mobile-staff-workspace.md#contract-hiện-tại) để biết contract đang dùng. Backend vẫn thực thi role/ownership/transition cuối cùng; không dùng các endpoint đề xuất lịch sử bên dưới thay cho Swagger và không suy diễn SLA tổng hợp cấp Incident.
+
 ## 1. Mục tiêu
 
 Tài liệu này mô tả các contract backend còn thiếu để hoàn thiện hai chức năng của `SYSTEMSTAFF`:

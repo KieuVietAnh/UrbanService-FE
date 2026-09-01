@@ -15,6 +15,12 @@ import {
   normalizeIncidentListResponse,
   normalizeIncidentTimelineParams,
   normalizeIncidentTimelineResponse,
+  normalizeAssignIncidentProviderPayload,
+  normalizeProviderAssignmentContactPayload,
+  normalizeProviderAssignmentStatusPayload,
+  normalizeSubmitIncidentResolutionPayload,
+  normalizeIncidentProviderAssignmentResponse,
+  normalizeIncidentExecutionCollection,
 } from './incidentManagementApi.js';
 
 test('incident list capability follows the checked-in ManagementIncidents contract', () => {
@@ -37,11 +43,22 @@ test('incident list capability follows the checked-in ManagementIncidents contra
   assert.equal(typeof incidentManagementApi.getIncidentTimeline, 'function');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.statusTransition.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.statusTransition.endpoint, '/api/management/incidents/{incidentId}/status');
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.available, false);
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.reason, 'role-transition-unconfirmed');
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.available, false);
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.legacyRequiresFeedbackId, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.endpoint, '/api/management/incidents/{incidentId}/status');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.scope, 'incident');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.endpoint, '/api/management/incidents/{incidentId}/provider-assignment');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.legacyRequiresFeedbackId, false);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.authoritativeReportMapping, false);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.supportsReassignment, false);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.noAssignmentStatus, 204);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.submitAvailable, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.resubmitConfirmed, true);
+  assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.submitStatuses, ['InProgress', 'NeedRework']);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.needReworkReasonConfirmed, false);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.completionEvidence.clearAllAvailable, true);
+  assert.equal(typeof incidentManagementApi.deleteProviderAssignmentCompletionDocuments, 'function');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerStatus.transitionsConfirmed, false);
   assert.equal(typeof incidentManagementApi.startIncidentProcessing, 'function');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.assigneeCandidates.available, true);
   assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.assigneeCandidates.eligibility, ['areaId', 'categoryId']);
@@ -322,4 +339,150 @@ test('getIncidentTimeline calls the paginated management timeline endpoint', asy
   } finally {
     getMock.mock.restore();
   }
+});
+
+test('Incident execution payloads whitelist the new schemas and never send Feedback or Staff identities', () => {
+  assert.deepEqual(normalizeAssignIncidentProviderPayload({
+    coordinatorId: '12', note: ' Phối hợp hiện trường ', feedbackId: 'report-1', staffUserId: 'other', incidentId: 'other',
+  }), { coordinatorId: 12, note: 'Phối hợp hiện trường' });
+  assert.deepEqual(normalizeProviderAssignmentContactPayload({
+    contactMethod: ' Phone ', contactResult: ' Reached ', contactNote: ' Đã gọi ',
+    contactedAt: '2026-09-01T09:00:00+07:00', staffUserId: 'other',
+  }), { contactMethod: 'Phone', contactResult: 'Reached', contactNote: 'Đã gọi', contactedAt: '2026-09-01T02:00:00.000Z' });
+  assert.deepEqual(normalizeProviderAssignmentStatusPayload({ status: ' Contacted ', note: ' Đã liên hệ ', incidentStatus: 'Closed' }), {
+    status: 'Contacted', note: 'Đã liên hệ',
+  });
+  assert.deepEqual(normalizeSubmitIncidentResolutionPayload({
+    providerAssignmentId: '7', resolutionSummary: ' Đã khắc phục ', actionTaken: ' Thay thiết bị ', resultNote: ' Hoạt động ổn định ',
+    imageUrls: [' https://example.test/evidence.jpg '], feedbackId: 'report-1', staffUserId: 'other', status: 'Approved',
+  }), {
+    providerAssignmentId: 7, resolutionSummary: 'Đã khắc phục', actionTaken: 'Thay thiết bị', resultNote: 'Hoạt động ổn định',
+    imageUrls: ['https://example.test/evidence.jpg'],
+  });
+  assert.deepEqual(normalizeSubmitIncidentResolutionPayload({ resolutionSummary: 'Tự xử lý' }), { resolutionSummary: 'Tự xử lý' });
+});
+
+test('Incident execution payloads reject invalid IDs and incomplete fields before requests', () => {
+  for (const id of [0, -1, 1.5, true, 'not-id', '', 2147483648]) {
+    assert.throws(() => normalizeAssignIncidentProviderPayload({ coordinatorId: id }), /coordinatorId/);
+    assert.throws(() => normalizeSubmitIncidentResolutionPayload({ providerAssignmentId: id, resolutionSummary: 'Done' }), /providerAssignmentId/);
+  }
+  assert.throws(() => normalizeProviderAssignmentContactPayload({ contactMethod: 'Phone', contactResult: '' }), /contactResult/);
+  assert.throws(() => normalizeProviderAssignmentContactPayload({ contactMethod: 'Phone', contactResult: 'Reached', contactedAt: 'yesterday' }), /ISO date-time/);
+  assert.throws(() => normalizeProviderAssignmentStatusPayload({ status: '' }), /status/);
+  assert.throws(() => normalizeSubmitIncidentResolutionPayload({ resolutionSummary: ' ' }), /resolutionSummary/);
+  assert.throws(() => normalizeSubmitIncidentResolutionPayload({ resolutionSummary: 'Done', imageUrls: ['file:///private.jpg'] }), /HTTP/);
+  assert.throws(() => normalizeSubmitIncidentResolutionPayload({ resolutionSummary: 'Done', imageUrls: ['javascript:alert(1)'] }), /HTTP/);
+  assert.throws(() => normalizeSubmitIncidentResolutionPayload({ resolutionSummary: 'Done', imageUrls: 'https://example.test/a.jpg' }), /array/);
+});
+
+test('Incident execution unwraps DTOs and distinguishes empty assignment from malformed collections', () => {
+  const assignment = { providerAssignmentId: 5, incidentId: 'incident-1' };
+  assert.equal(normalizeIncidentProviderAssignmentResponse(assignment), assignment);
+  assert.equal(normalizeIncidentProviderAssignmentResponse({ data: assignment }), assignment);
+  assert.equal(normalizeIncidentProviderAssignmentResponse({ data: { data: assignment } }), assignment);
+  for (const empty of [null, undefined, '', { status: 204, data: '' }]) {
+    assert.equal(normalizeIncidentProviderAssignmentResponse(empty), null);
+  }
+  assert.throws(() => normalizeIncidentProviderAssignmentResponse([]), /Invalid/);
+  assert.deepEqual(normalizeIncidentExecutionCollection({ data: { items: [assignment] } }), [assignment]);
+  assert.deepEqual(normalizeIncidentExecutionCollection([]), []);
+  assert.throws(() => normalizeIncidentExecutionCollection({ message: 'not a list' }), /Invalid/);
+});
+
+test('Incident execution GET endpoints use exact new paths and support cancellation', async () => {
+  const signal = new AbortController().signal;
+  const getMock = mock.method(axiosClient, 'get', async (path) => path.endsWith('/provider-assignment') ? '' : []);
+  try {
+    await incidentManagementApi.getIncidentProviderCandidates('incident/1', { signal });
+    assert.equal(await incidentManagementApi.getIncidentProviderAssignment('incident/1', { signal }), null);
+    await incidentManagementApi.getProviderAssignmentContactLogs(7, { signal });
+    await incidentManagementApi.getProviderAssignmentCompletionDocuments(7, { signal });
+    await incidentManagementApi.getIncidentResolutions('incident/1', { signal });
+    assert.deepEqual(getMock.mock.calls.map((call) => call.arguments[0]), [
+      '/api/management/incidents/incident%2F1/provider-candidates',
+      '/api/management/incidents/incident%2F1/provider-assignment',
+      '/api/management/provider-assignments/7/contact-logs',
+      '/api/management/provider-assignments/7/completion-documents',
+      '/api/management/incidents/incident%2F1/resolutions',
+    ]);
+    assert.ok(getMock.mock.calls.every((call) => call.arguments[1].signal === signal));
+    const count = getMock.mock.callCount();
+    await assert.rejects(incidentManagementApi.getIncidentResolutions('  '), /incidentId/);
+    await assert.rejects(incidentManagementApi.getProviderAssignmentContactLogs(-1), /positive integer/);
+    assert.equal(getMock.mock.callCount(), count);
+  } finally { getMock.mock.restore(); }
+});
+
+test('Incident assignment, contact and provider status mutations never use legacy Feedback paths', async () => {
+  const assignment = { providerAssignmentId: 7, incidentId: 'incident-1' };
+  const postMock = mock.method(axiosClient, 'post', async (path) => path.endsWith('/contact-logs')
+    ? { contactLogId: 1, providerAssignmentId: 7 } : assignment);
+  const patchMock = mock.method(axiosClient, 'patch', async () => assignment);
+  try {
+    assert.equal(await incidentManagementApi.assignIncidentProvider('incident-1', { coordinatorId: 12, note: 'Note' }), assignment);
+    await incidentManagementApi.createProviderAssignmentContactLog(7, { contactMethod: 'Phone', contactResult: 'Reached' });
+    assert.equal(await incidentManagementApi.updateProviderAssignmentStatus(7, { status: 'Contacted', note: 'Updated' }), assignment);
+    assert.deepEqual(postMock.mock.calls.map((call) => call.arguments), [
+      ['/api/management/incidents/incident-1/provider-assignment', { coordinatorId: 12, note: 'Note' }],
+      ['/api/management/provider-assignments/7/contact-logs', { contactMethod: 'Phone', contactResult: 'Reached' }],
+    ]);
+    assert.deepEqual(patchMock.mock.calls[0].arguments, [
+      '/api/management/provider-assignments/7/status', { status: 'Contacted', note: 'Updated' },
+    ]);
+  } finally { postMock.mock.restore(); patchMock.mock.restore(); }
+});
+
+test('Evidence upload preserves FormData and does not set a multipart boundary', async () => {
+  const document = { completionDocumentId: 1, providerAssignmentId: 7, incidentId: 'incident-1' };
+  const postMock = mock.method(axiosClient, 'post', async () => [document]);
+  try {
+    const form = new FormData();
+    form.append('Description', 'Photo');
+    form.append('Files', new Blob(['fixture'], { type: 'image/png' }), 'evidence.png');
+    assert.deepEqual(await incidentManagementApi.uploadProviderAssignmentCompletionDocuments(7, form), [document]);
+    assert.deepEqual(postMock.mock.calls[0].arguments, ['/api/management/provider-assignments/7/completion-documents', form]);
+    assert.equal(postMock.mock.calls[0].arguments.length, 2);
+    await assert.rejects(incidentManagementApi.uploadProviderAssignmentCompletionDocuments(7, {}), /FormData/);
+    assert.equal(postMock.mock.callCount(), 1);
+  } finally { postMock.mock.restore(); }
+});
+
+test('Evidence clear-all uses the exact DELETE contract, validates IDs and preserves backend errors', async () => {
+  const deleteMock = mock.method(axiosClient, 'delete', async () => undefined);
+  try {
+    assert.equal(await incidentManagementApi.deleteProviderAssignmentCompletionDocuments(7), undefined);
+    assert.deepEqual(deleteMock.mock.calls[0].arguments, [
+      '/api/management/provider-assignments/7/completion-documents',
+    ]);
+
+    const requestCount = deleteMock.mock.callCount();
+    for (const invalidId of [0, -1, 1.5, true, 'not-id', '', 2147483648]) {
+      await assert.rejects(
+        incidentManagementApi.deleteProviderAssignmentCompletionDocuments(invalidId),
+        /providerAssignmentId must be a positive integer/,
+      );
+    }
+    assert.equal(deleteMock.mock.callCount(), requestCount);
+
+    const forbidden = Object.assign(new Error('Evidence may only be cleared during NeedRework'), { status: 403 });
+    deleteMock.mock.mockImplementation(async () => { throw forbidden; });
+    await assert.rejects(
+      incidentManagementApi.deleteProviderAssignmentCompletionDocuments(7),
+      (error) => error === forbidden,
+    );
+  } finally { deleteMock.mock.restore(); }
+});
+
+test('Incident submit supports empty 200 and preserves conflict errors for the caller', async () => {
+  const conflict = Object.assign(new Error('Already submitted'), { status: 409 });
+  const postMock = mock.method(axiosClient, 'post', async () => undefined);
+  try {
+    assert.equal(await incidentManagementApi.submitIncidentResolution('incident-1', { resolutionSummary: 'Done', providerAssignmentId: 7 }), undefined);
+    assert.deepEqual(postMock.mock.calls[0].arguments, [
+      '/api/management/incidents/incident-1/resolutions', { resolutionSummary: 'Done', providerAssignmentId: 7 },
+    ]);
+    postMock.mock.mockImplementation(async () => { throw conflict; });
+    await assert.rejects(incidentManagementApi.submitIncidentResolution('incident-1', { resolutionSummary: 'Done' }), (error) => error === conflict);
+  } finally { postMock.mock.restore(); }
 });
