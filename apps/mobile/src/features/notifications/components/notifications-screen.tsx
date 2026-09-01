@@ -156,17 +156,27 @@ export default function NotificationsScreen() {
   });
 
   const rawItems = data?.items ?? [];
-  const notifications: NotificationItem[] = rawItems.map((n: any) => ({
-    notificationId: String(n.notificationId ?? n.id ?? Math.random()),
-    title: n.title ?? 'Thông báo hệ thống',
-    message: n.message ?? n.content ?? '',
-    type: n.type ?? 'DEFAULT',
-    isRead: Boolean(n.isRead),
-    createdAt: n.createdAt ?? new Date().toISOString(),
-    relatedId: n.relatedId ?? n.feedbackId ?? getTicketIdFromTargetUrl(n.targetUrl),
-    relatedType: n.relatedType ?? 'FEEDBACK',
-    targetUrl: n.targetUrl,
-  }));
+  const notifications: NotificationItem[] = rawItems.flatMap((n: any): NotificationItem[] => {
+    const notificationId = n.notificationId ?? n.id;
+    if (!Number.isInteger(notificationId) || notificationId <= 0 || notificationId > 2147483647) return [];
+    const targetType = typeof n.targetType === 'string' ? n.targetType : undefined;
+    const targetId = typeof n.targetId === 'string' ? n.targetId : undefined;
+    const feedbackTarget = ['feedback', 'report'].includes((targetType || '').toLowerCase()) ? targetId : undefined;
+    return [{
+      notificationId,
+      title: n.title ?? 'Thông báo hệ thống',
+      message: n.message ?? n.content ?? '',
+      type: n.type ?? 'DEFAULT',
+      isRead: Boolean(n.isRead),
+      createdAt: n.createdAt ?? new Date().toISOString(),
+      incidentId: n.incidentId,
+      targetId,
+      targetType,
+      relatedId: n.relatedId ?? n.feedbackId ?? feedbackTarget ?? getTicketIdFromTargetUrl(n.targetUrl),
+      relatedType: n.relatedType ?? (feedbackTarget ? 'FEEDBACK' : undefined),
+      targetUrl: n.targetUrl,
+    }];
+  });
 
   const groups = groupByDay(notifications);
   const unreadCount = notifications.filter((item) => !item.isRead).length;
@@ -249,7 +259,7 @@ export default function NotificationsScreen() {
             typeof item === 'string'
               ? `header-${i}`
               : item
-              ? item.notificationId
+              ? String(item.notificationId)
               : `skeleton-${i}`
           }
           showsVerticalScrollIndicator={false}

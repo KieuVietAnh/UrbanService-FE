@@ -11,7 +11,7 @@ import { semantics } from '@/theme/semantics';
 
 /**
  * Unsupported Role Screen
- * Rendered when a non-service-user role (System Staff, Admin, Provider) logs into the mobile resident app.
+ * Admin, Manager and Provider workspaces remain web-only.
  */
 export default function UnsupportedRoleScreen() {
   const router = useRouter();
@@ -38,7 +38,7 @@ export default function UnsupportedRoleScreen() {
 
         <Text style={styles.description}>
           Tài khoản của bạn có vai trò <Text style={styles.roleHighlight}>{roleLabel}</Text>. 
-          Ứng dụng di động UrbanMind hiện tại chỉ dành riêng cho cư dân gửi và theo dõi phản ánh.
+          Ứng dụng di động UrbanMind hiện hỗ trợ cư dân và nhân viên hệ thống (System Staff).
         </Text>
 
         <View style={styles.noticeBox}>
@@ -56,7 +56,7 @@ export default function UnsupportedRoleScreen() {
             onPress={handleLogout}
             leftIcon={<Icon name="log-out" size={18} color={semantics.text.inverse} style={{ marginRight: 6 }} />}
           >
-            Đăng xuất & Đăng nhập tài khoản cư dân
+            Đăng xuất & Đổi tài khoản
           </AppButton>
         </View>
       </View>

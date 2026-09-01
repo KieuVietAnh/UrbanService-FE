@@ -6,6 +6,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { getMobileEntry } from '@/features/auth/mobile-access';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
@@ -44,9 +45,9 @@ export default function VerifyEmailScreen() {
     }
     setHasError(false);
     try {
-      await verifyOtp(otp);
+      const verifiedUser = await verifyOtp(otp);
       toast.success('Xác thực Email thành công!');
-      router.replace('/(resident)');
+      router.replace(getMobileEntry(verifiedUser));
     } catch (error: unknown) {
       setHasError(true);
       const message = error instanceof Error ? error.message : 'Mã OTP không chính xác hoặc đã hết hạn';

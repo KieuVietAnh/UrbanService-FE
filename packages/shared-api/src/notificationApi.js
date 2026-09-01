@@ -30,6 +30,9 @@ export const notificationApi = {
   },
 
   async markNotificationAsRead(notificationId) {
+    if (!Number.isInteger(notificationId) || notificationId <= 0 || notificationId > 2147483647) {
+      throw new Error('notificationId must be a positive int32.');
+    }
     try {
       await axiosClient.patch(`/api/notifications/${notificationId}/read`);
       return { success: true };

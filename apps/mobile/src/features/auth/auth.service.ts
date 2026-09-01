@@ -140,20 +140,10 @@ export class AuthService {
     extractData(response);
   }
 
-  static async verifyOtp(otp: string): Promise<User> {
-    const response = await authApi.verifyOtp(otp);
-    const user = buildUser(response);
-    const refreshToken = extractRefreshToken(response);
-
-    if (user.token) {
-      await setAuthToken(user.token);
-    }
-
-    if (refreshToken) {
-      await setAuthRefreshToken(refreshToken);
-    }
-
-    return user;
+  static async verifyOtp(otp: string): Promise<void> {
+    // Swagger returns 204 No Content. The authenticated user and tokens must
+    // remain the ones established by login/registration.
+    await authApi.verifyOtp(otp);
   }
 
   static async logout(): Promise<void> {

@@ -137,9 +137,10 @@ async checkSlaViolation(feedbackSlaId) {
   return unwrapApiData(response);
 },
 
-async getFeedbackSlaStatus(feedbackId) {
+async getFeedbackSlaStatus(feedbackId, requestConfig = {}) {
   const response = await axiosClient.get(
-    `/api/slas/feedback/${feedbackId}/status`
+    `/api/slas/feedback/${feedbackId}/status`,
+    requestConfig,
   );
   return unwrapApiData(response);
 },

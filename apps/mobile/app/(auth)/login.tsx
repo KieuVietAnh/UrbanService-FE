@@ -9,6 +9,7 @@ import {
   Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { getMobileEntry } from '@/features/auth/mobile-access';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -105,11 +106,7 @@ export default function LoginScreen() {
     submitLockRef.current = true;
     try {
       const user = await login(email.trim(), password);
-      if (user.isVerified === false) {
-        router.replace('/(auth)/verify-email');
-      } else {
-        router.replace('/(resident)');
-      }
+      router.replace(getMobileEntry(user));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Email hoặc mật khẩu không chính xác';
       toast.error(message || 'Email hoặc mật khẩu không chính xác');
@@ -156,11 +153,7 @@ export default function LoginScreen() {
       }
 
       const user = await googleLogin(result.authentication.idToken);
-      if (user.isVerified === false) {
-        router.replace('/(auth)/verify-email');
-      } else {
-        router.replace('/(resident)');
-      }
+      router.replace(getMobileEntry(user));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Google đăng nhập thất bại';
       toast.error(message || 'Google đăng nhập thất bại');
@@ -267,6 +260,8 @@ export default function LoginScreen() {
 
             <AppButton
               onPress={handleLogin}
+              accessibilityRole="button"
+              accessibilityLabel="Đăng nhập"
               loading={isLoading}
               fullWidth
               size="lg"

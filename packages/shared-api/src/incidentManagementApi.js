@@ -6,6 +6,10 @@ const INCIDENT_TIMELINE_ENDPOINT = '/api/management/incidents/{incidentId}/timel
 const INCIDENT_STATUS_ENDPOINT = '/api/management/incidents/{incidentId}/status';
 const INCIDENT_ASSIGNEE_CANDIDATES_ENDPOINT = '/api/management/incidents/{incidentId}/assignee-candidates';
 const INCIDENT_ASSIGN_ENDPOINT = '/api/management/incidents/{incidentId}/assign';
+const INCIDENT_PROVIDER_CANDIDATES_ENDPOINT = '/api/management/incidents/{incidentId}/provider-candidates';
+const INCIDENT_PROVIDER_ASSIGNMENT_ENDPOINT = '/api/management/incidents/{incidentId}/provider-assignment';
+const INCIDENT_RESOLUTIONS_ENDPOINT = '/api/management/incidents/{incidentId}/resolutions';
+const PROVIDER_ASSIGNMENT_ENDPOINT = '/api/management/provider-assignments/{providerAssignmentId}';
 
 const buildIncidentDetailEndpoint = (incidentId) => {
   const normalizedIncidentId = String(incidentId ?? '').trim();
@@ -108,6 +112,108 @@ export const normalizeStartIncidentProcessingPayload = (payload = {}) => {
   return normalized;
 };
 
+const positiveExecutionId = (value, name) => {
+  const parsed = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 2147483647) {
+    throw new TypeError(`${name} must be a positive integer`);
+  }
+  return parsed;
+};
+
+const requiredExecutionText = (value, name) => {
+  if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} is required`);
+  return value.trim();
+};
+
+const optionalExecutionText = (payload, key, result) => {
+  const value = payload?.[key];
+  if (value === undefined || value === null || value === '') return;
+  if (typeof value !== 'string') throw new TypeError(`${key} must be text`);
+  const normalized = value.trim();
+  if (normalized) result[key] = normalized;
+};
+
+const buildProviderAssignmentEndpoint = (providerAssignmentId) => (
+  `/api/management/provider-assignments/${positiveExecutionId(providerAssignmentId, 'providerAssignmentId')}`
+);
+
+export const unwrapIncidentExecutionResponse = (response) => {
+  let payload = response;
+  for (let level = 0; level < 3; level += 1) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) break;
+    if (!Object.prototype.hasOwnProperty.call(payload, 'data')) break;
+    payload = payload.data;
+  }
+  return payload;
+};
+
+export const normalizeIncidentExecutionCollection = (response) => {
+  const payload = unwrapIncidentExecutionResponse(response);
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  throw new TypeError('Invalid Incident execution collection response');
+};
+
+export const normalizeIncidentProviderAssignmentResponse = (response) => {
+  const payload = unwrapIncidentExecutionResponse(response);
+  // axiosClient returns response.data, so a documented 204 normally arrives as ''.
+  if (payload === null || payload === undefined || payload === '' || response?.status === 204) return null;
+  if (typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new TypeError('Invalid Incident provider assignment response');
+  }
+  return payload;
+};
+
+export const normalizeAssignIncidentProviderPayload = (payload = {}) => {
+  const normalized = { coordinatorId: positiveExecutionId(payload?.coordinatorId, 'coordinatorId') };
+  optionalExecutionText(payload, 'note', normalized);
+  return normalized;
+};
+
+export const normalizeProviderAssignmentContactPayload = (payload = {}) => {
+  const normalized = {
+    contactMethod: requiredExecutionText(payload?.contactMethod, 'contactMethod'),
+    contactResult: requiredExecutionText(payload?.contactResult, 'contactResult'),
+  };
+  optionalExecutionText(payload, 'contactNote', normalized);
+  if (payload?.contactedAt !== undefined && payload?.contactedAt !== null && payload?.contactedAt !== '') {
+    const value = requiredExecutionText(payload.contactedAt, 'contactedAt');
+    if (!/^\d{4}-\d{2}-\d{2}T/.test(value) || !Number.isFinite(Date.parse(value))) {
+      throw new TypeError('contactedAt must be a valid ISO date-time');
+    }
+    normalized.contactedAt = new Date(value).toISOString();
+  }
+  return normalized;
+};
+
+export const normalizeProviderAssignmentStatusPayload = (payload = {}) => {
+  // This validates the request shape, not undocumented backend transition rules.
+  const normalized = { status: requiredExecutionText(payload?.status, 'status') };
+  optionalExecutionText(payload, 'note', normalized);
+  return normalized;
+};
+
+export const normalizeSubmitIncidentResolutionPayload = (payload = {}) => {
+  // A useful summary is a client validation rule. Swagger strings are nullable.
+  const normalized = { resolutionSummary: requiredExecutionText(payload?.resolutionSummary, 'resolutionSummary') };
+  if (payload?.providerAssignmentId !== undefined && payload?.providerAssignmentId !== null) {
+    normalized.providerAssignmentId = positiveExecutionId(payload.providerAssignmentId, 'providerAssignmentId');
+  }
+  optionalExecutionText(payload, 'actionTaken', normalized);
+  optionalExecutionText(payload, 'resultNote', normalized);
+  if (payload?.imageUrls !== undefined && payload?.imageUrls !== null) {
+    if (!Array.isArray(payload.imageUrls)) throw new TypeError('imageUrls must be an array');
+    normalized.imageUrls = payload.imageUrls.map((value) => {
+      const url = requiredExecutionText(value, 'imageUrl');
+      let parsed;
+      try { parsed = new URL(url); } catch { throw new TypeError('imageUrl must be an HTTP(S) URL'); }
+      if (!['https:', 'http:'].includes(parsed.protocol)) throw new TypeError('imageUrl must be an HTTP(S) URL');
+      return url;
+    });
+  }
+  return normalized;
+};
+
 export const normalizeIncidentTimelineParams = (params = {}) => {
   const normalized = {};
 
@@ -168,17 +274,51 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
     requestSchema: 'UpdateIncidentStatusRequest',
   }),
   staffStartProcessing: Object.freeze({
-    available: false,
+    available: true,
     fromStatus: 'Assigned',
     toStatus: 'InProgress',
-    reason: 'role-transition-unconfirmed',
+    endpoint: INCIDENT_STATUS_ENDPOINT,
+    requestSchema: 'UpdateIncidentStatusRequest',
   }),
   providerAssignment: Object.freeze({
-    available: false,
-    scope: 'feedback',
-    legacyRequiresFeedbackId: true,
+    available: true,
+    scope: 'incident',
+    endpoint: INCIDENT_PROVIDER_ASSIGNMENT_ENDPOINT,
+    contract: 'incident-provider-assignment',
+    legacyRequiresFeedbackId: false,
     authoritativeReportMapping: false,
-    reason: 'incident-provider-api-unavailable',
+    supportsReassignment: false,
+    noAssignmentStatus: 204,
+  }),
+  providerCandidates: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_PROVIDER_CANDIDATES_ENDPOINT,
+    eligibility: Object.freeze(['areaId', 'categoryId']),
+  }),
+  providerContacts: Object.freeze({
+    available: true,
+    endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/contact-logs`,
+    scope: 'provider-assignment',
+  }),
+  providerStatus: Object.freeze({
+    available: true,
+    endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/status`,
+    transitionsConfirmed: false,
+  }),
+  completionEvidence: Object.freeze({
+    available: true,
+    endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/completion-documents`,
+    scope: 'provider-assignment',
+    clearAllAvailable: true,
+  }),
+  resolutions: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_RESOLUTIONS_ENDPOINT,
+    scope: 'incident',
+    submitAvailable: true,
+    resubmitConfirmed: true,
+    submitStatuses: Object.freeze(['InProgress', 'NeedRework']),
+    needReworkReasonConfirmed: false,
   }),
   assigneeCandidates: Object.freeze({
     available: true,
@@ -249,5 +389,88 @@ export const incidentManagementApi = Object.freeze({
     );
 
     return normalizeIncidentDetailResponse(response);
+  },
+
+  async getIncidentProviderCandidates(incidentId, options = {}) {
+    const response = await axiosClient.get(`${buildIncidentDetailEndpoint(incidentId)}/provider-candidates`, {
+      signal: options?.signal,
+    });
+    return normalizeIncidentExecutionCollection(response);
+  },
+
+  async getIncidentProviderAssignment(incidentId, options = {}) {
+    const response = await axiosClient.get(`${buildIncidentDetailEndpoint(incidentId)}/provider-assignment`, {
+      signal: options?.signal,
+    });
+    return normalizeIncidentProviderAssignmentResponse(response);
+  },
+
+  async assignIncidentProvider(incidentId, payload = {}) {
+    const response = await axiosClient.post(
+      `${buildIncidentDetailEndpoint(incidentId)}/provider-assignment`,
+      normalizeAssignIncidentProviderPayload(payload),
+    );
+    return normalizeIncidentProviderAssignmentResponse(response);
+  },
+
+  async getProviderAssignmentContactLogs(providerAssignmentId, options = {}) {
+    const response = await axiosClient.get(`${buildProviderAssignmentEndpoint(providerAssignmentId)}/contact-logs`, {
+      signal: options?.signal,
+    });
+    return normalizeIncidentExecutionCollection(response);
+  },
+
+  async createProviderAssignmentContactLog(providerAssignmentId, payload = {}) {
+    const response = await axiosClient.post(
+      `${buildProviderAssignmentEndpoint(providerAssignmentId)}/contact-logs`,
+      normalizeProviderAssignmentContactPayload(payload),
+    );
+    return unwrapIncidentExecutionResponse(response);
+  },
+
+  async updateProviderAssignmentStatus(providerAssignmentId, payload = {}) {
+    const response = await axiosClient.patch(
+      `${buildProviderAssignmentEndpoint(providerAssignmentId)}/status`,
+      normalizeProviderAssignmentStatusPayload(payload),
+    );
+    return normalizeIncidentProviderAssignmentResponse(response);
+  },
+
+  async getProviderAssignmentCompletionDocuments(providerAssignmentId, options = {}) {
+    const response = await axiosClient.get(`${buildProviderAssignmentEndpoint(providerAssignmentId)}/completion-documents`, {
+      signal: options?.signal,
+    });
+    return normalizeIncidentExecutionCollection(response);
+  },
+
+  async uploadProviderAssignmentCompletionDocuments(providerAssignmentId, formData) {
+    const endpoint = `${buildProviderAssignmentEndpoint(providerAssignmentId)}/completion-documents`;
+    if (!(formData instanceof FormData)) throw new TypeError('Completion evidence must use FormData');
+    // The shared authenticated client removes its JSON header for FormData;
+    // the platform must generate the multipart boundary itself.
+    const response = await axiosClient.post(endpoint, formData);
+    return normalizeIncidentExecutionCollection(response);
+  },
+
+  async deleteProviderAssignmentCompletionDocuments(providerAssignmentId) {
+    await axiosClient.delete(
+      `${buildProviderAssignmentEndpoint(providerAssignmentId)}/completion-documents`,
+    );
+    // Swagger documents a successful 200 without a response DTO.
+  },
+
+  async getIncidentResolutions(incidentId, options = {}) {
+    const response = await axiosClient.get(`${buildIncidentDetailEndpoint(incidentId)}/resolutions`, {
+      signal: options?.signal,
+    });
+    return normalizeIncidentExecutionCollection(response);
+  },
+
+  async submitIncidentResolution(incidentId, payload = {}) {
+    await axiosClient.post(
+      `${buildIncidentDetailEndpoint(incidentId)}/resolutions`,
+      normalizeSubmitIncidentResolutionPayload(payload),
+    );
+    // The success contract is 200 without a response DTO. Refetch authoritative state.
   },
 });

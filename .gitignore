@@ -51,6 +51,8 @@ vite.config.*.timestamp-*
 web-build/
 android/
 ios/
+/.cxx-staff-validation/
+/.x/
 
 # Metro bundler
 .metro-health-check*
