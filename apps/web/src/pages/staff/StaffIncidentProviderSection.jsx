@@ -6,6 +6,7 @@ import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import EmptyState from '../../components/design-system/EmptyState';
 import StaffIncidentActionDialog from './StaffIncidentActionDialog';
+import StaffIncidentProgressSection from './StaffIncidentProgressSection';
 import {
   EMPTY_VALUE,
   formatOperationalDateTime,
@@ -333,7 +334,8 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
   }[state];
 
   return (
-    <section className="admin-panel overflow-hidden" aria-labelledby="incident-provider-title">
+    <>
+      <section className="admin-panel overflow-hidden" aria-labelledby="incident-provider-title">
       <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/55 dark:text-emerald-300" aria-hidden="true">
@@ -366,9 +368,9 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
           <div className="mb-4 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/55 p-4 dark:border-blue-900/60 dark:bg-blue-950/20">
             <Lucide.ScanSearch className="mt-0.5 shrink-0 text-blue-700 dark:text-blue-300" size={18} aria-hidden="true" />
             <div>
-              <h3 className="text-sm font-black text-slate-950 dark:text-white">Đơn vị phù hợp với sự vụ</h3>
+              <h3 className="text-sm font-black text-slate-950 dark:text-white">Chưa có đơn vị xử lý</h3>
               <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                {incident?.areaName || EMPTY_VALUE} · {incident?.categoryName || EMPTY_VALUE}
+                Các đơn vị dưới đây phù hợp với {incident?.areaName || EMPTY_VALUE} · {incident?.categoryName || EMPTY_VALUE}.
               </p>
             </div>
           </div>
@@ -414,30 +416,41 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         </div>
       ) : null}
 
-      <StaffIncidentActionDialog
-        open={dialogOpen}
-        busy={submitting}
-        title="Xác nhận phân công đơn vị xử lý?"
-        description="Kiểm tra sự vụ và đơn vị trước khi xác nhận. Backend không hỗ trợ thay đổi đơn vị sau khi phân công."
-        icon={Lucide.Building2}
-        confirmLabel="Xác nhận phân công"
-        onClose={closeDialog}
-        onConfirm={assignProvider}
-      >
-        <dl className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/65">
-          {[
-            ['Sự vụ', incident?.title || incidentId],
-            ['Đơn vị', selectedCandidate ? getCandidateName(selectedCandidate) : EMPTY_VALUE],
-            ['Phường / Khu vực', incident?.areaName || EMPTY_VALUE],
-            ['Danh mục', incident?.categoryName || EMPTY_VALUE],
-          ].map(([label, value]) => (
-            <div key={label} className="grid gap-1 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
-              <dt className="font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
-              <dd className="break-words font-bold text-slate-900 dark:text-slate-100">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </StaffIncidentActionDialog>
-    </section>
+        <StaffIncidentActionDialog
+          open={dialogOpen}
+          busy={submitting}
+          title="Xác nhận phân công đơn vị xử lý?"
+          description="Kiểm tra sự vụ và đơn vị trước khi xác nhận. Backend không hỗ trợ thay đổi đơn vị sau khi phân công."
+          icon={Lucide.Building2}
+          confirmLabel="Xác nhận phân công"
+          onClose={closeDialog}
+          onConfirm={assignProvider}
+        >
+          <dl className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/65">
+            {[
+              ['Sự vụ', incident?.title || incidentId],
+              ['Đơn vị', selectedCandidate ? getCandidateName(selectedCandidate) : EMPTY_VALUE],
+              ['Phường / Khu vực', incident?.areaName || EMPTY_VALUE],
+              ['Danh mục', incident?.categoryName || EMPTY_VALUE],
+            ].map(([label, value]) => (
+              <div key={label} className="grid gap-1 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
+                <dt className="font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
+                <dd className="break-words font-bold text-slate-900 dark:text-slate-100">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </StaffIncidentActionDialog>
+      </section>
+
+      {state === PROVIDER_STATE.ASSIGNED ? (
+        <StaffIncidentProgressSection
+          assignment={assignment}
+          incident={incident}
+          onAssignmentUpdated={setAssignment}
+          onIncidentUpdated={onIncidentUpdated}
+          user={user}
+        />
+      ) : null}
+    </>
   );
 }

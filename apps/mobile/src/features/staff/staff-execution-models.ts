@@ -37,9 +37,9 @@ export type IncidentResolution = {
 export type AssignProviderPayload = { coordinatorId: number; note?: string };
 export type AddProviderContactPayload = { contactMethod: string; contactResult: string; contactNote?: string; contactedAt?: string };
 export type UpdateProviderStatusPayload = { status: string; note?: string };
-export type StartIncidentProcessingPayload = { note?: string };
+export type StartProviderAssignmentProcessingPayload = { note?: string };
 export type SubmitIncidentResolutionPayload = {
-  providerAssignmentId?: number; resolutionSummary: string; actionTaken?: string; resultNote?: string; imageUrls?: string[];
+  providerAssignmentId?: number; resolutionSummary: string; actionTaken: string; resultNote?: string; imageUrls?: string[];
 };
 export type EvidenceUploadAsset = { uri: string; name: string; mimeType?: string; file?: Blob };
 
@@ -137,7 +137,7 @@ export const sameIncident = (left: string, right: string) => Boolean(left.trim()
 type ExecutionIncident = { status: string; assignedStaffUserId: string };
 const isCurrentAssignee = (item: ExecutionIncident, userId: string) => sameIncident(item.assignedStaffUserId, userId);
 
-/** UI guard only: the status endpoint remains the atomic authorization boundary. */
+/** UI guard only: the Provider assignment status endpoint remains the authorization boundary. */
 export const canStartIncidentProcessing = (item: ExecutionIncident, userId: string) => (
   isCurrentAssignee(item, userId) && normalizeKey(item.status) === 'assigned'
 );

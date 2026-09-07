@@ -328,10 +328,12 @@ test('staff messages use internal scope explicitly and preserve public/internal 
   } finally { get.mock.restore(); post.mock.restore(); }
 });
 
-test('confirmed Incident execution capabilities expose start and resubmit without enabling reassignment', () => {
+test('confirmed Incident execution capabilities start through Provider assignment and support resubmit', () => {
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.available, true);
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.fromStatus, 'Assigned');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.scope, 'provider-assignment');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.fromStatus, 'Reported');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.toStatus, 'InProgress');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.endpoint, '/api/management/provider-assignments/{providerAssignmentId}/status');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.scope, 'incident');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment.legacyRequiresFeedbackId, false);
@@ -369,15 +371,15 @@ test('execution guards require current ownership and separate initial submit fro
   for (const status of ['Assigned', 'SubmittedForApproval']) assert.equal(canSubmitIncidentResolution({ status, assignedStaffUserId: 'staff-1' }, 'staff-1', 0), false);
 });
 
-test('Staff start processing uses the dedicated Incident transition and validates the returned identity', async () => {
-  const patch = mock.method(axiosClient, 'patch', async () => ({ incidentId: 'incident/1', status: 'InProgress', assignedStaffUserId: 'staff-1' }));
+test('Staff start processing uses the Provider assignment transition and validates its identity', async () => {
+  const patch = mock.method(axiosClient, 'patch', async () => ({ ...executionAssignment, reportStatus: 'InProgress' }));
   try {
-    const result = await executionApi.startProcessing(' incident/1 ', { note: '  Bắt đầu kiểm tra hiện trường  ', status: 'Closed' });
-    assert.equal(result.id, 'incident/1');
-    assert.equal(result.status, 'InProgress');
-    assert.deepEqual(patch.mock.calls[0].arguments, ['/api/management/incidents/incident%2F1/status', { status: 'InProgress', note: 'Bắt đầu kiểm tra hiện trường' }]);
-    patch.mock.mockImplementation(async () => ({ incidentId: 'another-incident', status: 'InProgress' }));
-    await assert.rejects(executionApi.startProcessing('incident/1'), /không thuộc sự vụ/);
+    const result = await executionApi.startProcessing(501, { note: '  Bắt đầu kiểm tra hiện trường  ', status: 'Closed' });
+    assert.equal(result.providerAssignmentId, 501);
+    assert.equal(result.reportStatus, 'InProgress');
+    assert.deepEqual(patch.mock.calls[0].arguments, ['/api/management/provider-assignments/501/status', { status: 'InProgress', note: 'Bắt đầu kiểm tra hiện trường' }]);
+    patch.mock.mockImplementation(async () => ({ ...executionAssignment, providerAssignmentId: 999, reportStatus: 'InProgress' }));
+    await assert.rejects(executionApi.startProcessing(501), /không thuộc phân công/);
   } finally { patch.mock.restore(); }
 });
 
@@ -502,13 +504,13 @@ test('native URI evidence is appended as a native file descriptor without assumi
 test('resolution submit uses the Incident contract, accepts empty 200 and rejects unsafe/incomplete payloads', async () => {
   const post = mock.method(axiosClient, 'post', async () => '');
   try {
-    for (const payload of [{ resolutionSummary: '' }, { resolutionSummary: 'ok', providerAssignmentId: 0 }, { resolutionSummary: 'ok', imageUrls: ['javascript:alert(1)'] }, { resolutionSummary: 'ok', imageUrls: ['file:///cache/test.jpg'] }]) await assert.rejects(executionApi.submitResolution('incident/1', payload));
+    for (const payload of [{ resolutionSummary: '', actionTaken: 'fixed' }, { resolutionSummary: 'ok', actionTaken: '' }, { resolutionSummary: 'ok', actionTaken: 'fixed', providerAssignmentId: 0 }, { resolutionSummary: 'ok', actionTaken: 'fixed', imageUrls: ['javascript:alert(1)'] }, { resolutionSummary: 'ok', actionTaken: 'fixed', imageUrls: ['file:///cache/test.jpg'] }]) await assert.rejects(executionApi.submitResolution('incident/1', payload));
     assert.equal(post.mock.callCount(), 0);
     const result = await executionApi.submitResolution('incident/1', { providerAssignmentId: 501, resolutionSummary: '  Đã khắc phục  ', actionTaken: '  Vệ sinh  ', resultNote: '  Theo dõi  ', imageUrls: [executionEvidence.fileUrl], feedbackId: 'not-used', status: 'Approved' });
     assert.equal(result, undefined);
     assert.deepEqual(post.mock.calls[0].arguments, ['/api/management/incidents/incident%2F1/resolutions', { providerAssignmentId: 501, resolutionSummary: 'Đã khắc phục', actionTaken: 'Vệ sinh', resultNote: 'Theo dõi', imageUrls: [executionEvidence.fileUrl] }]);
-    await executionApi.submitResolution('incident/1', { resolutionSummary: 'Không có phân công đơn vị' });
-    assert.deepEqual(post.mock.calls[1].arguments[1], { resolutionSummary: 'Không có phân công đơn vị' });
+    await executionApi.submitResolution('incident/1', { resolutionSummary: 'Không có phân công đơn vị', actionTaken: 'Tự xử lý tại hiện trường' });
+    assert.deepEqual(post.mock.calls[1].arguments[1], { resolutionSummary: 'Không có phân công đơn vị', actionTaken: 'Tự xử lý tại hiện trường' });
   } finally { post.mock.restore(); }
 });
 

@@ -103,12 +103,24 @@ function StartProcessingAction({ item, userId }: { item: StaffRecord; userId: st
       if (!canStartIncidentProcessing(latest, userId)) {
         throw new Error('Sự vụ không còn ở trạng thái Được giao hoặc không còn được phân công cho bạn.');
       }
-      const updated = await executionApi.startProcessing(item.id, { note: 'Staff bắt đầu xử lý sự vụ.' });
+      const assignment = await executionApi.assignment(item.id);
+      if (!assignment) {
+        throw new Error('Sự vụ chưa có đơn vị xử lý. Hãy phân công đơn vị trước khi bắt đầu xử lý.');
+      }
+      if (normalizeKey(assignment.reportStatus) !== 'reported') {
+        throw new Error('Phân công đơn vị không còn ở trạng thái Đã gửi yêu cầu. Vui lòng tải lại sự vụ.');
+      }
+      const updatedAssignment = await executionApi.startProcessing(
+        assignment.providerAssignmentId,
+        { note: 'Staff bắt đầu xử lý sự vụ.' },
+      );
       if (!isCurrentSession()) throw new Error('Phiên đăng nhập đã thay đổi. Vui lòng mở lại sự vụ bằng tài khoản nhân viên phụ trách.');
-      return updated;
+      const updatedIncident = await staffApi.incident(item.id).catch(() => null);
+      return { updatedAssignment, updatedIncident };
     },
-    onSuccess: async (updated) => {
-      cache.setQueryData(staffKeys.incident(userId, item.id), updated);
+    onSuccess: async ({ updatedAssignment, updatedIncident }) => {
+      if (updatedIncident) cache.setQueryData(staffKeys.incident(userId, item.id), updatedIncident);
+      cache.setQueryData(executionKeys.assignment(userId, item.id), updatedAssignment);
       setConfirming(false); setError(''); setSuccess('Đã bắt đầu xử lý sự vụ. Bạn có thể cập nhật đơn vị, minh chứng và kết quả.');
       await refreshExecutionState();
     },
@@ -125,7 +137,7 @@ function StartProcessingAction({ item, userId }: { item: StaffRecord; userId: st
     {canStartIncidentProcessing(item, userId) && (confirming
       ? <View style={panelStyle}>
         <Label bold>Bắt đầu xử lý sự vụ?</Label>
-        <Label size={14}>Trạng thái sẽ chuyển từ “Được giao” sang “Đang xử lý”. Thao tác này không tự gửi kết quả cho Manager.</Label>
+        <Label size={14}>Phân công đơn vị sẽ chuyển từ “Đã gửi yêu cầu” sang “Đang thực hiện”. Backend đồng bộ sự vụ sang “Đang xử lý”.</Label>
         <Button label="Xác nhận bắt đầu xử lý" busy={mutation.isPending} disabled={mutation.isPending} onPress={() => mutation.mutate()} />
         <Button secondary label="Quay lại" disabled={mutation.isPending} onPress={() => setConfirming(false)} />
       </View>

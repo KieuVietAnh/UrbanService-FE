@@ -41,7 +41,7 @@ export const getIncidentNextActionCopy = (status) => {
   const normalizedStatus = normalizeStatus(status);
 
   if (normalizedStatus === 'assigned') {
-    return 'Sự vụ đã được phân công và đang chờ Staff bắt đầu xử lý.';
+    return 'Sự vụ đã được phân công. Hãy chọn đơn vị xử lý, sau đó bắt đầu tiến độ từ phân công đơn vị.';
   }
   if (normalizedStatus === 'inprogress') {
     return 'Sự vụ đang trong quá trình xử lý.';
@@ -78,23 +78,12 @@ export const isAssignedToAnotherStaff = (incident, currentUser) => {
   return Boolean(assignedStaffUserId && currentUserId && assignedStaffUserId !== currentUserId);
 };
 
-export const canStartIncidentProcessing = (incident, currentUser) => (
+export const canStartProviderAssignmentProcessing = (incident, assignment, currentUser) => (
   isIncidentAssignedToCurrentStaff(incident, currentUser)
   && normalizeStatus(incident?.status) === 'assigned'
+  && Boolean(String(assignment?.providerAssignmentId ?? '').trim())
+  && normalizeStatus(assignment?.reportStatus) === 'reported'
 );
-
-export const getStartProcessingDeniedMessage = (incident, currentUser) => {
-  if (!incident) {
-    return 'Backend đã từ chối quyền bắt đầu xử lý. Không thể tải lại sự vụ để kiểm tra phân công hiện tại.';
-  }
-  if (!isIncidentAssignedToCurrentStaff(incident, currentUser)) {
-    return 'Backend đã từ chối thao tác vì sự vụ không còn được phân công cho tài khoản Staff hiện tại.';
-  }
-  if (normalizeStatus(incident?.status) !== 'assigned') {
-    return 'Trạng thái sự vụ đã thay đổi và không còn là Đã phân công nên không thể bắt đầu xử lý lại.';
-  }
-  return 'Backend đã từ chối quyền SYSTEMSTAFF dù sự vụ đang ở trạng thái Đã phân công và thuộc tài khoản hiện tại. Cần kiểm tra policy của endpoint cập nhật trạng thái Incident.';
-};
 
 export const canManageIncidentExecution = (incident, currentUser) => (
   isIncidentAssignedToCurrentStaff(incident, currentUser)
@@ -102,7 +91,7 @@ export const canManageIncidentExecution = (incident, currentUser) => (
 );
 
 const PROVIDER_STATUS_LABELS = Object.freeze({
-  reported: 'Đã tiếp nhận',
+  reported: 'Đã gửi yêu cầu',
   inprogress: 'Đang thực hiện',
   done: 'Hoàn thành',
   failed: 'Không hoàn thành',

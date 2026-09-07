@@ -1,10 +1,7 @@
-import { useCallback, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { getStatusIntent } from '@urbanmind/shared-types';
-import { extractApiErrorMessage, incidentManagementApi } from '@urbanmind/shared-api';
 
 import Badge from '../../components/design-system/Badge';
-import Button from '../../components/design-system/Button';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   EMPTY_VALUE,
@@ -12,22 +9,12 @@ import {
   formatOperationalDateTime,
   getIncidentStatusLabel,
 } from './incidentDetailPresentation';
-import StaffIncidentActionDialog from './StaffIncidentActionDialog';
 import StaffIncidentProviderSection from './StaffIncidentProviderSection';
 import {
-  canStartIncidentProcessing,
   getIncidentNextActionCopy,
   getIncidentProcessingSteps,
-  getStartProcessingDeniedMessage,
   isAssignedToAnotherStaff,
 } from './staffIncidentProcessing';
-
-const getActionErrorMessage = (error, fallback) => {
-  if (!error?.response && !error?.status && !error?.code && String(error?.message ?? '').trim()) {
-    return String(error.message).trim();
-  }
-  return extractApiErrorMessage(error, fallback);
-};
 
 function ProcessingFact({ icon: Icon, label, value, children }) {
   return (
@@ -81,64 +68,8 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
   const { user } = useAuth();
   const steps = getIncidentProcessingSteps(incident?.status);
   const assignedToAnotherStaff = isAssignedToAnotherStaff(incident, user);
-  const mayStartProcessing = canStartIncidentProcessing(incident, user);
-  const startCapability = incidentManagementApi.capabilities.staffStartProcessing;
   const isAssigned = String(incident?.status ?? '').replace(/[-_\s]+/g, '').toLowerCase() === 'assigned';
   const incidentId = String(incident?.incidentId ?? '').trim();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-
-  const closeDialog = useCallback(() => {
-    if (!submitting) setDialogOpen(false);
-  }, [submitting]);
-
-  const startProcessing = async () => {
-    if (!mayStartProcessing || submitting || !incidentId) return;
-
-    setSubmitting(true);
-    setMessage({ type: '', text: '' });
-    try {
-      const latestIncident = await incidentManagementApi.getIncidentById(incidentId);
-      if (!latestIncident) throw new Error('Không tìm thấy sự vụ để bắt đầu xử lý.');
-
-      if (!canStartIncidentProcessing(latestIncident, user)) {
-        onIncidentUpdated?.(latestIncident);
-        throw new Error('Sự vụ không còn được phân công cho bạn hoặc trạng thái đã thay đổi.');
-      }
-
-      const updatedIncident = await incidentManagementApi.startIncidentProcessing(incidentId, {
-        note: 'Staff bắt đầu xử lý sự vụ.',
-      });
-      if (!updatedIncident) throw new Error('Backend không trả về dữ liệu sự vụ sau khi cập nhật.');
-
-      const updated = onIncidentUpdated?.(updatedIncident);
-      if (updated === false) throw new Error('Dữ liệu cập nhật không thuộc sự vụ đang mở.');
-
-      setDialogOpen(false);
-      setMessage({ type: 'success', text: 'Đã bắt đầu xử lý sự vụ.' });
-    } catch (error) {
-      setDialogOpen(false);
-      let errorMessage = getActionErrorMessage(error, 'Không thể bắt đầu xử lý sự vụ.');
-
-      if (Number(error?.status ?? error?.response?.status) === 403) {
-        try {
-          const latestIncident = await incidentManagementApi.getIncidentById(incidentId);
-          if (latestIncident) onIncidentUpdated?.(latestIncident);
-          errorMessage = getStartProcessingDeniedMessage(latestIncident, user);
-        } catch {
-          errorMessage = getStartProcessingDeniedMessage(null, user);
-        }
-      }
-
-      setMessage({
-        type: 'error',
-        text: errorMessage,
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <div
@@ -185,13 +116,6 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
             </div>
           </div>
 
-          {message.text ? (
-            <div className={`mt-4 flex items-start gap-3 rounded-2xl border p-4 ${message.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100' : 'border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950/25 dark:text-rose-100'}`} role={message.type === 'success' ? 'status' : 'alert'}>
-              {message.type === 'success' ? <Lucide.CircleCheckBig className="mt-0.5 shrink-0" size={18} aria-hidden="true" /> : <Lucide.CircleAlert className="mt-0.5 shrink-0" size={18} aria-hidden="true" />}
-              <p className="text-sm font-semibold leading-6">{message.text}</p>
-            </div>
-          ) : null}
-
           {assignedToAnotherStaff ? (
             <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-950 dark:border-rose-900/70 dark:bg-rose-950/25 dark:text-rose-100" role="status">
               <Lucide.ShieldAlert className="mt-0.5 shrink-0" size={18} aria-hidden="true" />
@@ -203,30 +127,16 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
           ) : null}
 
           {isAssigned ? (
-            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900/70 dark:bg-amber-950/25">
+            <div className="mt-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/25">
               <div className="flex min-w-0 items-start gap-3">
                 <Lucide.PlayCircle className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" size={19} aria-hidden="true" />
                 <div className="min-w-0">
-                  <h3 className="text-sm font-black text-amber-950 dark:text-amber-100">
-                    {mayStartProcessing ? 'Sự vụ đã sẵn sàng để xử lý' : 'Chưa thể bắt đầu xử lý sự vụ'}
-                  </h3>
+                  <h3 className="text-sm font-black text-amber-950 dark:text-amber-100">Sự vụ đang chờ bắt đầu xử lý</h3>
                   <p className="mt-1 text-sm leading-6 text-amber-900/80 dark:text-amber-100/75">
-                    {mayStartProcessing
-                      ? 'Bắt đầu xử lý sẽ chuyển trạng thái sự vụ sang Đang xử lý và ghi nhận thời điểm thực hiện.'
-                      : 'Chỉ Staff đang được phân công mới có thể bắt đầu xử lý sự vụ này.'}
+                    Chọn đơn vị xử lý trước. Khi phân công đơn vị ở trạng thái Đã gửi yêu cầu, dùng thao tác Bắt đầu xử lý trong phần tiến độ đơn vị.
                   </p>
                 </div>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                disabled={!startCapability.available || !mayStartProcessing || submitting}
-                className="shrink-0 whitespace-nowrap"
-                onClick={() => setDialogOpen(true)}
-              >
-                <Lucide.Play size={16} aria-hidden="true" />
-                Bắt đầu xử lý
-              </Button>
             </div>
           ) : null}
         </div>
@@ -263,31 +173,6 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
         onIncidentUpdated={onIncidentUpdated}
         user={user}
       />
-
-      <StaffIncidentActionDialog
-        open={dialogOpen}
-        busy={submitting}
-        title="Bắt đầu xử lý sự vụ này?"
-        description="Trạng thái sự vụ sẽ chuyển từ Đã phân công sang Đang xử lý."
-        icon={Lucide.Play}
-        confirmLabel="Xác nhận bắt đầu"
-        onClose={closeDialog}
-        onConfirm={startProcessing}
-      >
-        <dl className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/65">
-          {[
-            ['Sự vụ', incident?.title || formatIncidentCode(incidentId)],
-            ['Mã sự vụ', formatIncidentCode(incidentId)],
-            ['Staff phụ trách', incident?.assignedStaffName || EMPTY_VALUE],
-            ['Trạng thái hiện tại', getIncidentStatusLabel(incident?.status)],
-          ].map(([label, value]) => (
-            <div key={label} className="grid gap-1 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
-              <dt className="font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
-              <dd className="break-words font-bold text-slate-900 dark:text-slate-100">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </StaffIncidentActionDialog>
 
       <p className="sr-only">Mã sự vụ {formatIncidentCode(incidentId)}</p>
     </div>
