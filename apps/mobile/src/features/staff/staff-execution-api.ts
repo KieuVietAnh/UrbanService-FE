@@ -5,9 +5,8 @@ import {
   requireExecutionId, requireIncidentId, sameIncident,
   type AddProviderContactPayload, type AssignProviderPayload, type CompletionEvidence,
   type EvidenceUploadAsset, type IncidentResolution, type ProviderAssignment, type ProviderCandidate,
-  type ProviderContact, type StartIncidentProcessingPayload, type SubmitIncidentResolutionPayload, type UpdateProviderStatusPayload,
+  type ProviderContact, type StartProviderAssignmentProcessingPayload, type SubmitIncidentResolutionPayload, type UpdateProviderStatusPayload,
 } from './staff-execution-models';
-import { normalizeStaffRecord, type StaffRecord } from './staff-models';
 
 export const executionKeys = {
   all: (userId: string, incidentId: string) => ['staff', userId, 'execution', incidentId] as const,
@@ -27,10 +26,13 @@ const assertAssignment = (actual: number, expected: number) => {
 
 /** Uses the shared authenticated client; no Feedback execution mapping or fallback endpoints. */
 export const executionApi = {
-  async startProcessing(incidentId: string, payload: StartIncidentProcessingPayload = {}): Promise<StaffRecord> {
-    const id = requireIncidentId(incidentId);
-    const result = normalizeStaffRecord(await incidentManagementApi.startIncidentProcessing(id, payload), true);
-    assertIncident(result.id, id);
+  async startProcessing(providerAssignmentId: number, payload: StartProviderAssignmentProcessingPayload = {}): Promise<ProviderAssignment> {
+    const id = requireExecutionId(providerAssignmentId, 'Mã phân công đơn vị');
+    const result = normalizeProviderAssignment(await incidentManagementApi.updateProviderAssignmentStatus(id, {
+      status: 'InProgress',
+      note: payload.note,
+    }));
+    assertAssignment(result.providerAssignmentId, id);
     return result;
   },
   async candidates(incidentId: string, signal?: AbortSignal): Promise<ProviderCandidate[]> {

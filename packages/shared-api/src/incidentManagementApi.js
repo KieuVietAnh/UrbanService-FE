@@ -194,12 +194,15 @@ export const normalizeProviderAssignmentStatusPayload = (payload = {}) => {
 };
 
 export const normalizeSubmitIncidentResolutionPayload = (payload = {}) => {
-  // A useful summary is a client validation rule. Swagger strings are nullable.
-  const normalized = { resolutionSummary: requiredExecutionText(payload?.resolutionSummary, 'resolutionSummary') };
+  // The Staff execution contract requires both narrative fields. The generated
+  // OpenAPI schema currently omits the corresponding required array.
+  const normalized = {
+    resolutionSummary: requiredExecutionText(payload?.resolutionSummary, 'resolutionSummary'),
+    actionTaken: requiredExecutionText(payload?.actionTaken, 'actionTaken'),
+  };
   if (payload?.providerAssignmentId !== undefined && payload?.providerAssignmentId !== null) {
     normalized.providerAssignmentId = positiveExecutionId(payload.providerAssignmentId, 'providerAssignmentId');
   }
-  optionalExecutionText(payload, 'actionTaken', normalized);
   optionalExecutionText(payload, 'resultNote', normalized);
   if (payload?.imageUrls !== undefined && payload?.imageUrls !== null) {
     if (!Array.isArray(payload.imageUrls)) throw new TypeError('imageUrls must be an array');
@@ -275,10 +278,12 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
   }),
   staffStartProcessing: Object.freeze({
     available: true,
-    fromStatus: 'Assigned',
+    scope: 'provider-assignment',
+    fromStatus: 'Reported',
     toStatus: 'InProgress',
-    endpoint: INCIDENT_STATUS_ENDPOINT,
-    requestSchema: 'UpdateIncidentStatusRequest',
+    endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/status`,
+    requestSchema: 'UpdateProviderAssignmentStatusRequest',
+    synchronizesIncident: true,
   }),
   providerAssignment: Object.freeze({
     available: true,
@@ -303,12 +308,18 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
   providerStatus: Object.freeze({
     available: true,
     endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/status`,
-    transitionsConfirmed: false,
+    transitionsConfirmed: true,
+    staffTransitions: Object.freeze([
+      Object.freeze({ from: 'Reported', to: 'InProgress' }),
+    ]),
   }),
   completionEvidence: Object.freeze({
     available: true,
     endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/completion-documents`,
     scope: 'provider-assignment',
+    multipartFields: Object.freeze(['Description', 'Files']),
+    documentedUploadLimits: false,
+    deleteOneAvailable: false,
     clearAllAvailable: true,
   }),
   resolutions: Object.freeze({

@@ -18,6 +18,7 @@ import {
 import StaffIncidentReportsPanel from './StaffIncidentReportsPanel';
 import StaffIncidentTimelinePanel from './StaffIncidentTimelinePanel';
 import StaffIncidentProcessingPanel from './StaffIncidentProcessingPanel';
+import StaffIncidentResolutionPanel from './StaffIncidentResolutionPanel';
 
 const STATUS_LABELS = Object.freeze({
   new: 'Mới',
@@ -504,24 +505,6 @@ function OverviewPanel({ incident, capability }) {
   );
 }
 
-function ResolutionPlaceholderPanel() {
-  return (
-    <div
-      id="incident-panel-resolution"
-      role="tabpanel"
-      aria-labelledby="incident-tab-resolution"
-      tabIndex={0}
-      className="focus-visible:outline-none"
-    >
-      <EmptyState
-        icon={Lucide.ClipboardCheck}
-        title="Kết quả xử lý chưa được triển khai"
-        description="Chức năng này sẽ được bổ sung khi backend xác nhận dữ liệu kết quả xử lý ở cấp sự vụ."
-      />
-    </div>
-  );
-}
-
 export default function StaffIncidentDetailPage() {
   const { incidentId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -628,7 +611,12 @@ export default function StaffIncidentDetailPage() {
           onIncidentUpdated={updateIncident}
         />
       ) : null}
-      {activeTab === 'resolution' ? <ResolutionPlaceholderPanel /> : null}
+      {activeTab === 'resolution' ? (
+        <StaffIncidentResolutionPanel
+          incident={incident}
+          onIncidentUpdated={updateIncident}
+        />
+      ) : null}
     </article>
   );
 }

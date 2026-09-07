@@ -6,6 +6,7 @@ import Button from '../../components/design-system/Button';
 
 export default function StaffIncidentActionDialog({
   busy = false,
+  cancelLabel = 'Quay lại',
   children,
   confirmLabel,
   description,
@@ -106,7 +107,7 @@ export default function StaffIncidentActionDialog({
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-4 sm:flex-row sm:justify-end dark:border-slate-800 dark:bg-slate-900/60">
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onClose}>
-            Quay lại
+            {cancelLabel}
           </Button>
           <Button data-staff-dialog-primary type="button" size="sm" disabled={busy} onClick={onConfirm}>
             {busy ? <Lucide.LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : <Lucide.Check size={16} aria-hidden="true" />}

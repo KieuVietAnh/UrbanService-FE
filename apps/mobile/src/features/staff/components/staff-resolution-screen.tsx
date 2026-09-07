@@ -172,12 +172,12 @@ function ResolutionWorkspace({ id, userId }: { id: string; userId: string }) {
   };
   const previewSubmission = () => {
     setError(''); setSuccess('');
-    if (!summary.trim()) { setError('Vui lòng nhập tóm tắt kết quả.'); return; }
+    if (!summary.trim() || !action.trim()) { setError('Vui lòng nhập tóm tắt kết quả và công việc đã thực hiện.'); return; }
     if (assets.length) { setError('Bạn còn tệp chưa tải lên. Hãy tải minh chứng hoặc bỏ tệp đã chọn trước khi gửi.'); return; }
     setConfirming(true);
   };
   const submit = async () => {
-    if (!canSubmit || !summary.trim() || assets.length || operation.current) return;
+    if (!canSubmit || !summary.trim() || !action.trim() || assets.length || operation.current) return;
     operation.current = true; setBusy('submit'); setError(''); setSuccess('');
     try {
       const { latest, current } = await requireCurrentOwner();

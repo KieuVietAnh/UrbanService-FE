@@ -3,12 +3,11 @@ import test from 'node:test';
 
 import {
   canManageIncidentExecution,
-  canStartIncidentProcessing,
+  canStartProviderAssignmentProcessing,
   getIncidentNextActionCopy,
   getIncidentProcessingSteps,
   getProviderStatusIntent,
   getProviderStatusLabel,
-  getStartProcessingDeniedMessage,
   isIncidentAssignedToCurrentStaff,
   isAssignedToAnotherStaff,
 } from './staffIncidentProcessing.js';
@@ -62,12 +61,19 @@ test('requires authoritative current Staff ownership for execution actions', () 
     { assignedStaffUserId: 'staff-1' },
     currentUser,
   ), true);
-  assert.equal(canStartIncidentProcessing(
+  assert.equal(canStartProviderAssignmentProcessing(
     { assignedStaffUserId: 'staff-1', status: 'Assigned' },
+    { providerAssignmentId: 7, reportStatus: 'Reported' },
     currentUser,
   ), true);
-  assert.equal(canStartIncidentProcessing(
+  assert.equal(canStartProviderAssignmentProcessing(
     { assignedStaffUserId: 'staff-1', status: 'InProgress' },
+    { providerAssignmentId: 7, reportStatus: 'Reported' },
+    currentUser,
+  ), false);
+  assert.equal(canStartProviderAssignmentProcessing(
+    { assignedStaffUserId: 'staff-1', status: 'Assigned' },
+    { providerAssignmentId: 7, reportStatus: 'InProgress' },
     currentUser,
   ), false);
   assert.equal(canManageIncidentExecution(
@@ -80,18 +86,17 @@ test('requires authoritative current Staff ownership for execution actions', () 
   ), false);
 });
 
-test('explains a forbidden start request from the latest authoritative Incident state', () => {
+test('requires the authoritative Provider assignment relationship before Staff starts processing', () => {
+  const incident = { assignedStaffUserId: 'staff-1', status: 'Assigned' };
   const user = { userId: 'staff-1' };
-  assert.match(getStartProcessingDeniedMessage(null, user), /Không thể tải lại/);
-  assert.match(getStartProcessingDeniedMessage(
-    { assignedStaffUserId: 'staff-2', status: 'Assigned' }, user,
-  ), /không còn được phân công/);
-  assert.match(getStartProcessingDeniedMessage(
-    { assignedStaffUserId: 'staff-1', status: 'InProgress' }, user,
-  ), /không còn là Đã phân công/);
-  assert.match(getStartProcessingDeniedMessage(
-    { assignedStaffUserId: 'staff-1', status: 'Assigned' }, user,
-  ), /policy/);
+
+  assert.equal(canStartProviderAssignmentProcessing(incident, null, user), false);
+  assert.equal(canStartProviderAssignmentProcessing(incident, {}, user), false);
+  assert.equal(canStartProviderAssignmentProcessing(
+    incident,
+    { providerAssignmentId: 7, reportStatus: 'Reported' },
+    user,
+  ), true);
 });
 
 test('maps only returned Provider statuses to Vietnamese text and semantic intent', () => {

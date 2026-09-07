@@ -2,20 +2,25 @@ import React, { useCallback, useRef, useState } from 'react';
 import { Linking, Pressable, RefreshControl, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { canTransitionProviderReportStatus, normalizeProviderReportStatus } from '@urbanmind/shared-api';
+import { normalizeProviderReportStatus } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuthStore } from '@/features/auth';
 import { canAccessMobileWorkspace } from '@/features/auth/mobile-access';
 import { staffApi, staffError, staffKeys } from '../staff-api';
-import { asRecord, formatDate, recordCode } from '../staff-models';
+import { asRecord, formatDate, normalizeKey, recordCode, type StaffRecord } from '../staff-models';
 import { executionApi, executionKeys } from '../staff-execution-api';
 import { canEditIncidentExecution, sameIncident, type ProviderCandidate } from '../staff-execution-models';
 import { BackLink, Button, colors, Field, Label, Notice, PageHeading, panelStyle, QueryState, Section, Status } from './staff-ui';
 import { StaffScrollView } from './staff-scroll-view';
 
-const providerStatusLabels: Record<string, string> = { Reported: 'Đã tiếp nhận', InProgress: 'Đang thực hiện', Done: 'Hoàn thành', Failed: 'Không hoàn thành', Cancelled: 'Đã hủy' };
-const providerStatusOptions = ['InProgress', 'Done', 'Failed', 'Cancelled'];
+const providerStatusLabels: Record<string, string> = { Reported: 'Đã gửi yêu cầu', InProgress: 'Đang thực hiện', Done: 'Hoàn thành', Failed: 'Không hoàn thành', Cancelled: 'Đã hủy' };
+const providerStatusOptions = ['InProgress'];
 const providerStatusLabel = (status: string) => providerStatusLabels[normalizeProviderReportStatus(status)] || status || 'Chưa có trạng thái';
+const canStartProviderProcessing = (currentStatus: string, nextStatus: string, incidentStatus: string) => (
+  normalizeProviderReportStatus(currentStatus) === 'Reported'
+  && nextStatus === 'InProgress'
+  && normalizeKey(incidentStatus) === 'assigned'
+);
 
 function localContactTime(value: string): string | null {
   if (!value.trim()) return '';
@@ -140,14 +145,15 @@ function ProviderWorkspace({ id, userId }: { id: string; userId: string }) {
     mutationFn: async () => {
       if (!assignment) throw new Error('Chưa có phân công đơn vị xử lý.');
       const current = await freshAssignment(assignment.providerAssignmentId);
-      if (!current || !canTransitionProviderReportStatus(current.reportStatus, nextStatus)) throw new Error('Trạng thái đơn vị đã thay đổi hoặc không hỗ trợ bước chuyển này.');
+      const latestIncident = cache.getQueryData<StaffRecord>(incidentKey);
+      if (!current || !latestIncident || !canStartProviderProcessing(current.reportStatus, nextStatus, latestIncident.status)) throw new Error('Phân công đơn vị hoặc trạng thái sự vụ đã thay đổi và không còn cho phép bắt đầu xử lý.');
       assertCurrentSession();
       return executionApi.updateProviderStatus(current.providerAssignmentId, { status: nextStatus, note: statusNote.trim() || undefined });
     },
     onSuccess: async (item) => {
       if (!isCurrentSession()) return;
       cache.setQueryData(assignmentKey, item);
-      setNextStatus(''); setStatusNote(''); setConfirmStatus(false); setSuccess('Đã cập nhật trạng thái đơn vị.');
+      setNextStatus(''); setStatusNote(''); setConfirmStatus(false); setSuccess('Đã bắt đầu xử lý sự vụ.');
       await refreshAfterWrite();
     },
     onError: onWriteError,
@@ -175,7 +181,7 @@ function ProviderWorkspace({ id, userId }: { id: string; userId: string }) {
   const canWrite = canEditIncident && assignmentQuery.isSuccess && !incidentQuery.isFetching && !assignmentQuery.isFetching && !busy;
   const selected = candidatesQuery.data?.find((item) => item.coordinatorId === selectedCoordinator);
   const filteredCandidates = candidatesQuery.data?.filter((item) => (item.providerName + ' ' + item.coordinatorName + ' ' + item.address).toLocaleLowerCase('vi-VN').includes(search.trim().toLocaleLowerCase('vi-VN'))) || [];
-  const nextStatuses = assignment ? providerStatusOptions.filter((status) => canTransitionProviderReportStatus(assignment.reportStatus, status)) : [];
+  const nextStatuses = assignment && incidentQuery.data ? providerStatusOptions.filter((status) => canStartProviderProcessing(assignment.reportStatus, status, incidentQuery.data.status)) : [];
   const validContactTime = localContactTime(contactedAt) !== null;
   const beginWrite = (action: () => void) => {
     if (writeLock.current || !canWrite) return;
@@ -225,11 +231,11 @@ function ProviderWorkspace({ id, userId }: { id: string; userId: string }) {
         </View></Section>
         <Section title="Trạng thái đơn vị">
           <View style={{ ...panelStyle, gap: 10 }}><Label bold style={{ color: colors.primary }}>{providerStatusLabel(assignment.reportStatus)}</Label><Fact label="Cập nhật" value={formatDate(assignment.updatedAt)} />{!!assignment.reportNote && <Fact label="Ghi chú trạng thái" value={assignment.reportNote} />}<Fact label="Hạn dự kiến của đơn vị" value={formatDate(assignment.dueDate)} /></View>
-          <Label muted size={13}>Trạng thái này chỉ phản ánh tiến độ của đơn vị; không tự thay đổi trạng thái hay duyệt kết quả sự vụ.</Label>
+          <Label muted size={13}>Khi bắt đầu, backend chuyển phân công đơn vị sang “Đang thực hiện” và đồng bộ sự vụ sang “Đang xử lý”. Thao tác này không duyệt kết quả.</Label>
           {canEditIncident && nextStatuses.length > 0 ? <>
             <View accessibilityRole="radiogroup" accessibilityLabel="Trạng thái mới của đơn vị" style={{ gap: 8 }}>{nextStatuses.map((status) => <Radio key={status} label={'Trạng thái: ' + providerStatusLabel(status)} selected={nextStatus === status} disabled={!canWrite || confirmStatus} onPress={() => { setNextStatus(status); setActionError(''); }}><Label bold size={14}>{providerStatusLabel(status)}</Label></Radio>)}</View>
             <Field label="Ghi chú trạng thái" value={statusNote} onChangeText={setStatusNote} multiline placeholder="Tiến độ, kết quả hoặc lý do cập nhật…" editable={!busy && !confirmStatus} />
-            {confirmStatus ? <View style={panelStyle}><Label bold>Xác nhận cập nhật trạng thái</Label><Label>{providerStatusLabel(assignment.reportStatus)} → {providerStatusLabel(nextStatus)}</Label><Label muted size={13}>Kiểm tra trạng thái và ghi chú trước khi lưu. Các trạng thái kết thúc không có bước chuyển tiếp.</Label><Button label="Xác nhận cập nhật trạng thái" busy={statusMutation.isPending} disabled={!canWrite || !nextStatuses.includes(nextStatus)} onPress={() => beginWrite(() => statusMutation.mutate())} /><Button secondary label="Quay lại trạng thái" disabled={busy} onPress={() => setConfirmStatus(false)} /></View> : <Button label="Cập nhật trạng thái đơn vị" disabled={!canWrite || !nextStatuses.includes(nextStatus)} onPress={() => { setActionError(''); setConfirmStatus(true); }} />}
+            {confirmStatus ? <View style={panelStyle}><Label bold>Xác nhận bắt đầu xử lý</Label><Label>{providerStatusLabel(assignment.reportStatus)} → {providerStatusLabel(nextStatus)}</Label><Label muted size={13}>Backend sẽ đồng bộ trạng thái của phân công đơn vị và sự vụ.</Label><Button label="Xác nhận bắt đầu xử lý" busy={statusMutation.isPending} disabled={!canWrite || !nextStatuses.includes(nextStatus)} onPress={() => beginWrite(() => statusMutation.mutate())} /><Button secondary label="Quay lại" disabled={busy} onPress={() => setConfirmStatus(false)} /></View> : <Button label="Bắt đầu xử lý" disabled={!canWrite || nextStatuses.length === 0} onPress={() => { setActionError(''); setNextStatus('InProgress'); setConfirmStatus(true); }} />}
           </> : <Label muted size={13}>{['Done', 'Failed', 'Cancelled'].includes(normalizeProviderReportStatus(assignment.reportStatus)) ? 'Đơn vị đã ở trạng thái kết thúc. Thông tin được giữ lại để tra cứu.' : 'Không có bước chuyển trạng thái phù hợp để thực hiện trên màn hình này.'}</Label>}
         </Section>
         {canEditIncident && <Section title="Ghi nhận liên hệ">
