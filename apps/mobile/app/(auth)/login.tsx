@@ -90,7 +90,7 @@ export default function LoginScreen() {
   const validate = () => {
     const e: typeof errors = {};
     if (!email.trim()) {
-      e.email = 'Vui lòng nhập email hoặc số điện thoại';
+      e.email = 'Vui lòng nhập email';
     }
     if (!password) {
       e.password = 'Vui lòng nhập mật khẩu';
@@ -221,7 +221,7 @@ export default function LoginScreen() {
             </Text>
 
             <AppInput
-              label="Email hoặc Số điện thoại"
+              label="Email"
               leftIcon="mail"
               value={email}
               onChangeText={(value) => {

@@ -16,12 +16,17 @@
   },
   {
     "file": "05-incident-filters-01.png",
-    "title": "Đầy đủ bộ lọc sự vụ · phần 1/2",
+    "title": "Đầy đủ bộ lọc sự vụ · phần 1/3",
     "group": "Sự vụ"
   },
   {
     "file": "05-incident-filters-02.png",
-    "title": "Đầy đủ bộ lọc sự vụ · phần 2/2",
+    "title": "Đầy đủ bộ lọc sự vụ · phần 2/3",
+    "group": "Sự vụ"
+  },
+  {
+    "file": "05-incident-filters-03.png",
+    "title": "Đầy đủ bộ lọc sự vụ · phần 3/3",
     "group": "Sự vụ"
   },
   {
@@ -156,22 +161,17 @@
   },
   {
     "file": "43-resolution-history-01.png",
-    "title": "Lịch sử kết quả đã gửi · phần 1/2",
+    "title": "Lịch sử kết quả đã gửi · phần 1/3",
     "group": "Minh chứng & kết quả"
   },
   {
     "file": "43-resolution-history-02.png",
-    "title": "Lịch sử kết quả đã gửi · phần 2/2",
+    "title": "Lịch sử kết quả đã gửi · phần 2/3",
     "group": "Minh chứng & kết quả"
   },
   {
-    "file": "26-account-edit-01.png",
-    "title": "Chỉnh sửa thông tin cá nhân · phần 1/2",
-    "group": "Tài khoản"
-  },
-  {
-    "file": "26-account-edit-02.png",
-    "title": "Chỉnh sửa thông tin cá nhân · phần 2/2",
-    "group": "Tài khoản"
+    "file": "43-resolution-history-03.png",
+    "title": "Lịch sử kết quả đã gửi · phần 3/3",
+    "group": "Minh chứng & kết quả"
   }
 ]

@@ -4,6 +4,7 @@ const DEFAULT_API_BASE_URL = 'https://api.urbanservice.me';
 
 let apiBaseUrl = DEFAULT_API_BASE_URL;
 let unauthorizedHandler = null;
+let authSessionRefreshedHandler = null;
 let refreshPromise = null;
 let unauthorizedPromise = null;
 
@@ -197,11 +198,10 @@ const createApiError = (error, fallbackMessage) => {
  * Call this once during app initialization with the appropriate environment variable.
  */
 export const setApiBaseUrl = (baseUrl) => {
-  if (baseUrl === undefined || baseUrl === null) {
-    apiBaseUrl = DEFAULT_API_BASE_URL;
-  } else {
-    apiBaseUrl = String(baseUrl).trim();
-  }
+  const normalizedBaseUrl = baseUrl === undefined || baseUrl === null
+    ? ''
+    : String(baseUrl).trim();
+  apiBaseUrl = normalizedBaseUrl || DEFAULT_API_BASE_URL;
   axiosClient.defaults.baseURL = apiBaseUrl;
 };
 
@@ -300,6 +300,10 @@ export const setUnauthorizedHandler = (handler) => {
   unauthorizedHandler = typeof handler === 'function' ? handler : null;
 };
 
+export const setAuthSessionRefreshedHandler = (handler) => {
+  authSessionRefreshedHandler = typeof handler === 'function' ? handler : null;
+};
+
 /**
  * Refreshes the access token once and shares that promise between concurrent 401 responses.
  * The backend rotates refresh tokens, so the returned refresh token is persisted immediately.
@@ -340,6 +344,8 @@ export const refreshAuthSession = async () => {
     if (rotatedRefreshToken) {
       await setRefreshToken(rotatedRefreshToken);
     }
+
+    await authSessionRefreshedHandler?.(response?.data);
 
     return {
       accessToken,

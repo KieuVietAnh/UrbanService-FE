@@ -206,7 +206,15 @@ export function createStaffNativeServer({ requireOtp = false, quiet = false } = 
     const refreshToken = `LOCAL-TEST-REFRESH-ONLY-${randomUUID()}`;
     state.sessions.set(token, state.staff.userId);
     state.refreshTokens.set(refreshToken, state.staff.userId);
-    return { ...state.staff, token, refreshToken };
+    return {
+      userId: state.staff.userId,
+      name: state.staff.fullName,
+      email: state.staff.email,
+      role: state.staff.role,
+      isVerified: state.staff.isVerified,
+      token,
+      refreshToken,
+    };
   };
   const getIncident = (id) => {
     if (id === 'incident-forbidden') fail(403, 'Hồ sơ kiểm thử không thuộc quyền truy cập.');
@@ -509,15 +517,20 @@ async function selfTest() {
     check((await request(`${incidentPath}`)).status, 'InProgress');
     await request(`${assignmentPath}/status`, 'PATCH', { status: 'Invented' }, 409);
     const image = await readFile(new URL('../assets/icon.png', import.meta.url));
-    const form = new FormData(); form.append('Files', new Blob([image], { type: 'image/png' }), 'native-test.png'); form.append('Description', 'Minh chứng kiểm thử cục bộ.');
+    const pdf = inspectionPdf();
+    const form = new FormData();
+    form.append('Files', new Blob([image], { type: 'image/png' }), 'native-test.png');
+    form.append('Files', new Blob([pdf], { type: 'application/pdf' }), 'bien-ban-nghiem-thu.pdf');
+    form.append('Description', 'Minh chứng kiểm thử cục bộ.');
     const uploaded = await request(`${assignmentPath}/completion-documents`, 'POST', form);
-    check(uploaded[0].incidentId, workingId); check(uploaded[0].description, 'Minh chứng kiểm thử cục bộ.');
+    check(uploaded.length, 2); check(uploaded[0].incidentId, workingId); check(uploaded[0].description, 'Minh chứng kiểm thử cục bộ.'); check(uploaded[1].fileType, 'application/pdf');
     const servedImage = await fetch(uploaded[0].fileUrl); check(servedImage.status, 200); check(Buffer.from(await servedImage.arrayBuffer()).equals(image), true);
+    const servedPdf = await fetch(uploaded[1].fileUrl); check(servedPdf.status, 200); check(Buffer.from(await servedPdf.arrayBuffer()).equals(pdf), true);
     await request(`${assignmentPath}/completion-documents`, 'DELETE', undefined, 409);
-    check((await request(`${assignmentPath}/completion-documents`)).length, 1);
+    check((await request(`${assignmentPath}/completion-documents`)).length, 2);
     await request(`${incidentPath}/resolutions`, 'POST', { providerAssignmentId: assignment.providerAssignmentId, resolutionSummary: 'Đã hoàn thành kiểm tra.', actionTaken: 'Dọn miệng thu nước.', resultNote: 'Nước thoát bình thường.', imageUrls: [uploaded[0].fileUrl] });
     check((await request(incidentPath)).status, 'SubmittedForApproval');
-    check((await request(`${incidentPath}/resolutions`))[0].completionDocuments.length, 1);
+    check((await request(`${incidentPath}/resolutions`))[0].completionDocuments.length, 2);
     await request(`${incidentPath}/resolutions`, 'POST', { resolutionSummary: 'Gửi trùng.' }, 409);
     await request(`${assignmentPath}/contact-logs`, 'POST', { contactMethod: 'Phone', contactResult: 'Không còn được sửa.' }, 409);
     const reworkPath = '/api/management/incidents/2c610495-f259-414c-82c8-2e17a54c4045';

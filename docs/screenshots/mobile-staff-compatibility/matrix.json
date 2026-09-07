@@ -4,7 +4,7 @@
   "profiles": [
     {
       "name": "small",
-      "generatedAt": "2026-09-01T05:48:01.082Z",
+      "generatedAt": "2026-09-07T09:20:24.239Z",
       "fixtureBacked": true,
       "fullFunctionalFlow": true,
       "profile": {
@@ -30,10 +30,10 @@
         "height": 800
       },
       "screenshots": 35,
-      "requests": 270,
+      "requests": 316,
       "passed": true,
       "runtimeErrors": [],
-      "geometryChecks": 113,
+      "geometryChecks": 137,
       "geometryProblems": 0,
       "geometryCapabilities": {
         "horizontalDocumentAndControls": true,
@@ -43,7 +43,7 @@
     },
     {
       "name": "tiny",
-      "generatedAt": "2026-09-01T05:48:58.311Z",
+      "generatedAt": "2026-09-07T09:21:18.343Z",
       "fixtureBacked": true,
       "fullFunctionalFlow": true,
       "profile": {
@@ -68,11 +68,11 @@
         "width": 320,
         "height": 640
       },
-      "screenshots": 40,
-      "requests": 270,
+      "screenshots": 39,
+      "requests": 316,
       "passed": true,
       "runtimeErrors": [],
-      "geometryChecks": 127,
+      "geometryChecks": 155,
       "geometryProblems": 0,
       "geometryCapabilities": {
         "horizontalDocumentAndControls": true,
@@ -82,7 +82,7 @@
     },
     {
       "name": "large-text",
-      "generatedAt": "2026-09-01T05:49:56.736Z",
+      "generatedAt": "2026-09-07T09:14:49.291Z",
       "fixtureBacked": true,
       "fullFunctionalFlow": true,
       "profile": {
@@ -107,11 +107,11 @@
         "width": 360,
         "height": 800
       },
-      "screenshots": 41,
-      "requests": 270,
+      "screenshots": 40,
+      "requests": 316,
       "passed": true,
       "runtimeErrors": [],
-      "geometryChecks": 128,
+      "geometryChecks": 156,
       "geometryProblems": 0,
       "geometryCapabilities": {
         "horizontalDocumentAndControls": true,
@@ -121,7 +121,7 @@
     },
     {
       "name": "gesture-frame",
-      "generatedAt": "2026-09-01T05:50:56.064Z",
+      "generatedAt": "2026-09-07T09:15:44.859Z",
       "fixtureBacked": true,
       "fullFunctionalFlow": true,
       "profile": {
@@ -146,11 +146,11 @@
         "width": 360,
         "height": 752
       },
-      "screenshots": 37,
-      "requests": 270,
+      "screenshots": 35,
+      "requests": 316,
       "passed": true,
       "runtimeErrors": [],
-      "geometryChecks": 119,
+      "geometryChecks": 143,
       "geometryProblems": 0,
       "geometryCapabilities": {
         "horizontalDocumentAndControls": true,
@@ -160,7 +160,7 @@
     },
     {
       "name": "three-button-frame",
-      "generatedAt": "2026-09-01T05:51:50.713Z",
+      "generatedAt": "2026-09-07T09:16:36.807Z",
       "fixtureBacked": true,
       "fullFunctionalFlow": true,
       "profile": {
@@ -185,11 +185,11 @@
         "width": 360,
         "height": 728
       },
-      "screenshots": 37,
-      "requests": 270,
+      "screenshots": 35,
+      "requests": 316,
       "passed": true,
       "runtimeErrors": [],
-      "geometryChecks": 121,
+      "geometryChecks": 145,
       "geometryProblems": 0,
       "geometryCapabilities": {
         "horizontalDocumentAndControls": true,
@@ -199,7 +199,7 @@
     },
     {
       "name": "landscape",
-      "generatedAt": "2026-09-01T05:52:47.598Z",
+      "generatedAt": "2026-09-07T09:17:30.277Z",
       "fixtureBacked": true,
       "fullFunctionalFlow": true,
       "profile": {
@@ -224,11 +224,11 @@
         "width": 844,
         "height": 390
       },
-      "screenshots": 44,
-      "requests": 270,
+      "screenshots": 42,
+      "requests": 316,
       "passed": true,
       "runtimeErrors": [],
-      "geometryChecks": 137,
+      "geometryChecks": 166,
       "geometryProblems": 0,
       "geometryCapabilities": {
         "horizontalDocumentAndControls": true,
@@ -238,7 +238,7 @@
     },
     {
       "name": "tablet",
-      "generatedAt": "2026-09-01T05:53:42.111Z",
+      "generatedAt": "2026-09-07T09:18:24.647Z",
       "fixtureBacked": true,
       "fullFunctionalFlow": true,
       "profile": {
@@ -263,11 +263,11 @@
         "width": 800,
         "height": 1280
       },
-      "screenshots": 20,
-      "requests": 270,
+      "screenshots": 19,
+      "requests": 316,
       "passed": true,
       "runtimeErrors": [],
-      "geometryChecks": 75,
+      "geometryChecks": 92,
       "geometryProblems": 0,
       "geometryCapabilities": {
         "horizontalDocumentAndControls": true,

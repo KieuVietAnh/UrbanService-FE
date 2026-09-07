@@ -12,12 +12,12 @@ export function getMobileEntry(user: SessionUser) {
   if (role !== APP_ROLES.SERVICE_USER && role !== APP_ROLES.SYSTEM_STAFF) {
     return '/unsupported-role' as const;
   }
-  if (user.isVerified === false) return '/(auth)/verify-email' as const;
+  if (user.isVerified !== true) return '/(auth)/verify-email' as const;
   return role === APP_ROLES.SYSTEM_STAFF ? '/(staff)/staff' as const : '/(resident)' as const;
 }
 
 export function canAccessMobileWorkspace(user: SessionUser, role: string) {
-  return Boolean(user && user.isVerified !== false && getMobileRole(user) === role);
+  return Boolean(user && user.isVerified === true && getMobileRole(user) === role);
 }
 
 export function getMobileRedirect(user: SessionUser, segments: string[]): ReturnType<typeof getMobileEntry> | null {

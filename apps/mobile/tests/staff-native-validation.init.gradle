@@ -2,6 +2,27 @@
 // production Gradle configuration and must never be installed in ~/.gradle/init.d.
 // Invoke through staff-native-build.mjs so the fixture API is embedded consistently.
 gradle.beforeProject { project ->
+    def shortNativeProjects = [
+        ':react-native-worklets': 'worklets',
+        ':react-native-reanimated': 'reanimated',
+        ':react-native-gesture-handler': 'gesture-handler',
+        ':react-native-screens': 'screens',
+        ':expo-modules-core': 'expo-modules-core',
+    ]
+    def nativeStagingName = shortNativeProjects[project.path]
+    if (nativeStagingName != null) {
+        project.plugins.withId('com.android.library') {
+            def components = project.extensions.getByName('androidComponents')
+            components.finalizeDsl { android ->
+                def workspaceRoot = new File(project.rootProject.projectDir, '../../..').canonicalFile
+                def nativeStaging = new File(workspaceRoot, ".cxx-staff-validation/${nativeStagingName}").canonicalFile
+                if (!nativeStaging.path.startsWith(workspaceRoot.path + File.separator)) {
+                    throw new GradleException('Refusing a library native staging directory outside the workspace.')
+                }
+                android.externalNativeBuild.cmake.buildStagingDirectory = nativeStaging
+            }
+        }
+    }
     if (project.path == ':app') {
         project.plugins.withId('com.android.application') {
             // Scope guards to the Android app: Gradle can also apply init scripts
@@ -53,6 +74,27 @@ gradle.beforeProject { project ->
                             throw new GradleException("Expected exactly one generated CMake output directory: ${original}.")
                         }
                         source = source.replace(expected, " ${shortened})")
+                    }
+                    def linkRoot = System.getenv('STAFF_NATIVE_LINK_ROOT')
+                    if (linkRoot == null || !new File(linkRoot).isDirectory()) {
+                        throw new GradleException('Missing validated short native package junction root.')
+                    }
+                    outputDirs.values().each { shortened ->
+                        def matcher = (source =~ /add_subdirectory\("([^"]+)" ${shortened}\)/)
+                        if (matcher.count != 1) {
+                            throw new GradleException("Expected exactly one generated CMake source directory for ${shortened}.")
+                        }
+                        def sourceDir = matcher[0][1]
+                        def androidIndex = sourceDir.lastIndexOf('/android/')
+                        if (androidIndex < 0) {
+                            throw new GradleException("Cannot identify Android package root for ${sourceDir}.")
+                        }
+                        def packageRoot = sourceDir.substring(0, androidIndex)
+                        def shortPackageRoot = "${linkRoot}/${shortened}"
+                        if (!new File(shortPackageRoot).isDirectory()) {
+                            throw new GradleException("Missing short native package junction: ${shortPackageRoot}.")
+                        }
+                        source = source.replace(packageRoot, shortPackageRoot)
                     }
                     generated.setText(source, 'UTF-8')
                 }

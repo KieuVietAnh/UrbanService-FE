@@ -157,7 +157,15 @@ await context.route('**/api/**', async (route) => {
   const pageNumber = Number(queryValue(url, 'PageNumber')) || 1;
   const pageSize = Number(queryValue(url, 'PageSize')) || 20;
   let data;
-  if (path === '/api/auth/login') data = { ...staff, role: loginRole, token: 'fixture-token-not-a-real-credential' };
+  if (path === '/api/auth/login') data = {
+    userId: staff.userId,
+    name: staff.fullName,
+    email: staff.email,
+    role: loginRole,
+    isVerified: staff.isVerified,
+    token: 'fixture-token-not-a-real-credential',
+    refreshToken: 'fixture-refresh-token-not-a-real-credential',
+  };
   else if (path === '/api/areas') data = [{ areaId: 3, areaName: 'Phường Tân Phong' }, { areaId: 7, areaName: 'Phường Bình Thuận' }];
   else if (path === '/api/categories') data = [{ categoryId: 2, categoryName: 'Chiếu sáng' }, { categoryId: 4, categoryName: 'Thoát nước' }, { categoryId: 6, categoryName: 'Giao thông' }];
   else if (path === '/api/management/incidents') {
@@ -208,7 +216,7 @@ await context.route('**/api/**', async (route) => {
       assert.equal(payload.feedbackId, undefined, 'Incident provider assignment must not infer a Report ID');
       data = { ...candidate, providerAssignmentId: 501, incidentId: id, note: payload.note, assignedByStaffUserId: staff.userId, assignedByStaffUserName: staff.fullName, reportStatus: 'Reported', assignedAt: '2026-09-01T04:05:00Z', contactLogCount: 0, completionDocumentCount: 0 };
       providerAssignments.set(id, data);
-      return route.fulfill({ status: 200, json: data });
+      return route.fulfill({ status: 201, json: data });
     }
     data = providerAssignments.get(id);
     if (!data) return route.fulfill({ status: 204 });
@@ -256,7 +264,21 @@ await context.route('**/api/**', async (route) => {
       assert.match(body, /name="Description"/);
       executionWrites.push({ path, method, multipart: true });
       if (rejectNextUpload) { rejectNextUpload = false; return route.fulfill({ status: 503, json: { message: 'Không tải được minh chứng. Vui lòng thử lại.' } }); }
-      documents.push({ completionDocumentId: 701 + documents.length, providerAssignmentId: assignmentId, incidentId: assignment.incidentId, coordinatorId: assignment.coordinatorId, providerName: assignment.providerName, uploadedByUserId: staff.userId, uploadedByUserName: staff.fullName, fileUrl: origin + '/fixture/evidence.png', fileType: 'image/png', description: assignmentId === 504 ? 'Ảnh nắp hố ga mới sau xử lý lại.' : 'Ảnh kiểm tra miệng thu nước sau vệ sinh (dữ liệu kiểm thử).', receivedAt: '2026-09-01T04:30:00Z' });
+      const isPdfUpload = /filename="[^"]+\.pdf"/i.test(body) || /content-type:\s*application\/pdf/i.test(body);
+      const multipartDescription = body.match(/name="Description"\r?\n\r?\n([^\r\n]*)/i)?.[1]?.trim();
+      documents.push({
+        completionDocumentId: 701 + documents.length,
+        providerAssignmentId: assignmentId,
+        incidentId: assignment.incidentId,
+        coordinatorId: assignment.coordinatorId,
+        providerName: assignment.providerName,
+        uploadedByUserId: staff.userId,
+        uploadedByUserName: staff.fullName,
+        fileUrl: origin + (isPdfUpload ? '/fixture/inspection-note.pdf' : '/fixture/evidence.png'),
+        fileType: isPdfUpload ? 'application/pdf' : 'image/png',
+        description: multipartDescription || (assignmentId === 504 ? 'Ảnh nắp hố ga mới sau xử lý lại.' : 'Ảnh kiểm tra miệng thu nước sau vệ sinh (dữ liệu kiểm thử).'),
+        receivedAt: '2026-09-01T04:30:00Z',
+      });
       completionDocuments.set(assignmentId, documents); assignment.completionDocumentCount = documents.length;
       return route.fulfill({ status: 200, json: documents });
     }
@@ -322,6 +344,7 @@ await context.route('**/api/**', async (route) => {
   return route.fulfill({ status: 200, json: data });
 });
 await context.route('**/fixture/evidence.png', async (route) => route.fulfill({ status: 200, contentType: 'image/png', body: await readFile(new URL('../assets/icon.png', import.meta.url)) }));
+await context.route('**/fixture/inspection-note.pdf', async (route) => route.fulfill({ status: 200, contentType: 'application/pdf', body: Buffer.from('%PDF-1.4\n% UrbanMind staff validation fixture\n%%EOF\n') }));
 
 async function settle() {
   await page.evaluate(async () => {
@@ -698,6 +721,25 @@ try {
   assert.equal(completionDocuments.get(501).length, 1);
   await scrollCapture('39-evidence-uploaded', 'Minh chứng đã tải lên', 'Minh chứng & kết quả', 4);
 
+  const documentChooserPromise = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Chọn tài liệu PDF', exact: true }).click();
+  const documentChooser = await documentChooserPromise;
+  await documentChooser.setFiles({
+    name: 'bien-ban-nghiem-thu.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n% UrbanMind staff browser fixture\n%%EOF\n'),
+  });
+  await page.getByLabel('Mô tả minh chứng', { exact: true }).fill('Biên bản nghiệm thu dạng PDF sau xử lý.');
+  await page.getByText('Tài liệu PDF', { exact: true }).waitFor();
+  await scrollCapture('39-evidence-pdf-selected', 'Tài liệu PDF được chọn', 'Minh chứng & kết quả', 3);
+  const pdfUploadResponse = page.waitForResponse((response) => response.request().method() === 'POST' && /\/api\/management\/provider-assignments\/501\/completion-documents$/.test(new URL(response.url()).pathname));
+  await page.getByRole('button', { name: 'Tải minh chứng lên', exact: true }).click();
+  await pdfUploadResponse;
+  await page.getByText('Biên bản nghiệm thu dạng PDF sau xử lý.', { exact: true }).waitFor();
+  assert.equal(completionDocuments.get(501).length, 2, 'Evidence upload supports both an image and a PDF document');
+  assert.equal(completionDocuments.get(501)[1].fileType, 'application/pdf');
+  await scrollCapture('39-evidence-pdf-uploaded', 'Tài liệu PDF đã tải lên', 'Minh chứng & kết quả', 4);
+
   await page.getByRole('tab', { name: 'Gửi kết quả', exact: true }).click();
   await page.getByLabel('Tóm tắt kết quả', { exact: true }).fill('Đã vệ sinh miệng thu nước và khôi phục thoát nước tại đường số 8.');
   await page.getByLabel('Công việc đã thực hiện', { exact: true }).fill('Thu gom rác, thông tắc và thử dòng chảy tại hai miệng thu.');
@@ -716,6 +758,9 @@ try {
   await page.getByRole('tab', { name: 'Đã gửi', exact: true }).click();
   await page.getByText('Đã vệ sinh miệng thu nước và khôi phục thoát nước tại đường số 8.', { exact: true }).waitFor();
   assert.equal(submittedResolutions.get(workingIncident.incidentId)[0].providerAssignmentId, 501);
+  const workingResolutionWrite = executionWrites.find((item) => item.path === '/api/management/incidents/' + workingIncident.incidentId + '/resolutions' && item.payload);
+  assert.equal(workingResolutionWrite.payload.imageUrls.length, 1, 'Resolution imageUrls excludes uploaded PDF documents');
+  assert.match(workingResolutionWrite.payload.imageUrls[0], /\/fixture\/evidence\.png$/);
   assert.equal(workingIncident.status, 'SubmittedForApproval');
   await scrollCapture('43-resolution-history', 'Lịch sử kết quả đã gửi', 'Minh chứng & kết quả', 4);
   await page.getByRole('tab', { name: 'Gửi kết quả', exact: true }).click();
