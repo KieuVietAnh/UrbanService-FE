@@ -34,6 +34,21 @@ export function useStaffIncidentDetail(incidentId) {
     setRequestVersion((current) => current + 1);
   }, []);
 
+  const updateIncident = useCallback((nextIncident) => {
+    const nextIncidentId = String(nextIncident?.incidentId ?? '').trim();
+    if (
+      !nextIncident
+      || !nextIncidentId
+      || nextIncidentId.toLowerCase() !== normalizedIncidentId.toLowerCase()
+    ) {
+      return false;
+    }
+
+    setIncident(nextIncident);
+    setState(STAFF_INCIDENT_DETAIL_STATE.READY);
+    return true;
+  }, [normalizedIncidentId]);
+
   useEffect(() => {
     activeRequestRef.current?.abort();
 
@@ -86,5 +101,6 @@ export function useStaffIncidentDetail(incidentId) {
     queryKey: staffIncidentDetailQueryKey(normalizedIncidentId),
     retry,
     state,
+    updateIncident,
   };
 }

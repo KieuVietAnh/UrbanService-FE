@@ -525,7 +525,13 @@ function ResolutionPlaceholderPanel() {
 export default function StaffIncidentDetailPage() {
   const { incidentId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { capability, incident, retry, state } = useStaffIncidentDetail(incidentId);
+  const {
+    capability,
+    incident,
+    retry,
+    state,
+    updateIncident,
+  } = useStaffIncidentDetail(incidentId);
   const requestedTab = searchParams.get('tab');
   const activeTab = useMemo(
     () => TAB_ITEMS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview',
@@ -617,7 +623,10 @@ export default function StaffIncidentDetailPage() {
         <StaffIncidentTimelinePanel incidentId={incident?.incidentId || incidentId} />
       ) : null}
       {activeTab === 'processing' ? (
-        <StaffIncidentProcessingPanel incident={incident} />
+        <StaffIncidentProcessingPanel
+          incident={incident}
+          onIncidentUpdated={updateIncident}
+        />
       ) : null}
       {activeTab === 'resolution' ? <ResolutionPlaceholderPanel /> : null}
     </article>
