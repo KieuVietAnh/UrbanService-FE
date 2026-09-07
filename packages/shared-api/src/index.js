@@ -24,6 +24,7 @@ export {
   setRefreshTokenStorage,
   setApiBaseUrl,
   setUnauthorizedHandler,
+  setAuthSessionRefreshedHandler,
   refreshAuthSession,
 } from './axiosClient.js';
 export {

@@ -53,10 +53,46 @@ const buildUser = (rawResponse: unknown): User => {
     email: (userPayload.email ?? data.email ?? '') as string,
     role: getInternalRole((userPayload.role ?? data.role ?? 'service-user') as string),
     token: (token || '') as string,
-    fullName: (userPayload.fullName ?? data.fullName ?? '') as string,
+    fullName: (userPayload.name ?? userPayload.fullName ?? data.name ?? data.fullName ?? '') as string,
     isVerified: Boolean(userPayload.isVerified ?? data.isVerified ?? false),
     phone: (userPayload.phone ?? data.phone ?? '') as string,
     avatarUrl: (userPayload.avatarUrl ?? data.avatarUrl ?? null) as string | null,
+  };
+};
+
+const persistAuthenticatedSession = async (response: unknown, user: User): Promise<User> => {
+  const refreshToken = extractRefreshToken(response);
+  if (!user.token || !refreshToken) {
+    await clearAuthTokens();
+    throw new Error('Máy chủ không trả về phiên đăng nhập hợp lệ. Vui lòng thử lại.');
+  }
+
+  try {
+    await Promise.all([
+      setAuthToken(user.token),
+      setAuthRefreshToken(refreshToken),
+    ]);
+  } catch (error) {
+    await clearAuthTokens();
+    throw error;
+  }
+
+  return user;
+};
+
+export const mergeRefreshedAuthUser = (currentUser: User, response: unknown): User => {
+  const refreshedUser = buildUser(response);
+  if (!refreshedUser.id || refreshedUser.id !== currentUser.id || !refreshedUser.token) {
+    throw new Error('Phiên làm mới không khớp với tài khoản hiện tại.');
+  }
+  return {
+    ...currentUser,
+    id: refreshedUser.id,
+    email: refreshedUser.email || currentUser.email,
+    fullName: refreshedUser.fullName || currentUser.fullName,
+    role: refreshedUser.role,
+    isVerified: refreshedUser.isVerified,
+    token: refreshedUser.token,
   };
 };
 
@@ -80,17 +116,7 @@ export class AuthService {
   static async login(email: string, password: string): Promise<User> {
     const response = await authApi.login(email, password);
     const user = buildUser(response);
-    const refreshToken = extractRefreshToken(response);
-
-    if (user.token) {
-      await setAuthToken(user.token);
-    }
-
-    if (refreshToken) {
-      await setAuthRefreshToken(refreshToken);
-    }
-
-    return user;
+    return persistAuthenticatedSession(response, user);
   }
 
   static async register(payload: {
@@ -106,33 +132,13 @@ export class AuthService {
       payload.phone.trim()
     );
     const user = buildUser(response);
-    const refreshToken = extractRefreshToken(response);
-
-    if (user.token) {
-      await setAuthToken(user.token);
-    }
-
-    if (refreshToken) {
-      await setAuthRefreshToken(refreshToken);
-    }
-
-    return user;
+    return persistAuthenticatedSession(response, user);
   }
 
   static async googleLogin(idToken: string): Promise<User> {
     const response = await authApi.googleLogin(idToken);
     const user = buildUser(response);
-    const refreshToken = extractRefreshToken(response);
-
-    if (user.token) {
-      await setAuthToken(user.token);
-    }
-
-    if (refreshToken) {
-      await setAuthRefreshToken(refreshToken);
-    }
-
-    return user;
+    return persistAuthenticatedSession(response, user);
   }
 
   static async sendOtp(): Promise<void> {

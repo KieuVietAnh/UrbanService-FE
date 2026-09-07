@@ -381,22 +381,62 @@
   },
   {
     "file": "38-evidence-retry-01.png",
-    "title": "Tải ảnh lỗi · Giữ ảnh và mô tả · phần 1/2",
+    "title": "Tải ảnh lỗi · Giữ ảnh và mô tả · phần 1/3",
     "group": "Trạng thái xử lý"
   },
   {
     "file": "38-evidence-retry-02.png",
-    "title": "Tải ảnh lỗi · Giữ ảnh và mô tả · phần 2/2",
+    "title": "Tải ảnh lỗi · Giữ ảnh và mô tả · phần 2/3",
+    "group": "Trạng thái xử lý"
+  },
+  {
+    "file": "38-evidence-retry-03.png",
+    "title": "Tải ảnh lỗi · Giữ ảnh và mô tả · phần 3/3",
     "group": "Trạng thái xử lý"
   },
   {
     "file": "39-evidence-uploaded-01.png",
-    "title": "Minh chứng đã tải lên · phần 1/2",
+    "title": "Minh chứng đã tải lên · phần 1/3",
     "group": "Minh chứng & kết quả"
   },
   {
     "file": "39-evidence-uploaded-02.png",
-    "title": "Minh chứng đã tải lên · phần 2/2",
+    "title": "Minh chứng đã tải lên · phần 2/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "39-evidence-uploaded-03.png",
+    "title": "Minh chứng đã tải lên · phần 3/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "39-evidence-pdf-selected-01.png",
+    "title": "Tài liệu PDF được chọn · phần 1/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "39-evidence-pdf-selected-02.png",
+    "title": "Tài liệu PDF được chọn · phần 2/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "39-evidence-pdf-selected-03.png",
+    "title": "Tài liệu PDF được chọn · phần 3/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "39-evidence-pdf-uploaded-01.png",
+    "title": "Tài liệu PDF đã tải lên · phần 1/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "39-evidence-pdf-uploaded-02.png",
+    "title": "Tài liệu PDF đã tải lên · phần 2/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "39-evidence-pdf-uploaded-03.png",
+    "title": "Tài liệu PDF đã tải lên · phần 3/3",
     "group": "Minh chứng & kết quả"
   },
   {
@@ -431,18 +471,103 @@
   },
   {
     "file": "43-resolution-history-01.png",
-    "title": "Lịch sử kết quả đã gửi · phần 1/2",
+    "title": "Lịch sử kết quả đã gửi · phần 1/3",
     "group": "Minh chứng & kết quả"
   },
   {
     "file": "43-resolution-history-02.png",
-    "title": "Lịch sử kết quả đã gửi · phần 2/2",
+    "title": "Lịch sử kết quả đã gửi · phần 2/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "43-resolution-history-03.png",
+    "title": "Lịch sử kết quả đã gửi · phần 3/3",
     "group": "Minh chứng & kết quả"
   },
   {
     "file": "44-resolution-waiting-01.png",
     "title": "Kết quả chờ duyệt · Chỉ đọc",
     "group": "Trạng thái xử lý"
+  },
+  {
+    "file": "47-rework-history-prior-01.png",
+    "title": "Xử lý lại · Lịch sử và minh chứng cũ · phần 1/2",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-history-prior-02.png",
+    "title": "Xử lý lại · Lịch sử và minh chứng cũ · phần 2/2",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-old-01.png",
+    "title": "Xử lý lại · Minh chứng cũ hiện hành · phần 1/2",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-old-02.png",
+    "title": "Xử lý lại · Minh chứng cũ hiện hành · phần 2/2",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-clear-confirm-01.png",
+    "title": "Xử lý lại · Xác nhận xóa toàn bộ minh chứng cũ · phần 1/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-clear-confirm-02.png",
+    "title": "Xử lý lại · Xác nhận xóa toàn bộ minh chứng cũ · phần 2/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-clear-confirm-03.png",
+    "title": "Xử lý lại · Xác nhận xóa toàn bộ minh chứng cũ · phần 3/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-clear-error-01.png",
+    "title": "Xóa minh chứng lỗi · Giữ ảnh và biểu mẫu · phần 1/3",
+    "group": "Trạng thái xử lý"
+  },
+  {
+    "file": "47-rework-evidence-clear-error-02.png",
+    "title": "Xóa minh chứng lỗi · Giữ ảnh và biểu mẫu · phần 2/3",
+    "group": "Trạng thái xử lý"
+  },
+  {
+    "file": "47-rework-evidence-clear-error-03.png",
+    "title": "Xóa minh chứng lỗi · Giữ ảnh và biểu mẫu · phần 3/3",
+    "group": "Trạng thái xử lý"
+  },
+  {
+    "file": "47-rework-evidence-cleared-01.png",
+    "title": "Đã xóa minh chứng cũ · Nội dung cục bộ còn nguyên · phần 1/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-cleared-02.png",
+    "title": "Đã xóa minh chứng cũ · Nội dung cục bộ còn nguyên · phần 2/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-cleared-03.png",
+    "title": "Đã xóa minh chứng cũ · Nội dung cục bộ còn nguyên · phần 3/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-replacement-01.png",
+    "title": "Xử lý lại · Minh chứng mới đã tải · phần 1/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-replacement-02.png",
+    "title": "Xử lý lại · Minh chứng mới đã tải · phần 2/3",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-rework-evidence-replacement-03.png",
+    "title": "Xử lý lại · Minh chứng mới đã tải · phần 3/3",
+    "group": "Minh chứng & kết quả"
   },
   {
     "file": "47-resolution-rework-form-01.png",
@@ -466,12 +591,22 @@
   },
   {
     "file": "47-resolution-rework-history-01.png",
-    "title": "Đã gửi lại · Giữ đủ lịch sử kết quả · phần 1/2",
+    "title": "Đã gửi lại · Giữ đủ lịch sử kết quả · phần 1/4",
     "group": "Minh chứng & kết quả"
   },
   {
     "file": "47-resolution-rework-history-02.png",
-    "title": "Đã gửi lại · Giữ đủ lịch sử kết quả · phần 2/2",
+    "title": "Đã gửi lại · Giữ đủ lịch sử kết quả · phần 2/4",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-resolution-rework-history-03.png",
+    "title": "Đã gửi lại · Giữ đủ lịch sử kết quả · phần 3/4",
+    "group": "Minh chứng & kết quả"
+  },
+  {
+    "file": "47-resolution-rework-history-04.png",
+    "title": "Đã gửi lại · Giữ đủ lịch sử kết quả · phần 4/4",
     "group": "Minh chứng & kết quả"
   },
   {
@@ -506,22 +641,7 @@
   },
   {
     "file": "25-account-01.png",
-    "title": "Tài khoản nhân viên",
-    "group": "Tài khoản"
-  },
-  {
-    "file": "26-account-edit-01.png",
-    "title": "Chỉnh sửa thông tin cá nhân · phần 1/2",
-    "group": "Tài khoản"
-  },
-  {
-    "file": "26-account-edit-02.png",
-    "title": "Chỉnh sửa thông tin cá nhân · phần 2/2",
-    "group": "Tài khoản"
-  },
-  {
-    "file": "27-account-saved.png",
-    "title": "Đã lưu thông tin cá nhân",
+    "title": "Tài khoản Staff · Thông tin phiên chỉ đọc",
     "group": "Tài khoản"
   },
   {

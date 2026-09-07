@@ -26,15 +26,17 @@ resolver.deregister();
 
 test('mobile entry supports staff and resident, denying unsupported or missing roles', () => {
   assert.equal(getMobileEntry(null), '/(auth)/login');
-  for (const role of ['SYSTEMSTAFF', 'SystemStaff', 'system-staff']) assert.equal(getMobileEntry({ role }), '/(staff)/staff');
-  assert.equal(getMobileEntry({ role: 'ServiceUser' }), '/(resident)');
+  for (const role of ['SYSTEMSTAFF', 'SystemStaff', 'system-staff']) assert.equal(getMobileEntry({ role, isVerified: true }), '/(staff)/staff');
+  assert.equal(getMobileEntry({ role: 'ServiceUser', isVerified: true }), '/(resident)');
+  assert.equal(getMobileEntry({ role: 'SystemStaff' }), '/(auth)/verify-email');
+  assert.equal(getMobileEntry({ role: 'ServiceUser' }), '/(auth)/verify-email');
   for (const role of ['administrator', 'interaction-manager', 'service-provider', '', 'unknown']) assert.equal(getMobileEntry({ role }), '/unsupported-role');
   assert.equal(getMobileEntry({ role: 'SystemStaff', isVerified: false }), '/(auth)/verify-email');
 });
 
 test('deep links cannot cross resident/staff boundaries or bypass verification', () => {
-  const staff = { role: APP_ROLES.SYSTEM_STAFF };
-  const resident = { role: APP_ROLES.SERVICE_USER };
+  const staff = { role: APP_ROLES.SYSTEM_STAFF, isVerified: true };
+  const resident = { role: APP_ROLES.SERVICE_USER, isVerified: true };
   assert.equal(getMobileRedirect(staff, ['(resident)', 'tickets']), '/(staff)/staff');
   assert.equal(getMobileRedirect(resident, ['(staff)', 'staff']), '/(resident)');
   assert.equal(getMobileRedirect(null, ['(staff)', 'staff']), '/(auth)/login');
@@ -44,6 +46,7 @@ test('deep links cannot cross resident/staff boundaries or bypass verification',
   assert.equal(getMobileRedirect({ ...staff, isVerified: false }, ['(auth)', 'otp']), null);
   assert.equal(canAccessMobileWorkspace(staff, APP_ROLES.SERVICE_USER), false);
   assert.equal(canAccessMobileWorkspace({ ...staff, isVerified: false }, APP_ROLES.SYSTEM_STAFF), false);
+  assert.equal(canAccessMobileWorkspace({ role: APP_ROLES.SYSTEM_STAFF }, APP_ROLES.SYSTEM_STAFF), false);
   assert.equal(canAccessMobileWorkspace(staff, APP_ROLES.SYSTEM_STAFF), true);
 });
 
@@ -198,6 +201,25 @@ test('204 email verification preserves the authenticated Staff identity instead 
   assert.match(storeSource, /const requestUser = get\(\)\.user/);
   assert.match(storeSource, /activeUser\.id !== requestUser\.id/);
   assert.match(storeSource, /\{ \.\.\.activeUser, isVerified: true \}/);
+});
+
+test('authentication fails closed for incomplete tokens, refreshes session claims, sends initial OTP, and keeps login email-only', () => {
+  const serviceSource = readFileSync(new URL('../src/features/auth/auth.service.ts', import.meta.url), 'utf8');
+  const apiConfigSource = readFileSync(new URL('../src/config/api.ts', import.meta.url), 'utf8');
+  const sharedClientSource = readFileSync(new URL('../../../packages/shared-api/src/axiosClient.js', import.meta.url), 'utf8');
+  const loginSource = readFileSync(new URL('../app/(auth)/login.tsx', import.meta.url), 'utf8');
+  const otpSource = readFileSync(new URL('../app/(auth)/otp.tsx', import.meta.url), 'utf8');
+
+  assert.match(serviceSource, /if \(!user\.token \|\| !refreshToken\)[\s\S]*await clearAuthTokens\(\)/);
+  assert.match(serviceSource, /Promise\.all\([\s\S]*setAuthToken\(user\.token\)[\s\S]*setAuthRefreshToken\(refreshToken\)/);
+  assert.match(serviceSource, /userPayload\.name[\s\S]*userPayload\.fullName/);
+  assert.match(apiConfigSource, /setAuthSessionRefreshedHandler[\s\S]*mergeRefreshedAuthUser[\s\S]*setUser\(refreshedUser\)/);
+  assert.match(sharedClientSource, /await authSessionRefreshedHandler\?\.\(response\?\.data\)/);
+  assert.equal(/Email hoặc Số điện thoại|email hoặc số điện thoại/i.test(loginSource), false);
+  assert.match(loginSource, /label="Email"/);
+  assert.match(otpSource, /initialSendStartedRef\.current = true/);
+  assert.match(otpSource, /void sendOtp\(\)\.then/);
+  assert.match(otpSource, /sendState === 'sent'/);
 });
 
 test('incident query is always scoped to the signed-in staff and fails closed without ID', async () => {
@@ -561,6 +583,15 @@ test('Staff tabs keep all five destinations visible through 200% text on Android
   const cutout = getStaffTabLayout({ width: 844, fontScale: 2, insets: { top: 0, left: 44, right: 44, bottom: 24 } });
   assert.equal(cutout.viewportWidth, 756);
   assert.equal(cutout.height, cutout.controlHeight + 24);
+});
+
+test('Staff tabs delegate native horizontal distribution to React Navigation', () => {
+  const source = readFileSync(new URL('../app/(staff)/staff/(tabs)/_layout.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /\btabBar\s*=\s*\{/, 'A custom horizontal wrapper previously collapsed tab hitboxes on Android');
+  assert.match(source, /tabBarLabel:\s*\(\{\s*color\s*\}\)\s*=>\s*<Text/);
+  assert.match(source, /maxFontSizeMultiplier=\{layout\.labelFontScale\}/);
+  assert.match(source, /tabBarHideOnKeyboard:\s*true/);
+  assert.match(source, /minWidth:\s*48/);
 });
 
 test('Staff text line boxes follow accessibility scale while fixed chrome is capped', () => {

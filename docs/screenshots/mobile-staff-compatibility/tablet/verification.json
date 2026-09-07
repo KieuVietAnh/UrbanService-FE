@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T05:53:42.111Z",
+  "generatedAt": "2026-09-07T09:18:24.647Z",
   "fixtureBacked": true,
   "fullFunctionalFlow": true,
   "profile": {
@@ -24,8 +24,8 @@
     "width": 800,
     "height": 1280
   },
-  "screenshots": 20,
-  "requests": 270,
+  "screenshots": 19,
+  "requests": 316,
   "geometryChecks": [
     {
       "screen": "01-home-01.png",
@@ -481,7 +481,7 @@
       "screen": "36-evidence-empty-01.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 8,
+      "visibleControls": 9,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -499,7 +499,7 @@
       "screen": "37-evidence-selected-02.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 8,
+      "visibleControls": 9,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -508,7 +508,7 @@
       "screen": "38-evidence-retry-01.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 8,
+      "visibleControls": 9,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -517,7 +517,7 @@
       "screen": "38-evidence-retry-02.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 8,
+      "visibleControls": 6,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -526,7 +526,7 @@
       "screen": "39-evidence-uploaded-01.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 8,
+      "visibleControls": 9,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -535,7 +535,43 @@
       "screen": "39-evidence-uploaded-02.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 8,
+      "visibleControls": 6,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "39-evidence-pdf-selected-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 10,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "39-evidence-pdf-selected-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 7,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "39-evidence-pdf-uploaded-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 9,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "39-evidence-pdf-uploaded-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 7,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -580,7 +616,7 @@
       "screen": "43-resolution-history-02.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 5,
+      "visibleControls": 3,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -590,6 +626,123 @@
       "documentWidth": 800,
       "viewportWidth": 800,
       "visibleControls": 5,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-history-prior-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 6,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-history-prior-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 6,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-old-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 9,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-old-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 7,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-clear-confirm-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 9,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-clear-confirm-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 6,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-clear-confirm-03.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 7,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-clear-error-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 9,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-clear-error-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 6,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-cleared-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 9,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-cleared-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 6,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-replacement-01.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 9,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-rework-evidence-replacement-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 7,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -617,6 +770,24 @@
       "documentWidth": 800,
       "viewportWidth": 800,
       "visibleControls": 5,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-resolution-rework-history-02.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 2,
+      "clippedControls": [],
+      "verticallyClippedControls": [],
+      "clippedTabText": []
+    },
+    {
+      "screen": "47-resolution-rework-history-03.png",
+      "documentWidth": 800,
+      "viewportWidth": 800,
+      "visibleControls": 3,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -670,25 +841,7 @@
       "screen": "25-account-01.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 8,
-      "clippedControls": [],
-      "verticallyClippedControls": [],
-      "clippedTabText": []
-    },
-    {
-      "screen": "26-account-edit-01.png",
-      "documentWidth": 800,
-      "viewportWidth": 800,
-      "visibleControls": 11,
-      "clippedControls": [],
-      "verticallyClippedControls": [],
-      "clippedTabText": []
-    },
-    {
-      "screen": "27-account-saved.png",
-      "documentWidth": 800,
-      "viewportWidth": 800,
-      "visibleControls": 8,
+      "visibleControls": 7,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []
@@ -697,7 +850,7 @@
       "screen": "28-account-logout-01.png",
       "documentWidth": 800,
       "viewportWidth": 800,
-      "visibleControls": 9,
+      "visibleControls": 8,
       "clippedControls": [],
       "verticallyClippedControls": [],
       "clippedTabText": []

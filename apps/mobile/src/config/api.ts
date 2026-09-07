@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import {
   setApiBaseUrl,
+  setAuthSessionRefreshedHandler,
+  clearAuthTokens,
   setUnauthorizedHandler,
   setTokenStorage,
   setRefreshTokenStorage,
@@ -8,6 +10,7 @@ import {
 import { AsyncStorageService } from '@/services/storage/asyncStorage';
 import { queryClient } from '@/config/query-client';
 import { useAuthStore } from '@/features/auth/auth.store';
+import { mergeRefreshedAuthUser } from '@/features/auth/auth.service';
 
 let isInitialized = false;
 
@@ -57,6 +60,23 @@ export const initApi = () => {
     queryClient.clear();
     useAuthStore.getState().setUser(null);
     useAuthStore.getState().clearError();
+  });
+
+  setAuthSessionRefreshedHandler(async (response: unknown) => {
+    try {
+      const currentUser = useAuthStore.getState().user;
+      if (!currentUser) throw new Error('Không còn phiên người dùng để làm mới.');
+      const refreshedUser = mergeRefreshedAuthUser(currentUser, response);
+      if (refreshedUser.role !== currentUser.role || refreshedUser.isVerified !== currentUser.isVerified) {
+        queryClient.clear();
+      }
+      useAuthStore.getState().setUser(refreshedUser);
+    } catch (error) {
+      await clearAuthTokens();
+      queryClient.clear();
+      useAuthStore.getState().setUser(null);
+      throw error;
+    }
   });
 
   isInitialized = true;

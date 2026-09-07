@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Pressable,
@@ -29,7 +29,31 @@ export default function VerifyEmailScreen() {
 
   const [otp, setOtp] = useState('');
   const [hasError, setHasError] = useState(false);
-  const [countdown, setCountdown] = useState(RESEND_COOLDOWN_SECONDS);
+  const [countdown, setCountdown] = useState(0);
+  const [sendState, setSendState] = useState<'sending' | 'sent' | 'error'>('sending');
+  const initialSendStartedRef = useRef(false);
+  const toastRef = useRef(toast);
+
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
+
+  useEffect(() => {
+    if (!user || initialSendStartedRef.current) return;
+    initialSendStartedRef.current = true;
+    let active = true;
+    void sendOtp().then(() => {
+      if (!active) return;
+      setSendState('sent');
+      setCountdown(RESEND_COOLDOWN_SECONDS);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setSendState('error');
+      const message = error instanceof Error ? error.message : 'Không thể gửi mã OTP. Vui lòng thử lại.';
+      toastRef.current.error(message);
+    });
+    return () => { active = false; };
+  }, [sendOtp, user?.id]);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -56,14 +80,17 @@ export default function VerifyEmailScreen() {
   };
 
   const handleResend = async () => {
-    if (countdown > 0) return;
+    if (countdown > 0 || sendState === 'sending') return;
+    setSendState('sending');
     try {
       await sendOtp();
+      setSendState('sent');
       setCountdown(RESEND_COOLDOWN_SECONDS);
       setOtp('');
       setHasError(false);
       toast.success('Đã gửi lại mã OTP đến Email của bạn');
     } catch (error: unknown) {
+      setSendState('error');
       const message = error instanceof Error ? error.message : 'Không thể gửi lại mã OTP. Vui lòng thử lại sau.';
       toast.error(message);
     }
@@ -103,7 +130,7 @@ export default function VerifyEmailScreen() {
         <View style={styles.infoCard}>
           <Text style={styles.title}>Kiểm tra hòm thư Email</Text>
           <Text style={styles.subtitle}>
-            Chúng tôi đã gửi mã xác thực OTP 6 chữ số đến địa chỉ:{'\n'}
+            {sendState === 'sent' ? 'Mã xác thực OTP 6 chữ số đã được gửi đến địa chỉ:' : sendState === 'sending' ? 'Đang gửi mã xác thực OTP đến địa chỉ:' : 'Chưa gửi được mã OTP. Hãy thử gửi lại cho địa chỉ:'}{'\n'}
             <Text style={styles.emailText}>{userEmail}</Text>
           </Text>
         </View>
@@ -114,14 +141,16 @@ export default function VerifyEmailScreen() {
 
         <Pressable
           onPress={handleResend}
-          disabled={countdown > 0}
+          disabled={countdown > 0 || sendState === 'sending'}
           style={styles.resendBtn}
           hitSlop={8}
         >
           <Text style={[styles.resendText, countdown > 0 && styles.resendDisabled]}>
-            {countdown > 0
+            {sendState === 'sending'
+              ? 'Đang gửi mã OTP…'
+              : countdown > 0
               ? `Gửi lại mã OTP sau ${countdown}s`
-              : 'Chưa nhận được mã? Gửi lại OTP'}
+              : sendState === 'error' ? 'Thử gửi lại mã OTP' : 'Chưa nhận được mã? Gửi lại OTP'}
           </Text>
         </Pressable>
 

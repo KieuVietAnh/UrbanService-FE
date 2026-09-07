@@ -53,6 +53,8 @@ android/
 ios/
 /.cxx-staff-validation/
 /.x/
+/.native/
+docs/screenshots/mobile-staff-native/*.xml
 
 # Metro bundler
 .metro-health-check*

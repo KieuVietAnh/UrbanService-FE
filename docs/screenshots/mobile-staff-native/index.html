@@ -35,7 +35,7 @@
         <div class="eyebrow">UrbanMind / Staff mobile</div>
         <h1>Bằng chứng chạy native trên Android</h1>
         <p>Ảnh chụp trực tiếp từ APK kiểm định cục bộ trên Pixel 5 emulator, Android 16 / API 36, 1080 × 2340, density 440. Dữ liệu là fixture cô lập.</p>
-        <p class="note">Bộ nghiệm thu gọn này giữ các trạng thái cuối của luồng Staff và các stress case native quan trọng: font hệ thống 200%, cửa sổ hẹp, chat với Gboard, bắt đầu xử lý, SLA theo Report, gửi lại kết quả sau NeedRework và hai kiểu thanh điều hướng Android.</p>
+        <p class="note">Bộ nghiệm thu này giữ các trạng thái cuối của luồng Staff và các stress case native quan trọng: font hệ thống 200%, cửa sổ hẹp, chat với Gboard, account read-only, minh chứng NeedRework và hai kiểu thanh điều hướng Android. Ảnh dashboard cuối xác nhận năm tab cùng hitbox giãn đều toàn viewport.</p>
       </header>
       <div class="evidence-group">
         <h2>Dashboard và system bars</h2>
@@ -49,11 +49,11 @@
             <figcaption>Dashboard · điều hướng 3 nút<small>Bottom inset thích ứng, nội dung không bị system bar che</small></figcaption>
           </figure>
           <figure>
-            <div class="phone"><img src="final-home-font-2-three-button.png" alt="Dashboard Staff với font hệ thống 200 phần trăm và điều hướng ba nút" /></div>
-            <figcaption>Font 200% · điều hướng 3 nút<small>Nội dung tăng line-height, năm tab vẫn hiện đủ và vùng chạm không bị che</small></figcaption>
+            <div class="phone"><img src="final-home-font-200.png" alt="Dashboard Staff với font hệ thống 200 phần trăm" /></div>
+            <figcaption>Font hệ thống 200%<small>Nội dung reflow và cuộn; năm tab tối đa hai dòng, vẫn truy cập đủ</small></figcaption>
           </figure>
           <figure>
-            <div class="phone"><img src="final-home-narrow-gesture.png" alt="Dashboard Staff trong cửa sổ Android hẹp với điều hướng vuốt" /></div>
+            <div class="phone"><img src="final-home-narrow.png" alt="Dashboard Staff trong cửa sổ Android hẹp với điều hướng vuốt" /></div>
             <figcaption>Cửa sổ hẹp · gesture navigation<small>720 × 1280; năm tab co về đúng viewport và nội dung tiếp tục cuộn dọc</small></figcaption>
           </figure>
         </section>
@@ -63,16 +63,34 @@
         <h2>Trao đổi và bàn phím</h2>
         <section>
           <figure>
-            <div class="phone"><img src="final-chat-list-three-button.png" alt="Danh sách trao đổi Staff trên Android với điều hướng ba nút" /></div>
-            <figcaption>Danh sách trao đổi<small>Bộ lọc ngang cuộn độc lập; năm tab và system bar không chồng lấn nội dung</small></figcaption>
-          </figure>
-          <figure>
-            <div class="phone"><img src="final-chat-detail-three-button.png" alt="Chi tiết trao đổi Report trên Android" /></div>
+            <div class="phone"><img src="final-chat.png" alt="Chi tiết trao đổi Report trên Android" /></div>
             <figcaption>Chi tiết trao đổi<small>Composer cố định, vùng nội dung cuộn và nút quay lại native đều hiển thị đúng</small></figcaption>
           </figure>
           <figure>
-            <div class="phone"><img src="final-chat-keyboard-three-button.png" alt="Composer trao đổi khi Gboard mở trên Android" /></div>
+            <div class="phone"><img src="final-chat-ime-three-button.png" alt="Composer trao đổi khi Gboard mở trên Android" /></div>
             <figcaption>Gboard mở · adjustResize<small>Ô đang focus và nút gửi giữ nguyên chiều rộng, nằm trọn phía trên IME</small></figcaption>
+          </figure>
+        </section>
+      </div>
+
+      <div class="evidence-group">
+        <h2>Tài khoản và minh chứng NeedRework</h2>
+        <section>
+          <figure>
+            <div class="phone"><img src="final-account-read-only.png" alt="Tài khoản Staff chỉ đọc theo Swagger" /></div>
+            <figcaption>Tài khoản Staff · read-only<small>Danh tính và phiên đăng nhập; không gửi mutation profile ServiceUser</small></figcaption>
+          </figure>
+          <figure>
+            <div class="phone"><img src="final-needrework-evidence.png" alt="Màn ảnh và PDF minh chứng NeedRework" /></div>
+            <figcaption>Ảnh và PDF<small>Upload vào đúng provider assignment của Incident</small></figcaption>
+          </figure>
+          <figure>
+            <div class="phone"><img src="final-needrework-evidence-existing.png" alt="Minh chứng cũ của Incident NeedRework" /></div>
+            <figcaption>Minh chứng cũ<small>Chỉ NeedRework của Staff hiện tại mới có thao tác xóa toàn bộ</small></figcaption>
+          </figure>
+          <figure>
+            <div class="phone"><img src="final-needrework-clear-confirm-actions.png" alt="Xác nhận hoặc giữ lại minh chứng cũ" /></div>
+            <figcaption>Xác nhận xóa toàn bộ<small>Cảnh báo không hoàn tác; nút xác nhận và giữ lại đều tiếp cận được</small></figcaption>
           </figure>
         </section>
       </div>
