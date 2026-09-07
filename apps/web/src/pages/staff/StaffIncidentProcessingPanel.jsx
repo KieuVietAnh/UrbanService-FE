@@ -1,6 +1,7 @@
+import { useCallback, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { getStatusIntent } from '@urbanmind/shared-types';
-import { INCIDENT_MANAGEMENT_CAPABILITIES } from '@urbanmind/shared-api';
+import { extractApiErrorMessage, incidentManagementApi } from '@urbanmind/shared-api';
 
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
@@ -11,11 +12,22 @@ import {
   formatOperationalDateTime,
   getIncidentStatusLabel,
 } from './incidentDetailPresentation';
+import StaffIncidentActionDialog from './StaffIncidentActionDialog';
+import StaffIncidentProviderSection from './StaffIncidentProviderSection';
 import {
+  canStartIncidentProcessing,
   getIncidentNextActionCopy,
   getIncidentProcessingSteps,
+  getStartProcessingDeniedMessage,
   isAssignedToAnotherStaff,
 } from './staffIncidentProcessing';
+
+const getActionErrorMessage = (error, fallback) => {
+  if (!error?.response && !error?.status && !error?.code && String(error?.message ?? '').trim()) {
+    return String(error.message).trim();
+  }
+  return extractApiErrorMessage(error, fallback);
+};
 
 function ProcessingFact({ icon: Icon, label, value, children }) {
   return (
@@ -34,6 +46,7 @@ function ProcessingFact({ icon: Icon, label, value, children }) {
     </div>
   );
 }
+
 function ProgressStep({ step, index, isLast }) {
   const stateCopy = {
     complete: 'Đã hoàn tất',
@@ -64,67 +77,68 @@ function ProgressStep({ step, index, isLast }) {
   );
 }
 
-function ProviderBlocker({ incident }) {
-  const providerCapability = INCIDENT_MANAGEMENT_CAPABILITIES.providerAssignment;
-
-  return (
-    <section className="admin-panel overflow-hidden" aria-labelledby="incident-provider-title">
-      <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
-          <Lucide.Building2 size={18} />
-        </span>
-        <div className="min-w-0">
-          <h2 id="incident-provider-title" className="admin-section-title">Đơn vị xử lý</h2>
-          <p className="admin-section-description mt-1">Đơn vị phối hợp thực hiện công việc chuyên môn của sự vụ.</p>
-        </div>
-      </header>
-
-      <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:p-6">
-        <article className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Staff phụ trách sự vụ</p>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
-              <Lucide.UserRoundCheck size={18} />
-            </span>
-            <div className="min-w-0">
-              <p className="break-words text-sm font-bold text-slate-950 dark:text-white">
-                {String(incident?.assignedStaffName ?? '').trim() || 'Chưa có dữ liệu Staff phụ trách'}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Điều phối và theo dõi toàn bộ sự vụ</p>
-            </div>
-          </div>
-        </article>
-
-        <article className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-900/70 dark:bg-amber-950/25">
-          <div className="flex items-start gap-3">
-            <Lucide.ServerOff className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" size={19} aria-hidden="true" />
-            <div className="min-w-0">
-              <h3 className="text-sm font-black text-amber-950 dark:text-amber-100">
-                Chưa có API hỗ trợ phân công đơn vị xử lý ở cấp sự vụ
-              </h3>
-              <p className="mt-1.5 text-sm leading-6 text-amber-900/85 dark:text-amber-100/80">
-                Backend hiện vẫn yêu cầu xử lý theo Feedback nhưng chưa cung cấp quy tắc xác định Report đại diện cho Incident.
-              </p>
-              {providerCapability.legacyRequiresFeedbackId ? (
-                <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950/45 dark:text-amber-100 dark:ring-amber-900">
-                  <Lucide.Link2Off size={14} aria-hidden="true" />
-                  Chưa thiết lập đơn vị xử lý
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
-  );
-}
-
-export default function StaffIncidentProcessingPanel({ incident }) {
+export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdated }) {
   const { user } = useAuth();
   const steps = getIncidentProcessingSteps(incident?.status);
   const assignedToAnotherStaff = isAssignedToAnotherStaff(incident, user);
-  const startCapability = INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing;
+  const mayStartProcessing = canStartIncidentProcessing(incident, user);
+  const startCapability = incidentManagementApi.capabilities.staffStartProcessing;
   const isAssigned = String(incident?.status ?? '').replace(/[-_\s]+/g, '').toLowerCase() === 'assigned';
+  const incidentId = String(incident?.incidentId ?? '').trim();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  const closeDialog = useCallback(() => {
+    if (!submitting) setDialogOpen(false);
+  }, [submitting]);
+
+  const startProcessing = async () => {
+    if (!mayStartProcessing || submitting || !incidentId) return;
+
+    setSubmitting(true);
+    setMessage({ type: '', text: '' });
+    try {
+      const latestIncident = await incidentManagementApi.getIncidentById(incidentId);
+      if (!latestIncident) throw new Error('Không tìm thấy sự vụ để bắt đầu xử lý.');
+
+      if (!canStartIncidentProcessing(latestIncident, user)) {
+        onIncidentUpdated?.(latestIncident);
+        throw new Error('Sự vụ không còn được phân công cho bạn hoặc trạng thái đã thay đổi.');
+      }
+
+      const updatedIncident = await incidentManagementApi.startIncidentProcessing(incidentId, {
+        note: 'Staff bắt đầu xử lý sự vụ.',
+      });
+      if (!updatedIncident) throw new Error('Backend không trả về dữ liệu sự vụ sau khi cập nhật.');
+
+      const updated = onIncidentUpdated?.(updatedIncident);
+      if (updated === false) throw new Error('Dữ liệu cập nhật không thuộc sự vụ đang mở.');
+
+      setDialogOpen(false);
+      setMessage({ type: 'success', text: 'Đã bắt đầu xử lý sự vụ.' });
+    } catch (error) {
+      setDialogOpen(false);
+      let errorMessage = getActionErrorMessage(error, 'Không thể bắt đầu xử lý sự vụ.');
+
+      if (Number(error?.status ?? error?.response?.status) === 403) {
+        try {
+          const latestIncident = await incidentManagementApi.getIncidentById(incidentId);
+          if (latestIncident) onIncidentUpdated?.(latestIncident);
+          errorMessage = getStartProcessingDeniedMessage(latestIncident, user);
+        } catch {
+          errorMessage = getStartProcessingDeniedMessage(null, user);
+        }
+      }
+
+      setMessage({
+        type: 'error',
+        text: errorMessage,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div
@@ -156,8 +170,8 @@ export default function StaffIncidentProcessingPanel({ incident }) {
               <Badge intent={getStatusIntent(incident?.status)}>{getIncidentStatusLabel(incident?.status)}</Badge>
             </ProcessingFact>
             <ProcessingFact icon={Lucide.UserRoundCheck} label="Staff phụ trách" value={String(incident?.assignedStaffName ?? '').trim() || 'Chưa có dữ liệu Staff phụ trách'} />
-            <ProcessingFact icon={Lucide.UserCheck} label="Thời gian được phân công" value="Chưa có dữ liệu" />
-            <ProcessingFact icon={Lucide.Play} label="Thời gian bắt đầu xử lý" value="Chưa có dữ liệu" />
+            <ProcessingFact icon={Lucide.UserCheck} label="Thời gian được phân công" value={formatOperationalDateTime(incident?.assignedAt)} />
+            <ProcessingFact icon={Lucide.Play} label="Thời gian bắt đầu xử lý" value={formatOperationalDateTime(incident?.processingStartedAt)} />
             <ProcessingFact icon={Lucide.RefreshCw} label="Cập nhật gần nhất" value={formatOperationalDateTime(incident?.updatedAt)} />
           </div>
 
@@ -170,6 +184,13 @@ export default function StaffIncidentProcessingPanel({ incident }) {
               </div>
             </div>
           </div>
+
+          {message.text ? (
+            <div className={`mt-4 flex items-start gap-3 rounded-2xl border p-4 ${message.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100' : 'border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900 dark:bg-rose-950/25 dark:text-rose-100'}`} role={message.type === 'success' ? 'status' : 'alert'}>
+              {message.type === 'success' ? <Lucide.CircleCheckBig className="mt-0.5 shrink-0" size={18} aria-hidden="true" /> : <Lucide.CircleAlert className="mt-0.5 shrink-0" size={18} aria-hidden="true" />}
+              <p className="text-sm font-semibold leading-6">{message.text}</p>
+            </div>
+          ) : null}
 
           {assignedToAnotherStaff ? (
             <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-950 dark:border-rose-900/70 dark:bg-rose-950/25 dark:text-rose-100" role="status">
@@ -184,15 +205,25 @@ export default function StaffIncidentProcessingPanel({ incident }) {
           {isAssigned ? (
             <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900/70 dark:bg-amber-950/25">
               <div className="flex min-w-0 items-start gap-3">
-                <Lucide.LockKeyhole className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" size={18} aria-hidden="true" />
+                <Lucide.PlayCircle className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" size={19} aria-hidden="true" />
                 <div className="min-w-0">
-                  <h3 className="text-sm font-black text-amber-950 dark:text-amber-100">Chưa thể bắt đầu xử lý trên hệ thống</h3>
+                  <h3 className="text-sm font-black text-amber-950 dark:text-amber-100">
+                    {mayStartProcessing ? 'Sự vụ đã sẵn sàng để xử lý' : 'Chưa thể bắt đầu xử lý sự vụ'}
+                  </h3>
                   <p className="mt-1 text-sm leading-6 text-amber-900/80 dark:text-amber-100/75">
-                    Backend đã có API đổi trạng thái sự vụ nhưng chưa xác nhận quyền chuyển từ Đã phân công sang Đang xử lý cho Staff.
+                    {mayStartProcessing
+                      ? 'Bắt đầu xử lý sẽ chuyển trạng thái sự vụ sang Đang xử lý và ghi nhận thời điểm thực hiện.'
+                      : 'Chỉ Staff đang được phân công mới có thể bắt đầu xử lý sự vụ này.'}
                   </p>
                 </div>
               </div>
-              <Button type="button" size="sm" disabled={!startCapability.available || assignedToAnotherStaff} className="shrink-0 whitespace-nowrap">
+              <Button
+                type="button"
+                size="sm"
+                disabled={!startCapability.available || !mayStartProcessing || submitting}
+                className="shrink-0 whitespace-nowrap"
+                onClick={() => setDialogOpen(true)}
+              >
                 <Lucide.Play size={16} aria-hidden="true" />
                 Bắt đầu xử lý
               </Button>
@@ -227,9 +258,38 @@ export default function StaffIncidentProcessingPanel({ incident }) {
         </div>
       </section>
 
-      <ProviderBlocker incident={incident} />
+      <StaffIncidentProviderSection
+        incident={incident}
+        onIncidentUpdated={onIncidentUpdated}
+        user={user}
+      />
 
-      <p className="sr-only">Mã sự vụ {formatIncidentCode(incident?.incidentId)}</p>
+      <StaffIncidentActionDialog
+        open={dialogOpen}
+        busy={submitting}
+        title="Bắt đầu xử lý sự vụ này?"
+        description="Trạng thái sự vụ sẽ chuyển từ Đã phân công sang Đang xử lý."
+        icon={Lucide.Play}
+        confirmLabel="Xác nhận bắt đầu"
+        onClose={closeDialog}
+        onConfirm={startProcessing}
+      >
+        <dl className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/65">
+          {[
+            ['Sự vụ', incident?.title || formatIncidentCode(incidentId)],
+            ['Mã sự vụ', formatIncidentCode(incidentId)],
+            ['Staff phụ trách', incident?.assignedStaffName || EMPTY_VALUE],
+            ['Trạng thái hiện tại', getIncidentStatusLabel(incident?.status)],
+          ].map(([label, value]) => (
+            <div key={label} className="grid gap-1 sm:grid-cols-[8.5rem_minmax(0,1fr)]">
+              <dt className="font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
+              <dd className="break-words font-bold text-slate-900 dark:text-slate-100">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </StaffIncidentActionDialog>
+
+      <p className="sr-only">Mã sự vụ {formatIncidentCode(incidentId)}</p>
     </div>
   );
 }
