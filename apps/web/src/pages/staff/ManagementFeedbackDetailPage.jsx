@@ -2,90 +2,33 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
 import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
 import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
-import { managementTypes, getStatusIntent } from '@urbanmind/shared-types';
-import { signalrService } from '../../services/socket/signalrService';
-import { LoadingSpinner, EmptyState, ConfirmationModal } from '@urbanmind/shared-ui';
+import { managementTypes } from '@urbanmind/shared-types';
+import { LoadingSpinner, EmptyState } from '@urbanmind/shared-ui';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import DelightToast from '../../components/delight/DelightToast';
 import IncidentMap from '../../components/maps/IncidentMap';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
-import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import RelatedIncidentCard from '../../components/staff/RelatedIncidentCard';
 import { buildExternalMapUrl } from '../../config/mapConfig';
-
-const CITIZEN_NOTIFICATION_TEMPLATES = [
-  {
-    id: 'received',
-    label: 'Đã tiếp nhận',
-    shortLabel: 'Tiếp nhận phản ánh',
-    title: 'Phản ánh đã được tiếp nhận',
-    message: 'Đơn vị phụ trách đã tiếp nhận phản ánh của bạn và đang xem xét xử lý.',
-  },
-  {
-    id: 'processing',
-    label: 'Đang xử lý',
-    shortLabel: 'Đang xử lý phản ánh',
-    title: 'Phản ánh đang được xử lý',
-    message: 'Đơn vị phụ trách đang tiến hành xử lý phản ánh của bạn.',
-  },
-  {
-    id: 'completed',
-    label: 'Đã hoàn thành',
-    shortLabel: 'Hoàn tất xử lý',
-    title: 'Phản ánh đã được xử lý',
-    message: 'Đơn vị phụ trách đã hoàn thành việc xử lý phản ánh của bạn.',
-  },
-  {
-    id: 'need-info',
-    label: 'Cần bổ sung thông tin',
-    shortLabel: 'Yêu cầu thêm thông tin',
-    title: 'Cần bổ sung thông tin',
-    message: 'Vui lòng cung cấp thêm thông tin để hỗ trợ quá trình xử lý phản ánh.',
-  },
-  {
-    id: 'rejected',
-    label: 'Từ chối xử lý',
-    shortLabel: 'Không đủ điều kiện',
-    title: 'Phản ánh không đủ điều kiện xử lý',
-    message: 'Phản ánh hiện chưa đủ điều kiện để tiếp tục xử lý.',
-  },
-  {
-    id: 'custom',
-    label: 'Tùy chỉnh',
-    shortLabel: 'Soạn riêng',
-    title: '',
-    message: '',
-  },
-];
+import { getSubmissionChannelLabel } from './incidentDetailPresentation';
+import { getRelatedIncidentId } from './reportDetailPresentation';
 
 export const ManagementFeedbackDetailPage = () => {
   const { feedbackId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
 
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pageMessage, setPageMessage] = useState({ type: '', text: '' });
   const [categories, setCategories] = useState([]);
-  const [candidates, setCandidates] = useState([]);
-  const [candidateSearch, setCandidateSearch] = useState('');
-  const [candidatesLoadError, setCandidatesLoadError] = useState('');
-  const [linkedFeedbacks, setLinkedFeedbacks] = useState([]);
-  const [linkedFeedbacksLoading, setLinkedFeedbacksLoading] = useState(false);
-  const [linkedFeedbacksError, setLinkedFeedbacksError] = useState('');
-  const [relatedFeedbacks, setRelatedFeedbacks] = useState([]);
-  const [relatedFeedbacksLoading, setRelatedFeedbacksLoading] = useState(false);
-  const [relatedFeedbacksError, setRelatedFeedbacksError] = useState('');
-  const [providerReport, setProviderReport] = useState(null);
 
   const resolvedLocationText = useResolvedLocationText({
     locationText: feedback?.locationText,
@@ -114,16 +57,6 @@ export const ManagementFeedbackDetailPage = () => {
     return currentFeedback?.categoryId ?? currentFeedback?.category?.categoryId ?? '';
   };
 
-  // Edit mode
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({});
-  const [editLoading, setEditLoading] = useState(false);
-
-  // Status update
-  const [statusModal, setStatusModal] = useState(false);
-  const [statusForm, setStatusForm] = useState({ status: '', note: '' });
-  const [statusLoading, setStatusLoading] = useState(false);
-
   // Area alert creation
   const [showAreaAlertModal, setShowAreaAlertModal] = useState(false);
   const [areaAlertForm, setAreaAlertForm] = useState({
@@ -140,29 +73,9 @@ export const ManagementFeedbackDetailPage = () => {
   const [areaAlertLoading, setAreaAlertLoading] = useState(false);
   const [areaAlertToast, setAreaAlertToast] = useState({ open: false, message: '', sub: '' });
 
-  // Verify
-  const [verifyLoading, setVerifyLoading] = useState(false);
-  const [denyLoading, setDenyLoading] = useState(false);
-
-  // Assignment
-  const [assignModal, setAssignModal] = useState(false);
-  const [assignForm, setAssignForm] = useState({ operatorId: '', note: '' });
-  const [assignLoading, setAssignLoading] = useState(false);
-
   // Preview attachment
   const [previewAttachmentIndex, setPreviewAttachmentIndex] = useState(null);
   const [selectedTimelineEventId, setSelectedTimelineEventId] = useState(null);
-
-  // Citizen notification
-  const [notificationForm, setNotificationForm] = useState({ templateId: 'custom', title: '', message: '', targetUrl: '' });
-  const [notificationErrors, setNotificationErrors] = useState({});
-  const [notificationSubmitting, setNotificationSubmitting] = useState(false);
-  const [notificationConfirmOpen, setNotificationConfirmOpen] = useState(false);
-  const [pendingNotificationPayload, setPendingNotificationPayload] = useState(null);
-  const [notificationToast, setNotificationToast] = useState({ open: false, message: '', sub: '' });
-  const [notificationActivities, setNotificationActivities] = useState([]);
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-  const [showCitizenNotification, setShowCitizenNotification] = useState(false);
 
   // Internal communication
   const [messageDraft, setMessageDraft] = useState('');
@@ -188,7 +101,6 @@ export const ManagementFeedbackDetailPage = () => {
     const loadFeedback = async () => {
       setLoading(true);
       setError('');
-      setCandidatesLoadError('');
       try {
         const feedbackRes = await managementFeedbackApi.getFeedbackById(feedbackId);
 
@@ -197,72 +109,17 @@ export const ManagementFeedbackDetailPage = () => {
         setFeedback(feedbackRes);
         setLoading(false);
 
-        const linkedFeedbackId = feedbackRes?.feedbackId || feedbackId;
-        const [categoriesRes, candidatesRes, providerReportsRes] = await Promise.allSettled([
-          toolsApi.getCategories(),
-          managementFeedbackApi.getProviderCandidates(linkedFeedbackId),
-          managementFeedbackApi.getProviderReports(linkedFeedbackId),
-        ]);
+        let categoryOptions = [];
+        try {
+          const categoriesRes = await toolsApi.getCategories();
+          categoryOptions = Array.isArray(categoriesRes) ? categoriesRes : [];
+        } catch (categoryError) {
+          console.warn('Failed to load categories for the area alert form', categoryError);
+        }
 
         if (!active) return;
 
-        setCategories(
-          categoriesRes.status === 'fulfilled' && Array.isArray(categoriesRes.value)
-            ? categoriesRes.value
-            : []
-        );
-        if (candidatesRes.status === 'fulfilled') {
-          setCandidates(Array.isArray(candidatesRes.value) ? candidatesRes.value : []);
-        } else {
-          setCandidates([]);
-          setCandidatesLoadError(candidatesRes.reason?.message || 'Không thể tải danh sách đơn vị xử lý.');
-        }
-
-        if (providerReportsRes.status === 'fulfilled') {
-          const reports = providerReportsRes.value;
-          const firstReport = Array.isArray(reports)
-            ? reports[0] || null
-            : reports && typeof reports === 'object'
-              ? reports
-              : null;
-          setProviderReport(firstReport);
-        } else {
-          setProviderReport(null);
-        }
-
-        // Debug: log urgency-related fields so we can see why the button may be hidden
-        try {
-          const dbg = {
-            id: feedbackRes?.feedbackId || feedbackId,
-            urgencyFromHelper: getUrgencyLevel(feedbackRes),
-            urgencyLevel: feedbackRes?.urgencyLevel,
-            urgency: feedbackRes?.urgency,
-            priority: feedbackRes?.priority,
-          };
-          console.debug('DEBUG_FEEDBACK_URGENCY', dbg);
-          // also print a compact string for easy copy/paste
-          let analysisJson = '';
-          try {
-            analysisJson = JSON.stringify(feedbackRes?.analysisResult || {});
-          } catch {
-            analysisJson = '[unserializable]';
-          }
-          console.info(`DEBUG_FEEDBACK_URGENCY_SUMMARY id=${dbg.id} helper=${dbg.urgencyFromHelper} urgencyLevel=${dbg.urgencyLevel} urgency=${dbg.urgency} priority=${dbg.priority} analysisResult=${analysisJson}`);
-        } catch {
-          // ignore
-        }
-        setEditForm({
-          categoryId: feedbackRes?.categoryId ?? '',
-          title: feedbackRes?.title || '',
-          description: feedbackRes?.description || '',
-          locationText: feedbackRes?.locationText || '',
-          latitude: feedbackRes?.latitude ?? '',
-          longitude: feedbackRes?.longitude ?? '',
-          priority: feedbackRes?.priority || '',
-          dueDate: feedbackRes?.dueDate || '',
-          status: feedbackRes?.status || '',
-          statusNote: '',
-        });
+        setCategories(categoryOptions);
         setAreaAlertForm({
           title: feedbackRes?.title || feedbackRes?.description || '',
           message: feedbackRes?.description || feedbackRes?.title || '',
@@ -321,165 +178,6 @@ export const ManagementFeedbackDetailPage = () => {
     }
   };
 
-  // Handle edit
-  const handleEdit = async () => {
-    setEditLoading(true);
-    try {
-      const payload = {
-        ...editForm,
-        categoryId: editForm.categoryId === '' ? null : editForm.categoryId,
-        latitude: editForm.latitude === '' ? null : editForm.latitude,
-        longitude: editForm.longitude === '' ? null : editForm.longitude,
-      };
-
-      await managementFeedbackApi.updateFeedback(feedbackId, payload);
-
-      const selectedCategory = categories.find(
-        (category) => String(category?.categoryId ?? '') === String(payload.categoryId ?? ''),
-      );
-      const selectedCategoryName = selectedCategory
-        ? selectedCategory.categoryName
-          || selectedCategory.name
-          || selectedCategory.categoryType
-          || selectedCategory.type
-          || ''
-        : '';
-
-      setFeedback((prev) => ({
-        ...prev,
-        ...payload,
-        ...(selectedCategoryName ? { categoryName: selectedCategoryName } : {}),
-      }));
-      setIsEditing(false);
-    } catch (err) {
-      console.error('Failed to update feedback', err);
-      setPageMessage({ type: 'error', text: err?.message || 'Không thể cập nhật phản ánh.' });
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  // Handle status update
-  const handleStatusUpdate = async () => {
-    setStatusLoading(true);
-    try {
-      await managementFeedbackApi.updateStatus(feedbackId, {
-        status: statusForm.status,
-        note: statusForm.note,
-      });
-      setFeedback(prev => ({ ...prev, status: statusForm.status }));
-      try {
-        signalrService.notifyStatusChanged(feedbackId, feedback?.status, statusForm.status, user);
-      } catch {
-        console.warn('SignalR notify failed');
-      }
-      setStatusModal(false);
-      setStatusForm({ status: '', note: '' });
-    } catch (err) {
-      console.error('Failed to update status', err);
-      setPageMessage({ type: 'error', text: err?.message || 'Không thể cập nhật trạng thái phản ánh.' });
-    } finally {
-      setStatusLoading(false);
-    }
-  };
-
-  // Handle verify
-  const handleVerify = async () => {
-    setVerifyLoading(true);
-    try {
-      await managementFeedbackApi.verifyFeedback(feedbackId);
-      setFeedback(prev => ({ ...prev, status: managementTypes.feedbackStatus.VERIFIED }));
-    } catch (err) {
-      console.error('Failed to verify feedback', err);
-      setPageMessage({ type: 'error', text: err?.message || 'Không thể xác minh phản ánh.' });
-    } finally {
-      setVerifyLoading(false);
-    }
-  };
-
-  // Handle deny
-  const handleDeny = async () => {
-    const confirmed = window.confirm('Bạn có chắc muốn không chấp nhận phản ánh này? Trạng thái sẽ chuyển sang Denied/Bị từ chối.');
-    if (!confirmed) return;
-
-    setDenyLoading(true);
-    try {
-      await managementFeedbackApi.updateStatus(feedbackId, {
-        status: managementTypes.feedbackStatus.REJECTED,
-        note: 'Staff denied this feedback',
-      });
-      setFeedback(prev => ({ ...prev, status: managementTypes.feedbackStatus.REJECTED }));
-      try {
-        signalrService.notifyStatusChanged(feedbackId, feedback?.status, managementTypes.feedbackStatus.REJECTED, user);
-      } catch {
-        console.warn('SignalR notify failed');
-      }
-      setPageMessage({ type: 'success', text: 'Đã chuyển phản ánh sang trạng thái không chấp nhận.' });
-    } catch (err) {
-      console.error('Failed to deny feedback', err);
-      setPageMessage({ type: 'error', text: err?.message || 'Không thể từ chối phản ánh.' });
-    } finally {
-      setDenyLoading(false);
-    }
-  };
-
-  // Handle assign
-  const handleAssign = async () => {
-    setError('');
-    if (!assignForm.operatorId) {
-      setError('Vui lòng chọn đơn vị xử lý.');
-      return;
-    }
-
-    const operatorId = Number(assignForm.operatorId);
-    if (!Number.isInteger(operatorId) || operatorId <= 0) {
-      setError('Đơn vị xử lý không hợp lệ.');
-      return;
-    }
-
-    const selectedCandidate = candidates.find((c) => Number(c.coordinatorId) === operatorId);
-    if (!selectedCandidate) {
-      setError('Đơn vị xử lý đã chọn không tồn tại. Vui lòng tải lại trang.');
-      return;
-    }
-
-    if (!feedbackId) {
-      setError('Mã phản ánh không hợp lệ. Vui lòng tải lại trang và thử lại.');
-      return;
-    }
-
-    if (!user?.userId) {
-      setError('Thông tin người dùng không hợp lệ. Vui lòng đăng nhập lại.');
-      return;
-    }
-
-    setAssignLoading(true);
-    try {
-      const payload = {
-        feedbackId,
-        coordinatorId: operatorId,
-        staffUserId: user.userId,
-        note: assignForm.note,
-      };
-
-      await managementFeedbackApi.assignToOperator(payload);
-      setFeedback(prev => ({ ...prev, status: managementTypes.feedbackStatus.ASSIGNED }));
-      try {
-        signalrService.notifyAssignmentUpdated(feedbackId, operatorId, selectedCandidate.coordinatorName || selectedCandidate.providerName, user);
-        signalrService.notifyStatusChanged(feedbackId, feedback?.status, managementTypes.feedbackStatus.ASSIGNED, user);
-      } catch {
-        console.warn('SignalR notify failed');
-      }
-      setAssignModal(false);
-      setAssignForm({ operatorId: '', note: '' });
-    } catch (err) {
-      console.error('Failed to assign feedback', err);
-      setError(err.message || 'Không thể phân công phản ánh. Vui lòng thử lại.');
-    } finally {
-      setAssignLoading(false);
-    }
-  };
-
   const handleAreaAlertFieldChange = (field, value) => {
     setAreaAlertForm((current) => ({ ...current, [field]: value }));
     setAreaAlertErrors((current) => ({ ...current, [field]: undefined }));
@@ -524,91 +222,6 @@ export const ManagementFeedbackDetailPage = () => {
     }
   };
 
-  const handleNotificationFieldChange = (field, value) => {
-    setNotificationForm((current) => ({ ...current, [field]: value }));
-    setNotificationErrors((current) => ({ ...current, [field]: undefined }));
-  };
-
-  const validateNotificationForm = () => {
-    const nextErrors = {};
-    if (!notificationForm.title?.trim()) nextErrors.title = 'Vui lòng nhập tiêu đề thông báo.';
-    if (!notificationForm.message?.trim()) nextErrors.message = 'Vui lòng nhập nội dung thông báo.';
-    return nextErrors;
-  };
-
-  const openNotificationConfirmation = () => {
-    const validationErrors = validateNotificationForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setNotificationErrors(validationErrors);
-      return;
-    }
-
-    const payload = {
-      templateId: notificationForm.templateId,
-      title: notificationForm.title?.trim(),
-      message: notificationForm.message?.trim(),
-      targetUrl: notificationForm.targetUrl?.trim() || undefined,
-    };
-
-    setPendingNotificationPayload(payload);
-    setNotificationConfirmOpen(true);
-  };
-
-  const handleSendCitizenNotification = async () => {
-    if (!feedbackId || !pendingNotificationPayload) return;
-
-    setNotificationSubmitting(true);
-    setNotificationConfirmOpen(false);
-    try {
-      await managementFeedbackApi.notifyProviderResult(feedbackId, pendingNotificationPayload);
-      setNotificationToast({
-        open: true,
-        message: 'Đã gửi thông báo cho người dân',
-        sub: 'Thông báo sẽ được gửi ngay sau khi xác nhận.',
-      });
-      setNotificationActivities((current) => [
-        {
-          id: `${Date.now()}`,
-          title: 'Đã gửi thông báo cho người dân',
-          subtitle: pendingNotificationPayload.title,
-          timestamp: new Date().toISOString(),
-        },
-        ...current,
-      ].slice(0, 3));
-      if (notificationForm.templateId === 'custom') {
-        setNotificationForm({ templateId: 'custom', title: '', message: '', targetUrl: '' });
-      }
-      setNotificationErrors({});
-    } catch (err) {
-      console.error('Failed to send citizen notification', err);
-      setNotificationToast({
-        open: true,
-        message: 'Gửi thông báo thất bại',
-        sub: err?.message || 'Không thể gửi thông báo cho người dân lúc này.',
-      });
-    } finally {
-      setNotificationSubmitting(false);
-      setPendingNotificationPayload(null);
-    }
-  };
-
-  // Open the already-resolved provider report workspace.
-  // The action is only rendered when a real report exists for this feedback.
-  const openProviderReportWorkspace = () => {
-    const providerReportId = providerReport?.providerReportId
-      || providerReport?.id
-      || providerReport?.providerReport?.providerReportId;
-
-    if (!providerReportId) return;
-
-    navigate(`/staff/provider-reports/${providerReportId}`, {
-      state: {
-        feedbackId,
-        providerReport,
-      },
-    });
-  };
-
   const getStatusLabel = (s) => {
     const labels = {
       [managementTypes.feedbackStatus.SUBMITTED]: 'Đã gửi',
@@ -624,7 +237,7 @@ export const ManagementFeedbackDetailPage = () => {
       [managementTypes.feedbackStatus.CLOSED]: 'Đã đóng',
       [managementTypes.feedbackStatus.CANCELLED]: 'Đã hủy',
     };
-    return labels[s] || s;
+    return labels[s] || 'Chưa xác định';
   };
 
   const getPriorityLabel = (p) => {
@@ -635,7 +248,7 @@ export const ManagementFeedbackDetailPage = () => {
       'Urgent': 'Khẩn cấp',
       'Critical': 'Khẩn cấp',
     };
-    return labels[p] || p;
+    return labels[p] || 'Chưa có dữ liệu';
   };
 
   const isHighOrCriticalUrgency = (currentFeedback) => {
@@ -654,7 +267,9 @@ export const ManagementFeedbackDetailPage = () => {
 
   const formatDate = (date) => {
     if (!date) return '';
-    return new Date(date).toLocaleDateString('vi-VN', {
+    const parsedDate = new Date(date);
+    if (Number.isNaN(parsedDate.getTime())) return '';
+    return parsedDate.toLocaleDateString('vi-VN', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -662,38 +277,6 @@ export const ManagementFeedbackDetailPage = () => {
       minute: '2-digit',
     });
   };
-
-  const suggestedNotificationTemplateId = useMemo(() => {
-    const status = `${feedback?.status || ''}`.trim();
-    if (status === managementTypes.feedbackStatus.IN_PROGRESS) return 'processing';
-    if (status === managementTypes.feedbackStatus.RESOLVED || status === managementTypes.feedbackStatus.APPROVED || status === managementTypes.feedbackStatus.CLOSED) return 'completed';
-    if (status === managementTypes.feedbackStatus.REJECTED) return 'rejected';
-    if (status === managementTypes.feedbackStatus.NEED_REWORK) return 'need-info';
-    if (status === managementTypes.feedbackStatus.SUBMITTED || status === managementTypes.feedbackStatus.VERIFIED || status === managementTypes.feedbackStatus.ASSIGNED) return 'received';
-    return 'custom';
-  }, [feedback?.status]);
-
-  const notificationContentValid = useMemo(() => {
-    const title = notificationForm.title?.trim();
-    const message = notificationForm.message?.trim();
-    return Boolean(notificationForm.templateId && title && message);
-  }, [notificationForm.templateId, notificationForm.title, notificationForm.message]);
-
-  const recipientSummary = useMemo(() => ({
-    name: feedback?.userName
-      || feedback?.reporterName
-      || feedback?.reporter?.name
-      || feedback?.user?.fullName
-      || feedback?.user?.name
-      || feedback?.citizenName
-      || feedback?.residentName
-      || feedback?.createdByName
-      || feedback?.createdBy?.name
-      || feedback?.ownerName
-      || 'Chưa có thông tin',
-    feedbackCode: feedback?.feedbackCode || feedback?.code || feedback?.feedbackId || feedback?.id || '—',
-    area: feedback?.area?.name || feedback?.areaName || feedback?.wardName || feedback?.locationText || 'Chưa cập nhật',
-  }), [feedback]);
 
   const isVideoFile = (fileUrl = '') => {
     const url = fileUrl.toLowerCase();
@@ -705,19 +288,7 @@ export const ManagementFeedbackDetailPage = () => {
     return attachment?.fileUrl || attachment?.url || attachment?.path || '';
   };
 
-  const nextStatusOptions = managementTypes.statusFlow[feedback?.status] || [];
-
-  const parentFeedbackId = feedback?.parentTicketId || feedback?.parentFeedbackId || null;
-  const isConfirmedDuplicate = Boolean(parentFeedbackId);
-  const isMasterTicket = Boolean(feedback?.isMasterTicket);
-  const canVerify = !isConfirmedDuplicate && [managementTypes.feedbackStatus.SUBMITTED, managementTypes.feedbackStatus.AI_REVIEWED].includes(feedback?.status);
-  const canDeny = !isConfirmedDuplicate && [
-    managementTypes.feedbackStatus.SUBMITTED,
-    managementTypes.feedbackStatus.AI_REVIEWED,
-    managementTypes.feedbackStatus.VERIFIED,
-  ].includes(feedback?.status);
-  const canAssign = !isConfirmedDuplicate && feedback?.status === managementTypes.feedbackStatus.VERIFIED;
-  const canUpdateStatus = !isConfirmedDuplicate && nextStatusOptions.length > 0;
+  const relatedIncidentId = getRelatedIncidentId(feedback);
 
   const attachments = useMemo(
     () => (Array.isArray(feedback?.attachments) ? feedback.attachments : []),
@@ -818,88 +389,6 @@ export const ManagementFeedbackDetailPage = () => {
 
   const comments = Array.isArray(feedback?.comments) ? feedback.comments : [];
 
-  useEffect(() => {
-    let active = true;
-    const abortController = new AbortController();
-
-    const loadLinkedFeedbacks = async () => {
-      if (!feedbackId || !isMasterTicket) {
-        setLinkedFeedbacks([]);
-        setLinkedFeedbacksError('');
-        setLinkedFeedbacksLoading(false);
-        return;
-      }
-
-      setLinkedFeedbacksLoading(true);
-      setLinkedFeedbacksError('');
-      try {
-        const linkedFeedbackId = feedback?.feedbackId || feedbackId;
-        const response = await managementFeedbackApi.getLinkedFeedbacks(linkedFeedbackId, {
-          signal: abortController.signal,
-        });
-        if (active) setLinkedFeedbacks(Array.isArray(response) ? response : []);
-      } catch (err) {
-        if (abortController.signal.aborted) return;
-        console.error('Failed to load linked feedbacks', err);
-        if (active) {
-          setLinkedFeedbacks([]);
-          setLinkedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên kết.');
-        }
-      } finally {
-        if (active) setLinkedFeedbacksLoading(false);
-      }
-    };
-
-    if (feedback) {
-      loadLinkedFeedbacks();
-    }
-
-    return () => {
-      active = false;
-      abortController.abort();
-    };
-  }, [feedback, feedbackId, isMasterTicket]);
-
-  useEffect(() => {
-    let active = true;
-    const abortController = new AbortController();
-
-    const loadRelatedFeedbacks = async () => {
-      if (!parentFeedbackId) {
-        setRelatedFeedbacks([]);
-        setRelatedFeedbacksError('');
-        setRelatedFeedbacksLoading(false);
-        return;
-      }
-
-      setRelatedFeedbacksLoading(true);
-      setRelatedFeedbacksError('');
-      try {
-        const response = await managementFeedbackApi.getRelatedFeedbacks(feedbackId, {
-          signal: abortController.signal,
-        });
-        if (active) setRelatedFeedbacks(Array.isArray(response) ? response : []);
-      } catch (err) {
-        if (abortController.signal.aborted) return;
-        console.error('Failed to load related feedbacks', err);
-        if (active) {
-          setRelatedFeedbacks([]);
-          setRelatedFeedbacksError(err?.message || 'Không thể tải danh sách phản ánh liên quan.');
-        }
-      } finally {
-        if (active) setRelatedFeedbacksLoading(false);
-      }
-    };
-
-    if (feedback) {
-      loadRelatedFeedbacks();
-    }
-
-    return () => {
-      active = false;
-      abortController.abort();
-    };
-  }, [feedback, feedbackId, parentFeedbackId]);
   const statusHistories = useMemo(
     () => Array.isArray(feedback?.statusHistories) ? feedback.statusHistories : [],
     [feedback]
@@ -1159,28 +648,12 @@ export const ManagementFeedbackDetailPage = () => {
       label: event.type === 'assignment' ? 'Phân công' : event.type === 'approval' ? 'Duyệt' : 'Trạng thái',
     }));
 
-    const mappedNotificationActivities = Array.isArray(notificationActivities)
-      ? notificationActivities.map((activity, index) => ({
-          id: activity.id || `notification-${index}`,
-          type: 'notification',
-          title: activity.title || 'Thông báo',
-          subtitle: activity.subtitle || '',
-          actor: activity.actor || activity.sender || activity.userName || 'Hệ thống',
-          timestamp: activity.timestamp,
-          note: activity.note || activity.message || '',
-          accent: 'rose',
-          accentTone: accentPalette.rose,
-          label: 'Thông báo',
-        }))
-      : [];
-
-    return [...mappedTimelineEvents, ...mappedNotificationActivities].sort(
+    return mappedTimelineEvents.sort(
       (left, right) => new Date(left.timestamp || 0) - new Date(right.timestamp || 0)
     );
-  }, [timelineEvents, notificationActivities]);
+  }, [timelineEvents]);
 
   const formatHistoryLabel = (event) => {
-    if (event.type === 'notification') return 'Thông báo';
     if (event.type === 'assignment') return 'Phân công';
     if (event.type === 'approval') return 'Duyệt';
     return 'Trạng thái';
@@ -1208,7 +681,7 @@ export const ManagementFeedbackDetailPage = () => {
     ? 'Các phản ánh của sự vụ'
     : location.state?.fromStaffConversations
       ? 'Quản lý trao đổi'
-      : 'Quản lý phản ánh';
+      : 'Phản ánh';
 
   if (loading) {
     return (
@@ -1253,10 +726,10 @@ export const ManagementFeedbackDetailPage = () => {
         />
       )}
       <div className="admin-panel p-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Nội dung chi tiết phản ánh">
           {[
-            { id: 'detail', label: 'Chi tiết', icon: Lucide.FileText },
-            { id: 'exchange', label: 'Trao đổi', icon: Lucide.MessageSquareText },
+            { id: 'detail', label: 'Thông tin phản ánh', icon: Lucide.FileText },
+            { id: 'exchange', label: 'Trao đổi về phản ánh', icon: Lucide.MessageSquareText },
             { id: 'history', label: 'Lịch sử', icon: Lucide.Clock3 },
           ].map((tab) => {
             const selected = activeViewTab === tab.id;
@@ -1265,8 +738,10 @@ export const ManagementFeedbackDetailPage = () => {
               <button
                 key={tab.id}
                 type="button"
+                role="tab"
+                aria-selected={selected}
                 onClick={() => handleViewTabChange(tab.id)}
-                className={`flex items-center gap-2 rounded-[0.9rem] px-4 py-2.5 text-sm font-semibold transition duration-200 ${selected ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+                className={`flex items-center gap-2 rounded-[0.9rem] px-4 py-2.5 text-sm font-semibold transition duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
               >
                 <Icon size={16} />
                 {tab.label}
@@ -1290,445 +765,42 @@ export const ManagementFeedbackDetailPage = () => {
         <span className="min-w-0 truncate font-semibold text-slate-800">{feedback.title}</span>
       </div>
 
-      {isConfirmedDuplicate ? (
-        <section className="rounded-[1.4rem] border border-violet-200 bg-violet-50 p-5 shadow-sm" aria-labelledby="staff-duplicate-feedback-title">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white">
-                <Lucide.GitMerge size={20} aria-hidden="true" />
-              </span>
-              <div>
-                <h2 id="staff-duplicate-feedback-title" className="font-bold text-violet-950">Phản ánh đã được đối chiếu</h2>
-                <p className="mt-1 text-sm leading-6 text-violet-800">
-                  Report này vẫn được lưu giữ đầy đủ. Thông tin liên kết với sự vụ được hiển thị bên dưới.
-                </p>
-              </div>
-            </div>
-            <Button type="button" onClick={() => navigate(`/staff/feedbacks/${parentFeedbackId}`)} variant="outline" size="sm">
-              <Lucide.ExternalLink size={14} aria-hidden="true" />
-              Xem phản ánh tham chiếu
-            </Button>
-          </div>
-        </section>
-      ) : null}
-
       {activeViewTab === 'detail' ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.75fr)]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.75fr)]" role="tabpanel" aria-label="Thông tin phản ánh">
         {/* Main Content */}
         <div className="min-w-0 space-y-6">
-          {/* Header Card */}
-          <div className="admin-page-hero p-5 sm:p-6" style={{ overflow: 'visible' }}>
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <header className="admin-page-hero p-5 sm:p-6">
+            <div className="flex min-w-0 items-start gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm" aria-hidden="true">
+                <Lucide.FileText size={20} />
+              </span>
               <div className="min-w-0 flex-1">
-                <div className="mb-3 flex items-center gap-3">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm">
-                    <Lucide.FileText size={20} />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="admin-section-description uppercase tracking-[0.2em]">Chi tiết phản ánh / Report</div>
-                    <h1 className="admin-hero-title mt-1 break-words">{feedback.title}</h1>
-                  </div>
-                </div>
+                <div className="admin-section-description uppercase tracking-[0.2em]">Chi tiết phản ánh</div>
+                <h1 className="admin-hero-title mt-1 break-words">{feedback.title || 'Phản ánh chưa có tiêu đề'}</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                  Phản ánh này là nguồn thông tin của người dân thuộc sự vụ đang được xử lý.
+                </p>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  {isConfirmedDuplicate ? (
-                    <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-700">
-                      <Lucide.GitMerge size={14} aria-hidden="true" />
-                      Đã được đối chiếu
-                    </span>
-                  ) : null}
-
-                  <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-white/80 px-3 shadow-sm">
-                    <span className="text-xs font-medium text-slate-500">Trạng thái</span>
+                  <div className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-blue-200 bg-white/80 px-3 shadow-sm">
+                    <span className="text-xs font-medium text-slate-500">Trạng thái phản ánh</span>
                     <span className="h-4 w-px bg-slate-200" aria-hidden="true" />
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700">
                       <Lucide.CircleCheck size={14} aria-hidden="true" />
-                      {getStatusLabel(feedback.status)}
+                      {getStatusLabel(feedback.status) || 'Chưa có dữ liệu'}
                     </span>
                   </div>
-
-                  <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 shadow-sm">
-                    <span className="text-xs font-medium text-slate-500">Ưu tiên</span>
+                  <div className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-amber-200 bg-white/80 px-3 shadow-sm">
+                    <span className="text-xs font-medium text-slate-500">Mức ưu tiên</span>
                     <span className="h-4 w-px bg-slate-200" aria-hidden="true" />
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700">
                       <Lucide.Gauge size={14} aria-hidden="true" />
-                      {getPriorityLabel(feedback.priority)}
+                      {getPriorityLabel(feedback.priority) || 'Chưa có dữ liệu'}
                     </span>
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2 lg:max-w-[320px] lg:justify-end">
-                {canVerify && (
-                  <Button
-                    type="button"
-                    onClick={handleVerify}
-                    disabled={verifyLoading}
-                    variant="primary"
-                    size="sm"
-                  >
-                    {verifyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Check size={14} />}
-                    Xác minh
-                  </Button>
-                )}
-                {canDeny && (
-                  <Button
-                    type="button"
-                    onClick={handleDeny}
-                    disabled={denyLoading}
-                    variant="outline"
-                    size="sm"
-                    className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                  >
-                    {denyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.XCircle size={14} />}
-                    Không chấp nhận
-                  </Button>
-                )}
-                {/* area alert button moved to map section for better context */}
-                {canAssign && (
-                  <div className="relative">
-                    <Button
-                      type="button"
-                      onClick={() => setAssignModal(true)}
-                      variant="primary"
-                      size="sm"
-                    >
-                      <Lucide.UserPlus size={14} />
-                      Giao việc
-                    </Button>
-                    {assignModal && (
-                      <>
-                        <div className="fixed inset-0 z-[9998]" onClick={() => setAssignModal(false)} />
-                        <div className="absolute left-0 top-full mt-2 z-[10000] w-[min(100vw-2rem,28rem)]">
-                          <div className="card max-h-[calc(100vh-6rem)] overflow-y-auto space-y-4 rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
-                            <h3 className="admin-section-title">Giao việc cho nhân viên xử lý</h3>
-                            
-                            {candidates.length === 0 ? (
-                              <div className="card bg-amber-50 border border-amber-200 p-4 rounded-xl space-y-3">
-                                <div className="flex gap-2">
-                                  <Lucide.AlertTriangle className="text-amber-600 flex-shrink-0" size={16} />
-                                  <div className="space-y-2 text-xs">
-                                    <p className="font-bold text-amber-900">Không có đơn vị xử lý phù hợp</p>
-                                    <p className="text-amber-800">Không tìm thấy nhà cung cấp phù hợp với khu vực hoặc hạng mục của phản ánh này.</p>
-                                    {candidatesLoadError ? (
-                                      <p className="text-amber-700 italic">Lỗi: {candidatesLoadError}</p>
-                                    ) : (
-                                      <p className="text-amber-700 italic">Vui lòng kiểm tra lại sau hoặc liên hệ với quản trị viên nếu bạn nghĩ có sai sót.</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <>
-                                <div>
-                                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Tìm nhà cung cấp</label>
-                                  <input
-                                    placeholder="Tìm theo tên nhà cung cấp hoặc điều phối viên..."
-                                    value={candidateSearch}
-                                    onChange={(e) => setCandidateSearch(e.target.value)}
-                                    className="input input-bordered w-full text-xs h-10 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] mb-2"
-                                  />
-                                  <select
-                                    value={assignForm.operatorId}
-                                    onChange={(e) => setAssignForm(p => ({ ...p, operatorId: e.target.value }))}
-                                    className="select select-bordered w-full text-xs h-10 rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
-                                  >
-                                    <option value="">-- Chọn nhà cung cấp --</option>
-                                    {candidates.filter(c => {
-                                      const q = candidateSearch.trim().toLowerCase();
-                                      if (!q) return true;
-                                      return (c.providerName || '').toLowerCase().includes(q) || (c.coordinatorName || '').toLowerCase().includes(q);
-                                    }).map(c => (
-                                      <option key={c.coordinatorId} value={c.coordinatorId}>
-                                        {c.providerName ? `${c.providerName} — ${c.coordinatorName || 'Điều phối viên'}` : `Nhà thầu ${c.coordinatorId} — ${c.coordinatorName || 'Điều phối viên'}`}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-bold text-slate-600 block mb-1.5">Ghi chú</label>
-                                  <textarea
-                                    value={assignForm.note}
-                                    onChange={(e) => setAssignForm(p => ({ ...p, note: e.target.value }))}
-                                    placeholder="Nhập ghi chú cho nhân viên..."
-                                    className="textarea textarea-bordered w-full text-xs rounded-[1rem] border-slate-200/80 bg-[rgba(248,250,252,0.88)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]"
-                                    rows="3"
-                                  />
-                                </div>
-
-                                {assignForm.operatorId && (
-                                  (() => {
-                                    const sel = candidates.find(c => String(c.coordinatorId) === String(assignForm.operatorId));
-                                    if (!sel) return null;
-                                    return (
-                                      <div className="card bg-base-100 border p-3 rounded-lg mt-3 text-xs">
-                                        <div className="font-bold">{sel.providerName || 'Không có tên nhà cung cấp'}</div>
-                                        <div className="text-muted">Điều phối viên: {sel.coordinatorName || '—'}</div>
-                                        <div className="mt-2">Phù hợp khu vực: {sel.areaMatch ?? sel.note ?? 'Không có dữ liệu'}</div>
-                                        <div>Phù hợp danh mục: {sel.categoryMatch ?? (sel.priorityOrder !== undefined ? `Ưu tiên ${sel.priorityOrder}` : 'Không có dữ liệu')}</div>
-                                      </div>
-                                    );
-                                  })()
-                                )}
-                              </>
-                            )}
-
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                onClick={() => setAssignModal(false)}
-                                variant="ghost"
-                                size="sm"
-                                className="flex-1"
-                              >
-                                Hủy
-                              </Button>
-                              <Button
-                                type="button"
-                                onClick={handleAssign}
-                                disabled={assignLoading || !assignForm.operatorId || candidates.length === 0}
-                                variant="primary"
-                                size="sm"
-                                className="flex-1"
-                              >
-                                {assignLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Giao việc'}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-                {canUpdateStatus && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setStatusModal(true)}
-                      className="btn btn-sm btn-outline rounded-[1rem] border-slate-200/80 bg-white/90 text-slate-700 hover:bg-slate-50 hover:text-slate-900 text-xs font-bold"
-                    >
-                      <Lucide.RefreshCw size={14} />
-                      Cập nhật
-                    </button>
-                    {statusModal && (
-                      <>
-                        <div className="fixed inset-0 z-[9998]" onClick={() => setStatusModal(false)} />
-                        <div className="absolute left-0 top-full mt-2 z-[10000] w-[min(100vw-2rem,28rem)]">
-                          <div className="card max-h-[calc(100vh-6rem)] overflow-y-auto space-y-4 rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
-                            <h3 className="admin-section-title">Cập nhật trạng thái</h3>
-                            
-                            <div>
-                              <label className="text-xs font-bold text-slate-600 block mb-1.5">Trạng thái mới</label>
-                              <select
-                                value={statusForm.status}
-                                onChange={(e) => setStatusForm(p => ({ ...p, status: e.target.value }))}
-                                className="select select-bordered w-full text-xs h-10 rounded-lg"
-                              >
-                                <option value="">Chọn trạng thái</option>
-                                {managementTypes.statusFlow[feedback.status]?.map(s => (
-                                  <option key={s} value={s}>{getStatusLabel(s)}</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="text-xs font-bold text-slate-600 block mb-1.5">Ghi chú</label>
-                              <textarea
-                                value={statusForm.note}
-                                onChange={(e) => setStatusForm(p => ({ ...p, note: e.target.value }))}
-                                placeholder="Nhập ghi chú..."
-                                className="textarea textarea-bordered w-full text-xs rounded-lg"
-                                rows="3"
-                              />
-                            </div>
-
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                onClick={() => setStatusModal(false)}
-                                variant="ghost"
-                                size="sm"
-                                className="flex-1"
-                              >
-                                Hủy
-                              </Button>
-                              <Button
-                                type="button"
-                                onClick={handleStatusUpdate}
-                                disabled={statusLoading || !statusForm.status}
-                                variant="primary"
-                                size="sm"
-                                className="flex-1"
-                              >
-                                {statusLoading ? <span className="loading loading-spinner loading-xs"></span> : 'Cập nhật'}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-                <Button
-                  type="button"
-                  onClick={() => setIsEditing(!isEditing)}
-                  variant="outline"
-                  size="sm"
-                >
-                  <Lucide.Edit size={14} />
-                  {isEditing ? 'Hủy' : 'Sửa'}
-                </Button>
-              </div>
             </div>
-          </div>
-
-          {/* Edit Form */}
-          {isEditing && (
-            <div className="admin-panel p-5 sm:p-6 space-y-5">
-              <div>
-                <div className="admin-section-description uppercase tracking-[0.2em]">Chỉnh sửa hồ sơ</div>
-                <h3 className="admin-section-title mt-1">Cập nhật thông tin phản ánh</h3>
-              </div>
-              
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Danh mục</label>
-                  <select
-                    value={editForm.categoryId}
-                    onChange={(e) => setEditForm(p => ({ ...p, categoryId: e.target.value }))}
-                    className="select select-bordered w-full text-xs h-10 rounded-lg"
-                  >
-                    {categories.map(cat => (
-                      <option key={cat.categoryId} value={cat.categoryId}>{getCategoryLabel(cat.categoryName || cat.name || cat.categoryType || cat.type)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Ưu tiên</label>
-                  <select
-                    value={editForm.priority}
-                    onChange={(e) => setEditForm(p => ({ ...p, priority: e.target.value }))}
-                    className="select select-bordered w-full text-xs h-10 rounded-lg"
-                  >
-                    <option value="Low">Thấp</option>
-                    <option value="Medium">Trung bình</option>
-                    <option value="High">Cao</option>
-                    <option value="Critical">Khẩn cấp</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Tiêu đề</label>
-                <input
-                  type="text"
-                  value={editForm.title}
-                  onChange={(e) => setEditForm(p => ({ ...p, title: e.target.value }))}
-                  className="input input-bordered w-full text-xs h-10 rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Mô tả</label>
-                <textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm(p => ({ ...p, description: e.target.value }))}
-                  className="textarea textarea-bordered w-full text-xs rounded-lg"
-                  rows="3"
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Địa điểm</label>
-                  <input
-                    type="text"
-                    value={editForm.locationText}
-                    onChange={(e) => setEditForm(p => ({ ...p, locationText: e.target.value }))}
-                    className="input input-bordered w-full text-xs h-10 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Ngày hạn</label>
-                  <input
-                    type="date"
-                    value={editForm.dueDate}
-                    onChange={(e) => setEditForm(p => ({ ...p, dueDate: e.target.value }))}
-                    className="input input-bordered w-full text-xs h-10 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Vĩ độ</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={editForm.latitude}
-                    onChange={(e) => setEditForm(p => ({ ...p, latitude: e.target.value === '' ? '' : parseFloat(e.target.value) }))}
-                    className="input input-bordered w-full text-xs h-10 rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Kinh độ</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={editForm.longitude}
-                    onChange={(e) => setEditForm(p => ({ ...p, longitude: e.target.value === '' ? '' : parseFloat(e.target.value) }))}
-                    className="input input-bordered w-full text-xs h-10 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Trạng thái</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm(p => ({ ...p, status: e.target.value }))}
-                    className="select select-bordered w-full text-xs h-10 rounded-lg"
-                  >
-                    <option value="">Giữ nguyên</option>
-                    <option value="Submitted">Đã gửi</option>
-                    <option value="AI Reviewed">Đã kiểm tra AI</option>
-                    <option value="Verified">Đã xác minh</option>
-                    <option value="Assigned">Đã phân công</option>
-                    <option value="InProgress">Đang xử lý</option>
-                    <option value="Resolved">Đã xử lý</option>
-                    <option value="SubmittedForApproval">Chờ nghiệm thu</option>
-                    <option value="Approved">Đã duyệt</option>
-                    <option value="Rejected">Bị từ chối</option>
-                    <option value="NeedRework">Cần làm lại</option>
-                    <option value="Closed">Đã đóng</option>
-                    <option value="Cancelled">Đã hủy</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Ghi chú trạng thái</label>
-                  <input
-                    type="text"
-                    value={editForm.statusNote}
-                    onChange={(e) => setEditForm(p => ({ ...p, statusNote: e.target.value }))}
-                    className="input input-bordered w-full text-xs h-10 rounded-lg"
-                    placeholder="Nhập ghi chú nếu có"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  onClick={handleEdit}
-                  disabled={editLoading}
-                  variant="primary"
-                  size="sm"
-                >
-                  {editLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Save size={14} />}
-                  Lưu
-                </Button>
-              </div>
-            </div>
-          )}
+          </header>
 
           {/* Feedback summary */}
           <div className="space-y-4">
@@ -1738,9 +810,9 @@ export const ManagementFeedbackDetailPage = () => {
                   <Lucide.AlignLeft size={17} />
                 </div>
                 <div className="min-w-0">
-                  <div className="admin-section-description uppercase tracking-[0.18em]">Mô tả</div>
+                  <div className="admin-section-description uppercase tracking-[0.18em]">Nội dung phản ánh</div>
                   <div className="mt-2 text-sm font-semibold leading-6 text-slate-900 whitespace-pre-line">
-                    {feedback.description || 'Không có mô tả'}
+                    {feedback.description || 'Chưa có nội dung'}
                   </div>
                 </div>
               </div>
@@ -1753,8 +825,8 @@ export const ManagementFeedbackDetailPage = () => {
                     <Lucide.Info size={17} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Thông tin phản ánh / Report</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">Thông tin chính của hồ sơ tại thời điểm hiện tại.</p>
+                    <h3 className="text-sm font-bold text-slate-900">Thông tin gửi phản ánh</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Dữ liệu được lưu tại thời điểm người dân gửi phản ánh.</p>
                   </div>
                 </div>
               </div>
@@ -1762,29 +834,39 @@ export const ManagementFeedbackDetailPage = () => {
               <div className="grid sm:grid-cols-2">
                 {[
                   {
-                    label: 'Người báo cáo',
-                    value: feedback.userName || feedback.reporterName || 'Chưa có',
+                    label: 'Người gửi',
+                    value: feedback.userName || feedback.reporterName || 'Chưa có dữ liệu',
                     icon: Lucide.UserRound,
                   },
                   {
-                    label: 'Ngày tạo',
-                    value: formatDate(feedback.createdAt),
+                    label: 'Thời gian gửi',
+                    value: formatDate(feedback.createdAt) || 'Chưa có dữ liệu',
                     icon: Lucide.CalendarDays,
                   },
                   {
+                    label: 'Kênh gửi',
+                    value: getSubmissionChannelLabel(feedback.submissionChannel),
+                    icon: Lucide.Radio,
+                  },
+                  {
                     label: 'Danh mục',
-                    value: getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type),
+                    value: getCategoryLabel(feedback.categoryName || feedback.category?.name || feedback.categoryType || feedback.type) || 'Chưa có dữ liệu',
                     icon: Lucide.Tags,
                   },
                   {
-                    label: 'Ngày hạn',
-                    value: feedback.dueDate ? formatDate(feedback.dueDate) : 'Chưa có',
+                    label: 'Mã phản ánh',
+                    value: feedback.feedbackCode || feedback.code || feedback.feedbackId || feedback.id || 'Chưa có dữ liệu',
+                    icon: Lucide.Hash,
+                  },
+                  {
+                    label: 'Cập nhật gần nhất',
+                    value: formatDate(feedback.updatedAt) || 'Chưa có dữ liệu',
                     icon: Lucide.Clock3,
                   },
                 ].map(({ label, value, icon: Icon }, index) => (
                   <div
                     key={label}
-                    className={`flex min-w-0 items-start gap-3 px-5 py-4 sm:px-6 ${index < 2 ? 'border-b border-slate-100' : ''} ${index % 2 === 0 ? 'sm:border-r sm:border-slate-100' : ''}`}
+                    className={`flex min-w-0 items-start gap-3 border-b border-slate-100 px-5 py-4 sm:px-6 ${index % 2 === 0 ? 'sm:border-r sm:border-slate-100' : ''}`}
                   >
                     <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
                       <Icon size={15} />
@@ -1820,7 +902,7 @@ export const ManagementFeedbackDetailPage = () => {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="admin-section-description uppercase tracking-[0.2em]">Vị trí phản ánh</div>
-                  <div className="admin-section-title mt-1">Bản đồ sự cố</div>
+                    <div className="admin-section-title mt-1">Bản đồ vị trí</div>
                   <div className="mt-1 text-sm text-slate-500">Xem vị trí trên bản đồ hoặc mở nhanh bằng Google Maps.</div>
                 </div>
                 <a
@@ -1985,249 +1067,23 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           )}
 
-          <div className="admin-panel p-5 sm:p-6 space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-sm">
-                <Lucide.BellRing size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Thông báo cho người dân</div>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">Thông báo cho người dân</h3>
-                <p className="mt-1 text-sm text-slate-500">Gửi thông báo thủ công tới người dân về trạng thái xử lý phản ánh.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCitizenNotification((current) => !current)}
-                aria-expanded={showCitizenNotification}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
-                {showCitizenNotification ? 'Thu gọn' : 'Soạn thông báo'}
-                {showCitizenNotification ? <Lucide.ChevronUp size={16} /> : <Lucide.ChevronDown size={16} />}
-              </button>
-            </div>
-
-            {!showCitizenNotification && (
-              <div className="flex flex-wrap items-center gap-2 rounded-[1rem] border border-slate-200/80 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <span>Trạng thái hiện tại:</span>
-                <Badge intent={feedback?.status ? getStatusIntent(feedback.status) : 'neutral'} className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]">
-                  {feedback ? getStatusLabel(feedback.status) : 'Đang tải'}
-                </Badge>
-                {notificationActivities.length > 0 && (
-                  <span className="ml-auto text-xs font-medium text-slate-500">{notificationActivities.length} thông báo đã gửi</span>
-                )}
-              </div>
-            )}
-
-            {showCitizenNotification && (
-              <>
-            <div className="rounded-[1.2rem] border border-slate-200/80 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                <Lucide.Info size={12} />
-                Trạng thái hiện tại
-              </div>
-              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">{feedback ? getStatusLabel(feedback.status) : 'Đang tải...'}</div>
-                  <div className="mt-1 text-sm text-slate-500">Thông báo đề xuất sẽ được đánh dấu phù hợp với trạng thái hiện tại.</div>
-                </div>
-                <Badge intent={feedback?.status ? getStatusIntent(feedback.status) : 'neutral'} className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
-                  {feedback ? getStatusLabel(feedback.status) : 'Đang tải'}
-                </Badge>
-              </div>
-            </div>
-
-            <div className="rounded-[1rem] border border-slate-200/80 bg-white p-3 shadow-sm">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Thông tin người nhận</div>
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Người nhận</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">{recipientSummary.name}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Mã phản ánh</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">{recipientSummary.feedbackCode}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Khu vực</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">{recipientSummary.area}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {CITIZEN_NOTIFICATION_TEMPLATES.map((template) => {
-                const selected = notificationForm.templateId === template.id;
-                const isSuggested = template.id === suggestedNotificationTemplateId;
-                const semanticClass = template.id === 'received'
-                  ? 'status-info'
-                  : template.id === 'processing'
-                    ? 'status-warning'
-                    : template.id === 'completed'
-                      ? 'status-success'
-                      : template.id === 'rejected'
-                        ? 'status-danger'
-                        : 'status-neutral';
-                const selectedClass = selected
-                  ? `${semanticClass} shadow-[0_12px_24px_rgba(15,23,42,0.08)]`
-                  : `${semanticClass} bg-white/80 hover:bg-slate-50`;
-                return (
-                  <Button
-                    key={template.id}
-                    type="button"
-                    variant={selected ? 'primary' : 'outline'}
-                    size="sm"
-                    onClick={() => {
-                      setNotificationForm((current) => ({ ...current, templateId: template.id, title: template.title, message: template.message }));
-                      setNotificationErrors((current) => ({ ...current, title: undefined, message: undefined }));
-                    }}
-                    className={`justify-start rounded-[1rem] px-3 py-2.5 text-left ${selectedClass} ${isSuggested && !selected ? 'ring-1 ring-slate-200' : ''}`}
-                  >
-                    <span className="flex w-full items-start justify-between gap-2">
-                      <span className="flex flex-col items-start gap-0.5">
-                        <span className="text-sm font-semibold">{template.label}</span>
-                        <span className="text-xs font-medium opacity-80">{template.shortLabel}</span>
-                      </span>
-                      {isSuggested && (
-                        <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                          Gợi ý
-                        </span>
-                      )}
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-              <div className="space-y-3">
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Tiêu đề</span>
-                  <input
-                    value={notificationForm.title}
-                    onChange={(event) => handleNotificationFieldChange('title', event.target.value)}
-                    className="w-full rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-slate-400"
-                    placeholder="Nhập tiêu đề thông báo"
-                  />
-                  {notificationErrors.title && <span className="text-xs font-medium text-rose-600">{notificationErrors.title}</span>}
-                </label>
-
-                <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                  <span>Nội dung</span>
-                  <textarea
-                    value={notificationForm.message}
-                    onChange={(event) => handleNotificationFieldChange('message', event.target.value)}
-                    rows={5}
-                    className="w-full rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-slate-400"
-                    placeholder="Nhập nội dung thông báo"
-                  />
-                  {notificationErrors.message && <span className="text-xs font-medium text-rose-600">{notificationErrors.message}</span>}
-                </label>
-
-                <div className="rounded-[1rem] border border-slate-200/80 bg-slate-50 p-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvancedOptions((current) => !current)}
-                    className="flex w-full items-center justify-between gap-3 text-sm font-semibold text-slate-700"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Lucide.Settings2 size={14} className="text-slate-500" />
-                      Tùy chọn nâng cao
-                    </span>
-                    {showAdvancedOptions ? <Lucide.ChevronUp size={16} className="text-slate-500" /> : <Lucide.ChevronDown size={16} className="text-slate-500" />}
-                  </button>
-                  {showAdvancedOptions && (
-                    <label className="mt-3 flex flex-col gap-2 text-sm font-semibold text-slate-700">
-                      <span>Link đính kèm</span>
-                      <input
-                        value={notificationForm.targetUrl}
-                        onChange={(event) => handleNotificationFieldChange('targetUrl', event.target.value)}
-                        className="w-full rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-slate-400"
-                        placeholder="https://..."
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
-
-              <div className="admin-inset-panel p-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <Lucide.BellRing size={15} className="text-rose-600" />
-                  Xem trước thông báo
-                </div>
-                <div className="rounded-[1rem] border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                    <Lucide.BellRing size={12} />
-                    Thông báo
-                  </div>
-                  <div className="mt-3 rounded-[0.9rem] border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                    {notificationForm.templateId === 'processing' ? 'Đang xử lý' : notificationForm.templateId === 'completed' ? 'Đã hoàn thành' : notificationForm.templateId === 'received' ? 'Đã tiếp nhận' : notificationForm.templateId === 'rejected' ? 'Từ chối xử lý' : notificationForm.templateId === 'need-info' ? 'Cần bổ sung thông tin' : 'Tùy chỉnh'}
-                  </div>
-                  <div className="mt-3 text-sm font-semibold text-slate-900">{notificationForm.title || 'Tiêu đề thông báo'}</div>
-                  <div className="mt-2 text-sm leading-6 text-slate-600 whitespace-pre-line">{notificationForm.message || 'Nội dung thông báo sẽ hiển thị ở đây.'}</div>
-                  <div className="mt-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                    <span>Ngày giờ gửi</span>
-                    <span>{formatDate(new Date().toISOString())}</span>
-                  </div>
-                  {notificationForm.targetUrl && (
-                    <div className="mt-3 rounded-[0.9rem] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                      {notificationForm.targetUrl}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3">
-              <div className="text-sm text-slate-500">
-                {notificationContentValid ? 'Thông báo đã sẵn sàng để gửi cho người dân.' : 'Vui lòng nhập tiêu đề và nội dung trước khi gửi.'}
-              </div>
-              <Button
-                type="button"
-                onClick={openNotificationConfirmation}
-                disabled={notificationSubmitting || !notificationContentValid}
-                variant="primary"
-                size="sm"
-              >
-                {notificationSubmitting ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Send size={14} />}
-                Gửi thông báo
-              </Button>
-            </div>
-
-            {notificationActivities.length > 0 && (
-              <div className="rounded-[1.2rem] border border-slate-200/80 bg-slate-50 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Lịch sử thông báo</div>
-                <div className="mt-3 space-y-3">
-                  {notificationActivities.map((activity) => (
-                    <div key={activity.id} className="relative pl-5">
-                      <div className="absolute left-0 top-1.5 h-2.5 w-2.5 rounded-full bg-rose-600" />
-                      <div className="rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5">
-                        <div className="text-sm font-semibold text-slate-900">{activity.title}</div>
-                        <div className="mt-0.5 text-sm text-slate-600">{activity.subtitle}</div>
-                        <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{formatDate(activity.timestamp)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-              </>
-            )}
-          </div>
-
           {/* Attachments */}
-          {activeViewTab === 'detail' && attachments.length > 0 && (
+          {activeViewTab === 'detail' && (
             <div className="admin-panel p-6 space-y-4">
-              <h3 className="font-bold text-slate-900">Tệp đính kèm ({attachments.length})</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {attachments.map((attachment, idx) => {
+              <h3 className="font-bold text-slate-900">Hình ảnh và tệp đính kèm ({previewItems.length})</h3>
+              {previewItems.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {previewItems.map((attachment, idx) => {
                   const fileUrl = getAttachmentUrl(attachment);
                   const isVideo = isVideoFile(fileUrl);
                   const attachmentKey = attachment?.attachmentId || attachment?.id || fileUrl || `attachment-${idx}`;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={attachmentKey}
-                      className="relative bg-slate-100 rounded-lg overflow-hidden cursor-pointer group"
-                      onClick={() => setPreviewAttachmentIndex(previewItems.findIndex((item) => getAttachmentUrl(item) === fileUrl))}
+                      className="group relative overflow-hidden rounded-xl bg-slate-100 text-left focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100"
+                      onClick={() => setPreviewAttachmentIndex(idx)}
+                      aria-label={`Xem tệp đính kèm ${idx + 1}`}
                     >
                       {isVideo ? (
                         <div className="w-full aspect-video bg-primary/80 flex items-center justify-center group-hover:bg-primary/90">
@@ -2236,15 +1092,21 @@ export const ManagementFeedbackDetailPage = () => {
                       ) : (
                         <img
                           src={fileUrl}
-                          alt={`Attachment ${idx}`}
+                          alt={attachment?.fileName || attachment?.name || `Tệp đính kèm ${idx + 1}`}
                           className="w-full aspect-video object-cover group-hover:opacity-75"
                         />
                       )}
-                      <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/20 transition"></div>
-                    </div>
+                      <span className="absolute inset-0 bg-primary/0 transition group-hover:bg-primary/20" aria-hidden="true" />
+                    </button>
                   );
                 })}
-              </div>
+                </div>
+              ) : (
+                <EmptyState
+                  title="Chưa có hình ảnh hoặc tệp đính kèm"
+                  description="Phản ánh này chưa có minh chứng được người dân gửi kèm."
+                />
+              )}
             </div>
           )}
 
@@ -2267,7 +1129,7 @@ export const ManagementFeedbackDetailPage = () => {
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-bold text-slate-800">{comment.userName || comment.author || 'Người dùng'}</div>
                         <div className="text-[10px] text-slate-500">
-                          {comment.createdAt ? formatDate(comment.createdAt) : ''}
+                          {formatDate(comment.createdAt) || 'Chưa có dữ liệu'}
                         </div>
                       </div>
                       <div className="mt-2 text-slate-700 whitespace-pre-line">{comment.content || comment.message || comment.note}</div>
@@ -2278,332 +1140,36 @@ export const ManagementFeedbackDetailPage = () => {
             </div>
           ) : null}
 
-          {isMasterTicket ? (
-          <div className="admin-panel p-6 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Các Report liên kết</h3>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                {linkedFeedbacks.length} mục
-              </span>
-            </div>
-
-            {linkedFeedbacksLoading ? (
-              <div className="admin-empty-panel p-4 text-sm text-slate-500">
-                <span className="loading loading-spinner loading-sm mr-2" />
-                Đang tải phản ánh liên kết...
-              </div>
-            ) : linkedFeedbacksError ? (
-              <div className="admin-info-note p-4 text-sm text-rose-700">
-                {linkedFeedbacksError}
-              </div>
-            ) : linkedFeedbacks.length === 0 ? (
-              <EmptyState
-                title="Chưa có Report liên kết"
-                description="Không có Report nào được liên kết với hồ sơ này."
-              />
-            ) : (
-              <div className="space-y-3">
-                {linkedFeedbacks.map((item, index) => {
-                  const childFeedbackId = item?.feedbackId || item?.id;
-                  return (
-                    <div key={childFeedbackId || index} className="admin-inset-panel p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Mã phản ánh</div>
-                          <div className="font-semibold text-slate-900">{childFeedbackId || '—'}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
-                              <Lucide.GitMerge size={11} aria-hidden="true" />
-                              Report đã đối chiếu
-                            </span>
-                            <span className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Người báo cáo</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {item?.reporterName || item?.reporter?.name || item?.userName || '—'}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ngày tạo</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {formatDate(item?.createdAt || item?.createdDate)}
-                          </div>
-                        </div>
-                      </div>
-                      {childFeedbackId && (
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/staff/feedbacks/${childFeedbackId}`)}
-                            className="btn btn-xs btn-outline rounded-lg"
-                          >
-                            <Lucide.ExternalLink size={12} />
-                            Xem phản ánh
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          ) : null}
-
-          {isConfirmedDuplicate ? (
-          <div className="admin-panel p-6 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-900">Các Report đã đối chiếu</h3>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                {relatedFeedbacks.length} mục
-              </span>
-            </div>
-
-            {relatedFeedbacksLoading ? (
-              <div className="admin-empty-panel p-4 text-sm text-slate-500">
-                <span className="loading loading-spinner loading-sm mr-2" />
-                Đang tải phản ánh liên quan...
-              </div>
-            ) : relatedFeedbacksError ? (
-              <div className="admin-info-note p-4 text-sm text-rose-700">
-                {relatedFeedbacksError}
-              </div>
-            ) : relatedFeedbacks.length === 0 ? (
-              <EmptyState
-                title="Chưa có phản ánh liên quan"
-                description="Không có phản ánh liên quan nào được tìm thấy cho phản ánh này."
-              />
-            ) : (
-              <div className="space-y-3">
-                {relatedFeedbacks.map((item, index) => {
-                  const relatedId = item?.feedbackId || item?.id;
-                  return (
-                    <div key={relatedId || index} className="admin-inset-panel p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                            {item?.relationType === 'master' ? 'Report tham chiếu' : 'Report liên quan'}
-                          </div>
-                          <div className="font-semibold text-slate-900">{relatedId || '—'}</div>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Trạng thái</div>
-                          <div className="text-sm font-semibold text-slate-900">{getStatusLabel(item?.status)}</div>
-                        </div>
-                      </div>
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Danh mục</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {getCategoryLabel(item?.categoryName || item?.category?.name || item?.categoryType || item?.type)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">Ngày tạo</div>
-                          <div className="mt-1 text-sm font-semibold text-slate-900">
-                            {formatDate(item?.createdAt || item?.createdDate)}
-                          </div>
-                        </div>
-                      </div>
-                      {relatedId && (
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/staff/feedbacks/${relatedId}`)}
-                            className="btn btn-xs btn-outline rounded-lg"
-                          >
-                            <Lucide.ExternalLink size={12} />
-                            Xem chi tiết
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          ) : null}
-
-          {showAreaAlertModal && (
-            <div className="absolute right-4 bottom-16 z-50 w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow pointer-events-auto">
-              <div className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Tạo Cảnh Báo Khu Vực</h2>
-                    <p className="mt-1 text-sm text-slate-500">Sửa tiêu đề, nội dung hoặc thời gian trước khi gửi.</p>
-                  </div>
-                  <button type="button" onClick={() => setShowAreaAlertModal(false)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Đóng">
-                    <Lucide.X size={18} />
-                  </button>
-                </div>
-
-                <div className="mt-3 space-y-3">
-                  <input value={areaAlertForm.title} onChange={(e) => handleAreaAlertFieldChange('title', e.target.value)} className="input w-full" />
-                  <textarea value={areaAlertForm.message} onChange={(e) => handleAreaAlertFieldChange('message', e.target.value)} className="textarea w-full" rows={3} />
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => setShowAreaAlertModal(false)} className="btn btn-ghost">Hủy</button>
-                    <button onClick={handleCreateAreaAlert} className="btn btn-primary">Tạo cảnh báo</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
         </div>
 
         {/* Sidebar */}
         <div className="col-span-1 space-y-6">
           <RelatedIncidentCard
-            incidentId={feedback?.incidentId}
+            incidentId={relatedIncidentId}
           />
 
-          {/* Timeline Progress */}
-          <div className="admin-panel p-5">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-semibold text-slate-900">Tiến độ hồ sơ</h3>
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                Trực tiếp
+          <section className="admin-panel overflow-hidden" aria-labelledby="report-context-title">
+            <header className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700" aria-hidden="true">
+                <Lucide.BookOpenText size={17} />
               </span>
-            </div>
-            {(() => {
-              const TIMELINE_ORDER = [
-                managementTypes.feedbackStatus.SUBMITTED,
-                managementTypes.feedbackStatus.AI_REVIEWED,
-                managementTypes.feedbackStatus.VERIFIED,
-                managementTypes.feedbackStatus.ASSIGNED,
-                managementTypes.feedbackStatus.IN_PROGRESS,
-                managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-                managementTypes.feedbackStatus.APPROVED,
-                managementTypes.feedbackStatus.CLOSED,
-              ];
-
-              const currentIndex = TIMELINE_ORDER.indexOf(feedback.status);
-
-              return (
-                <div className="mt-4">
-                  {TIMELINE_ORDER.map((step, idx) => {
-                    const done = currentIndex > idx;
-                    const current = currentIndex === idx;
-                    const history = sortedStatusHistories.find(h => h.newStatus === step) || null;
-                    const timeLabel = history ? formatDate(history.changedAt) : (step === managementTypes.feedbackStatus.SUBMITTED ? formatDate(feedback.createdAt) : '');
-
-                    return (
-                      <div key={step} className="relative flex gap-3 pb-2.5 last:pb-0">
-                        <div className="relative flex w-4 shrink-0 justify-center">
-                          {idx < TIMELINE_ORDER.length - 1 && (
-                            <div
-                              className={`absolute left-1/2 top-3 h-[calc(100%+0.625rem)] w-px -translate-x-1/2 ${done ? 'bg-blue-300' : 'bg-slate-200'}`}
-                            />
-                          )}
-                          <div
-                            className={`relative z-10 mt-2 h-2.5 w-2.5 rounded-full ring-4 ring-white ${
-                              current
-                                ? 'bg-[#0052CC] shadow-[0_0_0_3px_rgba(0,82,204,0.14)]'
-                                : done
-                                  ? 'bg-blue-400'
-                                  : 'bg-slate-200'
-                            }`}
-                          />
-                        </div>
-                        <div
-                          className={`min-w-0 flex-1 rounded-xl border px-3 py-2 transition-colors ${
-                            current
-                              ? 'border-blue-200 bg-blue-50/70'
-                              : done
-                                ? 'border-slate-200 bg-white'
-                                : 'border-slate-100 bg-slate-50/70'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div
-                              className={`min-w-0 text-sm font-semibold ${
-                                current ? 'text-[#0052CC]' : done ? 'text-slate-800' : 'text-slate-500'
-                              }`}
-                            >
-                              {getStatusLabel(step)}
-                            </div>
-                            {current && (
-                              <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-blue-700">
-                                Hiện tại
-                              </span>
-                            )}
-                          </div>
-                          <div className={`mt-0.5 text-[11px] ${done || current ? 'text-slate-500' : 'text-slate-400'}`}>
-                            {timeLabel || 'Đang chờ cập nhật'}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
-          <div className="admin-panel space-y-4 p-5 lg:sticky lg:top-24 lg:z-10">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0052CC]">
-                <Lucide.ListChecks size={18} aria-hidden="true" />
-              </div>
               <div className="min-w-0">
-                <h3 className="font-bold text-slate-900">Hành động tiếp theo</h3>
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-              {canVerify
-                ? 'Xác minh phản ánh trước khi phân công đội xử lý.'
-                : canAssign
-                ? 'Phân công ngay để phản ánh bắt đầu vào quy trình xử lý.'
-                : nextStatusOptions.length > 0
-                ? 'Cập nhật trạng thái khi phản ánh đã sẵn sàng cho bước tiếp theo.'
-                : 'Đã hoàn thành hoặc không cần hành động tiếp theo.'}
-                </p>
+                <h2 id="report-context-title" className="font-bold text-slate-900">Nguồn thông tin phản ánh</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Mọi thao tác xử lý được thực hiện tại trang chi tiết sự vụ.</p>
               </div>
-            </div>
-            <div className="space-y-2.5">
-              {canVerify && (
-                <Button
-                  type="button"
-                  onClick={handleVerify}
-                  disabled={verifyLoading}
-                  variant="primary"
-                  size="sm"
-                  className="w-full"
-                >
-                  {verifyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.Check size={14} />}
-                  Xác minh phản ánh
-                </Button>
-              )}
-              {canDeny && (
-                <Button
-                  type="button"
-                  onClick={handleDeny}
-                  disabled={denyLoading}
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                >
-                  {denyLoading ? <span className="loading loading-spinner loading-xs"></span> : <Lucide.XCircle size={14} />}
-                  Không chấp nhận
-                </Button>
-              )}
-              {canAssign && (
-                <Button
-                  type="button"
-                  onClick={() => setAssignModal(true)}
-                  variant="primary"
-                  size="sm"
-                  className="w-full"
-                >
-                  <Lucide.UserPlus size={14} />
-                  Phân công đơn vị xử lý
-                </Button>
-              )}
+            </header>
+            <div className="space-y-2.5 p-5">
+              <Button
+                type="button"
+                onClick={() => handleViewTabChange('exchange')}
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                <Lucide.MessageSquareText size={15} aria-hidden="true" />
+                Trao đổi về phản ánh
+              </Button>
               <Button
                 type="button"
                 onClick={() => navigate(`/staff/feedbacks/${feedbackId}/request-info`)}
@@ -2611,75 +1177,25 @@ export const ManagementFeedbackDetailPage = () => {
                 size="sm"
                 className="w-full"
               >
-                <Lucide.MessageSquarePlus size={14} />
+                <Lucide.MessageSquarePlus size={15} aria-hidden="true" />
                 Yêu cầu thêm thông tin
               </Button>
-              <Button
-                type="button"
-                onClick={() => navigate(`/staff/feedbacks/${feedbackId}/history`)}
-                variant="outline"
-                size="sm"
-                className="w-full"
-              >
-                <Lucide.History size={14} />
-                Xem lịch sử phân công
-              </Button>
-              {providerReport ? (
-                <Button
-                  type="button"
-                  onClick={openProviderReportWorkspace}
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                >
-                  <Lucide.FileText size={14} />
-                  Mở báo cáo xử lý
-                </Button>
-              ) : null}
-              {nextStatusOptions.length > 0 && (
-                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3.5">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-500">
-                    <Lucide.ArrowRightCircle size={14} className="text-blue-500" aria-hidden="true" />
-                    Trạng thái tiếp theo
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {nextStatusOptions.map((nextStatus) => (
-                      <Badge
-                        key={nextStatus}
-                        intent={getStatusIntent(nextStatus)}
-                        className="px-3 py-1 text-[11px] font-semibold"
-                      >
-                        {getStatusLabel(nextStatus)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {!
-                canVerify &&
-                !canDeny &&
-                !canAssign &&
-                nextStatusOptions.length === 0 && (
-                  <div className="admin-inset-panel p-4 text-sm text-slate-600">
-                    Không còn bước nào cần thực hiện cho phản ánh này.
-                  </div>
-                )}
             </div>
-          </div>
+          </section>
 
         </div>
       </div>
       ) : null}
 
       {activeViewTab === 'exchange' ? (
-        <section ref={exchangeSectionRef} className="admin-panel scroll-mt-5 overflow-hidden">
+        <section ref={exchangeSectionRef} className="admin-panel scroll-mt-5 overflow-hidden" role="tabpanel" aria-label="Trao đổi về phản ánh">
           <div className="border-b border-slate-200 px-6 py-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-xs font-medium text-slate-500">Trao đổi phản ánh</div>
+                <div className="text-xs font-medium text-slate-500">Trao đổi về phản ánh</div>
                 <h3 className="mt-1 text-xl font-semibold text-slate-900">Hội thoại với người dân</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Phản hồi người dân và ghi chú nội bộ trong cùng một luồng xử lý.
+                  Phản hồi người dân và lưu ghi chú nội bộ trong cùng hồ sơ phản ánh.
                 </p>
               </div>
 
@@ -2708,7 +1224,7 @@ export const ManagementFeedbackDetailPage = () => {
                   </span>
                   <div className="mt-3 text-base font-semibold text-slate-900">Chưa có trao đổi</div>
                   <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
-                    Bắt đầu bằng một phản hồi cho người dân hoặc tạo ghi chú nội bộ cho đội xử lý.
+                    Bắt đầu bằng một phản hồi cho người dân hoặc tạo ghi chú nội bộ cho cán bộ phụ trách.
                   </p>
                 </div>
               ) : (
@@ -2793,7 +1309,7 @@ export const ManagementFeedbackDetailPage = () => {
                                             : 'border border-slate-200 bg-white text-slate-800'
                                       }`}
                                     >
-                                      <div className="whitespace-pre-line break-words">{body || '—'}</div>
+                                      <div className="whitespace-pre-line break-words">{body || 'Chưa có nội dung'}</div>
                                     </div>
 
                                     <div
@@ -2801,7 +1317,7 @@ export const ManagementFeedbackDetailPage = () => {
                                         isStaffPublic ? 'text-right' : ''
                                       }`}
                                     >
-                                      {formatDate(message?.createdAt)}
+                                      {formatDate(message?.createdAt) || 'Chưa có dữ liệu'}
                                     </div>
                                   </div>
                                 );
@@ -2897,12 +1413,12 @@ export const ManagementFeedbackDetailPage = () => {
       ) : null}
 
       {activeViewTab === 'history' ? (
-        <div className="space-y-6">
+        <div className="space-y-6" role="tabpanel" aria-label="Lịch sử phản ánh">
           <div className="admin-panel p-6 space-y-4">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Theo dõi hồ sơ</div>
               <h3 className="mt-1 text-lg font-semibold text-slate-900">Dòng sự kiện phản ánh</h3>
-              <p className="mt-1 text-sm text-slate-500">Xem lại toàn bộ tiến trình xử lý, quyết định và thông báo của phản ánh từ lúc tiếp nhận đến hiện tại.</p>
+              <p className="mt-1 text-sm text-slate-500">Xem lại các cập nhật và quyết định đã được ghi nhận cho phản ánh từ lúc tiếp nhận đến hiện tại.</p>
             </div>
             <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-5 shadow-sm">
@@ -2940,7 +1456,7 @@ export const ManagementFeedbackDetailPage = () => {
                           </div>
                           <div>
                             <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Thời gian</div>
-                            <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(event.timestamp)}</div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900">{formatDate(event.timestamp) || 'Chưa có dữ liệu'}</div>
                           </div>
                         </div>
 
@@ -3052,20 +1568,6 @@ export const ManagementFeedbackDetailPage = () => {
         : null}
 
       <DelightToast open={areaAlertToast.open} message={areaAlertToast.message} sub={areaAlertToast.sub} onClose={() => setAreaAlertToast({ open: false, message: '', sub: '' })} />
-      <DelightToast open={notificationToast.open} message={notificationToast.message} sub={notificationToast.sub} onClose={() => setNotificationToast({ open: false, message: '', sub: '' })} />
-
-      <ConfirmationModal
-        open={notificationConfirmOpen}
-        title="Xác nhận gửi thông báo"
-        message="Người dân sẽ nhận được thông báo này ngay sau khi gửi."
-        confirmLabel="Gửi thông báo"
-        cancelLabel="Hủy"
-        onConfirm={handleSendCitizenNotification}
-        onCancel={() => {
-          setNotificationConfirmOpen(false);
-          setPendingNotificationPayload(null);
-        }}
-      />
     </div>
   );
 };

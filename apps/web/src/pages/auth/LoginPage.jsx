@@ -121,7 +121,7 @@ const TEST_ROLE_ACCOUNTS = [
   },
   {
     label: 'System Staff',
-    description: 'Tiếp nhận phản ánh',
+    description: 'Xử lý sự vụ được giao',
     email: 'kvietanh123@gmail.com',
     icon: Lucide.UsersRound,
   },

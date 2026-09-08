@@ -62,7 +62,7 @@ export default function RelatedIncidentCard({ incidentId }) {
       <RelatedIncidentNotice
         icon={Lucide.Link2Off}
         title="Chưa có sự vụ liên quan"
-        description="Report này hiện chưa được liên kết với sự vụ nào."
+        description="Phản ánh này hiện chưa được liên kết với sự vụ nào."
       />
     );
   }
@@ -73,8 +73,8 @@ export default function RelatedIncidentCard({ incidentId }) {
     return (
       <RelatedIncidentNotice
         icon={Lucide.ServerOff}
-        title="Chưa có API hỗ trợ liên kết Report với Incident"
-        description="Backend hiện chưa cung cấp thông tin sự vụ liên quan cho Report này."
+        title="Chưa có API hỗ trợ liên kết phản ánh với sự vụ"
+        description="Backend hiện chưa cung cấp thông tin sự vụ liên quan cho phản ánh này."
       />
     );
   }
@@ -84,7 +84,7 @@ export default function RelatedIncidentCard({ incidentId }) {
       <RelatedIncidentNotice
         icon={Lucide.FileQuestion}
         title="Không tìm thấy sự vụ liên quan"
-        description="Mã sự vụ được trả về từ Report hiện không còn khả dụng."
+        description="Mã sự vụ được trả về từ phản ánh hiện không còn khả dụng."
       />
     );
   }
@@ -115,7 +115,7 @@ export default function RelatedIncidentCard({ incidentId }) {
         <span className="admin-mini-icon" aria-hidden="true"><Lucide.Landmark size={17} /></span>
         <div className="min-w-0">
           <h2 id="related-incident-title" className="admin-section-title">Sự vụ liên quan</h2>
-          <p className="admin-section-description mt-1">Report là một nguồn thông tin thuộc sự vụ này.</p>
+          <p className="admin-section-description mt-1">Phản ánh là một nguồn thông tin thuộc sự vụ này.</p>
         </div>
       </header>
 
@@ -146,7 +146,7 @@ export default function RelatedIncidentCard({ incidentId }) {
 
         <Link
           to={`/staff/incidents/${incident.incidentId}`}
-          className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-800 dark:hover:bg-blue-950/30 dark:hover:text-blue-300 dark:focus-visible:ring-blue-950"
+          className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[1rem] bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:bg-blue-500 dark:hover:bg-blue-400 dark:focus-visible:ring-blue-950"
         >
           Xem chi tiết sự vụ
           <Lucide.ArrowUpRight size={16} aria-hidden="true" />
