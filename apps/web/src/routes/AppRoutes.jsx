@@ -36,6 +36,7 @@ const IncidentMatchListPage = lazy(() => import('../pages/tickets/DuplicateDetec
 const IncidentMatchDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.IncidentMatchDetailPage })));
 const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
+const StaffIncidentDashboardPage = lazy(() => import('../pages/staff/StaffIncidentDashboardPage').then((m) => ({ default: m.default })));
 const StaffIncidentListPage = lazy(() => import('../pages/staff/StaffIncidentListPage').then((m) => ({ default: m.default })));
 const StaffIncidentDetailPage = lazy(() => import('../pages/staff/StaffIncidentDetailPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
@@ -220,7 +221,9 @@ export const AppRoutes = () => {
             <Navigate to="/" replace />
           ) : (
             <DashboardLayout>
-              <Dashboard />
+              {currentRole === APP_ROLES.SYSTEM_STAFF
+                ? <StaffIncidentDashboardPage />
+                : <Dashboard />}
             </DashboardLayout>
           )}
         </ProtectedRoute>
