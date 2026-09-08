@@ -71,7 +71,7 @@ const getRoleDashboard = (role) => {
   const normalizedRole = normalizeRole(role);
   const roleMap = {
     'service-user': '/',
-    'system-staff': '/staff/queue',
+    'system-staff': '/dashboard',
     'service-provider': '/provider/tasks',
     'interaction-manager': '/manager/interactions',
     administrator: '/admin/audit',
@@ -121,7 +121,7 @@ const TEST_ROLE_ACCOUNTS = [
   },
   {
     label: 'System Staff',
-    description: 'Tiếp nhận phản ánh',
+    description: 'Xử lý sự vụ được giao',
     email: 'kvietanh123@gmail.com',
     icon: Lucide.UsersRound,
   },

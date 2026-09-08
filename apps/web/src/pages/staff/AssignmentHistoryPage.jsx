@@ -6,6 +6,7 @@ import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import Button from '../../components/design-system/Button';
 import PageTransition from '../../components/motion/PageTransition';
 import { EmptyState } from '@urbanmind/shared-ui';
+import { getProviderStatusLabel } from './staffIncidentProcessing';
 
 const FILTER_OPTIONS = [
   { id: 'all', label: 'Tất cả', icon: Lucide.ListFilter },
@@ -189,8 +190,7 @@ export const AssignmentHistoryPage = () => {
 
     /*
      * Nguồn chính: feedback_provider_reports.
-     * Đây cũng là dữ liệu mà trang /staff/provider-reports/:id đang dùng,
-     * nên lịch sử phân công sẽ đồng bộ với báo cáo xử lý thực tế.
+     * Đây là dữ liệu lịch sử theo Feedback cũ và chỉ được hiển thị để tra cứu.
      */
     if (providerReports.length > 0) {
       return providerReports.map((report, index) => {
@@ -463,27 +463,6 @@ export const AssignmentHistoryPage = () => {
                             {formatDate(event.assignmentDate)}
                           </time>
 
-                          {event.providerReportId ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                navigate(
-                                  `/staff/provider-reports/${event.providerReportId}`,
-                                  {
-                                    state: {
-                                      feedbackId,
-                                    },
-                                  }
-                                )
-                              }
-                              className="shrink-0"
-                            >
-                              <Lucide.ExternalLink size={13} />
-                              Mở báo cáo
-                            </Button>
-                          ) : null}
                         </div>
                       </div>
 
@@ -512,7 +491,7 @@ export const AssignmentHistoryPage = () => {
 
                           <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">Trạng thái báo cáo</div>
                           <div className="mt-1 font-semibold text-slate-700">
-                            {event.reportStatus || '—'}
+                            {event.reportStatus ? getProviderStatusLabel(event.reportStatus) : '—'}
                           </div>
                         </div>
                       </div>

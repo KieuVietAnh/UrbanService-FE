@@ -25,7 +25,7 @@ const menuMapping = {
 const getRoleNameVietnamese = (role) => {
   switch (role) {
     case APP_ROLES.SERVICE_USER: return 'Người Dân';
-    case APP_ROLES.SYSTEM_STAFF: return 'Nhân Viên Tiếp Nhận';
+    case APP_ROLES.SYSTEM_STAFF: return 'Nhân viên xử lý sự vụ';
     case APP_ROLES.SERVICE_PROVIDER: return 'Đơn Vị Xử Lý';
     case APP_ROLES.INTERACTION_MANAGER: return 'Quản Lý Tương Tác';
     case APP_ROLES.ADMINISTRATOR: return 'Quản Trị Viên';
@@ -184,7 +184,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         <nav className="admin-sidebar-nav min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden px-2.5 py-2">
           {currentRole === APP_ROLES.SYSTEM_STAFF ? (
             systemStaffSidebarSections.map((section) => {
-              const visibleItems = section.items.filter((item) => item.path !== '/profile');
+              const visibleItems = section.items;
               const isSectionActive = visibleItems.some((item) => isSystemStaffMenuItemActive(item, currentPathname));
               const isExpanded = expandedSections[section.id] ?? true;
 

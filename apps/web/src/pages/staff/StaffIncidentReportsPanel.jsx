@@ -162,7 +162,7 @@ export default function StaffIncidentReportsPanel({ incident, capability }) {
         <EmptyState
           icon={Lucide.MessagesSquare}
           title="Chưa có phản ánh trong sự vụ này"
-          description="Các Report được liên kết với sự vụ sẽ xuất hiện tại đây."
+          description="Các phản ánh được liên kết với sự vụ sẽ xuất hiện tại đây."
         />
       </div>
     );
@@ -184,7 +184,7 @@ export default function StaffIncidentReportsPanel({ incident, capability }) {
           <Lucide.Info size={17} />
         </span>
         <p>
-          Một sự vụ có thể được nhiều người dân phản ánh. Mỗi Report vẫn được lưu giữ và cung cấp thêm thông tin cho quá trình xử lý.
+          Một sự vụ có thể được nhiều người dân phản ánh. Mỗi phản ánh vẫn được lưu giữ và cung cấp thêm thông tin cho quá trình xử lý.
         </p>
       </aside>
 

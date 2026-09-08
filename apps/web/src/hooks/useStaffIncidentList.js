@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { incidentManagementApi } from '@urbanmind/shared-api';
+import { hasStaffIncidentScopeMismatch } from './staffIncidentScope.js';
 
 export const STAFF_INCIDENT_LIST_STATE = Object.freeze({
   API_UNAVAILABLE: 'api-unavailable',
@@ -76,6 +77,16 @@ export function useStaffIncidentList(params, { enabled = true } = {}) {
       if (controller.signal.aborted) return;
 
       const incidents = Array.isArray(response?.items) ? response.items : [];
+      if (hasStaffIncidentScopeMismatch(incidents, params?.assignedStaffUserId)) {
+        setSnapshot({
+          error: new Error('STAFF_SCOPE_MISMATCH'),
+          incidents: [],
+          pagination: null,
+          state: STAFF_INCIDENT_LIST_STATE.ERROR,
+        });
+        return;
+      }
+
       setSnapshot({
         error: null,
         incidents,

@@ -29,7 +29,7 @@ const normalizeRole = (role) => {
 const getRoleDashboard = (role) => {
   const roleMap = {
     'service-user': '/dashboard',
-    'system-staff': '/staff/queue',
+    'system-staff': '/dashboard',
     'service-provider': '/provider/tasks',
     'interaction-manager': '/manager/interactions',
     administrator: '/admin/audit',

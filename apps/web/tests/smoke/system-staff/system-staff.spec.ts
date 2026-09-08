@@ -1,169 +1,178 @@
 import { expect, Page, test } from '@playwright/test';
 import { LoginPage } from '../../pages/LoginPage';
 
-const staffEmail = 'kvietanh123@gmail.com';
-const staffPassword = '123456789';
-
-const queueRoute = '/staff/queue';
-const feedbackListRoute = '/staff/feedbacks';
-const duplicateDetectionRoute = '/staff/duplicates';
-const assignmentHistoryRoute = '/staff/assignment-history';
-const areaAlertsRoute = '/staff/area-alerts';
-
-type PageMonitor = {
-  pageErrors: string[];
-  consoleErrors: string[];
-  badResponses: string[];
-};
-
-const attachPageMonitoring = (page: Page): PageMonitor => {
-  const monitor: PageMonitor = { pageErrors: [], consoleErrors: [], badResponses: [] };
-
-  page.on('pageerror', (error) => monitor.pageErrors.push(error?.message || String(error)));
-  page.on('console', (m) => { if (m.type() === 'error') monitor.consoleErrors.push(m.text()); });
-  page.on('response', (response) => {
-    const status = response.status();
-    const url = response.url();
-    if (status >= 400 && /\/api\//i.test(url)) monitor.badResponses.push(`${status} ${response.request().method()} ${url}`);
-  });
-
-  return monitor;
-};
-
-const assertNoErrors = async (monitor: PageMonitor, context: string) => {
-  const relevant = monitor.pageErrors.filter((e) => !/Unexpected token '<'/.test(String(e)));
-  expect(relevant, `${context}: unexpected page errors`).toEqual([]);
-  // Filter known benign console messages (HTML responses or 405s returned from some endpoints)
-  const consoleRelevant = monitor.consoleErrors.filter((e) => {
-    if (!e) return false;
-    if (/Unexpected token '<'/.test(e)) return false;
-    if (/Failed to load resource: the server responded with a status of 405/.test(e)) return false;
-    if (/\b405\b/.test(e) && /Method Not Allowed/i.test(e)) return false;
-    return true;
-  });
-  expect(consoleRelevant, `${context}: unexpected console errors`).toEqual([]);
-  // Ignore 405 responses from some management endpoints which are read-only in smoke runs
-  const badRelevant = monitor.badResponses.filter((e) => {
-    if (!e) return false;
-    if (/\b405\b/.test(e)) return false;
-    return true;
-  });
-  expect(badRelevant, `${context}: unexpected API failures`).toEqual([]);
-};
+const staffEmail = process.env.STAFF_EMAIL;
+const staffPassword = process.env.STAFF_PASSWORD;
 
 const loginAsStaff = async (page: Page) => {
+  test.skip(!staffEmail || !staffPassword, 'Cần STAFF_EMAIL và STAFF_PASSWORD để chạy smoke test SYSTEMSTAFF.');
+
   await page.goto('/login');
   const loginPage = new LoginPage(page);
-  await loginPage.login(staffEmail, staffPassword);
-  await page.waitForLoadState('domcontentloaded');
-  await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
-  await page.waitForSelector('.admin-page-hero, .admin-hero-title, #staff-queue', { timeout: 30000 }).catch(() => undefined);
+  const loginResponsePromise = page.waitForResponse(
+    (response) => response.url().includes('/api/auth/login'),
+    { timeout: 30000 },
+  ).catch(() => null);
+  await loginPage.login(staffEmail!, staffPassword!);
+  const loginResponse = await loginResponsePromise;
+
+  if (loginResponse && !loginResponse.ok()) {
+    const responseText = await loginResponse.text().catch(() => '');
+    throw new Error(`API đăng nhập trả ${loginResponse.status()}: ${responseText.slice(0, 300)}`);
+  }
+
+  const loginError = page
+    .locator('.alert.alert-error, .text-red-600')
+    .or(page.getByText(/Lỗi đăng nhập|Đăng nhập thất bại/i));
+  if (await loginError.first().isVisible({ timeout: 4000 }).catch(() => false)) {
+    throw new Error((await loginError.first().innerText()).trim());
+  }
+
+  await page.waitForFunction(() => window.location.pathname !== '/login', undefined, { timeout: 30000 });
 };
 
-test.describe.serial('System Staff smoke tests', () => {
+const expectNoManagerActions = async (page: Page) => {
+  const forbiddenActions = page.getByRole('button', {
+    name: /Xác nhận phản ánh|Từ chối phản ánh|Cùng sự vụ|Khác sự vụ|Phân công Staff|Phê duyệt|Yêu cầu xử lý lại|Đóng sự vụ/i,
+  });
+  await expect(forbiddenActions).toHaveCount(0);
+};
+
+test.describe.serial('SYSTEMSTAFF — luồng Incident', () => {
   test.setTimeout(120000);
 
-  test('Login and queue loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
+  test('đăng nhập mở Dashboard theo sự vụ', async ({ page }) => {
     await loginAsStaff(page);
-    await page.goto(queueRoute);
-    await page.waitForLoadState('domcontentloaded');
-
-    // Check for the admin hero title or queue indicator (fall back to text if heading not found)
-    // Check for expected queue headings; different deployments may show different titles
-    await expect(page.getByRole('heading', { name: /Hàng Chờ Kiểm Duyệt AI|Quản Lý Hội Thoại|Hàng đợi trao đổi/i })).toBeVisible({ timeout: 15000 });
-
-    await assertNoErrors(monitor, 'Queue');
+    await expect(page).toHaveURL(/\/dashboard\/?$/);
+    await expect(page.getByRole('heading', { name: 'Tổng quan công việc' })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Xem tất cả sự vụ/i }).first()).toBeVisible();
+    await expect(page.getByText(/Hàng chờ kiểm duyệt AI|Xử lý trùng lặp/i)).toHaveCount(0);
   });
 
-  test('Feedback list loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
+  test('Sự vụ của tôi tải đúng bộ lọc và phân trang backend', async ({ page }) => {
     await loginAsStaff(page);
-    await page.goto(feedbackListRoute);
-    await page.waitForLoadState('domcontentloaded');
+    await page.goto('/staff/incidents');
 
-    await expect(page.locator('h1.admin-hero-title, .management-feedback-list')).toBeVisible({ timeout: 15000 });
-    await assertNoErrors(monitor, 'Feedback list');
+    await expect(page.getByRole('heading', { name: 'Sự vụ của tôi' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Tất cả' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Được phân công' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Đang xử lý' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cần xử lý lại' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Chờ duyệt' })).toBeVisible();
+    await expect(page.getByLabel('Tìm kiếm')).toBeVisible();
+    await expect(page.getByLabel('Trạng thái')).toBeVisible();
+    await expect(page.getByLabel('Mức ưu tiên')).toBeVisible();
+    await expect(page.getByLabel('Độ nghiêm trọng')).toBeVisible();
+    await expect(page.getByLabel('Phường / Khu vực')).toBeVisible();
+    await expect(page.getByLabel('Danh mục')).toBeVisible();
+
+    const pagination = page.getByRole('navigation', { name: 'Phân trang danh sách sự vụ được giao' });
+    if (await pagination.isVisible().catch(() => false)) {
+      await expect(pagination.getByRole('button', { name: 'Trang trước' })).toBeVisible();
+      await expect(pagination.getByRole('button', { name: 'Trang sau' })).toBeVisible();
+    }
   });
 
-  test('Feedback detail and conversation panel', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
+  test('chi tiết Incident có đủ năm tab và không lộ quyền Manager', async ({ page }) => {
     await loginAsStaff(page);
+    await page.goto('/staff/incidents');
 
-    // Open first feedback from list if present
-    await page.goto(feedbackListRoute);
-    await page.waitForLoadState('domcontentloaded');
+    const firstIncidentLink = page.locator('a[href^="/staff/incidents/"]').first();
+    await expect(firstIncidentLink, 'Tài khoản Staff đã có Incident được phân công nhưng danh sách không hiển thị liên kết chi tiết.').toBeVisible({ timeout: 20000 });
+    await firstIncidentLink.click();
+    await expect(page).toHaveURL(/\/staff\/incidents\/[0-9a-f-]+/i);
+    const tablist = page.getByRole('tablist', { name: 'Nội dung chi tiết sự vụ' });
+    await expect(tablist).toBeVisible();
 
-    const firstRow = page.locator('table tbody tr').first();
-    const count = await page.locator('table tbody tr').count();
-    if (count === 0) {
-      console.log('No feedbacks available — skipping detail checks');
-      return;
+    for (const tabName of ['Tổng quan', 'Các phản ánh', 'Dòng thời gian', 'Xử lý', 'Kết quả xử lý']) {
+      await expect(tablist.getByRole('tab', { name: new RegExp(`^${tabName}(?: \\(\\d+\\))?$`) })).toBeVisible();
     }
 
-    await expect(firstRow).toBeVisible({ timeout: 20000 });
-    await firstRow.click();
-    await page.waitForURL(/\/staff\/feedbacks\/[A-Za-z0-9_-]+/, { timeout: 30000 });
+    await expectNoManagerActions(page);
 
-    // Check detail loaded
-    await expect(page.locator('h1.admin-hero-title, .admin-section-title')).toBeVisible({ timeout: 15000 });
+    const tabChecks = [
+      { tab: /Các phản ánh/, heading: 'Danh sách phản ánh' },
+      { tab: 'Dòng thời gian', heading: 'Dòng thời gian sự vụ' },
+      { tab: 'Xử lý', heading: 'Trạng thái xử lý' },
+      { tab: 'Kết quả xử lý', heading: 'Kết quả xử lý sự vụ' },
+    ];
 
-    // Open exchange tab
-    try {
-      await page.getByRole('button', { name: /Trao đổi|Exchange|Trao đổi phản ánh/i }).click();
-    } catch {
-      // if tab button not found, use selector
-      await page.locator('button').filter({ hasText: /Trao đổi|Exchange/ }).first().click().catch(() => undefined);
+    for (const { tab, heading } of tabChecks) {
+      await tablist.getByRole('tab', { name: tab, exact: typeof tab === 'string' }).click();
+      await expect(page.getByRole('tabpanel')).toBeVisible();
+      await expect(page.getByRole('heading', { name: heading }).first()).toBeVisible();
+      await expectNoManagerActions(page);
     }
 
-    await expect(page.locator('.chat-bubble, .exchange-list, .staff-communication-surface')).toBeVisible({ timeout: 15000 });
-
-    // Verify existing messages or internal note badge if present
-    const messages = await page.locator('.chat-bubble').count();
-    if (messages > 0) await expect(page.locator('.chat-bubble').first()).toBeVisible();
-    // internal note badge
-    await expect(page.locator('.badge, .internal-note, .note-badge').first()).toBeVisible().catch(() => undefined);
-
-    await assertNoErrors(monitor, 'Feedback detail');
+    const overviewTab = tablist.getByRole('tab', { name: 'Tổng quan', exact: true });
+    await overviewTab.click();
+    await overviewTab.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(tablist.getByRole('tab', { name: /Các phản ánh/ })).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('Duplicate detection and detail', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
+  test('Dashboard, danh sách và chi tiết dùng được ở viewport hẹp', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 900 });
     await loginAsStaff(page);
-    await page.goto(duplicateDetectionRoute);
-    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByRole('heading', { name: 'Tổng quan công việc' })).toBeVisible();
 
-    await expect(page.locator('h2.admin-section-title, h1.admin-hero-title, .duplicate-list').first()).toBeVisible({ timeout: 15000 });
+    await page.goto('/staff/incidents');
+    await expect(page.getByRole('heading', { name: 'Sự vụ của tôi' })).toBeVisible();
+    const firstIncidentLink = page.locator('a[href^="/staff/incidents/"]:visible').first();
+    await expect(firstIncidentLink).toBeVisible();
+    await firstIncidentLink.click();
+    await expect(page.getByRole('tablist', { name: 'Nội dung chi tiết sự vụ' })).toBeVisible();
+    await expectNoManagerActions(page);
+  });
 
-    // Open first candidate if present
-    const count = await page.locator('.duplicate-candidate-row, table tbody tr').count();
-    if (count > 0) {
-      await page.locator('.duplicate-candidate-row, table tbody tr').first().click();
-      await page.waitForURL(/\/staff\/duplicates\/[A-Za-z0-9_-]+/, { timeout: 30000 });
-      await expect(page.locator('h2.admin-section-title, .duplicate-detail')).toBeVisible({ timeout: 15000 });
+  test('chi tiết phản ánh chỉ cung cấp ngữ cảnh và liên kết về Incident', async ({ page }) => {
+    await loginAsStaff(page);
+    await page.goto('/staff/incidents');
+    await page.locator('a[href^="/staff/incidents/"]').first().click();
+
+    const reportsTab = page.getByRole('tab', { name: /Các phản ánh/ });
+    await reportsTab.click();
+    const reportLink = page.getByRole('link', { name: 'Xem phản ánh' }).first();
+    await expect(reportLink).toBeVisible();
+    await reportLink.click();
+
+    await expect(page).toHaveURL(/\/staff\/feedbacks\/[0-9a-f-]+/i);
+    await expect(page.getByRole('tablist', { name: 'Nội dung chi tiết phản ánh' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sự vụ liên quan' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Xem chi tiết sự vụ' })).toBeVisible();
+    await expectNoManagerActions(page);
+  });
+
+  test('các route quyết định cũ chuyển về màn Staff an toàn', async ({ page }) => {
+    await loginAsStaff(page);
+    const redirects = [
+      ['/staff/queue', '/staff/feedbacks'],
+      ['/staff/duplicates/candidate-legacy', '/staff/incidents'],
+      ['/tickets/assign/report-legacy', '/staff/incidents'],
+      ['/staff/provider-reports/999999', '/staff/incidents'],
+      ['/staff/provider-candidates-checker', '/staff/coordinators'],
+    ];
+
+    for (const [route, destination] of redirects) {
+      await page.goto(route);
+      await expect(page).toHaveURL(new RegExp(`${destination.replaceAll('/', '\\/')}\\/?$`));
     }
-
-    await assertNoErrors(monitor, 'Duplicate detection');
   });
 
-  test('Assignment history loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
+  test('Staff bị chặn khỏi route Manager và Admin', async ({ page }) => {
     await loginAsStaff(page);
-    await page.goto(assignmentHistoryRoute);
-    await page.waitForLoadState('domcontentloaded');
+    const blockedRoutes = [
+      '/manager/reports/review',
+      '/manager/incident-matches',
+      '/manager/incidents',
+      '/manager/approvals',
+      '/admin/audit',
+    ];
 
-    await expect(page.locator('h1.admin-hero-title, .assignment-history')).toBeVisible({ timeout: 15000 });
-    await assertNoErrors(monitor, 'Assignment history');
+    for (const route of blockedRoutes) {
+      await page.goto(route);
+      await page.waitForTimeout(300);
+      expect(new URL(page.url()).pathname).not.toBe(route);
+    }
   });
-
-  test('Area alert management loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsStaff(page);
-    await page.goto(areaAlertsRoute);
-    await page.waitForLoadState('domcontentloaded');
-
-    await expect(page.locator('h1.admin-hero-title')).toBeVisible({ timeout: 15000 });
-    await assertNoErrors(monitor, 'Area alerts');
-  });
-
 });

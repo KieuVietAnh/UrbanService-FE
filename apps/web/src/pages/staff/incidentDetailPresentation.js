@@ -98,7 +98,7 @@ export const getReportLinkMethodLabel = (value) => {
     || key.includes('primary')
     || key.includes('created')
   ) {
-    return 'Report khởi tạo sự vụ';
+    return 'Phản ánh khởi tạo sự vụ';
   }
   return 'Chưa xác định';
 };
@@ -107,10 +107,10 @@ export const getReportLinkRoleLabel = (value) => {
   const key = normalizeKey(value);
   if (!key) return EMPTY_VALUE;
   if (key.includes('primary') || key.includes('origin') || key.includes('initial')) {
-    return 'Report khởi tạo sự vụ';
+    return 'Phản ánh khởi tạo sự vụ';
   }
   if (key.includes('support') || key.includes('related') || key.includes('additional')) {
-    return 'Report bổ sung thông tin';
+    return 'Phản ánh bổ sung thông tin';
   }
   return 'Chưa xác định';
 };
@@ -187,7 +187,7 @@ export const getIncidentEventMetadata = (event) => {
   if (!payload.newStatus && payload.status) add('Trạng thái', getIncidentStatusLabel(payload.status));
   add('Staff phụ trách', payload.assignedStaffName || payload.staffName || payload.assigneeName);
   if (payload.feedbackId || payload.reportId) {
-    add('Mã Report', formatReportCode(payload.feedbackId || payload.reportId));
+    add('Mã phản ánh', formatReportCode(payload.feedbackId || payload.reportId));
   }
   if (payload.sourceIncidentId) add('Sự vụ nguồn', formatIncidentCode(payload.sourceIncidentId));
   if (payload.targetIncidentId) add('Sự vụ đích', formatIncidentCode(payload.targetIncidentId));

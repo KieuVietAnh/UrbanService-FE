@@ -9,6 +9,7 @@ import { DashboardLayout } from '../components/layout/DashboardLayout';
 import PublicLayout from '../components/public/PublicLayout';
 import LoadingSkeleton from '../components/design-system/LoadingSkeleton';
 import { normalizeRole } from '../utils/roleMap';
+import { getSystemStaffLegacyRouteRedirect } from '../roles/system-staff/permissions';
 
 const LandingPage = lazy(() => import('../pages/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LoginPage = lazy(() => import('../pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
@@ -29,13 +30,10 @@ const ProfilePage = lazy(() => import('../pages/profile/ProfilePage').then((m) =
 const SettingsPage = lazy(() => import('../pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const ResidentAreaAlertsPage = lazy(() => import('../pages/alerts/ResidentAreaAlertsPage').then((m) => ({ default: m.ResidentAreaAlertsPage })));
 
-const AIReviewDetail = lazy(() => import('../pages/tickets/AIReviewDetail').then((m) => ({ default: m.AIReviewDetail })));
-const DuplicateDetection = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.DuplicateDetection })));
-const DuplicateDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.DuplicateDetailPage })));
 const IncidentMatchListPage = lazy(() => import('../pages/tickets/DuplicateDetection').then((m) => ({ default: m.IncidentMatchListPage })));
 const IncidentMatchDetailPage = lazy(() => import('../pages/tickets/DuplicateDetailPage').then((m) => ({ default: m.IncidentMatchDetailPage })));
-const TicketAssignment = lazy(() => import('../pages/tickets/TicketAssignment').then((m) => ({ default: m.TicketAssignment })));
 const ManagementFeedbackListPage = lazy(() => import('../pages/staff/ManagementFeedbackListPage').then((m) => ({ default: m.default })));
+const StaffIncidentDashboardPage = lazy(() => import('../pages/staff/StaffIncidentDashboardPage').then((m) => ({ default: m.default })));
 const StaffIncidentListPage = lazy(() => import('../pages/staff/StaffIncidentListPage').then((m) => ({ default: m.default })));
 const StaffIncidentDetailPage = lazy(() => import('../pages/staff/StaffIncidentDetailPage').then((m) => ({ default: m.default })));
 const ManagementFeedbackDetailPage = lazy(() => import('../pages/staff/ManagementFeedbackDetailPage').then((m) => ({ default: m.ManagementFeedbackDetailPage })));
@@ -47,7 +45,6 @@ const ManagementCoordinatorCreatePage = lazy(() => import('../pages/management/C
 const ManagementCoordinatorDetailPage = lazy(() => import('../pages/management/CoordinatorDetailPage').then((m) => ({ default: m.default })));
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
-const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
 const AreaAlertManagementPage = lazy(() => import('../pages/staff/AreaAlertManagementPage').then((m) => ({ default: m.default })));
 const AreaAlertCreatePage = lazy(() => import('../pages/staff/AreaAlertCreatePage').then((m) => ({ default: m.default })));
 
@@ -159,10 +156,17 @@ const LoginRoute = ({ isAuthenticated, fallbackPath }) => {
 
 const roleEntryPaths = {
   [APP_ROLES.SERVICE_USER]: '/',
-  [APP_ROLES.SYSTEM_STAFF]: '/staff/queue',
+  [APP_ROLES.SYSTEM_STAFF]: '/dashboard',
   [APP_ROLES.SERVICE_PROVIDER]: '/provider/tasks',
   [APP_ROLES.INTERACTION_MANAGER]: '/manager/interactions',
   [APP_ROLES.ADMINISTRATOR]: '/admin/audit',
+};
+
+const SystemStaffLegacyRouteRedirect = () => {
+  const { pathname } = useLocation();
+  const destination = getSystemStaffLegacyRouteRedirect(pathname) || '/dashboard';
+
+  return <Navigate to={destination} replace />;
 };
 
 export const AppRoutes = () => {
@@ -220,7 +224,9 @@ export const AppRoutes = () => {
             <Navigate to="/" replace />
           ) : (
             <DashboardLayout>
-              <Dashboard />
+              {currentRole === APP_ROLES.SYSTEM_STAFF
+                ? <StaffIncidentDashboardPage />
+                : <Dashboard />}
             </DashboardLayout>
           )}
         </ProtectedRoute>
@@ -340,9 +346,7 @@ export const AppRoutes = () => {
       <Route path="/staff/queue" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <AIReviewDetail />
-            </DashboardLayout>
+            <SystemStaffLegacyRouteRedirect />
           </RoleGuard>
         </ProtectedRoute>
       } />
@@ -421,18 +425,14 @@ export const AppRoutes = () => {
       <Route path="/staff/provider-reports/:providerReportId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <ProviderReportWorkspacePage />
-            </DashboardLayout>
+            <SystemStaffLegacyRouteRedirect />
           </RoleGuard>
         </ProtectedRoute>
       } />
       <Route path="/staff/duplicates" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <DuplicateDetection />
-            </DashboardLayout>
+            <SystemStaffLegacyRouteRedirect />
           </RoleGuard>
         </ProtectedRoute>
       } />
@@ -448,9 +448,13 @@ export const AppRoutes = () => {
       <Route path="/staff/provider-candidates-checker" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF, APP_ROLES.ADMINISTRATOR, APP_ROLES.INTERACTION_MANAGER]}>
-            <DashboardLayout>
-              <ProviderCandidateCheckerPage />
-            </DashboardLayout>
+            {currentRole === APP_ROLES.SYSTEM_STAFF ? (
+              <SystemStaffLegacyRouteRedirect />
+            ) : (
+              <DashboardLayout>
+                <ProviderCandidateCheckerPage />
+              </DashboardLayout>
+            )}
           </RoleGuard>
         </ProtectedRoute>
       } />
@@ -466,18 +470,14 @@ export const AppRoutes = () => {
       <Route path="/staff/duplicates/:duplicateCandidateId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <DuplicateDetailPage />
-            </DashboardLayout>
+            <SystemStaffLegacyRouteRedirect />
           </RoleGuard>
         </ProtectedRoute>
       } />
       <Route path="/tickets/assign/:id" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <TicketAssignment />
-            </DashboardLayout>
+            <SystemStaffLegacyRouteRedirect />
           </RoleGuard>
         </ProtectedRoute>
       } />
