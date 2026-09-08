@@ -32,6 +32,6 @@ test('menu Sự vụ và Phản ánh vẫn active trên route con hợp lệ', (
 
   assert.equal(isSystemStaffMenuItemActive(incidentItem, '/staff/incidents/incident-1'), true);
   assert.equal(isSystemStaffMenuItemActive(reportItem, '/staff/feedbacks/report-1'), true);
-  assert.equal(isSystemStaffMenuItemActive(reportItem, '/staff/provider-reports/provider-report-1'), true);
+  assert.equal(isSystemStaffMenuItemActive(reportItem, '/staff/provider-reports/provider-report-1'), false);
   assert.equal(isSystemStaffMenuItemActive(reportItem, '/staff/duplicates/candidate-1'), false);
 });

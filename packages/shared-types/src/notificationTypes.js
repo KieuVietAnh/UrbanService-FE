@@ -7,6 +7,9 @@
  * @property {string} type
  * @property {boolean} isRead
  * @property {string} targetUrl
+ * @property {string | null} incidentId
+ * @property {string | null} targetType
+ * @property {string | null} targetId
  * @property {string} createdAt
  */
 
@@ -30,6 +33,9 @@ export const notificationTypes = {
     type: '',
     isRead: false,
     targetUrl: '',
+    incidentId: null,
+    targetType: null,
+    targetId: null,
     createdAt: '',
   },
   pagination: {

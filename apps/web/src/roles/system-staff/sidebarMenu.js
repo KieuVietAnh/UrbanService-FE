@@ -6,7 +6,7 @@ const menuItems = [
     label: 'Phản ánh',
     path: '/staff/feedbacks',
     icon: 'MessageSquareText',
-    activePatterns: ['/staff/feedbacks', '/staff/provider-reports', '/staff/request-info', '/staff/assignment-history'],
+    activePatterns: ['/staff/feedbacks', '/staff/request-info', '/staff/assignment-history'],
   },
   { name: 'Trao Đổi', label: 'Trao đổi', path: '/staff/conversations', icon: 'MessageSquare', activePatterns: ['/staff/conversations'] },
   { name: 'Cảnh Báo Khu Vực', label: 'Cảnh báo khu vực', path: '/staff/area-alerts', icon: 'AlertTriangle', activePatterns: ['/staff/area-alerts'] },

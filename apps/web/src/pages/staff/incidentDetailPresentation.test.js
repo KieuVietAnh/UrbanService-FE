@@ -19,7 +19,7 @@ test('Report presentation keeps the real identifier and confidence readable', ()
 test('membership wording explains the relationship without describing a deletion', () => {
   assert.equal(getReportLinkMethodLabel('AiManagerConfirmed'), 'AI đề xuất, Manager xác nhận');
   assert.equal(getReportLinkMethodLabel('Manual'), 'Ghép thủ công');
-  assert.equal(getReportLinkMethodLabel('InitialCreated'), 'Report khởi tạo sự vụ');
+  assert.equal(getReportLinkMethodLabel('InitialCreated'), 'Phản ánh khởi tạo sự vụ');
 });
 
 test('timeline presentation maps returned event characteristics conservatively', () => {

@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
+import { APP_ROLES, getInternalRole } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../hooks/useNotifications';
-import { getServiceUserNotificationRoute } from '../../utils/notificationNavigation';
+import {
+  getNotificationDestinationEntity,
+  NOTIFICATION_FALLBACK_ROUTE,
+  resolveNotificationDestination,
+} from '../../utils/notificationNavigation';
 
 const NOTIFICATIONS_PER_VIEW = 12;
 
@@ -65,6 +70,7 @@ const groupNotifications = (items) => {
 export const NotificationCenterPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isSystemStaff = getInternalRole(user?.role) === APP_ROLES.SYSTEM_STAFF;
   const [activeCategory, setActiveCategory] = useState('all');
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,8 +112,9 @@ export const NotificationCenterPage = () => {
   };
 
   const openNotification = async (notification) => {
+    const destination = resolveNotificationDestination(notification, user?.role);
     await markAsRead(notification?.notificationId);
-    navigate(getServiceUserNotificationRoute(notification));
+    if (destination !== NOTIFICATION_FALLBACK_ROUTE) navigate(destination);
   };
 
   return (
@@ -123,7 +130,11 @@ export const NotificationCenterPage = () => {
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h1 className="notification-center-title text-[32px] font-bold tracking-[-0.04em] text-slate-950 sm:text-[38px] dark:text-white">Thông báo của tôi</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base dark:text-slate-300">Theo dõi thay đổi trạng thái, yêu cầu bổ sung và kết quả xử lý của các phản ánh bạn đã gửi.</p>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base dark:text-slate-300">
+                {isSystemStaff
+                  ? 'Theo dõi sự vụ được phân công, yêu cầu xử lý lại và các cập nhật liên quan.'
+                  : 'Theo dõi thay đổi trạng thái, yêu cầu bổ sung và kết quả xử lý của các phản ánh bạn đã gửi.'}
+              </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <button type="button" onClick={markAllAsRead} disabled={unreadCount === 0} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
@@ -186,7 +197,11 @@ export const NotificationCenterPage = () => {
           <header className="flex items-center justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-white/10">
             <div>
               <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Danh sách thông báo</h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Mở thông báo để đi thẳng tới phản ánh liên quan.</p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isSystemStaff
+                  ? 'Mở thông báo để đi tới đúng sự vụ hoặc phản ánh liên quan.'
+                  : 'Mở thông báo để đi thẳng tới phản ánh liên quan.'}
+              </p>
             </div>
             <Lucide.BellRing size={20} className="text-blue-600 dark:text-blue-300" />
           </header>
@@ -213,6 +228,12 @@ export const NotificationCenterPage = () => {
                   const config = categoryStyles[category];
                   const Icon = config.icon;
                   const unread = notification?.isRead === false;
+                  const destinationEntity = getNotificationDestinationEntity(notification, user?.role);
+                  const destinationLabel = {
+                    incident: 'Mở sự vụ',
+                    feedback: 'Mở phản ánh',
+                    'provider-report': 'Mở tiến độ xử lý',
+                  }[destinationEntity];
                   return (
                     <article key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`} className={`notification-row relative px-5 py-4 transition ${index > 0 ? 'border-t border-slate-100 dark:border-white/10' : ''} ${unread ? 'notification-row-unread' : ''}`}>
                       {unread && <span className="absolute inset-y-3 left-0 w-1 rounded-r-full bg-blue-600" />}
@@ -233,7 +254,11 @@ export const NotificationCenterPage = () => {
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
-                          <button type="button" onClick={() => openNotification(notification)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700"><Lucide.ArrowUpRight size={14} />Mở phản ánh</button>
+                          {destinationLabel ? (
+                            <button type="button" onClick={() => openNotification(notification)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 dark:focus-visible:ring-blue-900"><Lucide.ArrowUpRight size={14} />{destinationLabel}</button>
+                          ) : (
+                            <span className="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">Không có liên kết đích</span>
+                          )}
                           {unread && <button type="button" onClick={() => markAsRead(notification?.notificationId)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"><Lucide.MailCheck size={14} />Đánh dấu đã đọc</button>}
                         </div>
                       </div>

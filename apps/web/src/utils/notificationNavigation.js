@@ -1,45 +1,117 @@
-const SERVICE_USER_TICKET_ROUTE = '/tickets';
+import { APP_ROLES, getInternalRole } from '@urbanmind/shared-types';
 
-const cleanPath = (value) => {
-  if (typeof value !== 'string') return '';
+const SERVICE_USER_TICKET_ROUTE = '/tickets';
+export const NOTIFICATION_FALLBACK_ROUTE = '/notifications';
+
+const ENTITY_TYPES = Object.freeze({
+  INCIDENT: new Set(['incident']),
+  FEEDBACK: new Set(['feedback', 'report', 'ticket']),
+  PROVIDER_REPORT: new Set(['providerreport']),
+});
+const STAFF_INCIDENT_TABS = new Set(['reports', 'timeline', 'processing', 'resolution']);
+
+const normalizeEntityType = (value) => String(value ?? '')
+  .trim()
+  .replace(/[^a-z0-9]/gi, '')
+  .toLowerCase();
+
+const normalizeIdentifier = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
 
   try {
-    const url = new URL(value, window.location.origin);
-    return `${url.pathname}${url.search}${url.hash}`;
+    const decoded = decodeURIComponent(raw);
+    return /^[a-z0-9_-]+$/i.test(decoded) ? decoded : '';
   } catch {
-    return value.trim();
+    return '';
   }
 };
 
-const readFeedbackIdFromTarget = (targetUrl) => {
-  const path = cleanPath(targetUrl);
-  if (!path) return '';
+const readNestedValue = (notification, fieldNames) => {
+  const sources = [notification, notification?.data, notification?.metadata, notification?.payload];
 
-  const patterns = [
-    /\/(?:tickets|feedbacks)\/([^/?#]+)(?:\/|$)/i,
-    /\/(?:ticket|feedback)\/([^/?#]+)(?:\/|$)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = path.match(pattern);
-    if (match?.[1] && !['create', 'archive', 'assign'].includes(match[1].toLowerCase())) {
-      return decodeURIComponent(match[1]);
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    for (const fieldName of fieldNames) {
+      const value = normalizeIdentifier(source[fieldName]);
+      if (value) return value;
     }
   }
 
   return '';
 };
 
+const parseInternalTarget = (value) => {
+  if (typeof value !== 'string') return null;
+  const target = value.trim();
+  if (!target.startsWith('/') || target.startsWith('//')) return null;
+
+  try {
+    return new URL(target, 'https://urbanmind.local');
+  } catch {
+    return null;
+  }
+};
+
+const readRouteId = (targetUrl, patterns) => {
+  const target = parseInternalTarget(targetUrl);
+  if (!target) return '';
+
+  for (const pattern of patterns) {
+    const match = target.pathname.match(pattern);
+    const identifier = normalizeIdentifier(match?.[1]);
+    if (identifier) return identifier;
+  }
+
+  return '';
+};
+
+const readEntityTargetId = (notification, acceptedTypes) => {
+  const pairs = [
+    [notification?.targetType, notification?.targetId],
+    [notification?.entityType, notification?.entityId],
+    [notification?.relatedType, notification?.relatedId],
+    [notification?.data?.targetType, notification?.data?.targetId],
+    [notification?.data?.entityType, notification?.data?.entityId],
+    [notification?.data?.relatedType, notification?.data?.relatedId],
+    [notification?.metadata?.targetType, notification?.metadata?.targetId],
+    [notification?.metadata?.entityType, notification?.metadata?.entityId],
+    [notification?.metadata?.relatedType, notification?.metadata?.relatedId],
+    [notification?.payload?.targetType, notification?.payload?.targetId],
+    [notification?.payload?.entityType, notification?.payload?.entityId],
+    [notification?.payload?.relatedType, notification?.payload?.relatedId],
+  ];
+
+  for (const [type, value] of pairs) {
+    if (!acceptedTypes.has(normalizeEntityType(type))) continue;
+    const identifier = normalizeIdentifier(value);
+    if (identifier) return identifier;
+  }
+
+  return '';
+};
+
+export const getNotificationIncidentId = (notification) => (
+  readNestedValue(notification, ['incidentId'])
+  || readEntityTargetId(notification, ENTITY_TYPES.INCIDENT)
+  || readRouteId(notification?.targetUrl, [
+    /^\/staff\/incidents\/([^/]+)\/?$/i,
+  ])
+);
+
 export const getNotificationFeedbackId = (notification) => (
-  notification?.feedbackId
-  || notification?.ticketId
-  || notification?.relatedFeedbackId
-  || notification?.entityId
-  || notification?.data?.feedbackId
-  || notification?.data?.ticketId
-  || notification?.metadata?.feedbackId
-  || readFeedbackIdFromTarget(notification?.targetUrl)
-  || ''
+  readNestedValue(notification, ['feedbackId', 'ticketId', 'reportId', 'relatedFeedbackId'])
+  || readEntityTargetId(notification, ENTITY_TYPES.FEEDBACK)
+  || readRouteId(notification?.targetUrl, [
+    /^\/tickets\/([^/]+)(?:\/(?:rework|result))?\/?$/i,
+    /^\/staff\/feedbacks\/([^/]+)\/?$/i,
+  ])
+);
+
+export const getNotificationProviderReportId = (notification) => (
+  readNestedValue(notification, ['providerReportId'])
+  || readEntityTargetId(notification, ENTITY_TYPES.PROVIDER_REPORT)
+  || readRouteId(notification?.targetUrl, [/^\/staff\/provider-reports\/([^/]+)\/?$/i])
 );
 
 const getNotificationKind = (notification) => {
@@ -56,6 +128,20 @@ const getNotificationKind = (notification) => {
   return 'detail';
 };
 
+const buildStaffIncidentRoute = (notification, incidentId) => {
+  const encodedId = encodeURIComponent(incidentId);
+  const route = `/staff/incidents/${encodedId}`;
+  const target = parseInternalTarget(notification?.targetUrl);
+  const targetIncidentId = readRouteId(notification?.targetUrl, [/^\/staff\/incidents\/([^/]+)\/?$/i]);
+  const tab = target?.searchParams.get('tab');
+
+  if (targetIncidentId === incidentId && STAFF_INCIDENT_TABS.has(tab)) {
+    return `${route}?tab=${encodeURIComponent(tab)}`;
+  }
+
+  return route;
+};
+
 export const getServiceUserNotificationRoute = (notification) => {
   const feedbackId = getNotificationFeedbackId(notification);
 
@@ -68,8 +154,43 @@ export const getServiceUserNotificationRoute = (notification) => {
     return `${SERVICE_USER_TICKET_ROUTE}/${encodedId}`;
   }
 
-  const targetPath = cleanPath(notification?.targetUrl);
-  if (targetPath.startsWith('/tickets/')) return targetPath;
+  const target = parseInternalTarget(notification?.targetUrl);
+  if (target?.pathname.startsWith('/tickets/')) {
+    return `${target.pathname}${target.search}${target.hash}`;
+  }
 
   return SERVICE_USER_TICKET_ROUTE;
+};
+
+export const getNotificationDestinationEntity = (notification, currentRole) => {
+  const role = getInternalRole(currentRole);
+  if (role !== APP_ROLES.SYSTEM_STAFF) return 'feedback';
+  if (getNotificationIncidentId(notification)) return 'incident';
+  if (getNotificationFeedbackId(notification)) return 'feedback';
+  if (getNotificationProviderReportId(notification)) return 'fallback';
+  return 'fallback';
+};
+
+export const resolveNotificationDestination = (notification, currentRole) => {
+  const role = getInternalRole(currentRole);
+
+  if (role !== APP_ROLES.SYSTEM_STAFF) {
+    return getServiceUserNotificationRoute(notification);
+  }
+
+  const incidentId = getNotificationIncidentId(notification);
+  if (incidentId) return buildStaffIncidentRoute(notification, incidentId);
+
+  const feedbackId = getNotificationFeedbackId(notification);
+  if (feedbackId) return `/staff/feedbacks/${encodeURIComponent(feedbackId)}`;
+
+  if (import.meta.env?.DEV) {
+    console.warn('Không thể xác định trang đích của thông báo SYSTEMSTAFF.', {
+      notificationId: notification?.notificationId,
+      type: notification?.type,
+      targetType: notification?.targetType,
+    });
+  }
+
+  return NOTIFICATION_FALLBACK_ROUTE;
 };

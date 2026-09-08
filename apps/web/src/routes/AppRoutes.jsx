@@ -45,7 +45,6 @@ const ManagementCoordinatorCreatePage = lazy(() => import('../pages/management/C
 const ManagementCoordinatorDetailPage = lazy(() => import('../pages/management/CoordinatorDetailPage').then((m) => ({ default: m.default })));
 const RequestInfoWorkspacePage = lazy(() => import('../pages/staff/RequestInfoWorkspacePage').then((m) => ({ default: m.RequestInfoWorkspacePage })));
 const AssignmentHistoryPage = lazy(() => import('../pages/staff/AssignmentHistoryPage').then((m) => ({ default: m.AssignmentHistoryPage })));
-const ProviderReportWorkspacePage = lazy(() => import('../pages/staff/ProviderReportWorkspacePage').then((m) => ({ default: m.ProviderReportWorkspacePage })));
 const AreaAlertManagementPage = lazy(() => import('../pages/staff/AreaAlertManagementPage').then((m) => ({ default: m.default })));
 const AreaAlertCreatePage = lazy(() => import('../pages/staff/AreaAlertCreatePage').then((m) => ({ default: m.default })));
 
@@ -426,9 +425,7 @@ export const AppRoutes = () => {
       <Route path="/staff/provider-reports/:providerReportId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.SYSTEM_STAFF]}>
-            <DashboardLayout>
-              <ProviderReportWorkspacePage />
-            </DashboardLayout>
+            <SystemStaffLegacyRouteRedirect />
           </RoleGuard>
         </ProtectedRoute>
       } />

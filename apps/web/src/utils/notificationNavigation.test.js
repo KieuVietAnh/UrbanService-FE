@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { APP_ROLES } from '@urbanmind/shared-types';
+import {
+  getNotificationDestinationEntity,
+  resolveNotificationDestination,
+} from './notificationNavigation.js';
+
+test('SYSTEMSTAFF mở Incident bằng incidentId chuẩn trong NotificationDto', () => {
+  const notification = { incidentId: 'incident-01', type: 'StatusChanged' };
+  assert.equal(resolveNotificationDestination(notification, APP_ROLES.SYSTEM_STAFF), '/staff/incidents/incident-01');
+  assert.equal(getNotificationDestinationEntity(notification, APP_ROLES.SYSTEM_STAFF), 'incident');
+});
+
+test('SYSTEMSTAFF mở Report khi payload có feedbackId rõ ràng', () => {
+  const notification = { feedbackId: 'feedback-01', type: 'MessageReceived' };
+  assert.equal(resolveNotificationDestination(notification, 'SYSTEMSTAFF'), '/staff/feedbacks/feedback-01');
+});
+
+test('NeedRework có incidentId luôn mở đúng Incident', () => {
+  const notification = { incidentId: 'incident-rework', type: 'IncidentNeedRework' };
+  assert.equal(resolveNotificationDestination(notification, 'SystemStaff'), '/staff/incidents/incident-rework');
+});
+
+test('deep-link tab Incident chỉ được giữ khi targetUrl chỉ rõ tab hợp lệ của cùng Incident', () => {
+  assert.equal(
+    resolveNotificationDestination({
+      incidentId: 'incident-rework',
+      targetUrl: '/staff/incidents/incident-rework?tab=resolution',
+    }, APP_ROLES.SYSTEM_STAFF),
+    '/staff/incidents/incident-rework?tab=resolution',
+  );
+  assert.equal(
+    resolveNotificationDestination({
+      incidentId: 'incident-rework',
+      targetUrl: '/staff/incidents/another-incident?tab=resolution',
+    }, APP_ROLES.SYSTEM_STAFF),
+    '/staff/incidents/incident-rework',
+  );
+});
+
+test('thông báo phân công dùng targetType và targetId của Incident', () => {
+  const notification = { targetType: 'Incident', targetId: 'incident-assigned', type: 'IncidentAssigned' };
+  assert.equal(resolveNotificationDestination(notification, 'system-staff'), '/staff/incidents/incident-assigned');
+});
+
+test('loại thông báo không hỗ trợ không được dùng targetUrl ngoài phạm vi Staff', () => {
+  const notification = { type: 'UnknownNotification', targetUrl: '/manager/incidents/manager-only' };
+  assert.equal(resolveNotificationDestination(notification, APP_ROLES.SYSTEM_STAFF), '/notifications');
+});
+
+test('payload thiếu định danh quay về Notification Center và không crash', () => {
+  assert.equal(resolveNotificationDestination({ notificationId: 8 }, APP_ROLES.SYSTEM_STAFF), '/notifications');
+  assert.equal(getNotificationDestinationEntity({}, APP_ROLES.SYSTEM_STAFF), 'fallback');
+});
+
+test('routing ServiceUser hiện có không bị thay đổi bởi routing Staff', () => {
+  const notification = { feedbackId: 'feedback-02', type: 'NeedRework' };
+  assert.equal(resolveNotificationDestination(notification, APP_ROLES.SERVICE_USER), '/tickets/feedback-02/rework');
+});
+
+test('SYSTEMSTAFF không mở workspace Provider Report legacy khi thiếu incidentId', () => {
+  assert.equal(
+    resolveNotificationDestination({ targetUrl: '/staff/provider-reports/501' }, APP_ROLES.SYSTEM_STAFF),
+    '/notifications',
+  );
+  assert.equal(
+    getNotificationDestinationEntity({ providerReportId: 501 }, APP_ROLES.SYSTEM_STAFF),
+    'fallback',
+  );
+});
+
+test('SYSTEMSTAFF chỉ theo targetUrl nội bộ thuộc route đã biết', () => {
+  assert.equal(
+    resolveNotificationDestination({ targetUrl: 'https://evil.test/staff/incidents/i-1' }, APP_ROLES.SYSTEM_STAFF),
+    '/notifications',
+  );
+});

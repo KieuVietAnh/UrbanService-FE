@@ -32,6 +32,7 @@ test('route Staff legacy được chuyển đến màn hình chỉ đọc hoặc
   assert.equal(getSystemStaffLegacyRouteRedirect('/staff/queue'), '/staff/feedbacks');
   assert.equal(getSystemStaffLegacyRouteRedirect('/staff/duplicates/candidate-1'), '/staff/incidents');
   assert.equal(getSystemStaffLegacyRouteRedirect('/tickets/assign/report-1'), '/staff/incidents');
+  assert.equal(getSystemStaffLegacyRouteRedirect('/staff/provider-reports/42'), '/staff/incidents');
   assert.equal(getSystemStaffLegacyRouteRedirect('/staff/provider-candidates-checker'), '/staff/coordinators');
   assert.equal(getSystemStaffLegacyRouteRedirect('/staff/incidents/incident-1'), null);
 });

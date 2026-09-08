@@ -119,7 +119,7 @@ function TimelineEvent({ event, isLast }) {
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-950/35">
             <Lucide.Database size={13} className="text-blue-500" aria-hidden="true" />
             Nguồn: <strong className="font-semibold text-slate-700 dark:text-slate-200">
-              {event?.feedbackId ? `Report ${formatReportCode(event.feedbackId)}` : 'Sự vụ'}
+              {event?.feedbackId ? `Phản ánh ${formatReportCode(event.feedbackId)}` : 'Sự vụ'}
             </strong>
           </span>
         </div>

@@ -26,6 +26,7 @@ export const SYSTEM_STAFF_LEGACY_ROUTE_REDIRECTS = Object.freeze([
   { pattern: /^\/staff\/queue(?:\/.*)?$/, destination: '/staff/feedbacks' },
   { pattern: /^\/staff\/duplicates(?:\/.*)?$/, destination: '/staff/incidents' },
   { pattern: /^\/tickets\/assign\/[^/]+$/, destination: '/staff/incidents' },
+  { pattern: /^\/staff\/provider-reports\/[^/]+$/, destination: '/staff/incidents' },
   { pattern: /^\/staff\/provider-candidates-checker$/, destination: '/staff/coordinators' },
 ]);
 

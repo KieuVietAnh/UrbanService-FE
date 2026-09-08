@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import {
   getPriorityIntent,
@@ -22,20 +22,42 @@ import {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30];
 
+const QUICK_STATUS_FILTERS = Object.freeze([
+  { value: '', label: 'Tất cả', icon: Lucide.LayoutList },
+  { value: 'Assigned', label: 'Được phân công', icon: Lucide.UserRoundCheck },
+  { value: 'InProgress', label: 'Đang xử lý', icon: Lucide.LoaderCircle },
+  { value: 'NeedRework', label: 'Cần xử lý lại', icon: Lucide.RotateCcw },
+  { value: 'SubmittedForApproval', label: 'Chờ duyệt', icon: Lucide.Clock3 },
+]);
+
+const STATUS_FILTER_OPTIONS = Object.freeze([
+  'Assigned',
+  'InProgress',
+  'NeedRework',
+  'SubmittedForApproval',
+  'Approved',
+  'Resolved',
+  'Closed',
+  'Merged',
+]);
+
+const PRIORITY_FILTER_OPTIONS = Object.freeze(['Critical', 'High', 'Medium', 'Low']);
+const SEVERITY_FILTER_OPTIONS = Object.freeze(['Critical', 'High', 'Medium', 'Low']);
+
 const STATUS_LABELS = {
   new: 'Mới',
   open: 'Đang mở',
   verified: 'Đã xác minh',
-  assigned: 'Đã phân công',
+  assigned: 'Được phân công',
   inprogress: 'Đang xử lý',
-  submittedforapproval: 'Chờ phê duyệt',
-  needrework: 'Cần làm lại',
+  submittedforapproval: 'Chờ Manager duyệt',
+  needrework: 'Cần xử lý lại',
   resolved: 'Đã giải quyết',
   approved: 'Đã phê duyệt',
   closed: 'Đã đóng',
   cancelled: 'Đã hủy',
   rejected: 'Đã từ chối',
-  merged: 'Đã hợp nhất',
+  merged: 'Đã gộp',
 };
 
 const PRIORITY_LABELS = {
@@ -94,15 +116,24 @@ const getAreaLabel = (area) => (
   area?.areaName || area?.name || area?.displayName || 'Khu vực chưa đặt tên'
 );
 
-const collectFilterValues = (incidents, field, selectedValue) => {
-  const values = new Set();
-  incidents.forEach((incident) => {
-    const value = String(incident?.[field] ?? '').trim();
-    if (value) values.add(value);
-  });
-  if (selectedValue) values.add(selectedValue);
-  return Array.from(values).sort((left, right) => left.localeCompare(right, 'vi'));
+const getPositiveInteger = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
+
+const getOperationalState = (status) => {
+  const key = normalizeEnumKey(status);
+  if (key === 'needrework') return 'rework';
+  if (key === 'submittedforapproval') return 'review';
+  if (['approved', 'resolved', 'closed'].includes(key)) return 'complete';
+  return 'active';
+};
+
+const getOperationalNote = (status) => ({
+  rework: 'Ưu tiên cập nhật theo yêu cầu của Manager',
+  review: 'Đã gửi kết quả, đang chờ Manager kiểm tra',
+  complete: 'Đã hoàn thành, vẫn có thể mở để tra cứu',
+})[getOperationalState(status)] || '';
 
 function FilterField({ label, htmlFor, icon: Icon, children }) {
   return (
@@ -161,9 +192,11 @@ export function StaffIncidentListState({ state, hasActiveFilters = false, onRetr
     [STAFF_INCIDENT_LIST_STATE.ERROR]: {
       icon: Lucide.TriangleAlert,
       title: 'Không thể tải danh sách sự vụ',
-      description: scopeUnavailable
-        ? 'Không xác định được tài khoản nhân viên hiện tại để lọc phạm vi công việc.'
-        : 'Đã xảy ra lỗi khi kết nối với máy chủ. Vui lòng thử lại.',
+      description: scopeUnavailable === 'missing-user'
+        ? 'Không xác định được tài khoản Staff hiện tại để lọc phạm vi công việc.'
+        : scopeUnavailable === 'scope-mismatch'
+          ? 'Backend trả về sự vụ ngoài phạm vi Staff hiện tại nên danh sách đã được ẩn để tránh xử lý nhầm.'
+          : 'Đã xảy ra lỗi khi kết nối với máy chủ. Vui lòng thử lại.',
       action: scopeUnavailable ? null : (
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           <Lucide.RefreshCw size={16} aria-hidden="true" />
@@ -173,7 +206,7 @@ export function StaffIncidentListState({ state, hasActiveFilters = false, onRetr
     },
     [STAFF_INCIDENT_LIST_STATE.EMPTY]: {
       icon: Lucide.ClipboardList,
-      title: 'Chưa có sự vụ nào',
+      title: 'Bạn chưa có sự vụ nào được phân công',
       description: 'Các sự vụ được phân công cho bạn sẽ xuất hiện tại đây.',
     },
     [STAFF_INCIDENT_LIST_STATE.NO_RESULTS]: {
@@ -210,7 +243,7 @@ function IncidentBadges({ incident }) {
       <Badge intent={getSeverityIntent(incident?.severity)} className="whitespace-nowrap">
         Mức độ: {getEnumLabel(incident?.severity, SEVERITY_LABELS)}
       </Badge>
-      {incident?.mergedIntoIncidentId ? <Badge intent="neutral">Đã hợp nhất</Badge> : null}
+      {incident?.mergedIntoIncidentId ? <Badge intent="neutral">Đã gộp</Badge> : null}
     </div>
   );
 }
@@ -244,7 +277,7 @@ function IncidentList({ incidents, totalItems }) {
           </span>
           <div>
             <h2 id="staff-incident-list-title" className="text-sm font-black text-slate-900 dark:text-slate-100">Danh sách sự vụ</h2>
-            <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">Sắp xếp theo dữ liệu backend và phạm vi Staff hiện tại.</p>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">Danh sách được lọc và phân trang trực tiếp từ backend.</p>
           </div>
         </div>
         <span className="inline-flex w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200">
@@ -268,7 +301,7 @@ function IncidentList({ incidents, totalItems }) {
               <th scope="col">Sự vụ</th>
               <th scope="col">Khu vực và danh mục</th>
               <th scope="col">Trạng thái xử lý</th>
-              <th scope="col">Báo cáo</th>
+              <th scope="col">Phản ánh</th>
               <th scope="col">Cập nhật</th>
               <th scope="col"><span className="sr-only">Thao tác</span></th>
             </tr>
@@ -277,9 +310,14 @@ function IncidentList({ incidents, totalItems }) {
             {incidents.map((incident) => {
               const incidentId = incident?.incidentId;
               const code = formatIncidentCode(incidentId);
+              const operationalState = getOperationalState(incident?.status);
+              const operationalNote = getOperationalNote(incident?.status);
               return (
-                <tr key={incidentId} className="admin-table-row group align-middle transition-colors">
-                  <th scope="row" className="font-normal">
+                <tr
+                  key={incidentId}
+                  className={`admin-table-row group align-middle transition-colors ${operationalState === 'rework' ? 'bg-amber-50/55 dark:bg-amber-950/10' : operationalState === 'complete' ? 'bg-slate-50/45 dark:bg-slate-950/20' : ''}`}
+                >
+                  <th scope="row" className={`font-normal ${operationalState === 'rework' ? 'border-l-4 border-l-amber-500' : ''}`}>
                     <p className="inline-flex items-center gap-1.5 text-xs font-black tracking-[0.03em] text-blue-700 dark:text-blue-300" title={incidentId}>
                       <Lucide.Hash size={13} aria-hidden="true" />
                       {code}
@@ -287,6 +325,11 @@ function IncidentList({ incidents, totalItems }) {
                     <p className="mt-1.5 line-clamp-2 font-semibold leading-6 text-slate-900 dark:text-slate-100">
                       {incident?.title || 'Chưa có dữ liệu'}
                     </p>
+                    {operationalNote ? (
+                      <p className={`mt-1.5 text-xs font-semibold leading-5 ${operationalState === 'rework' ? 'text-amber-700 dark:text-amber-300' : operationalState === 'review' ? 'text-blue-700 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                        {operationalNote}
+                      </p>
+                    ) : null}
                   </th>
                   <td>
                     <p className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-200">
@@ -306,7 +349,7 @@ function IncidentList({ incidents, totalItems }) {
                   <td>
                     <p className="flex items-baseline gap-1.5 font-black text-slate-900 dark:text-slate-100">
                       <span className="text-lg leading-none">{formatCount(incident?.reportCount)}</span>
-                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Report</span>
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">phản ánh</span>
                     </p>
                     <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                       {formatCount(incident?.subscriberCount)} người theo dõi
@@ -329,9 +372,14 @@ function IncidentList({ incidents, totalItems }) {
       <div className="divide-y divide-slate-100 xl:hidden dark:divide-slate-800">
         {incidents.map((incident) => {
           const incidentId = incident?.incidentId;
+          const operationalState = getOperationalState(incident?.status);
+          const operationalNote = getOperationalNote(incident?.status);
           return (
-            <article key={incidentId} className="relative px-5 py-5 transition-colors hover:bg-blue-50/35 sm:px-6 dark:hover:bg-blue-950/15">
-              <span className="absolute inset-y-5 left-0 w-1 rounded-r-full bg-blue-500" aria-hidden="true" />
+            <article
+              key={incidentId}
+              className={`relative px-5 py-5 transition-colors sm:px-6 ${operationalState === 'rework' ? 'bg-amber-50/55 hover:bg-amber-50 dark:bg-amber-950/10 dark:hover:bg-amber-950/20' : operationalState === 'complete' ? 'bg-slate-50/45 hover:bg-slate-100/60 dark:bg-slate-950/20 dark:hover:bg-slate-950/30' : 'hover:bg-blue-50/35 dark:hover:bg-blue-950/15'}`}
+            >
+              <span className={`absolute inset-y-5 left-0 w-1 rounded-r-full ${operationalState === 'rework' ? 'bg-amber-500' : operationalState === 'complete' ? 'bg-slate-300 dark:bg-slate-700' : 'bg-blue-500'}`} aria-hidden="true" />
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="inline-flex items-center gap-1.5 text-xs font-black tracking-[0.03em] text-blue-700 dark:text-blue-300" title={incidentId}>
@@ -341,6 +389,11 @@ function IncidentList({ incidents, totalItems }) {
                   <h3 className="mt-1.5 text-base font-bold leading-6 text-slate-900 dark:text-slate-100">
                     {incident?.title || 'Chưa có dữ liệu'}
                   </h3>
+                  {operationalNote ? (
+                    <p className={`mt-1.5 text-xs font-semibold leading-5 ${operationalState === 'rework' ? 'text-amber-700 dark:text-amber-300' : operationalState === 'review' ? 'text-blue-700 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {operationalNote}
+                    </p>
+                  ) : null}
                 </div>
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/45 dark:text-blue-300" aria-hidden="true">
                   <Lucide.BriefcaseBusiness className="h-5 w-5" />
@@ -363,9 +416,9 @@ function IncidentList({ incidents, totalItems }) {
                   </dd>
                 </div>
                 <div className="rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-slate-950/35">
-                  <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Số báo cáo</dt>
+                  <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Số phản ánh</dt>
                   <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
-                    {formatCount(incident?.reportCount)} báo cáo
+                    {formatCount(incident?.reportCount)} phản ánh
                   </dd>
                 </div>
                 <div className="rounded-xl bg-slate-50 px-3.5 py-3 dark:bg-slate-950/35">
@@ -479,20 +532,26 @@ function Pagination({ pagination, pageNumber, pageSize, loading, onPageChange, o
 export default function StaffIncidentListPage() {
   const { user } = useAuth();
   const assignedStaffUserId = String(user?.userId ?? '').trim();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [areas, setAreas] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [draftSearch, setDraftSearch] = useState('');
-  const [filters, setFilters] = useState({
-    areaId: '',
-    categoryId: '',
-    status: '',
-    priority: '',
-    severity: '',
-    search: '',
-    includeMerged: false,
-  });
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const requestedPageSize = getPositiveInteger(searchParams.get('pageSize'), 10);
+  const pageNumber = getPositiveInteger(searchParams.get('page'), 1);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(requestedPageSize) ? requestedPageSize : 10;
+  const filters = useMemo(() => ({
+    areaId: searchParams.get('areaId') || '',
+    categoryId: searchParams.get('categoryId') || '',
+    status: searchParams.get('status') || '',
+    priority: searchParams.get('priority') || '',
+    severity: searchParams.get('severity') || '',
+    search: searchParams.get('search') || '',
+    includeMerged: searchParams.get('includeMerged') === 'true',
+  }), [searchParams]);
+  const [draftSearch, setDraftSearch] = useState(filters.search);
+
+  useEffect(() => {
+    setDraftSearch(filters.search);
+  }, [filters.search]);
 
   useEffect(() => {
     let active = true;
@@ -534,19 +593,6 @@ export default function StaffIncidentListPage() {
     state,
   } = useStaffIncidentList(queryParams, { enabled: Boolean(assignedStaffUserId) });
 
-  const statusOptions = useMemo(
-    () => collectFilterValues(incidents, 'status', filters.status),
-    [filters.status, incidents],
-  );
-  const priorityOptions = useMemo(
-    () => collectFilterValues(incidents, 'priority', filters.priority),
-    [filters.priority, incidents],
-  );
-  const severityOptions = useMemo(
-    () => collectFilterValues(incidents, 'severity', filters.severity),
-    [filters.severity, incidents],
-  );
-
   const hasActiveFilters = Boolean(
     filters.areaId
     || filters.categoryId
@@ -566,11 +612,30 @@ export default function StaffIncidentListPage() {
     filters.includeMerged,
   ].filter(Boolean).length;
   const loading = state === STAFF_INCIDENT_LIST_STATE.LOADING;
-  const scopeUnavailable = error?.message === 'STAFF_SCOPE_UNAVAILABLE';
+  const scopeUnavailable = error?.message === 'STAFF_SCOPE_UNAVAILABLE'
+    ? 'missing-user'
+    : error?.message === 'STAFF_SCOPE_MISMATCH'
+      ? 'scope-mismatch'
+      : false;
+
+  const updateQuery = (updates, { replace = false } = {}) => {
+    const next = new URLSearchParams(searchParams);
+
+    Object.entries(updates).forEach(([key, value]) => {
+      const isDefaultPage = key === 'page' && Number(value) === 1;
+      const isDefaultPageSize = key === 'pageSize' && Number(value) === 10;
+      if (value === '' || value === false || value == null || isDefaultPage || isDefaultPageSize) {
+        next.delete(key);
+      } else {
+        next.set(key, String(value));
+      }
+    });
+
+    setSearchParams(next, { replace });
+  };
 
   const updateFilter = (key, value) => {
-    setFilters((current) => ({ ...current, [key]: value }));
-    setPageNumber(1);
+    updateQuery({ [key]: value, page: 1 });
   };
 
   const handleSearchSubmit = (event) => {
@@ -580,17 +645,20 @@ export default function StaffIncidentListPage() {
 
   const handleResetFilters = () => {
     setDraftSearch('');
-    setFilters({
-      areaId: '',
-      categoryId: '',
-      status: '',
-      priority: '',
-      severity: '',
-      search: '',
-      includeMerged: false,
-    });
-    setPageNumber(1);
+    setSearchParams({});
   };
+
+  useEffect(() => {
+    if (![STAFF_INCIDENT_LIST_STATE.READY, STAFF_INCIDENT_LIST_STATE.EMPTY].includes(state)) return;
+
+    const totalPages = Math.max(Number(pagination?.totalPages) || 1, 1);
+    if (pageNumber <= totalPages) return;
+
+    const next = new URLSearchParams(searchParams);
+    if (totalPages === 1) next.delete('page');
+    else next.set('page', String(totalPages));
+    setSearchParams(next, { replace: true });
+  }, [pageNumber, pagination?.totalPages, searchParams, setSearchParams, state]);
 
   return (
     <article className="admin-page-shell space-y-6">
@@ -650,6 +718,31 @@ export default function StaffIncidentListPage() {
           )}
         </header>
 
+        <div className="border-b border-slate-200 px-5 py-3.5 sm:px-6 dark:border-slate-800">
+          <p id="staff-incident-quick-filter-label" className="mb-2 text-xs font-bold text-slate-600 dark:text-slate-300">
+            Lọc nhanh theo tiến độ
+          </p>
+          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+            <div className="flex min-w-max gap-2" role="group" aria-labelledby="staff-incident-quick-filter-label">
+              {QUICK_STATUS_FILTERS.map(({ value, label, icon: Icon }) => {
+                const active = filters.status === value;
+                return (
+                  <button
+                    key={value || 'all'}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => updateFilter('status', value)}
+                    className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:focus-visible:ring-blue-950 ${active ? 'border-blue-600 bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.18)]' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-blue-800 dark:hover:bg-blue-950/40 dark:hover:text-blue-200'}`}
+                  >
+                    <Icon size={15} aria-hidden="true" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         <form onSubmit={handleSearchSubmit} className="px-5 py-5 sm:px-6">
           <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(240px,1.6fr)_repeat(5,minmax(0,1fr))]">
             <div className="sm:col-span-2 lg:col-span-1">
@@ -661,7 +754,7 @@ export default function StaffIncidentListPage() {
                     type="search"
                     value={draftSearch}
                     onChange={(event) => setDraftSearch(event.target.value)}
-                    placeholder="Tìm theo mã hoặc tiêu đề sự vụ"
+                    placeholder="Tìm theo từ khóa sự vụ"
                     className="h-11 pl-10"
                   />
                 </div>
@@ -671,21 +764,21 @@ export default function StaffIncidentListPage() {
             <FilterField label="Trạng thái" htmlFor="staff-incident-status" icon={Lucide.Activity}>
               <Select id="staff-incident-status" value={filters.status} onChange={(event) => updateFilter('status', event.target.value)} className="h-11">
                 <option value="">Tất cả trạng thái</option>
-                {statusOptions.map((value) => <option key={value} value={value}>{getEnumLabel(value, STATUS_LABELS)}</option>)}
+                {STATUS_FILTER_OPTIONS.map((value) => <option key={value} value={value}>{getEnumLabel(value, STATUS_LABELS)}</option>)}
               </Select>
             </FilterField>
 
             <FilterField label="Mức ưu tiên" htmlFor="staff-incident-priority" icon={Lucide.Flag}>
               <Select id="staff-incident-priority" value={filters.priority} onChange={(event) => updateFilter('priority', event.target.value)} className="h-11">
                 <option value="">Tất cả mức ưu tiên</option>
-                {priorityOptions.map((value) => <option key={value} value={value}>{getEnumLabel(value, PRIORITY_LABELS)}</option>)}
+                {PRIORITY_FILTER_OPTIONS.map((value) => <option key={value} value={value}>{getEnumLabel(value, PRIORITY_LABELS)}</option>)}
               </Select>
             </FilterField>
 
             <FilterField label="Độ nghiêm trọng" htmlFor="staff-incident-severity" icon={Lucide.TriangleAlert}>
               <Select id="staff-incident-severity" value={filters.severity} onChange={(event) => updateFilter('severity', event.target.value)} className="h-11">
                 <option value="">Tất cả mức độ</option>
-                {severityOptions.map((value) => <option key={value} value={value}>{getEnumLabel(value, SEVERITY_LABELS)}</option>)}
+                {SEVERITY_FILTER_OPTIONS.map((value) => <option key={value} value={value}>{getEnumLabel(value, SEVERITY_LABELS)}</option>)}
               </Select>
             </FilterField>
 
@@ -720,7 +813,7 @@ export default function StaffIncidentListPage() {
                 checked={filters.includeMerged}
                 onChange={(event) => updateFilter('includeMerged', event.target.checked)}
               />
-              Bao gồm sự vụ đã hợp nhất
+              Hiển thị sự vụ đã gộp
             </label>
 
             <div className="flex flex-wrap gap-2 sm:justify-end">
@@ -752,11 +845,8 @@ export default function StaffIncidentListPage() {
               pageNumber={pageNumber}
               pageSize={pageSize}
               loading={loading}
-              onPageChange={setPageNumber}
-              onPageSizeChange={(value) => {
-                setPageSize(value);
-                setPageNumber(1);
-              }}
+              onPageChange={(value) => updateQuery({ page: value })}
+              onPageSizeChange={(value) => updateQuery({ pageSize: value, page: 1 })}
             />
           </>
         ) : (
@@ -771,7 +861,7 @@ export default function StaffIncidentListPage() {
 
       {!capability.assignedToCurrentStaff ? (
         <aside className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100" role="note">
-          Backend chưa hỗ trợ lọc “Sự vụ được giao cho tôi”. Dữ liệu hiện tại có thể bao gồm các sự vụ ngoài phạm vi của bạn.
+          Backend chưa hỗ trợ lọc chính xác sự vụ được giao cho Staff hiện tại. Dữ liệu có thể bao gồm các sự vụ ngoài phạm vi của bạn.
         </aside>
       ) : null}
     </article>

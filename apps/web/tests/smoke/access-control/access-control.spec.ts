@@ -4,8 +4,8 @@ import { LoginPage } from '../../pages/LoginPage';
 const serviceUserEmail = 'nguyengiauzxc@gmail.com';
 const serviceUserPassword = 'nguyenhuugiau';
 
-const systemStaffEmail = process.env.STAFF_EMAIL || 'kvietanh123@gmail.com';
-const systemStaffPassword = process.env.STAFF_PASSWORD || '123456789';
+const systemStaffEmail = process.env.STAFF_EMAIL;
+const systemStaffPassword = process.env.STAFF_PASSWORD;
 
 const interactionManagerEmail = 'xbg4623@gmail.com';
 const interactionManagerPassword = '123456789';
@@ -25,7 +25,11 @@ const loginAs = async (page: Page, email: string, password: string) => {
     throw new Error(`Login failed for ${email}: ${message}. The external service-user or role account is unavailable in this environment.`);
   }
 
-  await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
+  await page.waitForFunction(
+    () => !window.location.pathname.includes('/login'),
+    undefined,
+    { timeout: 30000 },
+  );
 };
 
 const verifyUnauthorizedAccess = async (page: Page, route: string, description: string) => {
@@ -72,8 +76,9 @@ test.describe.serial('Access control smoke tests', () => {
   });
 
   test('System Staff cannot access Manager or Admin routes', async ({ page }) => {
+    test.skip(!systemStaffEmail || !systemStaffPassword, 'Cần STAFF_EMAIL và STAFF_PASSWORD để kiểm tra quyền SYSTEMSTAFF.');
     try {
-      await loginAs(page, systemStaffEmail, systemStaffPassword);
+      await loginAs(page, systemStaffEmail!, systemStaffPassword!);
     } catch (error) {
       test.skip(true, error instanceof Error ? error.message : String(error));
     }
@@ -93,8 +98,9 @@ test.describe.serial('Access control smoke tests', () => {
   });
 
   test('System Staff legacy decision routes redirect to safe canonical screens', async ({ page }) => {
+    test.skip(!systemStaffEmail || !systemStaffPassword, 'Cần STAFF_EMAIL và STAFF_PASSWORD để kiểm tra route SYSTEMSTAFF.');
     try {
-      await loginAs(page, systemStaffEmail, systemStaffPassword);
+      await loginAs(page, systemStaffEmail!, systemStaffPassword!);
     } catch (error) {
       test.skip(true, error instanceof Error ? error.message : String(error));
     }
@@ -103,6 +109,7 @@ test.describe.serial('Access control smoke tests', () => {
       { route: '/staff/queue', expected: '/staff/feedbacks' },
       { route: '/staff/duplicates/candidate-legacy', expected: '/staff/incidents' },
       { route: '/tickets/assign/report-legacy', expected: '/staff/incidents' },
+      { route: '/staff/provider-reports/provider-report-legacy', expected: '/staff/incidents' },
       { route: '/staff/provider-candidates-checker', expected: '/staff/coordinators' },
     ];
 

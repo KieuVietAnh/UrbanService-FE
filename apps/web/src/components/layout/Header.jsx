@@ -350,8 +350,8 @@ export const Header = ({ onMenuToggle }) => {
             {dashboardLabel}
           </Link>
           <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
-          <Link to="/staff/queue" className="font-semibold text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
-            Hàng chờ kiểm duyệt AI
+          <Link to="/staff/incidents" className="font-semibold text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
+            Sự vụ của tôi
           </Link>
           <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
           <span className="font-semibold text-slate-950 dark:text-slate-100">Phân công xử lý</span>
