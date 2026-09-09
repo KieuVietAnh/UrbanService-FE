@@ -77,6 +77,7 @@ export const FeedbackLocationMapCard = ({
   className = '',
   variant = 'public',
   externalMapUrl = '',
+  internalMapPath = '',
   iconClassName = '',
   iconSize = 18,
 }) => {
@@ -95,7 +96,7 @@ export const FeedbackLocationMapCard = ({
     }
 
     if (isAdmin) {
-      navigate('/management/map', {
+      navigate(internalMapPath || '/management/map', {
         state: {
           mapState: {
             focusFeedbackId: feedbackId,

@@ -292,11 +292,23 @@ export const FeedbackDetailPage = () => {
 
   const returnPath = location.state?.from;
   const returnMapState = location.state?.mapState;
+  const isManagerContext = location.pathname.startsWith('/manager/') || returnPath?.startsWith('/manager/');
+  const feedbackMapPath = isManagerContext ? '/manager/map' : '/management/map';
 
   const goBack = () => {
-    if (returnPath === '/management/map') {
-      navigate('/management/map', {
+    if (returnPath === '/management/map' || returnPath === '/manager/map') {
+      navigate(returnPath, {
         state: { mapState: returnMapState },
+      });
+      return;
+    }
+
+    if (returnPath?.startsWith('/manager/interactions')) {
+      navigate(returnPath, {
+        state: {
+          restoreFeedbackId: feedbackId,
+          preserveScrollOnEnter: true,
+        },
       });
       return;
     }
@@ -361,7 +373,7 @@ export const FeedbackDetailPage = () => {
               <Lucide.RefreshCw size={16} />
               Thử tải lại
             </button>
-            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{returnPath === '/management/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}</button>
+            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{returnPath === '/management/map' || returnPath === '/manager/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}</button>
           </div>
         </div>
       </div>
@@ -375,7 +387,7 @@ export const FeedbackDetailPage = () => {
     <div className="admin-page-shell space-y-5 pb-4">
       <button type="button" onClick={goBack} className="admin-secondary-link inline-flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition">
         <Lucide.ArrowLeft size={16} />
-        {returnPath === '/management/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}
+        {returnPath === '/management/map' || returnPath === '/manager/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}
       </button>
 
       {error ? (
@@ -497,6 +509,7 @@ export const FeedbackDetailPage = () => {
             locationText={resolvedLocationText}
             areaName={feedback?.areaName || feedback?.wardName}
             variant="admin"
+            internalMapPath={feedbackMapPath}
           />
         </div>
 
@@ -517,7 +530,7 @@ export const FeedbackDetailPage = () => {
               <button
                 type="button"
                 disabled={!hasCoordinates}
-                onClick={() => navigate('/management/map', { state: { mapState: { focusFeedbackId: feedbackId, focusLatitude: Number(latitude), focusLongitude: Number(longitude) } } })}
+                onClick={() => navigate(feedbackMapPath, { state: { mapState: { focusFeedbackId: feedbackId, focusLatitude: Number(latitude), focusLongitude: Number(longitude) } } })}
                 className="btn admin-primary-action h-11 w-full rounded-xl text-sm font-semibold normal-case disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Lucide.MapPinned size={17} />
@@ -525,7 +538,7 @@ export const FeedbackDetailPage = () => {
               </button>
               <button type="button" onClick={goBack} className="btn admin-secondary-action h-11 w-full rounded-xl text-sm font-semibold normal-case">
                 <Lucide.List size={17} />
-                {returnPath === '/management/map' ? 'Về bản đồ phản ánh' : returnPath === '/dashboard' ? 'Về tổng quan hệ thống' : 'Về danh sách phản ánh'}
+                {returnPath === '/management/map' || returnPath === '/manager/map' ? 'Về bản đồ phản ánh' : returnPath === '/dashboard' ? 'Về tổng quan hệ thống' : 'Về danh sách phản ánh'}
               </button>
               {!hasCoordinates ? <p className="pt-1 text-center text-xs leading-5 text-slate-400">Phản ánh chưa có tọa độ bản đồ.</p> : null}
             </div>

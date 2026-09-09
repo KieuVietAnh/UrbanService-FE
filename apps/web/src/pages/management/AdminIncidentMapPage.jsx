@@ -131,8 +131,15 @@ const MapSkeleton = () => (
   </div>
 );
 
-export const AdminIncidentMapPage = () => {
+export const AdminIncidentMapPage = ({ mode = 'admin' }) => {
   const location = useLocation();
+  const isManagerMode = mode === 'manager';
+  const mapPath = isManagerMode ? '/manager/map' : '/management/map';
+  const detailPathBuilder = useCallback((ticket) => (
+    isManagerMode
+      ? `/manager/interactions/${ticket.feedbackId}`
+      : `/management/feedbacks/${ticket.feedbackId}`
+  ), [isManagerMode]);
   const [cachedDashboard] = useState(readAdminDashboardCache);
   const [cachedMapView] = useState(readAdminMapViewState);
   const cachedIncidents = Array.isArray(cachedDashboard?.tickets)
@@ -434,8 +441,8 @@ export const AdminIncidentMapPage = () => {
               focusFeedbackId={focusState?.focusFeedbackId}
               focusLatitude={focusState?.focusLatitude}
               focusLongitude={focusState?.focusLongitude}
-              detailPathBuilder={(ticket) => `/management/feedbacks/${ticket.feedbackId}`}
-              returnPath="/management/map"
+              detailPathBuilder={detailPathBuilder}
+              returnPath={mapPath}
             />
           )}
         </div>

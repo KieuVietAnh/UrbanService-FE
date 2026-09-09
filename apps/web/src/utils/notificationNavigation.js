@@ -114,6 +114,22 @@ export const getNotificationProviderReportId = (notification) => (
   || readRouteId(notification?.targetUrl, [/^\/staff\/provider-reports\/([^/]+)\/?$/i])
 );
 
+const getManagementNotificationIncidentId = (notification) => (
+  getNotificationIncidentId(notification)
+  || readRouteId(notification?.targetUrl, [
+    /^\/manager\/(?:incidents|approvals)\/([^/]+)\/?$/i,
+    /^\/management\/incidents\/([^/]+)\/?$/i,
+  ])
+);
+
+const getManagementNotificationFeedbackId = (notification) => (
+  getNotificationFeedbackId(notification)
+  || readRouteId(notification?.targetUrl, [
+    /^\/manager\/(?:interactions|reports\/review)\/([^/]+)\/?$/i,
+    /^\/management\/feedbacks\/([^/]+)\/?$/i,
+  ])
+);
+
 const getNotificationKind = (notification) => {
   const text = `${notification?.title || ''} ${notification?.message || ''} ${notification?.type || ''}`.toLowerCase();
 
@@ -162,21 +178,71 @@ export const getServiceUserNotificationRoute = (notification) => {
   return SERVICE_USER_TICKET_ROUTE;
 };
 
+
+const getManagerNotificationRoute = (notification) => {
+  const target = parseInternalTarget(notification?.targetUrl);
+  if (target && (
+    target.pathname.startsWith('/manager/incidents/')
+    || target.pathname.startsWith('/manager/interactions/')
+    || target.pathname.startsWith('/manager/approvals/')
+    || target.pathname.startsWith('/manager/incident-matches/')
+    || target.pathname.startsWith('/manager/reports/review/')
+  )) {
+    return `${target.pathname}${target.search}${target.hash}`;
+  }
+
+  const incidentId = getManagementNotificationIncidentId(notification);
+  if (incidentId) return `/manager/incidents/${encodeURIComponent(incidentId)}`;
+
+  const feedbackId = getManagementNotificationFeedbackId(notification);
+  if (feedbackId) return `/manager/interactions/${encodeURIComponent(feedbackId)}`;
+
+  return NOTIFICATION_FALLBACK_ROUTE;
+};
+
+const getAdministratorNotificationRoute = (notification) => {
+  const target = parseInternalTarget(notification?.targetUrl);
+  if (target && (
+    target.pathname.startsWith('/management/incidents/')
+    || target.pathname.startsWith('/management/feedbacks/')
+  )) {
+    return `${target.pathname}${target.search}${target.hash}`;
+  }
+
+  const incidentId = getManagementNotificationIncidentId(notification);
+  if (incidentId) return `/management/incidents/${encodeURIComponent(incidentId)}`;
+
+  const feedbackId = getManagementNotificationFeedbackId(notification);
+  if (feedbackId) return `/management/feedbacks/${encodeURIComponent(feedbackId)}`;
+
+  return NOTIFICATION_FALLBACK_ROUTE;
+};
+
 export const getNotificationDestinationEntity = (notification, currentRole) => {
   const role = getInternalRole(currentRole);
-  if (role !== APP_ROLES.SYSTEM_STAFF) return 'feedback';
-  if (getNotificationIncidentId(notification)) return 'incident';
-  if (getNotificationFeedbackId(notification)) return 'feedback';
-  if (getNotificationProviderReportId(notification)) return 'fallback';
-  return 'fallback';
+
+  if (role === APP_ROLES.INTERACTION_MANAGER || role === APP_ROLES.ADMINISTRATOR) {
+    if (getManagementNotificationIncidentId(notification)) return 'incident';
+    if (getManagementNotificationFeedbackId(notification)) return 'feedback';
+    return 'fallback';
+  }
+
+  if (role === APP_ROLES.SYSTEM_STAFF) {
+    if (getNotificationIncidentId(notification)) return 'incident';
+    if (getNotificationFeedbackId(notification)) return 'feedback';
+    if (getNotificationProviderReportId(notification)) return 'fallback';
+    return 'fallback';
+  }
+
+  return 'feedback';
 };
 
 export const resolveNotificationDestination = (notification, currentRole) => {
   const role = getInternalRole(currentRole);
 
-  if (role !== APP_ROLES.SYSTEM_STAFF) {
-    return getServiceUserNotificationRoute(notification);
-  }
+  if (role === APP_ROLES.INTERACTION_MANAGER) return getManagerNotificationRoute(notification);
+  if (role === APP_ROLES.ADMINISTRATOR) return getAdministratorNotificationRoute(notification);
+  if (role !== APP_ROLES.SYSTEM_STAFF) return getServiceUserNotificationRoute(notification);
 
   const incidentId = getNotificationIncidentId(notification);
   if (incidentId) return buildStaffIncidentRoute(notification, incidentId);

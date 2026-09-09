@@ -6,9 +6,15 @@ const INCIDENT_TIMELINE_ENDPOINT = '/api/management/incidents/{incidentId}/timel
 const INCIDENT_STATUS_ENDPOINT = '/api/management/incidents/{incidentId}/status';
 const INCIDENT_ASSIGNEE_CANDIDATES_ENDPOINT = '/api/management/incidents/{incidentId}/assignee-candidates';
 const INCIDENT_ASSIGN_ENDPOINT = '/api/management/incidents/{incidentId}/assign';
+const INCIDENT_MERGE_ENDPOINT = '/api/management/incidents/{incidentId}/merge';
+const INCIDENT_REPORTS_ENDPOINT = '/api/management/incidents/{incidentId}/reports';
 const INCIDENT_PROVIDER_CANDIDATES_ENDPOINT = '/api/management/incidents/{incidentId}/provider-candidates';
 const INCIDENT_PROVIDER_ASSIGNMENT_ENDPOINT = '/api/management/incidents/{incidentId}/provider-assignment';
 const INCIDENT_RESOLUTIONS_ENDPOINT = '/api/management/incidents/{incidentId}/resolutions';
+const INCIDENT_CURRENT_RESOLUTION_ENDPOINT = '/api/management/incidents/{incidentId}/resolution';
+const INCIDENT_LATEST_RESOLUTION_ENDPOINT = '/api/management/incidents/{incidentId}/resolutions/latest';
+const INCIDENT_RESOLUTION_APPROVE_ENDPOINT = '/api/management/incidents/{incidentId}/resolutions/{resolutionId}/approve';
+const INCIDENT_RESOLUTION_REWORK_ENDPOINT = '/api/management/incidents/{incidentId}/resolutions/{resolutionId}/need-rework';
 const PROVIDER_ASSIGNMENT_ENDPOINT = '/api/management/provider-assignments/{providerAssignmentId}';
 
 const buildIncidentDetailEndpoint = (incidentId) => {
@@ -193,6 +199,17 @@ export const normalizeProviderAssignmentStatusPayload = (payload = {}) => {
   return normalized;
 };
 
+export const normalizeNeedReworkResolutionPayload = (payload = {}) => {
+  const reason = requiredExecutionText(payload?.reason, 'reason');
+  return { reason };
+};
+
+export const normalizeResolutionDecisionResponse = (response) => {
+  const payload = unwrapIncidentExecutionResponse(response);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  return payload;
+};
+
 export const normalizeSubmitIncidentResolutionPayload = (payload = {}) => {
   // The Staff execution contract requires both narrative fields. The generated
   // OpenAPI schema currently omits the corresponding required array.
@@ -325,11 +342,16 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
   resolutions: Object.freeze({
     available: true,
     endpoint: INCIDENT_RESOLUTIONS_ENDPOINT,
+    currentEndpoint: INCIDENT_CURRENT_RESOLUTION_ENDPOINT,
+    latestEndpoint: INCIDENT_LATEST_RESOLUTION_ENDPOINT,
+    approveEndpoint: INCIDENT_RESOLUTION_APPROVE_ENDPOINT,
+    needReworkEndpoint: INCIDENT_RESOLUTION_REWORK_ENDPOINT,
     scope: 'incident',
     submitAvailable: true,
+    reviewAvailable: true,
     resubmitConfirmed: true,
     submitStatuses: Object.freeze(['InProgress', 'NeedRework']),
-    needReworkReasonConfirmed: false,
+    needReworkReasonConfirmed: true,
   }),
   assigneeCandidates: Object.freeze({
     available: true,
@@ -340,6 +362,22 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
     available: true,
     endpoint: INCIDENT_ASSIGN_ENDPOINT,
     supportsReassignment: false,
+  }),
+  metadataUpdate: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_DETAIL_ENDPOINT,
+    method: 'PATCH',
+  }),
+  merge: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_MERGE_ENDPOINT,
+    requestSchema: 'MergeIncidentRequest',
+  }),
+  reportLinks: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_REPORTS_ENDPOINT,
+    supportsLink: true,
+    supportsSoftUnlink: true,
   }),
 });
 
@@ -371,6 +409,58 @@ export const incidentManagementApi = Object.freeze({
     });
 
     return normalizeIncidentTimelineResponse(response);
+  },
+
+  async updateIncident(incidentId, payload = {}, options = {}) {
+    const response = await axiosClient.patch(
+      buildIncidentDetailEndpoint(incidentId),
+      payload,
+      { signal: options?.signal },
+    );
+
+    return normalizeIncidentDetailResponse(response);
+  },
+
+  async updateIncidentStatus(incidentId, payload = {}, options = {}) {
+    const response = await axiosClient.patch(
+      `${buildIncidentDetailEndpoint(incidentId)}/status`,
+      payload,
+      { signal: options?.signal },
+    );
+
+    return normalizeIncidentDetailResponse(response);
+  },
+
+  async mergeIncident(incidentId, payload = {}, options = {}) {
+    const response = await axiosClient.post(
+      `${buildIncidentDetailEndpoint(incidentId)}/merge`,
+      payload,
+      { signal: options?.signal },
+    );
+
+    return normalizeIncidentDetailResponse(response);
+  },
+
+  async linkReport(incidentId, payload = {}, options = {}) {
+    const response = await axiosClient.post(
+      `${buildIncidentDetailEndpoint(incidentId)}/reports`,
+      payload,
+      { signal: options?.signal },
+    );
+
+    return normalizeIncidentDetailResponse(response);
+  },
+
+  async unlinkReport(incidentId, feedbackId, options = {}) {
+    const normalizedFeedbackId = String(feedbackId ?? '').trim();
+    if (!normalizedFeedbackId) throw new TypeError('feedbackId is required');
+
+    const response = await axiosClient.delete(
+      `${buildIncidentDetailEndpoint(incidentId)}/reports/${encodeURIComponent(normalizedFeedbackId)}`,
+      { signal: options?.signal },
+    );
+
+    return normalizeIncidentDetailResponse(response);
   },
 
   async startIncidentProcessing(incidentId, payload = {}) {
@@ -468,6 +558,39 @@ export const incidentManagementApi = Object.freeze({
       `${buildProviderAssignmentEndpoint(providerAssignmentId)}/completion-documents`,
     );
     // Swagger documents a successful 200 without a response DTO.
+  },
+
+  async getIncidentResolution(incidentId, options = {}) {
+    const response = await axiosClient.get(`${buildIncidentDetailEndpoint(incidentId)}/resolution`, {
+      signal: options?.signal,
+    });
+    return normalizeResolutionDecisionResponse(response);
+  },
+
+  async getLatestIncidentResolution(incidentId, options = {}) {
+    const response = await axiosClient.get(`${buildIncidentDetailEndpoint(incidentId)}/resolutions/latest`, {
+      signal: options?.signal,
+    });
+    return normalizeResolutionDecisionResponse(response);
+  },
+
+  async approveIncidentResolution(incidentId, resolutionId, payload = {}, options = {}) {
+    const note = String(payload?.note ?? '').trim();
+    const response = await axiosClient.post(
+      `${buildIncidentDetailEndpoint(incidentId)}/resolutions/${positiveExecutionId(resolutionId, 'resolutionId')}/approve`,
+      undefined,
+      { params: note ? { note } : undefined, signal: options?.signal },
+    );
+    return normalizeResolutionDecisionResponse(response);
+  },
+
+  async requestIncidentResolutionRework(incidentId, resolutionId, payload = {}, options = {}) {
+    const response = await axiosClient.post(
+      `${buildIncidentDetailEndpoint(incidentId)}/resolutions/${positiveExecutionId(resolutionId, 'resolutionId')}/need-rework`,
+      normalizeNeedReworkResolutionPayload(payload),
+      { signal: options?.signal },
+    );
+    return normalizeResolutionDecisionResponse(response);
   },
 
   async getIncidentResolutions(incidentId, options = {}) {

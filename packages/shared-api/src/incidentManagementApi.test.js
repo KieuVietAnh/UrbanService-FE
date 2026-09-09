@@ -19,6 +19,8 @@ import {
   normalizeProviderAssignmentContactPayload,
   normalizeProviderAssignmentStatusPayload,
   normalizeSubmitIncidentResolutionPayload,
+  normalizeNeedReworkResolutionPayload,
+  normalizeResolutionDecisionResponse,
   normalizeIncidentProviderAssignmentResponse,
   normalizeIncidentExecutionCollection,
 } from './incidentManagementApi.js';
@@ -60,7 +62,12 @@ test('incident list capability follows the checked-in ManagementIncidents contra
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.submitAvailable, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.resubmitConfirmed, true);
   assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.submitStatuses, ['InProgress', 'NeedRework']);
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.needReworkReasonConfirmed, false);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.needReworkReasonConfirmed, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.reviewAvailable, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.latestEndpoint, '/api/management/incidents/{incidentId}/resolutions/latest');
+  assert.equal(typeof incidentManagementApi.getLatestIncidentResolution, 'function');
+  assert.equal(typeof incidentManagementApi.approveIncidentResolution, 'function');
+  assert.equal(typeof incidentManagementApi.requestIncidentResolutionRework, 'function');
   assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.completionEvidence.multipartFields, ['Description', 'Files']);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.completionEvidence.documentedUploadLimits, false);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.completionEvidence.deleteOneAvailable, false);
@@ -517,4 +524,95 @@ test('Incident submit requires the execution narrative, supports empty 200 and p
       resolutionSummary: 'Done', actionTaken: 'Fixed',
     }), (error) => error === conflict);
   } finally { postMock.mock.restore(); }
+});
+
+test('management mutation capabilities expose update, merge, and report-link contracts', () => {
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.metadataUpdate.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.metadataUpdate.method, 'PATCH');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.merge.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.merge.endpoint, '/api/management/incidents/{incidentId}/merge');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.reportLinks.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.reportLinks.supportsSoftUnlink, true);
+  assert.equal(typeof incidentManagementApi.updateIncident, 'function');
+  assert.equal(typeof incidentManagementApi.updateIncidentStatus, 'function');
+  assert.equal(typeof incidentManagementApi.mergeIncident, 'function');
+  assert.equal(typeof incidentManagementApi.linkReport, 'function');
+  assert.equal(typeof incidentManagementApi.unlinkReport, 'function');
+});
+
+test('incident management mutations call the documented endpoints', async () => {
+  const patchMock = mock.method(axiosClient, 'patch', async () => ({ incidentId: 'incident-1' }));
+  const postMock = mock.method(axiosClient, 'post', async () => ({ incidentId: 'incident-1' }));
+  const deleteMock = mock.method(axiosClient, 'delete', async () => null);
+
+  try {
+    await incidentManagementApi.updateIncident('incident-1', { priority: 'High' });
+    await incidentManagementApi.updateIncidentStatus('incident-1', { status: 'Closed' });
+    await incidentManagementApi.mergeIncident('incident-1', { targetIncidentId: 'incident-2', reason: null });
+    await incidentManagementApi.linkReport('incident-1', { feedbackId: 'feedback-1', linkMethod: 'Manual' });
+    await incidentManagementApi.unlinkReport('incident-1', 'feedback-1');
+
+    assert.equal(patchMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1');
+    assert.equal(patchMock.mock.calls[1].arguments[0], '/api/management/incidents/incident-1/status');
+    assert.equal(postMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1/merge');
+    assert.equal(postMock.mock.calls[1].arguments[0], '/api/management/incidents/incident-1/reports');
+    assert.equal(deleteMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1/reports/feedback-1');
+  } finally {
+    patchMock.mock.restore();
+    postMock.mock.restore();
+    deleteMock.mock.restore();
+  }
+});
+
+test('unlinkReport validates feedbackId before making a request', async () => {
+  const deleteMock = mock.method(axiosClient, 'delete', async () => null);
+
+  try {
+    await assert.rejects(
+      incidentManagementApi.unlinkReport('incident-1', '  '),
+      { name: 'TypeError', message: 'feedbackId is required' },
+    );
+    assert.equal(deleteMock.mock.callCount(), 0);
+  } finally {
+    deleteMock.mock.restore();
+  }
+});
+
+
+test('resolution review payload requires a concrete rework reason', () => {
+  assert.deepEqual(normalizeNeedReworkResolutionPayload({ reason: '  Bổ sung ảnh minh chứng  ' }), {
+    reason: 'Bổ sung ảnh minh chứng',
+  });
+  assert.throws(() => normalizeNeedReworkResolutionPayload({ reason: '   ' }), /reason is required/);
+});
+
+test('resolution decision normalizer accepts the documented DTO and no-content safely', () => {
+  const resolution = { resolutionId: 9, incidentId: 'incident-1', status: 'SubmittedForApproval' };
+  assert.equal(normalizeResolutionDecisionResponse(resolution), resolution);
+  assert.equal(normalizeResolutionDecisionResponse({ data: resolution }), resolution);
+  assert.equal(normalizeResolutionDecisionResponse(null), null);
+});
+
+test('resolution review methods call Incident-first endpoints', async () => {
+  const resolution = { resolutionId: 9, incidentId: 'incident-1', status: 'SubmittedForApproval' };
+  const getMock = mock.method(axiosClient, 'get', async () => resolution);
+  const postMock = mock.method(axiosClient, 'post', async () => resolution);
+  try {
+    const signal = new AbortController().signal;
+    assert.equal(await incidentManagementApi.getLatestIncidentResolution('incident-1', { signal }), resolution);
+    assert.equal(getMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1/resolutions/latest');
+    assert.equal(getMock.mock.calls[0].arguments[1].signal, signal);
+
+    await incidentManagementApi.approveIncidentResolution('incident-1', 9, { note: ' Đạt yêu cầu ' });
+    assert.equal(postMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1/resolutions/9/approve');
+    assert.equal(postMock.mock.calls[0].arguments[1], undefined);
+    assert.deepEqual(postMock.mock.calls[0].arguments[2].params, { note: 'Đạt yêu cầu' });
+
+    await incidentManagementApi.requestIncidentResolutionRework('incident-1', 9, { reason: ' Thiếu minh chứng ' });
+    assert.equal(postMock.mock.calls[1].arguments[0], '/api/management/incidents/incident-1/resolutions/9/need-rework');
+    assert.deepEqual(postMock.mock.calls[1].arguments[1], { reason: 'Thiếu minh chứng' });
+  } finally {
+    getMock.mock.restore();
+    postMock.mock.restore();
+  }
 });

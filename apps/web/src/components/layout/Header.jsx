@@ -315,8 +315,8 @@ export const Header = ({ onMenuToggle }) => {
       sentiment: 'Cảm xúc người dân',
       heatmap: 'Bản đồ điểm nóng',
       manager: 'Quản lý tương tác',
-      interactions: 'Giám sát tương tác',
-      approvals: 'Hàng đợi duyệt',
+      interactions: 'Giám sát phản ánh',
+      approvals: 'Duyệt kết quả xử lý',
       provider: 'Đơn vị xử lý',
       tasks: 'Nhiệm vụ được giao',
       tickets: 'Phản ánh',
@@ -326,11 +326,11 @@ export const Header = ({ onMenuToggle }) => {
       'area-alerts': 'Quản lý cảnh báo khu vực',
       duplicates: 'Xử lý trùng lặp',
       'incident-matches': 'Đề xuất cùng sự vụ',
-      incidents: location.pathname.startsWith('/manager/incidents') ? 'Quản lý sự vụ' : 'Sự vụ của tôi',
+      incidents: (location.pathname.startsWith('/manager/incidents') || location.pathname.startsWith('/management/incidents')) ? 'Quản lý sự vụ' : 'Sự vụ của tôi',
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
       feed: 'Bảng tin',
-      map: 'Bản đồ sự cố',
+      map: 'Bản đồ phản ánh',
       profile: 'Hồ sơ',
       settings: 'Cài đặt',
       new: 'Thêm điều phối viên',
@@ -383,7 +383,12 @@ export const Header = ({ onMenuToggle }) => {
 
           const isFeedbackId = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(path);
           const isIncidentMatchCandidateId = isFeedbackId && location.pathname.startsWith('/manager/incident-matches/');
-          const isIncidentId = isFeedbackId && (location.pathname.startsWith('/manager/incidents/') || location.pathname.startsWith('/staff/incidents/'));
+          const isIncidentId = isFeedbackId && (
+            location.pathname.startsWith('/manager/incidents/')
+            || location.pathname.startsWith('/management/incidents/')
+            || location.pathname.startsWith('/staff/incidents/')
+            || location.pathname.startsWith('/manager/approvals/')
+          );
           const isCoordinatorId = /^\d+$/.test(path) && (location.pathname.startsWith('/management/coordinators/') || location.pathname.startsWith('/staff/coordinators/'));
           const isProviderReportId = /^\d+$/.test(path) && location.pathname.startsWith('/staff/provider-reports/');
           const segmentName = isIncidentMatchCandidateId
@@ -418,7 +423,11 @@ export const Header = ({ onMenuToggle }) => {
             'area-alerts': '/staff/area-alerts',
             duplicates: '/staff/duplicates',
             'incident-matches': '/manager/incident-matches',
-            incidents: location.pathname.startsWith('/manager/incidents') ? '/manager/incidents' : '/staff/incidents',
+            incidents: location.pathname.startsWith('/management/incidents')
+              ? '/management/incidents'
+              : location.pathname.startsWith('/manager/incidents')
+                ? '/manager/incidents'
+                : '/staff/incidents',
             'provider-reports': '/staff/feedbacks',
           };
 

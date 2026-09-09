@@ -76,3 +76,49 @@ test('SYSTEMSTAFF chỉ theo targetUrl nội bộ thuộc route đã biết', ()
     '/notifications',
   );
 });
+
+
+test('INTERACTION_MANAGER mở Incident theo incidentId thay vì route ServiceUser', () => {
+  const notification = { incidentId: 'incident-manager', type: 'StatusChanged' };
+  assert.equal(resolveNotificationDestination(notification, APP_ROLES.INTERACTION_MANAGER), '/manager/incidents/incident-manager');
+  assert.equal(getNotificationDestinationEntity(notification, APP_ROLES.INTERACTION_MANAGER), 'incident');
+});
+
+test('INTERACTION_MANAGER mở Feedback theo route giám sát tương tác', () => {
+  const notification = { feedbackId: 'feedback-manager', type: 'MessageReceived' };
+  assert.equal(resolveNotificationDestination(notification, APP_ROLES.INTERACTION_MANAGER), '/manager/interactions/feedback-manager');
+});
+
+test('ADMINISTRATOR mở Incident và Feedback trong namespace quản trị', () => {
+  assert.equal(
+    resolveNotificationDestination({ incidentId: 'incident-admin' }, APP_ROLES.ADMINISTRATOR),
+    '/management/incidents/incident-admin',
+  );
+  assert.equal(
+    resolveNotificationDestination({ feedbackId: 'feedback-admin' }, APP_ROLES.ADMINISTRATOR),
+    '/management/feedbacks/feedback-admin',
+  );
+});
+
+test('INTERACTION_MANAGER chuẩn hóa targetUrl Incident namespace quản trị về namespace Manager', () => {
+  assert.equal(
+    resolveNotificationDestination({ targetUrl: '/management/incidents/incident-from-admin-url' }, APP_ROLES.INTERACTION_MANAGER),
+    '/manager/incidents/incident-from-admin-url',
+  );
+});
+
+test('ADMINISTRATOR không đi vào route approval của Manager và chuẩn hóa Incident về namespace quản trị', () => {
+  const notification = { targetUrl: '/manager/approvals/incident-approval' };
+  assert.equal(
+    resolveNotificationDestination(notification, APP_ROLES.ADMINISTRATOR),
+    '/management/incidents/incident-approval',
+  );
+  assert.equal(getNotificationDestinationEntity(notification, APP_ROLES.ADMINISTRATOR), 'incident');
+});
+
+test('ADMINISTRATOR chuẩn hóa targetUrl Feedback của Manager về namespace quản trị', () => {
+  assert.equal(
+    resolveNotificationDestination({ targetUrl: '/manager/interactions/feedback-from-manager-url' }, APP_ROLES.ADMINISTRATOR),
+    '/management/feedbacks/feedback-from-manager-url',
+  );
+});
