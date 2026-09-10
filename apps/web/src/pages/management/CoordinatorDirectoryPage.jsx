@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import { ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 import { getCoordinatorDirectoryCache, setCoordinatorDirectoryCache } from '../../services/cache/adminCoordinatorDirectoryCache';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 
@@ -404,19 +405,37 @@ export default function CoordinatorDirectoryPage() {
             <Lucide.Search size={17} className="text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-normal text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500" placeholder="Tìm đơn vị, người phụ trách, email, số điện thoại" />
           </label>
-          <select value={areaId} onChange={(event) => setAreaId(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
-            <option value="">Tất cả khu vực</option>
-            {areas.map((area) => <option key={area.areaId ?? area.id} value={area.areaId ?? area.id}>{area.areaName ?? area.name}</option>)}
-          </select>
-          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
-            <option value="">Tất cả danh mục</option>
-            {categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{getCategoryLabel(category.categoryName ?? category.name)}</option>)}
-          </select>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
-            <option value="all">Tất cả trạng thái</option>
-            <option value="active">Đang hoạt động</option>
-            <option value="inactive">Đã vô hiệu hóa</option>
-          </select>
+          <ManagerSelectMenu
+            value={areaId}
+            onChange={setAreaId}
+            ariaLabel="Lọc khu vực"
+            className="h-11"
+            options={[
+              { value: '', label: 'Tất cả khu vực' },
+              ...areas.map((area) => ({ value: area.areaId ?? area.id, label: area.areaName ?? area.name })),
+            ]}
+          />
+          <ManagerSelectMenu
+            value={categoryId}
+            onChange={setCategoryId}
+            ariaLabel="Lọc danh mục"
+            className="h-11"
+            options={[
+              { value: '', label: 'Tất cả danh mục' },
+              ...categories.map((category) => ({ value: category.categoryId ?? category.id, label: getCategoryLabel(category.categoryName ?? category.name) })),
+            ]}
+          />
+          <ManagerSelectMenu
+            value={statusFilter}
+            onChange={setStatusFilter}
+            ariaLabel="Lọc trạng thái điều phối viên"
+            className="h-11"
+            options={[
+              { value: 'all', label: 'Tất cả trạng thái' },
+              { value: 'active', label: 'Đang hoạt động' },
+              { value: 'inactive', label: 'Đã vô hiệu hóa' },
+            ]}
+          />
         </div>
 
         {error && <div className="mt-4"><ErrorAlert title="Không tải được dữ liệu" message={error} /></div>}

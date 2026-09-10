@@ -1,6 +1,6 @@
 // src/roles/interaction-manager/sidebarMenu.js
 export default [
-  { name: 'Tổng quan chỉ số', path: '/dashboard', icon: 'LayoutDashboard' },
+  { name: 'Tổng quan hệ thống', path: '/dashboard', icon: 'LayoutDashboard' },
   { name: 'Duyệt phản ánh', path: '/manager/reports/review', icon: 'BadgeCheck' },
   { name: 'Xử lý trùng lặp', path: '/manager/incident-matches', icon: 'GitMerge' },
   { name: 'Giám sát phản ánh', path: '/manager/interactions', icon: 'MessageSquareDashed' },

@@ -81,16 +81,8 @@ export const analyticsApi = {
         aiStatus,
       };
     } catch (error) {
-      console.warn('analyticsApi.getManagerSentimentStats failed, returning safe defaults', error);
-      return {
-        sentimentTrend: { Positive: 0, Neutral: 0, Negative: 0 },
-        totalAnalyzed: 0,
-        positiveRate: 0,
-        neutralRate: 0,
-        negativeRate: 0,
-        dominantSentiment: 'Chưa đủ dữ liệu',
-        aiStatus: 'Không khả dụng',
-      };
+      console.warn('analyticsApi.getManagerSentimentStats failed', error);
+      throw error;
     }
   },
   async getSystemDashboardStats(role) {

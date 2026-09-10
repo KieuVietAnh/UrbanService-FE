@@ -51,6 +51,7 @@ export const SentimentDashboard = () => {
   const [stats, setStats] = useState(() => normalizeStats(cached?.data));
   const [loading, setLoading] = useState(() => !cached?.data);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +60,7 @@ export const SentimentDashboard = () => {
 
     const fetchStats = async () => {
       if (cached?.data) setRefreshing(true);
+      setError('');
       try {
         const response = await analyticsApi.getManagerSentimentStats();
         if (cancelled) return;
@@ -67,7 +69,10 @@ export const SentimentDashboard = () => {
         writeCache(nextStats);
       } catch (err) {
         console.error(err);
-        if (!cancelled && !cached?.data) setStats(EMPTY_STATS);
+        if (!cancelled) {
+          setError('Không thể cập nhật dữ liệu cảm xúc từ hệ thống AI.');
+          if (!cached?.data) setStats(EMPTY_STATS);
+        }
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -160,6 +165,13 @@ export const SentimentDashboard = () => {
         statusLabel="Xu hướng nổi bật"
         statusValue={stats.dominantSentiment}
       />
+
+      {error ? (
+        <section className="admin-error-note flex items-center gap-3 p-4" role="alert">
+          <Lucide.CircleAlert size={18} className="shrink-0" />
+          <p className="text-sm font-medium">{error}{cached?.data ? ' Đang hiển thị dữ liệu đã lưu gần nhất.' : ''}</p>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số cảm xúc tổng quan">
         <ManagerMetricCard

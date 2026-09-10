@@ -120,15 +120,32 @@ const buildAreaFilterOptions = (areas) => [
   ...areas.map((area) => [getOptionId(area), getOptionName(area)]),
 ];
 
+const OBSOLETE_CATEGORY_NAMES = new Set(['cấp nước', 'water supply']);
+
+const isVisibleManagerCategory = (category) => {
+  const name = getOptionName(category).trim().toLowerCase();
+  return name && !OBSOLETE_CATEGORY_NAMES.has(name);
+};
+
 const buildCategoryFilterOptions = (categories) => [
   ['', 'Tất cả danh mục'],
-  ...categories.map((category) => [getOptionId(category), getOptionName(category)]),
+  ['__unclassified__', 'Chưa phân loại'],
+  ...categories
+    .filter(isVisibleManagerCategory)
+    .map((category) => [getOptionId(category), getOptionName(category)]),
 ];
 
 const STATUS_FILTER_OPTIONS = [
   ['', 'Tất cả trạng thái'],
+  ['__group_active__', 'Đang xử lý'],
+  ['__group_completed__', 'Đã hoàn thành'],
   ...STATUS_OPTIONS,
 ];
+
+const STATUS_GROUPS = {
+  active: ['Assigned', 'InProgress'],
+  completed: ['Approved', 'Closed'],
+};
 
 
 const formatDateTime = (value) => {
@@ -497,7 +514,9 @@ export const IncidentManagement = () => {
   const [searchInput, setSearchInput] = useState(search);
   const areaId = searchParams.get('areaId') || '';
   const categoryId = searchParams.get('categoryId') || '';
+  const categoryGroup = searchParams.get('categoryGroup') || '';
   const status = searchParams.get('status') || '';
+  const statusGroup = searchParams.get('statusGroup') || '';
   const priority = searchParams.get('priority') || '';
   const severity = searchParams.get('severity') || '';
 
@@ -556,8 +575,123 @@ export const IncidentManagement = () => {
 
     try {
       const normalizedSearch = search.trim();
+      const groupedStatuses = STATUS_GROUPS[statusGroup] || null;
+      const unclassifiedOnly = categoryGroup === 'unclassified';
 
-      if (normalizedSearch) {
+      if (unclassifiedOnly) {
+        const collected = [];
+        let requestedPage = 1;
+        let totalPages = 1;
+
+        do {
+          const response = await incidentManagementApi.getIncidents({
+            pageNumber: requestedPage,
+            pageSize: SMART_SEARCH_PAGE_SIZE,
+            areaId,
+            status,
+            priority,
+            severity,
+            search: '',
+            includeMerged: false,
+          });
+
+          if (requestId !== requestIdRef.current) return;
+
+          const normalizedPage = normalizeListResponse(response, requestedPage);
+          collected.push(...normalizedPage.items);
+          totalPages = normalizedPage.pagination.totalPages;
+          requestedPage += 1;
+        } while (requestedPage <= totalPages);
+
+        const matchedCategory = collected.filter((item) => {
+          const itemCategoryId = item?.categoryId ?? item?.category?.categoryId ?? item?.category?.id;
+          const itemCategoryName = String(item?.categoryName ?? item?.category?.name ?? '').trim().toLowerCase();
+          const isUnclassified = itemCategoryId === undefined || itemCategoryId === null || itemCategoryId === '' || itemCategoryName === 'chưa phân loại' || itemCategoryName === 'unclassified';
+          return isUnclassified && (!normalizedSearch || matchesSmartSearch(item, normalizedSearch));
+        });
+
+        matchedCategory.sort((left, right) => {
+          const leftTime = new Date(left?.updatedAt ?? left?.createdAt ?? 0).getTime() || 0;
+          const rightTime = new Date(right?.updatedAt ?? right?.createdAt ?? 0).getTime() || 0;
+          return rightTime - leftTime;
+        });
+
+        setSearchTruncated(false);
+        const totalItems = matchedCategory.length;
+        const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePageNumber = Math.min(pageNumber, totalResultPages);
+        const startIndex = (safePageNumber - 1) * PAGE_SIZE;
+
+        lastLoadedQueryRef.current = queryKey;
+        setIncidents(matchedCategory.slice(startIndex, startIndex + PAGE_SIZE));
+        setPagination({
+          pageNumber: safePageNumber,
+          pageSize: PAGE_SIZE,
+          totalItems,
+          totalPages: totalResultPages,
+          hasPreviousPage: safePageNumber > 1,
+          hasNextPage: safePageNumber < totalResultPages,
+        });
+      } else if (groupedStatuses) {
+        const collected = [];
+
+        for (const groupedStatus of groupedStatuses) {
+          let requestedPage = 1;
+          let totalPages = 1;
+
+          do {
+            const response = await incidentManagementApi.getIncidents({
+              pageNumber: requestedPage,
+              pageSize: SMART_SEARCH_PAGE_SIZE,
+              areaId,
+              categoryId,
+              status: groupedStatus,
+              priority,
+              severity,
+              search: '',
+              includeMerged: false,
+            });
+
+            if (requestId !== requestIdRef.current) return;
+
+            const normalizedPage = normalizeListResponse(response, requestedPage);
+            collected.push(...normalizedPage.items);
+            totalPages = normalizedPage.pagination.totalPages;
+            requestedPage += 1;
+          } while (requestedPage <= totalPages);
+        }
+
+        const deduplicated = Array.from(new Map(
+          collected.map((incident) => [String(incident?.incidentId ?? incident?.id ?? ''), incident])
+        ).values()).filter(Boolean);
+
+        const matched = normalizedSearch
+          ? deduplicated.filter((incident) => matchesSmartSearch(incident, normalizedSearch))
+          : deduplicated;
+
+        matched.sort((left, right) => {
+          const leftTime = new Date(left?.updatedAt ?? left?.createdAt ?? 0).getTime() || 0;
+          const rightTime = new Date(right?.updatedAt ?? right?.createdAt ?? 0).getTime() || 0;
+          return rightTime - leftTime;
+        });
+
+        setSearchTruncated(false);
+        const totalItems = matched.length;
+        const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePageNumber = Math.min(pageNumber, totalResultPages);
+        const startIndex = (safePageNumber - 1) * PAGE_SIZE;
+
+        lastLoadedQueryRef.current = queryKey;
+        setIncidents(matched.slice(startIndex, startIndex + PAGE_SIZE));
+        setPagination({
+          pageNumber: safePageNumber,
+          pageSize: PAGE_SIZE,
+          totalItems,
+          totalPages: totalResultPages,
+          hasPreviousPage: safePageNumber > 1,
+          hasNextPage: safePageNumber < totalResultPages,
+        });
+      } else if (normalizedSearch) {
         // Smart search: the backend Search field does not cover operational
         // metadata such as severity/status/priority/createdAt. When the user
         // searches, load the filtered incident set in chunks and search those
@@ -650,7 +784,7 @@ export const IncidentManagement = () => {
         setRefreshing(false);
       }
     }
-  }, [areaId, categoryId, pageNumber, priority, queryKey, search, severity, status]);
+  }, [areaId, categoryGroup, categoryId, pageNumber, priority, queryKey, search, severity, status, statusGroup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -812,7 +946,7 @@ export const IncidentManagement = () => {
     });
   }, [incidentReturnKey, location.hash, location.pathname, location.search, location.state, navigate, queryKey]);
 
-  const hasFilters = Boolean(search || areaId || categoryId || status || priority || severity);
+  const hasFilters = Boolean(search || areaId || categoryId || categoryGroup || status || statusGroup || priority || severity);
   const selectedArea = useMemo(() => areas.find((area) => String(getOptionId(area)) === String(areaId)), [areaId, areas]);
 
   return (
@@ -834,7 +968,7 @@ export const IncidentManagement = () => {
         )}
       />
 
-      <section className="admin-panel relative overflow-hidden">
+      <section className="admin-panel relative overflow-visible">
         <div className="manager-list-panel-header px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4">
             <div>
@@ -906,19 +1040,35 @@ export const IncidentManagement = () => {
 
                 <MainFilterMenu
                   label="Danh mục"
-                  value={categoryId}
+                  value={categoryGroup === 'unclassified' ? '__unclassified__' : categoryId}
                   options={buildCategoryFilterOptions(categories)}
                   icon={Lucide.FolderKanban}
-                  onChange={(nextValue) => updateFilters({ categoryId: nextValue, page: 1 })}
+                  onChange={(nextValue) => {
+                    if (nextValue === '__unclassified__') {
+                      updateFilters({ categoryId: '', categoryGroup: 'unclassified', page: 1 });
+                      return;
+                    }
+                    updateFilters({ categoryId: nextValue, categoryGroup: '', page: 1 });
+                  }}
                   widthClass="w-[320px]"
                 />
 
                 <MainFilterMenu
                   label="Trạng thái"
-                  value={status}
+                  value={statusGroup ? `__group_${statusGroup}__` : status}
                   options={STATUS_FILTER_OPTIONS}
                   icon={Lucide.Filter}
-                  onChange={(nextValue) => updateFilters({ status: nextValue, page: 1 })}
+                  onChange={(nextValue) => {
+                    if (nextValue === '__group_active__') {
+                      updateFilters({ status: '', statusGroup: 'active', page: 1 });
+                      return;
+                    }
+                    if (nextValue === '__group_completed__') {
+                      updateFilters({ status: '', statusGroup: 'completed', page: 1 });
+                      return;
+                    }
+                    updateFilters({ status: nextValue, statusGroup: '', page: 1 });
+                  }}
                   widthClass="w-[300px]"
                   maxHeightClass="max-h-[360px]"
                 />

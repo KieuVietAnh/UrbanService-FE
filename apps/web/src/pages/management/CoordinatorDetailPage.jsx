@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import { ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 import { clearCoordinatorDirectoryCache } from '../../services/cache/adminCoordinatorDirectoryCache';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 
@@ -418,10 +419,16 @@ export default function CoordinatorDetailPage() {
               <div className="space-y-4">
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200">Khu vực <span className="text-rose-500">*</span></span>
-                  <select value={coverageForm.areaId} onChange={(event) => updateCoverageForm('areaId', event.target.value)} className="select select-bordered h-11 min-h-11 w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-                    <option value="">Chọn khu vực</option>
-                    {areas.map((area) => <option key={area.areaId ?? area.id} value={area.areaId ?? area.id}>{area.areaName ?? area.name}</option>)}
-                  </select>
+                  <ManagerSelectMenu
+                    value={coverageForm.areaId}
+                    onChange={(value) => updateCoverageForm('areaId', value)}
+                    ariaLabel="Chọn khu vực phụ trách"
+                    className="w-full"
+                    options={[
+                      { value: '', label: 'Chọn khu vực' },
+                      ...areas.map((area) => ({ value: area.areaId ?? area.id, label: area.areaName ?? area.name })),
+                    ]}
+                  />
                 </label>
 
                 {isCategoryPreset ? (
@@ -438,10 +445,16 @@ export default function CoordinatorDetailPage() {
                 ) : (
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-semibold text-slate-800 dark:text-slate-200">Danh mục <span className="text-rose-500">*</span></span>
-                    <select value={coverageForm.categoryId} onChange={(event) => updateCoverageForm('categoryId', event.target.value)} className="select select-bordered h-11 min-h-11 w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-                      <option value="">Chọn danh mục</option>
-                      {categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{getCategoryLabel(category.categoryName ?? category.name)}</option>)}
-                    </select>
+                    <ManagerSelectMenu
+                      value={coverageForm.categoryId}
+                      onChange={(value) => updateCoverageForm('categoryId', value)}
+                      ariaLabel="Chọn danh mục phụ trách"
+                      className="w-full"
+                      options={[
+                        { value: '', label: 'Chọn danh mục' },
+                        ...categories.map((category) => ({ value: category.categoryId ?? category.id, label: getCategoryLabel(category.categoryName ?? category.name) })),
+                      ]}
+                    />
                   </label>
                 )}
 

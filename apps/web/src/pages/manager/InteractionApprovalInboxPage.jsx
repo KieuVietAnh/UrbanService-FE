@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { getScopedSessionKey } from '../../utils/scopedSessionKey';
 import * as Lucide from 'lucide-react';
 import { incidentManagementApi } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
@@ -11,6 +13,33 @@ import {
 } from '../../components/manager/ManagerPageElements';
 
 const pageSizeOptions = [5, 10, 20, 50];
+
+const APPROVAL_QUEUE_SNAPSHOT_KEY_BASE = 'urbanservice-manager-approval-queue-snapshot-v1';
+const APPROVAL_QUEUE_SNAPSHOT_TTL = 5 * 60 * 1000;
+
+const readApprovalQueueSnapshot = (storageKey) => {
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return null;
+    const snapshot = JSON.parse(raw);
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    if (Date.now() - Number(snapshot.savedAt || 0) > APPROVAL_QUEUE_SNAPSHOT_TTL) {
+      window.sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+};
+
+const writeApprovalQueueSnapshot = (storageKey, snapshot) => {
+  try {
+    window.sessionStorage.setItem(storageKey, JSON.stringify({ ...snapshot, savedAt: Date.now() }));
+  } catch (error) {
+    console.warn('Không thể lưu trạng thái hàng đợi duyệt kết quả', error);
+  }
+};
 
 const priorityMeta = {
   Low: { label: 'Thấp', className: 'border-slate-200 bg-slate-100 text-slate-700' },
@@ -172,23 +201,29 @@ const LevelBadge = ({ value, type = 'priority' }) => {
 };
 
 export const InteractionApprovalInboxPage = () => {
+  const { user } = useAuth();
+  const approvalSnapshotKey = useMemo(
+    () => getScopedSessionKey(APPROVAL_QUEUE_SNAPSHOT_KEY_BASE, user),
+    [user],
+  );
+  const [initialSnapshot] = useState(() => readApprovalQueueSnapshot(approvalSnapshotKey));
   const navigate = useNavigate();
   const location = useLocation();
-  const [items, setItems] = useState([]);
-  const [summaryItems, setSummaryItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [items, setItems] = useState(() => initialSnapshot?.items || []);
+  const [summaryItems, setSummaryItems] = useState(() => initialSnapshot?.summaryItems || []);
+  const [loading, setLoading] = useState(() => !initialSnapshot);
+  const [hasLoaded, setHasLoaded] = useState(() => Boolean(initialSnapshot));
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState({ areaId: '', categoryId: '', priority: '', severity: '' });
+  const [search, setSearch] = useState(() => initialSnapshot?.search || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => initialSnapshot?.search?.trim?.() || '');
+  const [pageIndex, setPageIndex] = useState(() => Number(initialSnapshot?.pageIndex || 0));
+  const [pageSize, setPageSize] = useState(() => Number(initialSnapshot?.pageSize || 10));
+  const [totalCount, setTotalCount] = useState(() => Number(initialSnapshot?.totalCount || 0));
+  const [filters, setFilters] = useState(() => initialSnapshot?.filters || { areaId: '', categoryId: '', priority: '', severity: '' });
   const itemAbortRef = useRef(null);
   const summaryAbortRef = useRef(null);
-  const hasLoadedRef = useRef(false);
+  const hasLoadedRef = useRef(Boolean(initialSnapshot));
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -197,6 +232,18 @@ export const InteractionApprovalInboxPage = () => {
     }, 350);
     return () => window.clearTimeout(timeoutId);
   }, [search]);
+
+  useEffect(() => {
+    writeApprovalQueueSnapshot(approvalSnapshotKey, {
+      items,
+      summaryItems,
+      search,
+      pageIndex,
+      pageSize,
+      totalCount,
+      filters,
+    });
+  }, [approvalSnapshotKey, filters, items, pageIndex, pageSize, search, summaryItems, totalCount]);
 
   useEffect(() => {
     const returnedNotice = location.state?.approvalNotice;

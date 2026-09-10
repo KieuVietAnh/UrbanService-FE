@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
-import { managementFeedbackApi } from '@urbanmind/shared-api';
+import { incidentManagementApi } from '@urbanmind/shared-api';
 import { IncidentMap } from '../../components/maps/IncidentMap';
-import { ManagerPageHeader } from '../../components/manager/ManagerPageElements';
+import { ManagerPageHeader, ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 
-const CACHE_KEY = 'urbanservice.manager.heatmap.v1';
+const CACHE_KEY = 'urbanservice.manager.heatmap.v2';
 const CACHE_TTL_MS = 60_000;
 
 const STATUS_GROUPS = {
   all: null,
   processing: new Set([
-    'submitted', 'aireviewed', 'verified', 'assigned', 'inprogress',
-    'resolved', 'submittedforapproval', 'needrework', 'approved',
+    'new', 'verified', 'assigned', 'inprogress', 'submittedforapproval', 'needrework',
   ]),
-  ended: new Set(['closed', 'cancelled', 'rejected']),
+  ended: new Set(['approved', 'closed', 'cancelled', 'merged']),
 };
 
 const normalizeKey = (value) => String(value || '')
@@ -37,8 +36,9 @@ const normalizeIncident = (item) => {
   const parsed = parseCoordinatesFromLocationText(item?.locationText);
   return {
     ...item,
-    feedbackId: item?.feedbackId || item?.id || item?.ticketId,
-    title: item?.title || item?.summary || item?.description || 'Phản ánh đô thị',
+    feedbackId: item?.incidentId || item?.id || item?.feedbackId || item?.ticketId,
+    incidentId: item?.incidentId || item?.id || item?.feedbackId || item?.ticketId,
+    title: item?.title || item?.summary || item?.description || 'Sự vụ đô thị',
     categoryId: item?.categoryId ?? item?.category?.categoryId ?? item?.category?.id ?? '',
     categoryName: item?.categoryName || item?.category?.categoryName || item?.category?.name || 'Chưa phân loại',
     areaName: item?.areaName || item?.wardName || item?.area?.areaName || item?.area?.name || '',
@@ -133,7 +133,7 @@ export const HeatmapDashboard = () => {
     setError('');
 
     try {
-      const response = await managementFeedbackApi.getFeedbacks({ PageNumber: 1, PageSize: 1000 });
+      const response = await incidentManagementApi.getIncidents({ pageNumber: 1, pageSize: 1000, includeMerged: false });
       if (requestId !== requestIdRef.current) return;
       const next = normalizeResponse(response).map(normalizeIncident);
       const nextTotal = readTotalCount(response, next.length);
@@ -151,7 +151,7 @@ export const HeatmapDashboard = () => {
       });
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
-      setError(err?.message || 'Không thể tải dữ liệu bản đồ phản ánh.');
+      setError(err?.message || 'Không thể tải dữ liệu bản đồ sự vụ.');
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false);
@@ -255,7 +255,7 @@ export const HeatmapDashboard = () => {
     <article className="admin-page-shell space-y-5 pb-5">
       <ManagerPageHeader
         title="Bản đồ điểm nóng"
-        description="Theo dõi mật độ phản ánh theo vị trí, lọc nhanh theo trạng thái, danh mục và mức ưu tiên."
+        description="Theo dõi mật độ sự vụ theo vị trí, lọc nhanh theo trạng thái, danh mục và mức ưu tiên."
         icon={Lucide.MapPinned}
         actions={(
           <button
@@ -272,7 +272,7 @@ export const HeatmapDashboard = () => {
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Chỉ số bản đồ">
         {[
-          { key: 'total', label: 'Tổng phản ánh', value: totalCount, Icon: Lucide.MessagesSquare, hint: 'Bấm để bỏ tất cả bộ lọc', tone: 'border-blue-200 bg-blue-50/45 hover:border-blue-300 dark:border-blue-500/20 dark:bg-blue-500/[0.06]', iconTone: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300' },
+          { key: 'total', label: 'Tổng sự vụ', value: totalCount, Icon: Lucide.MessagesSquare, hint: 'Bấm để bỏ tất cả bộ lọc', tone: 'border-blue-200 bg-blue-50/45 hover:border-blue-300 dark:border-blue-500/20 dark:bg-blue-500/[0.06]', iconTone: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300' },
           { key: 'mapped', label: 'Có tọa độ', value: validIncidents.length, Icon: Lucide.Navigation, hint: 'Bấm để hiện toàn bộ điểm có tọa độ', tone: 'border-violet-200 bg-violet-50/45 hover:border-violet-300 dark:border-violet-500/20 dark:bg-violet-500/[0.06]', iconTone: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' },
           { key: 'visible', label: 'Đang hiển thị', value: filteredIncidents.length, Icon: Lucide.MapPinned, hint: 'Bấm để căn bản đồ theo các điểm đang lọc', tone: 'border-cyan-200 bg-cyan-50/45 hover:border-cyan-300 dark:border-cyan-500/20 dark:bg-cyan-500/[0.06]', iconTone: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300' },
           { key: 'priority', label: 'Ưu tiên cao', value: urgentCount, Icon: Lucide.Siren, hint: priorityFilter === 'highOrUrgent' ? 'Bấm để bỏ lọc ưu tiên cao' : 'Bấm để chỉ xem Cao / Khẩn cấp', tone: priorityFilter === 'highOrUrgent' ? 'border-rose-400 bg-rose-100/80 ring-2 ring-rose-200 dark:border-rose-400/60 dark:bg-rose-500/15 dark:ring-rose-500/10' : 'border-rose-200 bg-rose-50/45 hover:border-rose-300 dark:border-rose-500/20 dark:bg-rose-500/[0.06]', iconTone: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' },
@@ -308,26 +308,41 @@ export const HeatmapDashboard = () => {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <h2 className="admin-section-title">Phân bố điểm nóng theo tọa độ</h2>
-              <p className="admin-section-description">Lớp điểm nóng có trọng số cao hơn với phản ánh ưu tiên Cao/Khẩn cấp. Marker vẫn dùng để mở từng phản ánh.</p>
+              <p className="admin-section-description">Lớp điểm nóng có trọng số cao hơn với sự vụ ưu tiên Cao/Khẩn cấp. Marker dùng để mở chi tiết từng sự vụ.</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[660px]">
-              <select value={statusFilter} onChange={(e) => updateFilter(setStatusFilter, e.target.value)} className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-                <option value="all">Tất cả trạng thái</option>
-                <option value="processing">Đang xử lý</option>
-                <option value="ended">Đã kết thúc</option>
-              </select>
-              <select value={categoryFilter} onChange={(e) => updateFilter(setCategoryFilter, e.target.value)} className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-                <option value="all">Tất cả dịch vụ</option>
-                {categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <select value={priorityFilter} onChange={(e) => updateFilter(setPriorityFilter, e.target.value)} className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-                <option value="all">Tất cả ưu tiên</option>
-                <option value="highOrUrgent">Cao / Khẩn cấp</option>
-                <option value="urgent">Khẩn cấp</option>
-                <option value="high">Cao</option>
-                <option value="medium">Trung bình</option>
-                <option value="low">Thấp</option>
-              </select>
+              <ManagerSelectMenu
+                value={statusFilter}
+                onChange={(value) => updateFilter(setStatusFilter, value)}
+                ariaLabel="Lọc trạng thái sự vụ"
+                options={[
+                  { value: 'all', label: 'Tất cả trạng thái' },
+                  { value: 'processing', label: 'Đang xử lý' },
+                  { value: 'ended', label: 'Đã kết thúc' },
+                ]}
+              />
+              <ManagerSelectMenu
+                value={categoryFilter}
+                onChange={(value) => updateFilter(setCategoryFilter, value)}
+                ariaLabel="Lọc danh mục sự vụ"
+                options={[
+                  { value: 'all', label: 'Tất cả dịch vụ' },
+                  ...categoryOptions.map(([value, label]) => ({ value, label })),
+                ]}
+              />
+              <ManagerSelectMenu
+                value={priorityFilter}
+                onChange={(value) => updateFilter(setPriorityFilter, value)}
+                ariaLabel="Lọc mức ưu tiên"
+                options={[
+                  { value: 'all', label: 'Tất cả ưu tiên' },
+                  { value: 'highOrUrgent', label: 'Cao / Khẩn cấp' },
+                  { value: 'urgent', label: 'Khẩn cấp' },
+                  { value: 'high', label: 'Cao' },
+                  { value: 'medium', label: 'Trung bình' },
+                  { value: 'low', label: 'Thấp' },
+                ]}
+              />
             </div>
           </div>
 
@@ -338,7 +353,7 @@ export const HeatmapDashboard = () => {
             <button type="button" onClick={() => setShowMarkers((value) => !value)} aria-pressed={showMarkers} className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${showMarkers ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
               <Lucide.MapPin size={15} /> Marker {showMarkers ? 'Bật' : 'Tắt'}
             </button>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Bấm marker → Chi tiết phản ánh trong Giám sát tương tác.</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Bấm marker → Chi tiết sự vụ trong Quản lý sự vụ.</span>
           </div>
         </div>
 
@@ -351,7 +366,7 @@ export const HeatmapDashboard = () => {
                 focusFeedbackId={focusState?.focusFeedbackId}
                 focusLatitude={focusState?.focusLatitude}
                 focusLongitude={focusState?.focusLongitude}
-                detailPathBuilder={(ticket) => `/manager/interactions/${ticket.feedbackId}`}
+                detailPathBuilder={(ticket) => `/manager/incidents/${ticket.incidentId || ticket.feedbackId}`}
                 returnPath="/analytics/heatmap"
                 showHeatLayer={showHeatLayer}
                 showMarkers={showMarkers}
@@ -366,7 +381,7 @@ export const HeatmapDashboard = () => {
       <section className="admin-panel overflow-hidden">
         <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <h2 className="admin-section-title">Nhóm dịch vụ nổi bật trên bản đồ</h2>
-          <p className="admin-section-description">Xếp theo số phản ánh có tọa độ trong bộ lọc hiện tại.</p>
+          <p className="admin-section-description">Xếp theo số sự vụ có tọa độ trong bộ lọc hiện tại.</p>
         </div>
         {hotspotCategories.length ? (
           <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5 sm:p-5">
@@ -381,7 +396,7 @@ export const HeatmapDashboard = () => {
             ))}
           </div>
         ) : (
-          <p className="p-6 text-center text-sm text-slate-500">Không có phản ánh có tọa độ phù hợp với bộ lọc.</p>
+          <p className="p-6 text-center text-sm text-slate-500">Không có sự vụ có tọa độ phù hợp với bộ lọc.</p>
         )}
       </section>
     </article>

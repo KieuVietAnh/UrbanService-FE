@@ -101,10 +101,10 @@ export const SettingsPage = () => {
             </div>
             <div className="min-w-0">
               <h1 className="admin-hero-title">
-                Cài đặt hệ thống
+                Cài đặt cá nhân
               </h1>
               <p className="admin-hero-description">
-                Tùy biến giao diện và kênh nhận thông báo theo cách bạn vận hành UrbanMind hằng ngày.
+                Tùy biến giao diện và lựa chọn thông báo được lưu trên trình duyệt hiện tại.
               </p>
             </div>
           </div>
@@ -199,7 +199,7 @@ export const SettingsPage = () => {
                   Kênh nhận thông báo
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Bật hoặc tắt các kênh thông báo phục vụ quá trình theo dõi phản ánh đô thị.
+                  Bật hoặc tắt các lựa chọn thông báo trên thiết bị này. Đây chưa phải cấu hình thông báo phía máy chủ.
                 </p>
               </div>
             </div>

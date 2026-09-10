@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
 import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
-import { ManagerConfirmDialog, ManagerListRefreshIndicator, ManagerSectionHeader, ManagerToast } from '../../components/manager/ManagerPageElements';
+import { ManagerConfirmDialog, ManagerListRefreshIndicator, ManagerSectionHeader, ManagerSelectMenu, ManagerToast } from '../../components/manager/ManagerPageElements';
 import IncidentLocationMapCard from '../../components/maps/IncidentLocationMapCard';
 import {
   extractApiErrorMessage,
@@ -585,6 +585,7 @@ export const IncidentDetailPage = () => {
   const [mergeSameAreaOnly, setMergeSameAreaOnly] = useState(false);
   const [mergeSameCategoryOnly, setMergeSameCategoryOnly] = useState(false);
   const [selectedMergeIncidentId, setSelectedMergeIncidentId] = useState('');
+  const [selectedMergeIncidentIds, setSelectedMergeIncidentIds] = useState([]);
   const [mergeReason, setMergeReason] = useState('');
   const [confirmAction, setConfirmAction] = useState(null);
   const [approvalDecision, setApprovalDecision] = useState('');
@@ -1168,10 +1169,12 @@ export const IncidentDetailPage = () => {
       const items = normalizeCollection(response).filter((item) => String(item?.incidentId ?? item?.id) !== String(incidentId));
       setMergeCandidates(items);
       setSelectedMergeIncidentId((current) => items.some((item) => String(item?.incidentId ?? item?.id) === String(current)) ? current : '');
+      setSelectedMergeIncidentIds((current) => current.filter((currentId) => items.some((item) => String(item?.incidentId ?? item?.id) === String(currentId))));
     } catch (mergeLoadError) {
       setActionError(localizeIncidentApiError(extractApiErrorMessage(mergeLoadError, 'Không thể tải danh sách sự vụ để gộp.'), 'Không thể tải danh sách sự vụ để gộp.'));
       setMergeCandidates([]);
       setSelectedMergeIncidentId('');
+      setSelectedMergeIncidentIds([]);
     } finally {
       setMergeLoading(false);
     }
@@ -1181,6 +1184,7 @@ export const IncidentDetailPage = () => {
     if (mergeActionLocked) return;
     setActionError('');
     setSelectedMergeIncidentId('');
+    setSelectedMergeIncidentIds([]);
     setMergeReason('');
     setMergeMode('into-current');
     setMergeSearch('');
@@ -1203,33 +1207,54 @@ export const IncidentDetailPage = () => {
   }, [loadMergeCandidates, mergeModalOpen, mergeSameAreaOnly, mergeSameCategoryOnly, mergeSearch]);
 
   const handleMergeIncident = useCallback(() => {
-    if (mergeActionLocked || !selectedMergeIncidentId) return;
+    if (mergeActionLocked) return;
 
+    const currentId = incident?.incidentId ?? incident?.id ?? incidentId;
+    const currentTitle = incident?.title ?? incident?.summary ?? 'Sự vụ hiện tại';
+    const reasonText = mergeReason.trim();
+    const mergeIntoCurrent = mergeMode === 'into-current';
+
+    if (mergeIntoCurrent) {
+      if (selectedMergeIncidentIds.length === 0) return;
+      const selectedIncidents = selectedMergeIncidentIds
+        .map((selectedId) => mergeCandidates.find((item) => String(item?.incidentId ?? item?.id) === String(selectedId)))
+        .filter(Boolean);
+
+      if (selectedIncidents.length !== selectedMergeIncidentIds.length || selectedIncidents.some(isIncidentPastMergeStage)) {
+        setActionError('Có sự vụ đã chọn đã được phân công hoặc bước vào xử lý nên không thể gộp.');
+        return;
+      }
+
+      const sourceIncidentIds = selectedIncidents.map((item) => String(item?.incidentId ?? item?.id));
+      setConfirmAction({
+        type: 'merge',
+        sourceIncidentIds,
+        targetIncidentId: String(currentId),
+        mergeMode,
+        title: `Gộp ${sourceIncidentIds.length} sự vụ vào sự vụ này?`,
+        description: `${sourceIncidentIds.length} sự vụ đã chọn sẽ được gộp lần lượt vào ${currentTitle} (${formatIncidentId(currentId)}). Sự vụ hiện tại được giữ làm sự vụ chính.${reasonText ? ` Lý do: ${reasonText}` : ''}`,
+      });
+      return;
+    }
+
+    if (!selectedMergeIncidentId) return;
     const selectedIncident = mergeCandidates.find((item) => String(item?.incidentId ?? item?.id) === String(selectedMergeIncidentId));
     if (!selectedIncident || isIncidentPastMergeStage(selectedIncident)) {
       setActionError('Sự vụ đã chọn đã được phân công hoặc bước vào xử lý nên không thể gộp.');
       return;
     }
+
     const selectedId = selectedIncident?.incidentId ?? selectedIncident?.id ?? selectedMergeIncidentId;
     const selectedTitle = selectedIncident?.title ?? selectedIncident?.summary ?? 'Sự vụ đã chọn';
-    const currentId = incident?.incidentId ?? incident?.id ?? incidentId;
-    const currentTitle = incident?.title ?? incident?.summary ?? 'Sự vụ hiện tại';
-    const reasonText = mergeReason.trim();
-    const mergeIntoCurrent = mergeMode === 'into-current';
-    const sourceId = mergeIntoCurrent ? selectedId : currentId;
-    const targetId = mergeIntoCurrent ? currentId : selectedId;
-    const sourceTitle = mergeIntoCurrent ? selectedTitle : currentTitle;
-    const targetTitle = mergeIntoCurrent ? currentTitle : selectedTitle;
-
     setConfirmAction({
       type: 'merge',
-      sourceIncidentId: String(sourceId),
-      targetIncidentId: String(targetId),
+      sourceIncidentId: String(currentId),
+      targetIncidentId: String(selectedId),
       mergeMode,
-      title: mergeIntoCurrent ? 'Gộp sự vụ đã chọn vào sự vụ này?' : 'Gộp sự vụ này vào sự vụ đã chọn?',
-      description: `${sourceTitle} (${formatIncidentId(sourceId)}) sẽ được gộp vào ${targetTitle} (${formatIncidentId(targetId)}). Sự vụ đích được giữ làm sự vụ chính và các liên kết phản ánh có thể thay đổi.${reasonText ? ` Lý do: ${reasonText}` : ''}`,
+      title: 'Gộp sự vụ này vào sự vụ đã chọn?',
+      description: `${currentTitle} (${formatIncidentId(currentId)}) sẽ được gộp vào ${selectedTitle} (${formatIncidentId(selectedId)}). Sự vụ đích được giữ làm sự vụ chính và các liên kết phản ánh có thể thay đổi.${reasonText ? ` Lý do: ${reasonText}` : ''}`,
     });
-  }, [incident, incidentId, mergeActionLocked, mergeCandidates, mergeMode, mergeReason, selectedMergeIncidentId]);
+  }, [incident, incidentId, mergeActionLocked, mergeCandidates, mergeMode, mergeReason, selectedMergeIncidentId, selectedMergeIncidentIds]);
 
   const confirmMergeIncident = useCallback(async () => {
     if (mergeActionLocked) {
@@ -1237,21 +1262,31 @@ export const IncidentDetailPage = () => {
       return;
     }
 
-    const sourceIncidentId = confirmAction?.sourceIncidentId;
+    const sourceIncidentIds = Array.isArray(confirmAction?.sourceIncidentIds)
+      ? confirmAction.sourceIncidentIds.filter(Boolean)
+      : confirmAction?.sourceIncidentId
+        ? [confirmAction.sourceIncidentId]
+        : [];
     const targetIncidentId = confirmAction?.targetIncidentId;
-    if (!sourceIncidentId || !targetIncidentId) return;
+    if (sourceIncidentIds.length === 0 || !targetIncidentId) return;
 
     setActionLoading('merge');
     setActionError('');
+    let completedCount = 0;
     try {
-      await incidentManagementApi.mergeIncident(sourceIncidentId, {
-        targetIncidentId,
-        reason: mergeReason.trim() || null,
-      });
+      for (const sourceIncidentId of sourceIncidentIds) {
+        await incidentManagementApi.mergeIncident(sourceIncidentId, {
+          targetIncidentId,
+          reason: mergeReason.trim() || null,
+        });
+        completedCount += 1;
+      }
+
       const mergedIntoCurrent = confirmAction?.mergeMode === 'into-current';
       setConfirmAction(null);
       setMergeModalOpen(false);
-      setNotice('Đã gộp sự vụ.');
+      setSelectedMergeIncidentIds([]);
+      setNotice(sourceIncidentIds.length > 1 ? `Đã gộp ${sourceIncidentIds.length} sự vụ.` : 'Đã gộp sự vụ.');
 
       if (mergedIntoCurrent) {
         await loadIncident({ background: true });
@@ -1264,7 +1299,13 @@ export const IncidentDetailPage = () => {
       }
     } catch (mergeError) {
       setConfirmAction(null);
-      setActionError(localizeIncidentApiError(extractApiErrorMessage(mergeError, 'Không thể gộp sự vụ.'), 'Không thể gộp sự vụ.'));
+      if (completedCount > 0) {
+        setSelectedMergeIncidentIds((current) => current.slice(completedCount));
+        await loadIncident({ background: true });
+        setActionError(`Đã gộp ${completedCount}/${sourceIncidentIds.length} sự vụ. Thao tác dừng lại vì: ${localizeIncidentApiError(extractApiErrorMessage(mergeError, 'Không thể gộp sự vụ tiếp theo.'), 'Không thể gộp sự vụ tiếp theo.')}`);
+      } else {
+        setActionError(localizeIncidentApiError(extractApiErrorMessage(mergeError, 'Không thể gộp sự vụ.'), 'Không thể gộp sự vụ.'));
+      }
     } finally {
       setActionLoading('');
     }
@@ -2019,8 +2060,26 @@ export const IncidentDetailPage = () => {
                 <label className="block space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Tiêu đề<input value={editForm.title} onChange={(e) => setEditForm((v) => ({ ...v, title: e.target.value }))} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 dark:border-slate-800 dark:bg-slate-900" /></label>
                 <label className="block space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Mô tả<textarea value={editForm.description} onChange={(e) => setEditForm((v) => ({ ...v, description: e.target.value }))} rows={3} className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal leading-5 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 dark:border-slate-800 dark:bg-slate-900" /></label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Độ ưu tiên<select value={editForm.priority} onChange={(e) => setEditForm((v) => ({ ...v, priority: e.target.value }))} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-blue-400 dark:border-slate-800 dark:bg-slate-900">{PRIORITY_OPTIONS.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                  <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Mức nghiêm trọng<select value={editForm.severity} onChange={(e) => setEditForm((v) => ({ ...v, severity: e.target.value }))} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-blue-400 dark:border-slate-800 dark:bg-slate-900">{SEVERITY_OPTIONS.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                  <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <span>Độ ưu tiên</span>
+                    <ManagerSelectMenu
+                      value={editForm.priority}
+                      options={PRIORITY_OPTIONS.map(([value, label]) => ({ value, label }))}
+                      onChange={(value) => setEditForm((current) => ({ ...current, priority: value }))}
+                      ariaLabel="Chọn độ ưu tiên sự vụ"
+                      className="w-full font-normal"
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <span>Mức nghiêm trọng</span>
+                    <ManagerSelectMenu
+                      value={editForm.severity}
+                      options={SEVERITY_OPTIONS.map(([value, label]) => ({ value, label }))}
+                      onChange={(value) => setEditForm((current) => ({ ...current, severity: value }))}
+                      ariaLabel="Chọn mức nghiêm trọng sự vụ"
+                      className="w-full font-normal"
+                    />
+                  </label>
                 </div>
                 {actionError ? <p className="text-sm text-rose-600">{actionError}</p> : null}
               </div>
@@ -2041,7 +2100,16 @@ export const IncidentDetailPage = () => {
               <button type="button" onClick={() => setStatusModalOpen(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-900" aria-label="Đóng"><Lucide.X size={18} /></button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
-              <label className="block space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">Trạng thái mới<select value={statusValue} onChange={(e) => setStatusValue(e.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-blue-400 dark:border-slate-800 dark:bg-slate-900">{INCIDENT_STATUS_ACTION_OPTIONS.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className="block space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <span>Trạng thái mới</span>
+                <ManagerSelectMenu
+                  value={statusValue}
+                  options={INCIDENT_STATUS_ACTION_OPTIONS.map(([value, label]) => ({ value, label }))}
+                  onChange={setStatusValue}
+                  ariaLabel="Chọn trạng thái mới cho sự vụ"
+                  className="w-full font-normal"
+                />
+              </label>
               {actionError ? <p className="mt-3 text-sm text-rose-600">{actionError}</p> : null}
             </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800"><button type="button" onClick={() => setStatusModalOpen(false)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200">Hủy</button><button type="button" onClick={handleUpdateStatus} disabled={actionLoading === 'status'} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60">{actionLoading === 'status' ? <Lucide.LoaderCircle size={15} className="animate-spin" /> : null}Cập nhật</button></div>
@@ -2187,7 +2255,7 @@ export const IncidentDetailPage = () => {
                 <div className="grid gap-2 sm:grid-cols-2">
                   <button
                     type="button"
-                    onClick={() => { setMergeMode('into-current'); setSelectedMergeIncidentId(''); }}
+                    onClick={() => { setMergeMode('into-current'); setSelectedMergeIncidentId(''); setSelectedMergeIncidentIds([]); }}
                     className={`rounded-2xl border p-3 text-left transition ${mergeMode === 'into-current' ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'} dark:border-slate-800 dark:bg-slate-900`}
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><Lucide.ArrowDownToLine size={16} className="text-blue-600" />Gộp sự vụ khác vào sự vụ này</span>
@@ -2195,7 +2263,7 @@ export const IncidentDetailPage = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setMergeMode('current-into-other'); setSelectedMergeIncidentId(''); }}
+                    onClick={() => { setMergeMode('current-into-other'); setSelectedMergeIncidentId(''); setSelectedMergeIncidentIds([]); }}
                     className={`rounded-2xl border p-3 text-left transition ${mergeMode === 'current-into-other' ? 'border-amber-300 bg-amber-50 ring-2 ring-amber-100' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'} dark:border-slate-800 dark:bg-slate-900`}
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><Lucide.ArrowUpFromLine size={16} className="text-amber-600" />Gộp sự vụ này vào sự vụ khác</span>
@@ -2240,7 +2308,20 @@ export const IncidentDetailPage = () => {
                   ) : null}
                 </div>
               </div>
-              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">{mergeLoading ? <PanelSkeleton /> : mergeCandidates.length === 0 ? <EmptyState icon={Lucide.SearchX} title="Không tìm thấy sự vụ phù hợp" description="Thử từ khóa khác hoặc xóa bộ lọc để xem thêm sự vụ." /> : mergeCandidates.map((item, index) => { const id = item?.incidentId ?? item?.id; const mergeLocked = isIncidentPastMergeStage(item); return <label key={id || index} className={`flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 dark:border-slate-800 ${mergeLocked ? 'cursor-not-allowed bg-slate-50/70 opacity-65 dark:bg-slate-900/40' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900'}`}><input type="radio" name="merge-incident" value={id} disabled={mergeLocked} checked={String(selectedMergeIncidentId) === String(id)} onChange={() => setSelectedMergeIncidentId(String(id))} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{item?.title ?? item?.summary ?? 'Sự vụ chưa có tiêu đề'}</p>{mergeLocked ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">Đã qua giai đoạn gộp</span> : null}</div><p className="mt-1 text-xs text-slate-500">{formatIncidentId(id)} · {item?.areaName ?? item?.wardName ?? 'Chưa rõ khu vực'} · {item?.categoryName ?? 'Chưa phân loại'}</p></div><Badge value={item?.status} type="status" /></label>; })}</div>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">{mergeLoading ? <PanelSkeleton /> : mergeCandidates.length === 0 ? <EmptyState icon={Lucide.SearchX} title="Không tìm thấy sự vụ phù hợp" description="Thử từ khóa khác hoặc xóa bộ lọc để xem thêm sự vụ." /> : mergeCandidates.map((item, index) => { const id = item?.incidentId ?? item?.id; const mergeLocked = isIncidentPastMergeStage(item); return <label key={id || index} className={`flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 dark:border-slate-800 ${mergeLocked ? 'cursor-not-allowed bg-slate-50/70 opacity-65 dark:bg-slate-900/40' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900'}`}><input
+                  type={mergeMode === 'into-current' ? 'checkbox' : 'radio'}
+                  name={mergeMode === 'into-current' ? undefined : 'merge-incident'}
+                  value={id}
+                  disabled={mergeLocked}
+                  checked={mergeMode === 'into-current' ? selectedMergeIncidentIds.includes(String(id)) : String(selectedMergeIncidentId) === String(id)}
+                  onChange={() => {
+                    if (mergeMode === 'into-current') {
+                      setSelectedMergeIncidentIds((current) => current.includes(String(id)) ? current.filter((currentId) => currentId !== String(id)) : [...current, String(id)]);
+                      return;
+                    }
+                    setSelectedMergeIncidentId(String(id));
+                  }}
+                /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{item?.title ?? item?.summary ?? 'Sự vụ chưa có tiêu đề'}</p>{mergeLocked ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">Đã qua giai đoạn gộp</span> : null}</div><p className="mt-1 text-xs text-slate-500">{formatIncidentId(id)} · {item?.areaName ?? item?.wardName ?? 'Chưa rõ khu vực'} · {item?.categoryName ?? 'Chưa phân loại'}</p></div><Badge value={item?.status} type="status" /></label>; })}</div>
               <label className="mt-4 block">
                 <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Lý do gộp <span className="font-normal text-slate-400">(không bắt buộc)</span></span>
                 <textarea value={mergeReason} onChange={(event) => setMergeReason(event.target.value)} rows={3} placeholder="Ví dụ: Hai sự vụ phản ánh cùng một vấn đề tại cùng khu vực." className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-4 focus:ring-amber-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-amber-950/30" />
@@ -2248,7 +2329,7 @@ export const IncidentDetailPage = () => {
               </label>
               {actionError ? <p className="mt-3 text-sm text-rose-600">{actionError}</p> : null}
             </div>
-            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800"><button type="button" onClick={() => setMergeModalOpen(false)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200">Hủy</button><button type="button" onClick={handleMergeIncident} disabled={!selectedMergeIncidentId || actionLoading === 'merge'} className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-60">{actionLoading === 'merge' ? <Lucide.LoaderCircle size={15} className="animate-spin" /> : null}{mergeMode === 'into-current' ? 'Gộp vào sự vụ này' : 'Gộp sang sự vụ đã chọn'}</button></div>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800"><span className="text-xs font-medium text-slate-500">{mergeMode === 'into-current' && selectedMergeIncidentIds.length > 0 ? `Đã chọn ${selectedMergeIncidentIds.length} sự vụ` : ''}</span><div className="flex gap-2"><button type="button" onClick={() => setMergeModalOpen(false)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200">Hủy</button><button type="button" onClick={handleMergeIncident} disabled={(mergeMode === 'into-current' ? selectedMergeIncidentIds.length === 0 : !selectedMergeIncidentId) || actionLoading === 'merge'} className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:opacity-60">{actionLoading === 'merge' ? <Lucide.LoaderCircle size={15} className="animate-spin" /> : null}{mergeMode === 'into-current' ? (selectedMergeIncidentIds.length > 1 ? `Gộp ${selectedMergeIncidentIds.length} sự vụ vào sự vụ này` : 'Gộp vào sự vụ này') : 'Gộp sang sự vụ đã chọn'}</button></div></div>
           </div>
         </div>
       , document.body) : null}
