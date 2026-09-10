@@ -35,12 +35,12 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
     {
       name: 'smoke',
-      testMatch: ['tests/smoke/**'],
+      testMatch: ['tests/smoke/**/*.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'destructive',
-      testMatch: ['tests/destructive/**'],
+      testMatch: ['tests/destructive/**/*.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
   ],

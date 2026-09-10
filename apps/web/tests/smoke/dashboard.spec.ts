@@ -14,9 +14,8 @@ const loginAs = async (page, email: string, password: string) => {
 test.describe('System Staff smoke tests', () => {
   test('System Staff Incident dashboard loads successfully', async ({ page }) => {
     await loginAs(page, systemStaffEmail, validPassword);
-    await page.waitForURL(/\/staff\/queue/, { timeout: 30000 });
+    await page.waitForURL(/\/dashboard(?:[/?#]|$)/, { timeout: 30000 });
 
-    await page.goto('/dashboard');
     await expect(page.getByRole('heading', { name: 'Tổng quan công việc' })).toBeVisible({ timeout: 30000 });
     const kpiHeading = page.getByRole('heading', { name: 'Nhịp công việc hiện tại' });
     const emptyState = page.getByText('Bạn chưa có sự vụ nào được phân công', { exact: true });
