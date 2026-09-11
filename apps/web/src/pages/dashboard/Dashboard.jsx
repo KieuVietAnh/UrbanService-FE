@@ -6,7 +6,6 @@ import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
 import { slaApi } from '../../services/api/slaApi';
 import { axiosClient, toolsApi, managementFeedbackApi, feedbackDashboardApi } from '@urbanmind/shared-api';
-import { SentimentDonutChart } from '../../components/charts/CustomCharts';
 import * as Lucide from 'lucide-react';
 import { normalizeRole } from '../../utils/roleMap';
 import { APP_ROLES, getStatusLabel, managementTypes, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
@@ -19,6 +18,7 @@ import usePublicLandingFeed from '../../hooks/usePublicLandingFeed';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
 import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
+import { buildManagerDashboardStats, managerMetricValue } from './managerDashboardUtils.mjs';
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-area-filter-v2';
@@ -27,7 +27,7 @@ const DASHBOARD_SNAPSHOT_STORAGE_KEY =
 const STAFF_DASHBOARD_SNAPSHOT_STORAGE_KEY =
   'urbanmind-staff-dashboard-snapshot-v1';
 const MANAGER_DASHBOARD_SNAPSHOT_STORAGE_KEY =
-  'urbanmind-manager-dashboard-snapshot-v1';
+  'urbanmind-manager-dashboard-snapshot-v2';
 const MANAGER_DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 
 const readDashboardSnapshot = () => {
@@ -804,16 +804,41 @@ export const Dashboard = () => {
   }, []);
 
   const fetchManagerDashboardContent = useCallback(async () => {
-    const [overviewResult, statusResult, categoryResult, slaOverviewResult] = await Promise.allSettled([
+    const [
+      overviewResult,
+      statusResult,
+      categoryResult,
+      areaResult,
+      trendResult,
+      urgentResult,
+      slaOverviewResult,
+    ] = await Promise.allSettled([
       feedbackDashboardApi.getOverview(),
       feedbackDashboardApi.getStatusDistribution(),
       feedbackDashboardApi.getCategoryDistribution(),
+      feedbackDashboardApi.getAreaDistribution(),
+      feedbackDashboardApi.getMonthlyTrend(6),
+      feedbackDashboardApi.getUrgentOpen(3),
       slaApi.getDashboardOverview(),
     ]);
 
     const categoryDistribution = categoryResult.status === 'fulfilled' && Array.isArray(categoryResult.value)
       ? [...categoryResult.value].sort((left, right) => Number(right?.count || 0) - Number(left?.count || 0))
       : null;
+    const areaDistribution = areaResult.status === 'fulfilled' && Array.isArray(areaResult.value)
+      ? [...areaResult.value].sort((left, right) => Number(right?.openCount || 0) - Number(left?.openCount || 0))
+      : null;
+    const dataIssues = [
+      [overviewResult, 'KPI sự vụ'],
+      [statusResult, 'trạng thái sự vụ'],
+      [categoryResult, 'nhóm dịch vụ'],
+      [areaResult, 'khu vực'],
+      [trendResult, 'xu hướng'],
+      [urgentResult, 'sự vụ khẩn cấp'],
+      [slaOverviewResult, 'SLA'],
+    ]
+      .filter(([result]) => result.status === 'rejected')
+      .map(([, label]) => label);
 
     return {
       overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
@@ -821,7 +846,15 @@ export const Dashboard = () => {
         ? statusResult.value
         : null,
       categoryDistribution,
+      areaDistribution,
+      monthlyTrend: trendResult.status === 'fulfilled' && Array.isArray(trendResult.value)
+        ? trendResult.value
+        : null,
+      urgentOpen: urgentResult.status === 'fulfilled' && Array.isArray(urgentResult.value)
+        ? urgentResult.value
+        : null,
       slaOverview: slaOverviewResult.status === 'fulfilled' ? slaOverviewResult.value : null,
+      dataIssues,
     };
   }, []);
 
@@ -859,7 +892,9 @@ export const Dashboard = () => {
         ] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
-            : analyticsApi.getSystemDashboardStats(currentRole),
+            : isManager
+              ? Promise.resolve(cachedDashboard?.stats || SAFE_DASHBOARD_STATS)
+              : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
           currentRole === APP_ROLES.SERVICE_USER
             ? toolsApi.getAreas().catch(() => [])
@@ -875,21 +910,7 @@ export const Dashboard = () => {
             categoryDistribution: adminDashboard.categoryDistribution,
           }
           : isManager
-            ? {
-              ...baseStats,
-              categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
-                ? managerDashboard.categoryDistribution
-                : baseStats.categoryDistribution,
-              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
-                ? managerDashboard.statusDistribution
-                : baseStats.statusDistribution,
-              slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
-                ? Number(managerDashboard.slaOverview.breachedSla)
-                : baseStats.slaBreaches,
-              processingRate: Number.isFinite(Number(managerDashboard?.overview?.completionRate))
-                ? Math.round(Number(managerDashboard.overview.completionRate))
-                : baseStats.processingRate,
-            }
+            ? buildManagerDashboardStats(baseStats, managerDashboard, cachedDashboard?.stats || {})
             : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
@@ -973,7 +994,9 @@ export const Dashboard = () => {
         console.error(err);
 
         if (!hasCachedContent) {
-          setStats(SAFE_DASHBOARD_STATS);
+          setStats(currentRole === APP_ROLES.INTERACTION_MANAGER
+            ? buildManagerDashboardStats(SAFE_DASHBOARD_STATS, { dataIssues: ['dữ liệu tổng quan'] }, {})
+            : SAFE_DASHBOARD_STATS);
           setCategories([]);
           setAreas([]);
           setTickets([]);
@@ -1019,7 +1042,9 @@ export const Dashboard = () => {
         const [resStats, fetchedCategories, ticketPage, adminDashboard, managerDashboard] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
-            : analyticsApi.getSystemDashboardStats(currentRole),
+            : isManager
+              ? Promise.resolve(readManagerDashboardSnapshot()?.stats || SAFE_DASHBOARD_STATS)
+              : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
           isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
           isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
@@ -1059,21 +1084,7 @@ export const Dashboard = () => {
             categoryDistribution: adminDashboard.categoryDistribution,
           }
           : isManager
-            ? {
-              ...baseStats,
-              categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
-                ? managerDashboard.categoryDistribution
-                : baseStats.categoryDistribution,
-              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
-                ? managerDashboard.statusDistribution
-                : baseStats.statusDistribution,
-              slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
-                ? Number(managerDashboard.slaOverview.breachedSla)
-                : baseStats.slaBreaches,
-              processingRate: Number.isFinite(Number(managerDashboard?.overview?.completionRate))
-                ? Math.round(Number(managerDashboard.overview.completionRate))
-                : baseStats.processingRate,
-            }
+            ? buildManagerDashboardStats(baseStats, managerDashboard, readManagerDashboardSnapshot()?.stats || {})
             : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
@@ -1244,80 +1255,64 @@ export const Dashboard = () => {
   if (loading && currentRole === 'interaction-manager') {
     return (
       <main
-        className="admin-page-shell space-y-6"
+        className="manager-ui-page space-y-4 pb-6"
         aria-busy="true"
-        aria-label="Đang tải tổng quan quản lý tương tác"
+        aria-label="Đang tải tổng quan hệ thống"
       >
         <span className="sr-only" role="status">Đang tải dữ liệu tổng quan</span>
 
-        <section className="admin-panel animate-pulse p-6 sm:p-7" aria-hidden="true">
+        <section className="animate-pulse rounded-[1.35rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950" aria-hidden="true">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-start gap-4">
-              <div className="h-16 w-16 shrink-0 rounded-2xl bg-slate-200/80" />
-              <div className="min-w-0 flex-1 pt-1">
-                <div className="h-8 w-72 max-w-full rounded-xl bg-slate-200/80" />
-                <div className="mt-3 h-4 w-[32rem] max-w-full rounded-full bg-slate-100" />
+            <div className="flex items-center gap-4">
+              <div className="h-14 w-14 rounded-2xl bg-slate-200/80 dark:bg-slate-800" />
+              <div>
+                <div className="h-8 w-64 max-w-[65vw] rounded-xl bg-slate-200/80 dark:bg-slate-800" />
+                <div className="mt-3 h-3.5 w-[30rem] max-w-[60vw] rounded-full bg-slate-100 dark:bg-slate-900" />
               </div>
             </div>
-            <div className="flex gap-3">
-              <div className="h-16 w-52 rounded-2xl bg-slate-100" />
-              <div className="h-12 w-44 rounded-2xl bg-slate-200/80" />
+            <div className="flex gap-2">
+              <div className="h-9 w-36 rounded-xl bg-slate-100 dark:bg-slate-900" />
+              <div className="h-9 w-32 rounded-xl bg-slate-200/80 dark:bg-slate-800" />
             </div>
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-hidden="true">
-          {[0, 1, 2, 3].map((item) => (
-            <div key={item} className="admin-panel h-36 animate-pulse p-5 sm:p-6">
-              <div className="h-3 w-24 rounded-full bg-slate-200/80" />
-              <div className="mt-5 h-8 w-16 rounded-lg bg-slate-200/80" />
-              <div className="mt-4 h-3 w-4/5 rounded-full bg-slate-100" />
-              <div className="mt-2 h-3 w-3/5 rounded-full bg-slate-100" />
-            </div>
-          ))}
+        <section className="animate-pulse overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950" aria-hidden="true">
+          <div className="grid divide-y divide-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4 dark:divide-slate-800">
+            {[0, 1, 2, 3].map((item) => (
+              <div key={item} className="px-5 py-4">
+                <div className="h-3 w-24 rounded-full bg-slate-200/80 dark:bg-slate-800" />
+                <div className="mt-3 h-8 w-14 rounded-lg bg-slate-200/80 dark:bg-slate-800" />
+                <div className="mt-2 h-3 w-32 rounded-full bg-slate-100 dark:bg-slate-900" />
+              </div>
+            ))}
+          </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]" aria-hidden="true">
-          <div className="space-y-6">
-            <div className="admin-panel h-[360px] p-6">
-              <div className="animate-pulse">
-                <div className="h-5 w-44 rounded-lg bg-slate-200/80" />
-                <div className="mt-3 h-3 w-72 max-w-full rounded-full bg-slate-100" />
-              </div>
-              <div className="relative mx-auto mt-10 h-44 w-44" aria-hidden="true">
-                <div className="absolute inset-0 rounded-full border-[22px] border-slate-100" />
-                <div className="absolute inset-0 animate-spin rounded-full border-[22px] border-transparent border-t-blue-200 border-r-emerald-100 [animation-duration:1.6s]" />
-                <div className="absolute inset-[34px] animate-pulse rounded-full bg-slate-50" />
-              </div>
-              <div className="mx-auto mt-5 h-3 w-44 animate-pulse rounded-full bg-slate-100" />
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)]" aria-hidden="true">
+          <div className="animate-pulse overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="h-20 border-b border-slate-100 p-5 dark:border-slate-900">
+              <div className="h-5 w-44 rounded-lg bg-slate-200/80 dark:bg-slate-800" />
+              <div className="mt-2 h-3 w-72 rounded-full bg-slate-100 dark:bg-slate-900" />
             </div>
-            <div className="admin-panel animate-pulse p-6">
-              <div className="h-5 w-56 rounded-lg bg-slate-200/80" />
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {[0, 1, 2, 3, 4, 5].map((item) => (
-                  <div key={item} className="h-24 rounded-2xl bg-slate-100" />
-                ))}
-              </div>
+            <div className="grid sm:grid-cols-3">
+              {[0, 1, 2].map((item) => <div key={item} className="h-40 border-b border-slate-100 p-5 sm:border-b-0 sm:border-r dark:border-slate-900"><div className="h-full rounded-xl bg-slate-100 dark:bg-slate-900" /></div>)}
+            </div>
+            <div className="border-t border-slate-100 p-4 dark:border-slate-900">
+              {[0, 1, 2].map((item) => <div key={item} className="mb-2 h-12 rounded-xl bg-slate-100 last:mb-0 dark:bg-slate-900" />)}
             </div>
           </div>
-          <div className="space-y-6">
-            <div className="admin-panel h-[390px] animate-pulse p-6">
-              <div className="h-5 w-40 rounded-lg bg-slate-200/80" />
-              <div className="mt-6 space-y-3">
-                {[0, 1, 2, 3].map((item) => (
-                  <div key={item} className="h-20 rounded-2xl bg-slate-100" />
-                ))}
-              </div>
-            </div>
-            <div className="admin-panel h-[280px] animate-pulse p-6">
-              <div className="h-5 w-48 rounded-lg bg-slate-200/80" />
-              <div className="mt-6 space-y-3">
-                {[0, 1, 2].map((item) => (
-                  <div key={item} className="h-20 rounded-2xl bg-slate-100" />
-                ))}
-              </div>
-            </div>
+          <div className="h-[430px] animate-pulse rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="h-5 w-36 rounded-lg bg-slate-200/80 dark:bg-slate-800" />
+            <div className="mt-8 h-10 w-20 rounded-lg bg-slate-200/80 dark:bg-slate-800" />
+            <div className="mt-5 h-2.5 rounded-full bg-slate-100 dark:bg-slate-900" />
+            <div className="mt-7 space-y-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-4 rounded bg-slate-100 dark:bg-slate-900" />)}</div>
           </div>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]" aria-hidden="true">
+          <div className="h-[290px] animate-pulse rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950" />
+          <div className="h-[430px] animate-pulse rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950" />
         </section>
       </main>
     );
@@ -2063,6 +2058,8 @@ export const Dashboard = () => {
         description: 'Hồ sơ vừa tiếp nhận và cần được kiểm tra ban đầu.',
         icon: Lucide.FolderClock,
         toneClass: 'bg-blue-50 text-blue-700',
+        to: '/manager/incidents',
+        ariaLabel: 'Mở danh sách tất cả sự vụ',
       },
       {
         label: 'Cần kiểm tra AI',
@@ -2070,6 +2067,8 @@ export const Dashboard = () => {
         description: 'Kết quả phân loại AI cần nhân viên xác nhận.',
         icon: Lucide.Cpu,
         toneClass: 'bg-emerald-50 text-emerald-700',
+        to: '/manager/approvals',
+        ariaLabel: 'Mở hàng đợi duyệt kết quả xử lý',
       },
       {
         label: 'Nghi trùng lặp',
@@ -2526,266 +2525,382 @@ export const Dashboard = () => {
   // 4. INTERACTION MANAGER DASHBOARD (interaction-manager)
   // ----------------------------------------------------
   if (currentRole === 'interaction-manager') {
-    const managerTickets = Array.isArray(tickets) ? tickets : [];
-    const managerStatusDistribution = Array.isArray(stats?.statusDistribution)
-      ? stats.statusDistribution
-      : [];
     const normalizeStatusKey = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const managerStatusDistribution = Array.isArray(stats?.statusDistribution) ? stats.statusDistribution : [];
     const statusCounts = new Map(
       managerStatusDistribution.map((item) => [normalizeStatusKey(item?.status), toDashboardCount(item?.count)])
     );
     const getStatusCount = (status) => statusCounts.get(normalizeStatusKey(status)) || 0;
-    const hasStatusDistribution = managerStatusDistribution.length > 0;
+    const managerOverview = stats?.managerOverview || {};
+    const slaSummary = stats?.slaOverview || {};
+    const urgentOpenItems = Array.isArray(stats?.urgentOpen) ? stats.urgentOpen.slice(0, 3) : [];
+    const areaDistribution = Array.isArray(stats?.areaDistribution) ? stats.areaDistribution : [];
+    const categoryDistribution = Array.isArray(stats?.categoryDistribution) ? stats.categoryDistribution : [];
+    const monthlyTrend = Array.isArray(stats?.monthlyTrend) ? stats.monthlyTrend.slice(-6) : [];
 
-    const pendingApprovalCount = hasStatusDistribution
-      ? getStatusCount(managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL)
-      : managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL).length;
-    const needReworkCount = hasStatusDistribution
-      ? getStatusCount(managementTypes.feedbackStatus.NEED_REWORK)
-      : managerTickets.filter((ticket) => ticket.status === managementTypes.feedbackStatus.NEED_REWORK).length;
-    const activeInteractionCount = hasStatusDistribution
-      ? [
-        managementTypes.feedbackStatus.VERIFIED,
-        managementTypes.feedbackStatus.ASSIGNED,
-        managementTypes.feedbackStatus.IN_PROGRESS,
-        managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-        managementTypes.feedbackStatus.NEED_REWORK,
-      ].reduce((sum, status) => sum + getStatusCount(status), 0)
-      : managerTickets.filter((ticket) => [
-        managementTypes.feedbackStatus.VERIFIED,
-        managementTypes.feedbackStatus.ASSIGNED,
-        managementTypes.feedbackStatus.IN_PROGRESS,
-        managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-        managementTypes.feedbackStatus.NEED_REWORK,
-      ].includes(ticket.status)).length;
-    const completedInteractionCount = hasStatusDistribution
-      ? [
-        managementTypes.feedbackStatus.APPROVED,
-        managementTypes.feedbackStatus.CLOSED,
-      ].reduce((sum, status) => sum + getStatusCount(status), 0)
-      : managerTickets.filter((ticket) => [
-        managementTypes.feedbackStatus.APPROVED,
-        managementTypes.feedbackStatus.CLOSED,
-      ].includes(ticket.status)).length;
-    const managerTopCategories = Array.isArray(stats.categoryDistribution)
-      ? stats.categoryDistribution
-      : [];
-    const managerQuickLinks = [
+    const totalIncidents = toDashboardCount(managerOverview?.totalIncident);
+    const assignedCount = toDashboardCount(managerOverview?.assigned);
+    const inProgressCount = toDashboardCount(managerOverview?.inProgress);
+    const pendingApprovalCount = toDashboardCount(managerOverview?.pendingApproval || getStatusCount('SubmittedForApproval'));
+    const completedIncidentCount = toDashboardCount(managerOverview?.completed);
+    const newIncidentToday = toDashboardCount(managerOverview?.newIncidentToday);
+    const needReworkCount = getStatusCount('NeedRework');
+    const urgentOpenCount = toDashboardCount(managerOverview?.urgentOpen || urgentOpenItems.length);
+    const breachedSla = toDashboardCount(slaSummary?.breachedSla ?? stats?.slaBreaches);
+    const warningSla = toDashboardCount(slaSummary?.warningSla);
+    const runningSla = toDashboardCount(slaSummary?.runningSla);
+    const completedSla = toDashboardCount(slaSummary?.completedSla);
+    const managerDataIssues = Array.isArray(stats?.managerDataIssues) ? stats.managerDataIssues : [];
+    const managerOverviewAvailable = stats?.managerOverviewAvailable ?? Boolean(stats?.managerOverview);
+    const activeWorkCount = assignedCount + inProgressCount;
+
+    const trendMax = Math.max(
+      1,
+      ...monthlyTrend.flatMap((item) => [
+        toDashboardCount(item?.createdCount),
+        toDashboardCount(item?.completedCount),
+      ])
+    );
+    const categoryMax = Math.max(1, ...categoryDistribution.map((item) => toDashboardCount(item?.count)));
+    const areaMax = Math.max(1, ...areaDistribution.map((item) => toDashboardCount(item?.openCount)));
+    const statusMax = Math.max(1, ...managerStatusDistribution.map((item) => toDashboardCount(item?.count)));
+
+    const kpis = [
       {
-        title: 'Giám sát tương tác',
-        description: 'Theo dõi luồng phản ánh, bình luận và trạng thái phối hợp.',
-        to: '/manager/interactions',
-        icon: Lucide.MessagesSquare,
+        label: 'Tổng sự vụ',
+        value: managerMetricValue(managerOverviewAvailable, totalIncidents),
+        description: managerOverviewAvailable
+          ? (newIncidentToday > 0 ? `${newIncidentToday} mới hôm nay` : 'Không có sự vụ mới hôm nay')
+          : 'Chưa tải được KPI sự vụ',
+        icon: Lucide.Siren,
+        toneClass: 'bg-blue-50 text-blue-700',
+        to: '/manager/incidents',
+        ariaLabel: 'Mở danh sách tất cả sự vụ',
       },
       {
-        title: 'Hàng đợi duyệt',
-        description: 'Đối chiếu kết quả xử lý và ra quyết định phê duyệt.',
+        label: 'Đang xử lý',
+        value: managerMetricValue(managerOverviewAvailable, activeWorkCount),
+        description: managerOverviewAvailable ? `${assignedCount} đã phân công · ${inProgressCount} đang xử lý` : 'Chưa tải được KPI sự vụ',
+        icon: Lucide.Workflow,
+        toneClass: 'bg-slate-100 text-slate-700',
+        to: '/manager/incidents?statusGroup=active',
+        ariaLabel: 'Mở danh sách sự vụ đang xử lý',
+      },
+      {
+        label: 'Chờ duyệt kết quả',
+        value: managerMetricValue(managerOverviewAvailable, pendingApprovalCount),
+        description: managerOverviewAvailable ? 'Kết quả đang chờ người quản lý quyết định' : 'Chưa tải được KPI sự vụ',
+        icon: Lucide.ClipboardCheck,
+        toneClass: 'bg-emerald-50 text-emerald-700',
         to: '/manager/approvals',
-        icon: Lucide.GitPullRequestArrow,
+        ariaLabel: 'Mở hàng đợi duyệt kết quả xử lý',
       },
       {
-        title: 'Phân tích SLA',
-        description: 'Xác định điểm nghẽn và dịch vụ có nguy cơ trễ hạn.',
-        to: '/analytics/sla',
-        icon: Lucide.TimerReset,
-      },
-      {
-        title: 'Cảm xúc người dân',
-        description: 'Theo dõi tín hiệu hài lòng và phản hồi tiêu cực.',
-        to: '/analytics/sentiment',
-        icon: Lucide.BrainCircuit,
-      },
-      {
-        title: 'Bản đồ điểm nóng',
-        description: 'Khoanh vùng khu vực có mật độ phản ánh cao.',
-        to: '/analytics/heatmap',
-        icon: Lucide.MapPinned,
+        label: 'Đã hoàn thành',
+        value: managerMetricValue(managerOverviewAvailable, completedIncidentCount),
+        description: managerOverviewAvailable ? `${urgentOpenCount} sự vụ khẩn cấp vẫn đang mở` : 'Chưa tải được KPI sự vụ',
+        icon: Lucide.CircleCheck,
+        toneClass: 'bg-cyan-50 text-cyan-700',
+        to: '/manager/incidents?statusGroup=completed',
+        ariaLabel: 'Mở danh sách sự vụ đã hoàn thành',
       },
     ];
 
+    const priorityRows = [
+      {
+        label: 'Duyệt kết quả xử lý',
+        description: 'Kết quả nhân viên đã gửi và đang chờ quyết định.',
+        value: pendingApprovalCount,
+        to: '/manager/approvals',
+        icon: Lucide.ClipboardCheck,
+        tone: 'bg-emerald-50 text-emerald-700',
+      },
+      {
+        label: 'Sự vụ cần làm lại',
+        description: 'Sự vụ đã được trả về để bổ sung hoặc xử lý lại.',
+        value: needReworkCount,
+        to: '/manager/incidents?status=NeedRework',
+        icon: Lucide.RotateCcw,
+        tone: 'bg-amber-50 text-amber-700',
+      },
+      {
+        label: 'SLA cảnh báo',
+        description: 'SLA đang tiến gần ngưỡng cần can thiệp.',
+        value: warningSla,
+        to: '/analytics/sla',
+        icon: Lucide.ClockAlert,
+        tone: 'bg-amber-50 text-amber-700',
+      },
+      {
+        label: 'SLA vi phạm',
+        description: 'SLA đã vượt ngưỡng cam kết và cần rà soát.',
+        value: breachedSla,
+        to: '/analytics/sla',
+        icon: Lucide.TimerOff,
+        tone: 'bg-rose-50 text-rose-700',
+      },
+    ];
+
+    const slaRows = [
+      { label: 'Đang chạy', value: runningSla, dotClass: 'bg-slate-400' },
+      { label: 'Cảnh báo', value: warningSla, dotClass: 'bg-amber-400' },
+      { label: 'Vi phạm', value: breachedSla, dotClass: 'bg-rose-500' },
+      { label: 'Hoàn thành', value: completedSla, dotClass: 'bg-emerald-500' },
+    ];
+
+    const visibleStatuses = managerStatusDistribution
+      .filter((item) => toDashboardCount(item?.count) > 0)
+      .slice(0, 6);
+
     return (
-      <article className="admin-page-shell space-y-6">
+      <div className="admin-page-shell manager-ui-page space-y-4 pb-6">
         <ManagerPageHeader
-          title="Trung tâm phân tích trải nghiệm đô thị"
-          description="Theo dõi xu hướng phản hồi, giám sát tương tác và xác định cơ hội cải thiện dịch vụ."
-          icon={Lucide.ScanSearch}
-          statusLabel="Hồ sơ chờ quyết định"
-          statusValue={`${pendingApprovalCount} phản ánh`}
+          title="Tổng quan hệ thống"
+          description="Theo dõi khối lượng sự vụ, hàng đợi cần xử lý và các tín hiệu vận hành trong phạm vi phụ trách."
+          icon={Lucide.LayoutDashboard}
           actions={(
-            <Link to="/manager/approvals" className="btn admin-primary-action rounded-2xl">
-              <Lucide.BadgeCheck size={17} aria-hidden="true" />
-              Mở hàng đợi duyệt
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              {pendingApprovalCount > 0 ? (
+                <Link
+                  to="/manager/approvals"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+                >
+                  <Lucide.ClipboardCheck size={16} aria-hidden="true" />
+                  {pendingApprovalCount} chờ duyệt
+                </Link>
+              ) : null}
+              <Link
+                to="/manager/incidents"
+                className="admin-primary-action btn rounded-xl px-4 text-sm font-semibold normal-case"
+              >
+                <Lucide.Siren size={16} aria-hidden="true" />
+                Quản lý sự vụ
+              </Link>
+            </div>
           )}
         />
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số quản lý tương tác">
-          <ManagerMetricCard
-            label="Luồng đang hoạt động"
-            value={activeInteractionCount}
-            description="Phản ánh đang xác minh, phối hợp hoặc xử lý."
-            icon={Lucide.Workflow}
-            toneClass="bg-blue-50 text-blue-700"
-          />
-          <ManagerMetricCard
-            label="Chờ duyệt"
-            value={pendingApprovalCount}
-            description="Kết quả cần Manager ra quyết định."
-            icon={Lucide.ClipboardCheck}
-            toneClass="bg-emerald-50 text-emerald-700"
-          />
-          <ManagerMetricCard
-            label="Cần làm lại"
-            value={needReworkCount}
-            description="Hồ sơ đã trả về để Staff bổ sung."
-            icon={Lucide.RotateCcw}
-            toneClass="bg-amber-50 text-amber-700"
-          />
-          <ManagerMetricCard
-            label="Đã hoàn tất"
-            value={completedInteractionCount}
-            description="Phản ánh đã duyệt hoặc đã đóng."
-            icon={Lucide.CircleCheckBig}
-            toneClass="bg-cyan-50 text-cyan-700"
-          />
+        {managerDataIssues.length > 0 && (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+            <Lucide.TriangleAlert size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <div className="min-w-0">
+              <strong className="font-semibold">Một phần dữ liệu chưa tải được.</strong>
+              <span className="ml-1 text-amber-800/80">Thiếu: {managerDataIssues.join(', ')}.</span>
+            </div>
+          </div>
+        )}
+
+        <section className="manager-kpi-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số tổng quan">
+          {kpis.map((item) => <ManagerMetricCard key={item.label} {...item} />)}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-          <section className="space-y-6" aria-label="Phân tích trải nghiệm">
-            <figure className="admin-panel overflow-hidden">
-              <ManagerSectionHeader
-                title="Tổng quan cảm xúc"
-                description="Phân bố sắc thái phản hồi để nhận diện biến động trong trải nghiệm người dân."
-                icon={Lucide.ChartPie}
-                actions={<Link to="/analytics/sentiment" className="admin-secondary-link inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold">Xem chi tiết <Lucide.ArrowRight size={14} /></Link>}
-              />
-              <section className="p-5 sm:p-6">
-                <SentimentDonutChart
-                  positive={stats.sentimentTrend.Positive}
-                  neutral={stats.sentimentTrend.Neutral}
-                  negative={stats.sentimentTrend.Negative}
-                  animate={!cachedDashboard}
-                />
-              </section>
-              <figcaption className="border-t border-slate-200 px-5 py-4 text-xs leading-5 text-slate-500 sm:px-6">
-                Dữ liệu cảm xúc được tổng hợp từ các phản ánh đã được AI phân tích.
-              </figcaption>
-            </figure>
+        <section className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.8fr)]">
+          <article className="admin-panel h-full overflow-hidden">
+            <ManagerSectionHeader
+              title="Công việc cần xử lý"
+              description="Các hàng đợi Manager nên kiểm tra trước trong phiên làm việc hiện tại."
+              icon={Lucide.ListChecks}
+              actions={<Link to="/manager/incidents" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Xem tất cả</Link>}
+            />
+            <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+              {priorityRows.map(({ label, description, value, to, icon: Icon, tone }) => (
+                <Link key={label} to={to} className="group flex items-center gap-4 px-5 py-4 transition hover:bg-slate-50/80 sm:px-6 dark:hover:bg-slate-900/50">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone}`} aria-hidden="true"><Icon size={18} /></span>
+                  <span className="min-w-0 flex-1">
+                    <strong className="block text-[15px] font-semibold text-slate-900 dark:text-slate-100">{label}</strong>
+                    <span className="mt-1 block text-[13px] leading-5 text-slate-500">{description}</span>
+                  </span>
+                  <strong className="shrink-0 text-[1.55rem] font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{value}</strong>
+                  <Lucide.ChevronRight size={17} className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500" aria-hidden="true" />
+                </Link>
+              ))}
+            </div>
+          </article>
 
-            <article className="admin-panel overflow-hidden">
-              <ManagerSectionHeader
-                title="Nhóm dịch vụ cần chú ý"
-                description="Ưu tiên danh mục có khối lượng cao để phân tích nguyên nhân và cơ hội cải thiện."
-                icon={Lucide.Tags}
-                actions={<Link to="/analytics/sla" className="admin-secondary-link inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold">Phân tích SLA <Lucide.ArrowRight size={14} /></Link>}
-              />
-              {managerTopCategories.length > 0 ? (
-                <ol className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">
-                  {managerTopCategories.map((category, index) => {
-                    const categoryId = category.categoryId ?? category.id ?? '';
-                    const categoryLabel = getCategoryLabel(
-                      category.categoryName || category.name || category.categoryType || category.type,
-                      'Chưa phân loại'
-                    );
-                    const categoryQuery = new URLSearchParams();
-
-                    if (categoryId !== '') categoryQuery.set('categoryId', String(categoryId));
-                    categoryQuery.set('categoryName', categoryLabel);
-
-                    const cardContent = (
-                      <>
-                        <span className="flex min-w-0 items-center gap-3">
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700" aria-hidden="true">{index + 1}</span>
-                          <span className="min-w-0">
-                            <h3 className="truncate text-sm font-semibold text-slate-950">{categoryLabel}</h3>
-                            <p className="mt-1 text-xs text-slate-500">Khối lượng phản ánh trong dữ liệu tổng hợp</p>
-                          </span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <strong className="text-lg font-semibold text-blue-700">{category.count ?? category.value ?? 0}</strong>
-                          {categoryId !== '' ? (
-                            <Lucide.ChevronRight size={16} className="text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-700" aria-hidden="true" />
-                          ) : null}
-                        </span>
-                      </>
-                    );
-
+          <article className="admin-panel flex h-full flex-col overflow-hidden">
+            <ManagerSectionHeader
+              title="Sự vụ khẩn cấp"
+              description="3 sự vụ ưu tiên Khẩn cấp cần được kiểm tra trước."
+              icon={Lucide.TriangleAlert}
+              actions={<Link to="/manager/incidents?priority=Urgent" className="text-sm font-semibold text-blue-700 hover:text-blue-800">{urgentOpenCount} đang mở</Link>}
+            />
+            {urgentOpenItems.length > 0 ? (
+              <>
+                <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                  {urgentOpenItems.map((incident, index) => {
+                    const incidentId = incident?.incidentId || incident?.id;
                     return (
-                      <li key={category.categoryId || category.name || index}>
-                        {categoryId !== '' ? (
-                          <Link
-                            to={`/manager/interactions?${categoryQuery.toString()}`}
-                            className="admin-inset-panel group flex items-center justify-between gap-4 p-4 transition hover:border-blue-300 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
-                            aria-label={`Xem phản ánh thuộc danh mục ${categoryLabel}`}
-                          >
-                            {cardContent}
-                          </Link>
-                        ) : (
-                          <article
-                            className="admin-inset-panel flex items-center justify-between gap-4 p-4"
-                            title="API hiện tại chưa hỗ trợ lọc riêng phản ánh chưa phân loại"
-                          >
-                            {cardContent}
-                          </article>
-                        )}
-                      </li>
+                      <Link key={incidentId || index} to={incidentId ? `/manager/incidents/${incidentId}` : '/manager/incidents?priority=Urgent'} className="group flex items-center gap-3 px-5 py-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600" aria-hidden="true"><Lucide.Flame size={17} /></span>
+                        <span className="min-w-0 flex-1">
+                          <strong className="block truncate text-[15px] font-semibold text-slate-900 dark:text-slate-100">{incident?.title || incident?.summary || 'Sự vụ khẩn cấp'}</strong>
+                          <span className="mt-1 block truncate text-[13px] text-slate-500">{incident?.areaName || 'Chưa xác định khu vực'} · {getCategoryLabel(incident?.categoryName, 'Chưa phân loại')}</span>
+                        </span>
+                        <Lucide.ChevronRight size={17} className="shrink-0 text-slate-300 group-hover:text-blue-500" aria-hidden="true" />
+                      </Link>
                     );
                   })}
-                </ol>
-              ) : (
-                <section className="admin-empty-panel m-5 p-8 text-center text-sm text-slate-500 sm:m-6">Chưa có dữ liệu phân bố danh mục.</section>
-              )}
-            </article>
-          </section>
+                </div>
+                <Link
+                  to="/manager/incidents?priority=Urgent"
+                  className="mt-auto flex items-center justify-between border-t border-slate-100 px-5 py-3.5 text-[13px] font-semibold text-blue-700 transition hover:bg-blue-50/50 hover:text-blue-800 dark:border-slate-800 dark:hover:bg-slate-900/50"
+                >
+                  <span>Xem toàn bộ sự vụ khẩn cấp</span>
+                  <span className="inline-flex items-center gap-1">{urgentOpenCount} sự vụ <Lucide.ArrowRight size={15} aria-hidden="true" /></span>
+                </Link>
+              </>
+            ) : <p className="flex flex-1 items-center justify-center px-6 py-10 text-center text-sm text-slate-500">Không có sự vụ khẩn cấp đang mở.</p>}
+          </article>
+        </section>
 
-          <aside className="space-y-6" aria-label="Điều hướng công việc Manager">
-            <article className="admin-panel overflow-hidden">
-              <ManagerSectionHeader
-                title="Không gian làm việc"
-                description="Truy cập nhanh các chức năng theo đúng nhiệm vụ Interaction Manager."
-                icon={Lucide.LayoutGrid}
-              />
-              <nav className="grid gap-3 p-5 sm:p-6" aria-label="Chức năng Interaction Manager">
-                {managerQuickLinks.map((item) => {
-                  const Icon = item.icon;
+        <section className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.75fr)]">
+          <article className="admin-panel flex h-full flex-col overflow-hidden">
+            <ManagerSectionHeader
+              title="Tiến độ xử lý sự vụ"
+              description="Phân bố sự vụ theo các trạng thái đang phát sinh trong quy trình."
+              icon={Lucide.GitBranch}
+              actions={<Link to="/manager/incidents" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Mở danh sách</Link>}
+            />
+            <div className="flex flex-1 border-t border-slate-100 px-5 py-3 sm:px-6 dark:border-slate-800">
+              {visibleStatuses.length > 0 ? (
+                <div className="grid min-h-[210px] w-full flex-1 grid-cols-1 sm:grid-cols-2 sm:grid-rows-3 sm:gap-x-8">
+                  {visibleStatuses.map((item, index) => {
+                    const count = toDashboardCount(item?.count);
+                    const width = Math.max(4, (count / statusMax) * 100);
+                    return (
+                      <div key={`${item?.status || 'status'}-${index}`} className="flex flex-col justify-center border-b border-slate-100 py-3 last:border-b-0 sm:border-b-0 dark:border-slate-800">
+                        <div className="mb-1.5 flex items-center justify-between gap-4">
+                          <span className="text-[14px] font-medium text-slate-700 dark:text-slate-200">{getStatusLabel(item?.status) || item?.status || 'Chưa xác định'}</span>
+                          <strong className="text-[15px] font-semibold tabular-nums text-slate-900 dark:text-white">{count}</strong>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                          <span className="block h-full rounded-full bg-blue-500" style={{ width: `${width}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : <p className="py-8 text-center text-sm text-slate-500">Chưa có dữ liệu trạng thái sự vụ.</p>}
+            </div>
+          </article>
+
+          <article className="admin-panel flex h-full flex-col overflow-hidden">
+            <ManagerSectionHeader
+              title="SLA vận hành"
+              description="Theo dõi tín hiệu SLA ở cấp sự vụ."
+              icon={Lucide.Gauge}
+              actions={<Link to="/analytics/sla" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Phân tích SLA</Link>}
+            />
+            <div className="grid flex-1 grid-cols-2 content-center gap-3 border-t border-slate-100 p-5 dark:border-slate-800">
+              {slaRows.map((row) => (
+                <div key={row.label} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-900/40">
+                  <span className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-600 dark:text-slate-300"><i className={`h-2.5 w-2.5 rounded-full ${row.dotClass}`} />{row.label}</span>
+                  <strong className="mt-2 block text-[1.6rem] font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{row.value}</strong>
+                </div>
+              ))}
+            </div>
+            <p className="border-t border-slate-100 px-5 py-3 text-xs leading-5 text-slate-400 dark:border-slate-800">Đơn vị: bản ghi SLA. Không quy đổi trực tiếp thành số sự vụ duy nhất.</p>
+          </article>
+        </section>
+
+        <section className="admin-panel overflow-hidden">
+          <ManagerSectionHeader
+            title="Xu hướng tiếp nhận"
+            description="Số sự vụ tạo mới và hoàn thành trong 6 tháng gần nhất."
+            icon={Lucide.ChartNoAxesCombined}
+          />
+          <div className="border-t border-slate-100 px-5 py-5 sm:px-6 dark:border-slate-800">
+            {monthlyTrend.length > 0 ? (
+              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,.45)_transparent]">
+                {monthlyTrend.map((item, index) => {
+                  const created = toDashboardCount(item?.createdCount);
+                  const completed = toDashboardCount(item?.completedCount);
+                  const createdHeight = Math.max(created > 0 ? 5 : 2, (created / trendMax) * 64);
+                  const completedHeight = Math.max(completed > 0 ? 5 : 2, (completed / trendMax) * 64);
+                  const monthLabel = item?.monthLabel || item?.label || `${String(item?.month || index + 1).padStart(2, '0')}/${item?.year || ''}`;
                   return (
-                    <Link key={item.to} to={item.to} className="admin-quick-link group flex items-start gap-3 p-4 transition">
-                      <span className="admin-mini-icon text-blue-700" aria-hidden="true"><Icon size={17} /></span>
+                    <div key={`${monthLabel}-${index}`} className="min-w-[155px] flex-1 snap-start rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/30">
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{monthLabel}</p>
+                          <p className="mt-1 text-xs text-slate-400">{created} mới · {completed} hoàn thành</p>
+                        </div>
+                        <div className="flex h-[68px] shrink-0 items-end gap-1.5" aria-hidden="true">
+                          <span className="w-2.5 rounded-t bg-blue-500" style={{ height: `${createdHeight}px` }} />
+                          <span className="w-2.5 rounded-t bg-emerald-500" style={{ height: `${completedHeight}px` }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <p className="py-8 text-center text-sm text-slate-500">Chưa có dữ liệu xu hướng.</p>}
+          </div>
+        </section>
+
+        <section className="grid items-stretch gap-5 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
+          <article className="admin-panel h-full overflow-hidden">
+            <ManagerSectionHeader
+              title="Khu vực cần chú ý"
+              description="Xếp theo số sự vụ hiện đang mở."
+              icon={Lucide.MapPinned}
+              actions={<Link to="/analytics/heatmap" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Bản đồ</Link>}
+            />
+            <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+              {areaDistribution.length > 0 ? areaDistribution.map((area, index) => {
+                const openCount = toDashboardCount(area?.openCount);
+                const totalCount = toDashboardCount(area?.totalCount);
+                const completedCount = toDashboardCount(area?.completedCount);
+                const width = Math.max(4, (openCount / areaMax) * 100);
+                return (
+                  <Link key={area?.areaId ?? area?.areaName ?? index} to={`/manager/incidents?areaId=${area?.areaId ?? ''}`} className="group block px-5 py-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">{index + 1}</span>
                       <span className="min-w-0 flex-1">
-                        <strong className="block text-sm font-semibold text-slate-950">{item.title}</strong>
-                        <span className="mt-1 block text-xs leading-5 text-slate-500">{item.description}</span>
+                        <strong className="block truncate text-[14px] font-semibold text-slate-900 group-hover:text-blue-700 dark:text-slate-100">{area?.areaName || 'Chưa xác định khu vực'}</strong>
+                        <span className="mt-0.5 block text-xs text-slate-400">{totalCount} tổng · {completedCount} hoàn thành</span>
                       </span>
-                      <Lucide.ChevronRight size={16} className="mt-1 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-700" aria-hidden="true" />
+                      <strong className="shrink-0 text-[14px] font-semibold text-blue-700">{openCount} mở</strong>
+                    </div>
+                    <div className="ml-11 mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><span className="block h-full rounded-full bg-blue-500" style={{ width: `${width}%` }} /></div>
+                  </Link>
+                );
+              }) : <p className="px-6 py-8 text-center text-sm text-slate-500">Chưa có dữ liệu khu vực.</p>}
+            </div>
+          </article>
+
+          <article className="admin-panel flex h-full flex-col overflow-hidden">
+            <ManagerSectionHeader
+              title="Phân bố theo nhóm dịch vụ"
+              description="Toàn bộ nhóm dịch vụ hiện có trong dữ liệu sự vụ."
+              icon={Lucide.Tags}
+              actions={<Link to="/manager/incidents" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Xem sự vụ</Link>}
+            />
+            {categoryDistribution.length > 0 ? (
+              <div className="grid flex-1 auto-rows-fr border-t border-slate-100 md:grid-cols-2 dark:border-slate-800">
+                {categoryDistribution.map((category, index) => {
+                  const categoryId = category?.categoryId;
+                  const count = toDashboardCount(category?.count);
+                  const width = Math.max(4, (count / categoryMax) * 100);
+                  return (
+                    <Link
+                      key={categoryId ?? category?.categoryName ?? index}
+                      to={categoryId != null ? `/manager/incidents?categoryId=${categoryId}` : '/manager/incidents?categoryGroup=unclassified'}
+                      className={`group flex min-h-[92px] flex-col justify-center px-5 py-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50 ${index % 2 === 0 ? 'md:border-r md:border-slate-100 md:dark:border-slate-800' : ''} ${index >= 2 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <strong className="min-w-0 truncate text-[14px] font-semibold text-slate-900 group-hover:text-blue-700 dark:text-slate-100">{getCategoryLabel(category?.categoryName, 'Chưa phân loại')}</strong>
+                        <span className="shrink-0 text-[14px] font-semibold tabular-nums text-slate-900 dark:text-white">{count} sự vụ</span>
+                      </div>
+                      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><span className="block h-full rounded-full bg-cyan-500" style={{ width: `${width}%` }} /></div>
                     </Link>
                   );
                 })}
-              </nav>
-            </article>
-
-            <article className="admin-panel overflow-hidden">
-              <ManagerSectionHeader
-                title="Tín hiệu cần hành động"
-                description="Các chỉ số nên được kiểm tra trước trong phiên làm việc."
-                icon={Lucide.BellRing}
-              />
-              <dl className="space-y-3 p-5 sm:p-6">
-                <div className="admin-inset-panel p-4">
-                  <dt className="text-xs font-semibold text-slate-500">Vi phạm SLA</dt>
-                  <dd className="mt-1 text-xl font-semibold text-rose-700">{stats.slaBreaches}</dd>
-                </div>
-                <div className="admin-inset-panel p-4">
-                  <dt className="text-xs font-semibold text-slate-500">Tỷ lệ hoàn thành</dt>
-                  <dd className="mt-1 text-xl font-semibold text-emerald-700">{stats.processingRate}%</dd>
-                </div>
-                <div className="admin-inset-panel p-4">
-                  <dt className="text-xs font-semibold text-slate-500">Trạng thái AI</dt>
-                  <dd className="mt-1 text-sm font-semibold text-slate-950">{stats.aiStatus || 'Chưa xác định'}</dd>
-                </div>
-              </dl>
-            </article>
-          </aside>
+              </div>
+            ) : <p className="px-6 py-8 text-center text-sm text-slate-500">Chưa có dữ liệu nhóm dịch vụ.</p>}
+          </article>
         </section>
-      </article>
+      </div>
     );
   }
 

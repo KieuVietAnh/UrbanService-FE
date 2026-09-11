@@ -9,6 +9,7 @@ import {
   NOTIFICATION_FALLBACK_ROUTE,
   resolveNotificationDestination,
 } from '../../utils/notificationNavigation';
+import { getNotificationCategory } from './notificationCenterUtils.js';
 
 const NOTIFICATIONS_PER_VIEW = 12;
 
@@ -40,14 +41,6 @@ const formatRelativeTime = (value) => {
   return `${days} ngày trước`;
 };
 
-const getCategory = (notification) => {
-  const text = `${notification?.title || ''} ${notification?.message || ''} ${notification?.type || ''}`.toLowerCase();
-  if (text.includes('rework') || text.includes('làm lại') || text.includes('bổ sung') || text.includes('request info') || text.includes('yêu cầu thêm')) return 'rework';
-  if (text.includes('resolution') || text.includes('result') || text.includes('resolved') || text.includes('hoàn tất') || text.includes('approved') || text.includes('phê duyệt') || text.includes('kết quả')) return 'resolution';
-  if (text.includes('community') || text.includes('comment') || text.includes('support') || text.includes('cộng đồng') || text.includes('bình luận')) return 'community';
-  return 'status';
-};
-
 const getGroupLabel = (value) => {
   const target = new Date(value);
   if (Number.isNaN(target.getTime())) return 'Trước đó';
@@ -70,23 +63,32 @@ const groupNotifications = (items) => {
 export const NotificationCenterPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const isSystemStaff = getInternalRole(user?.role) === APP_ROLES.SYSTEM_STAFF;
+  const internalRole = getInternalRole(user?.role);
+  const isSystemStaff = internalRole === APP_ROLES.SYSTEM_STAFF;
+  const isInteractionManager = internalRole === APP_ROLES.INTERACTION_MANAGER;
   const [activeCategory, setActiveCategory] = useState('all');
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(NOTIFICATIONS_PER_VIEW);
 
-  const { notifications, unreadCount, loading, error, loadNotifications, markAsRead, markAllAsRead } = useNotifications(user?.userId);
-
-  const counts = useMemo(() => {
-    const result = { all: notifications.length, status: 0, rework: 0, resolution: 0, community: 0 };
-    notifications.forEach((item) => { result[getCategory(item)] += 1; });
-    return result;
-  }, [notifications]);
+  const {
+    notifications,
+    unreadCount,
+    totalCount,
+    hasNextPage,
+    loading,
+    initialized,
+    loadingMore,
+    error,
+    loadAllNotifications,
+    loadMoreNotifications,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications(user?.userId);
 
   const filteredNotifications = useMemo(() => notifications
     .filter((item) => !showUnreadOnly || item?.isRead === false)
-    .filter((item) => activeCategory === 'all' || getCategory(item) === activeCategory)
+    .filter((item) => activeCategory === 'all' || getNotificationCategory(item) === activeCategory)
     .filter((item) => {
       const term = searchQuery.trim().toLowerCase();
       if (!term) return true;
@@ -100,7 +102,24 @@ export const NotificationCenterPage = () => {
   );
 
   const groups = useMemo(() => groupNotifications(visibleNotifications), [visibleNotifications]);
-  const hasMore = visibleCount < filteredNotifications.length;
+  const hasMoreLoaded = visibleCount < filteredNotifications.length;
+  const hasMore = hasMoreLoaded || hasNextPage;
+
+  const categoryCounts = useMemo(() => {
+    const counts = { all: notifications.length, status: 0, rework: 0, resolution: 0, community: 0 };
+    notifications.forEach((item) => {
+      const category = getNotificationCategory(item);
+      counts[category] = (counts[category] || 0) + 1;
+    });
+    return counts;
+  }, [notifications]);
+
+  const loadingFullDataset = totalCount > notifications.length && (loading || loadingMore);
+
+  useEffect(() => {
+    if (!initialized || loading || loadingMore || totalCount <= notifications.length) return;
+    loadAllNotifications({ force: true }).catch(() => {});
+  }, [initialized, loadAllNotifications, loading, loadingMore, notifications.length, totalCount]);
 
   useEffect(() => {
     setVisibleCount(NOTIFICATIONS_PER_VIEW);
@@ -108,7 +127,20 @@ export const NotificationCenterPage = () => {
 
   const handleRefresh = async () => {
     setVisibleCount(NOTIFICATIONS_PER_VIEW);
-    await loadNotifications({ pageNumber: 1, pageSize: 50 });
+    await loadAllNotifications({ force: true });
+  };
+
+  const handleLoadMore = async () => {
+    if (hasMoreLoaded) {
+      setVisibleCount((count) => count + NOTIFICATIONS_PER_VIEW);
+      return;
+    }
+
+    if (hasNextPage) {
+      const before = notifications.length;
+      await loadMoreNotifications();
+      setVisibleCount((count) => Math.max(count + NOTIFICATIONS_PER_VIEW, before + NOTIFICATIONS_PER_VIEW));
+    }
   };
 
   const openNotification = async (notification) => {
@@ -128,15 +160,22 @@ export const NotificationCenterPage = () => {
           </svg>
 
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h1 className="notification-center-title text-[32px] font-bold tracking-[-0.04em] text-slate-950 sm:text-[38px] dark:text-white">Thông báo của tôi</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base dark:text-slate-300">
+            <div className="flex min-w-0 items-start gap-4 sm:gap-5">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-sky-500 text-white shadow-[0_14px_30px_rgba(37,99,235,0.22)] sm:h-16 sm:w-16">
+                <Lucide.BellRing size={28} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="notification-center-title text-[30px] font-bold tracking-[-0.04em] text-slate-950 sm:text-[38px] dark:text-white">Thông báo của tôi</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base lg:whitespace-nowrap dark:text-slate-300">
                 {isSystemStaff
                   ? 'Theo dõi sự vụ được phân công, yêu cầu xử lý lại và các cập nhật liên quan.'
-                  : 'Theo dõi thay đổi trạng thái, yêu cầu bổ sung và kết quả xử lý của các phản ánh bạn đã gửi.'}
-              </p>
+                  : isInteractionManager
+                    ? 'Theo dõi cảnh báo SLA, sự vụ cần chú ý và cập nhật quan trọng.'
+                    : 'Theo dõi thay đổi trạng thái, yêu cầu bổ sung và kết quả xử lý của các phản ánh bạn đã gửi.'}
+                </p>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 lg:ml-auto lg:flex-nowrap lg:justify-end">
               <button type="button" onClick={markAllAsRead} disabled={unreadCount === 0} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
                 <Lucide.CheckCheck size={16} /> Đánh dấu tất cả đã đọc
               </button>
@@ -149,8 +188,8 @@ export const NotificationCenterPage = () => {
           <div className="relative mt-7 grid gap-3 sm:grid-cols-3">
             {[
               { label: 'Chưa đọc', value: unreadCount, icon: Lucide.MailWarning, active: true },
-              { label: 'Tổng thông báo', value: notifications.length, icon: Lucide.Layers3 },
-              { label: 'Đang hiển thị', value: filteredNotifications.length, icon: Lucide.ListFilter },
+              { label: 'Tổng thông báo', value: totalCount, icon: Lucide.Layers3 },
+              { label: 'Đang hiển thị', value: visibleNotifications.length, icon: Lucide.ListFilter },
             ].map(({ label, value, icon: Icon, active }) => (
               <div key={label} className={`notification-stat-card rounded-2xl border p-4 shadow-sm ${active ? 'notification-stat-card-active' : ''}`}>
                 <div className="flex items-center justify-between gap-3">
@@ -174,7 +213,7 @@ export const NotificationCenterPage = () => {
                 return (
                   <button key={filter.id} type="button" onClick={() => setActiveCategory(filter.id)} className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${active ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'}`}>
                     <Icon size={15} /> {filter.label}
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] ${active ? 'bg-white/18 text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{counts[filter.id]}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'}`}>{categoryCounts[filter.id] ?? 0}</span>
                   </button>
                 );
               })}
@@ -189,7 +228,7 @@ export const NotificationCenterPage = () => {
               <Lucide.Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Tìm theo tiêu đề hoặc nội dung..." className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/10 dark:bg-white/5 dark:text-white dark:focus:ring-blue-500/10" />
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{filteredNotifications.length} thông báo phù hợp</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{loadingFullDataset ? 'Đang tải đầy đủ thông báo để lọc chính xác…' : `${filteredNotifications.length} thông báo phù hợp`}</p>
           </div>
         </section>
 
@@ -198,7 +237,7 @@ export const NotificationCenterPage = () => {
             <div>
               <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Danh sách thông báo</h2>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {isSystemStaff
+                {isSystemStaff || isInteractionManager
                   ? 'Mở thông báo để đi tới đúng sự vụ hoặc phản ánh liên quan.'
                   : 'Mở thông báo để đi thẳng tới phản ánh liên quan.'}
               </p>
@@ -224,7 +263,7 @@ export const NotificationCenterPage = () => {
                   <span className="text-xs text-slate-400">{group.items.length} thông báo</span>
                 </div>
                 {group.items.map((notification, index) => {
-                  const category = getCategory(notification);
+                  const category = getNotificationCategory(notification);
                   const config = categoryStyles[category];
                   const Icon = config.icon;
                   const unread = notification?.isRead === false;
@@ -256,9 +295,7 @@ export const NotificationCenterPage = () => {
                         <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
                           {destinationLabel ? (
                             <button type="button" onClick={() => openNotification(notification)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 dark:focus-visible:ring-blue-900"><Lucide.ArrowUpRight size={14} />{destinationLabel}</button>
-                          ) : (
-                            <span className="inline-flex h-9 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">Không có liên kết đích</span>
-                          )}
+                          ) : null}
                           {unread && <button type="button" onClick={() => markAsRead(notification?.notificationId)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"><Lucide.MailCheck size={14} />Đánh dấu đã đọc</button>}
                         </div>
                       </div>
@@ -273,13 +310,16 @@ export const NotificationCenterPage = () => {
             <div className="border-t border-slate-100 px-5 py-4 text-center dark:border-white/10">
               <button
                 type="button"
-                onClick={() => setVisibleCount((count) => count + NOTIFICATIONS_PER_VIEW)}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-blue-500/60 dark:hover:bg-slate-700"
               >
-                <Lucide.ChevronDown size={16} />
-                Xem thêm {Math.min(NOTIFICATIONS_PER_VIEW, filteredNotifications.length - visibleCount)} thông báo
+                {loadingMore ? <span className="loading loading-spinner loading-xs" /> : <Lucide.ChevronDown size={16} />}
+                {hasMoreLoaded
+                  ? `Xem thêm ${Math.min(NOTIFICATIONS_PER_VIEW, filteredNotifications.length - visibleCount)} thông báo`
+                  : 'Tải thêm thông báo'}
               </button>
-              <p className="mt-2 text-xs text-slate-400">Đang hiển thị {visibleNotifications.length}/{filteredNotifications.length} thông báo</p>
+              <p className="mt-2 text-xs text-slate-400">Đang hiển thị {visibleNotifications.length} · Đã tải {notifications.length}/{totalCount} thông báo</p>
             </div>
           ) : null}
         </section>

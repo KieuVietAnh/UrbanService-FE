@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
+import { ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 import { getCoordinatorDirectoryCache, setCoordinatorDirectoryCache } from '../../services/cache/adminCoordinatorDirectoryCache';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 
@@ -54,6 +55,8 @@ export default function CoordinatorDirectoryPage() {
   const [loading, setLoading] = useState(!initialCache.hasLoaded);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [metadataError, setMetadataError] = useState('');
+  const [metadataLoading, setMetadataLoading] = useState(true);
   const [search, setSearch] = useState(initialCache.search);
   const [areaId, setAreaId] = useState(initialCache.areaId);
   const [categoryId, setCategoryId] = useState(initialCache.categoryId);
@@ -63,19 +66,34 @@ export default function CoordinatorDirectoryPage() {
   const [restoreComplete, setRestoreComplete] = useState(() => !restoredContext);
   const [highlightedCoordinatorId, setHighlightedCoordinatorId] = useState('');
 
-  useEffect(() => {
-    Promise.allSettled([
+  const loadReferenceData = useCallback(async () => {
+    setMetadataLoading(true);
+    setMetadataError('');
+    const [areaResult, categoryResult, coordinatorResult] = await Promise.allSettled([
       toolsApi.getAreas(),
       toolsApi.getCategories(),
       managementFeedbackApi.getServiceProviders({ includeInactive: true }),
-    ]).then(([areaResult, categoryResult, coordinatorResult]) => {
-      setAreas(areaResult.status === 'fulfilled' ? unwrapList(areaResult.value) : []);
-      setCategories(categoryResult.status === 'fulfilled' ? unwrapList(categoryResult.value) : []);
-      if (coordinatorResult.status === 'fulfilled') {
-        setSummaryItems(unwrapList(coordinatorResult.value));
-      }
-    });
+    ]);
+
+    setAreas(areaResult.status === 'fulfilled' ? unwrapList(areaResult.value) : []);
+    setCategories(categoryResult.status === 'fulfilled' ? unwrapList(categoryResult.value) : []);
+    if (coordinatorResult.status === 'fulfilled') {
+      setSummaryItems(unwrapList(coordinatorResult.value));
+    }
+
+    const failed = [];
+    if (areaResult.status === 'rejected') failed.push('khu vực');
+    if (categoryResult.status === 'rejected') failed.push('danh mục');
+    if (coordinatorResult.status === 'rejected') failed.push('chỉ số tổng quan');
+    if (failed.length) {
+      setMetadataError(`Không thể tải ${failed.join(', ')}. Một số bộ lọc hoặc chỉ số có thể chưa đầy đủ.`);
+    }
+    setMetadataLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadReferenceData();
+  }, [loadReferenceData]);
 
   const fetchCoordinators = useCallback(async ({ keepCurrent = false } = {}) => {
     const requestId = ++coordinatorRequestIdRef.current;
@@ -398,25 +416,63 @@ export default function CoordinatorDirectoryPage() {
         })}
       </section>
 
+      {metadataError ? (
+        <section className="admin-error-note flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+          <span className="inline-flex items-start gap-2 text-sm font-medium">
+            <Lucide.CircleAlert size={17} className="mt-0.5 shrink-0" />
+            {metadataError}
+          </span>
+          <button
+            type="button"
+            onClick={() => void loadReferenceData()}
+            disabled={metadataLoading}
+            className="btn admin-secondary-action h-9 shrink-0 rounded-xl px-4 text-xs font-semibold normal-case"
+          >
+            <Lucide.RefreshCw size={15} className={metadataLoading ? 'animate-spin' : ''} />
+            {metadataLoading ? 'Đang tải' : 'Tải lại dữ liệu'}
+          </button>
+        </section>
+      ) : null}
+
       <section className="admin-panel overflow-hidden p-5 dark:border-slate-700 dark:bg-slate-950/70">
         <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px_180px]">
           <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 dark:border-slate-700 dark:bg-slate-950/70">
             <Lucide.Search size={17} className="text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm font-normal text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500" placeholder="Tìm đơn vị, người phụ trách, email, số điện thoại" />
           </label>
-          <select value={areaId} onChange={(event) => setAreaId(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
-            <option value="">Tất cả khu vực</option>
-            {areas.map((area) => <option key={area.areaId ?? area.id} value={area.areaId ?? area.id}>{area.areaName ?? area.name}</option>)}
-          </select>
-          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
-            <option value="">Tất cả danh mục</option>
-            {categories.map((category) => <option key={category.categoryId ?? category.id} value={category.categoryId ?? category.id}>{getCategoryLabel(category.categoryName ?? category.name)}</option>)}
-          </select>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="select select-bordered h-11 rounded-xl border-slate-200 bg-slate-50 text-sm font-normal dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100">
-            <option value="all">Tất cả trạng thái</option>
-            <option value="active">Đang hoạt động</option>
-            <option value="inactive">Đã vô hiệu hóa</option>
-          </select>
+          <ManagerSelectMenu
+            value={areaId}
+            onChange={setAreaId}
+            ariaLabel="Lọc khu vực"
+            className="h-11"
+            disabled={metadataLoading || areas.length === 0}
+            options={[
+              { value: '', label: 'Tất cả khu vực' },
+              ...areas.map((area) => ({ value: area.areaId ?? area.id, label: area.areaName ?? area.name })),
+            ]}
+          />
+          <ManagerSelectMenu
+            value={categoryId}
+            onChange={setCategoryId}
+            ariaLabel="Lọc danh mục"
+            className="h-11"
+            disabled={metadataLoading || categories.length === 0}
+            options={[
+              { value: '', label: 'Tất cả danh mục' },
+              ...categories.map((category) => ({ value: category.categoryId ?? category.id, label: getCategoryLabel(category.categoryName ?? category.name) })),
+            ]}
+          />
+          <ManagerSelectMenu
+            value={statusFilter}
+            onChange={setStatusFilter}
+            ariaLabel="Lọc trạng thái điều phối viên"
+            className="h-11"
+            options={[
+              { value: 'all', label: 'Tất cả trạng thái' },
+              { value: 'active', label: 'Đang hoạt động' },
+              { value: 'inactive', label: 'Đã vô hiệu hóa' },
+            ]}
+          />
         </div>
 
         {error && <div className="mt-4"><ErrorAlert title="Không tải được dữ liệu" message={error} /></div>}

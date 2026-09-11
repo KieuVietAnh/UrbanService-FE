@@ -54,10 +54,10 @@ const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspac
 
 const SLAAnalytics = lazy(() => import('../pages/analytics/SLAAnalytics').then((m) => ({ default: m.SLAAnalytics })));
 const SentimentDashboard = lazy(() => import('../pages/analytics/SentimentDashboard').then((m) => ({ default: m.SentimentDashboard })));
+const SentimentNegativeListPage = lazy(() => import('../pages/analytics/SentimentNegativeListPage').then((m) => ({ default: m.SentimentNegativeListPage })));
 const HeatmapDashboard = lazy(() => import('../pages/analytics/HeatmapDashboard').then((m) => ({ default: m.HeatmapDashboard })));
 const InteractionHistoryMonitoring = lazy(() => import('../pages/analytics/InteractionHistoryMonitoring').then((m) => ({ default: m.InteractionHistoryMonitoring })));
 const InteractionApprovalInboxPage = lazy(() => import('../pages/manager/InteractionApprovalInboxPage').then((m) => ({ default: m.InteractionApprovalInboxPage })));
-const InteractionApprovalDetailPage = lazy(() => import('../pages/manager/InteractionApprovalDetailPage').then((m) => ({ default: m.InteractionApprovalDetailPage })));
 const ManagerReportReviewQueuePage = lazy(() => import('../pages/manager/ManagerReportReviewQueuePage').then((m) => ({ default: m.ManagerReportReviewQueuePage })));
 const ManagerReportReviewDetailPage = lazy(() => import('../pages/manager/ManagerReportReviewDetailPage').then((m) => ({ default: m.ManagerReportReviewDetailPage })));
 const ManagerIncidentListPage = lazy(() => import('../pages/manager/ManagerIncidentListPage').then((m) => ({ default: m.ManagerIncidentListPage })));
@@ -494,6 +494,8 @@ export const AppRoutes = () => {
       } />
 
       {/* Interaction Manager Routes */}
+      <Route path="/manager/review" element={<Navigate to="/manager/reports/review" replace />} />
+      <Route path="/manager/duplicates" element={<Navigate to="/manager/incident-matches" replace />} />
       <Route path="/manager/incident-matches" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
@@ -548,6 +550,24 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/management/incidents" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <ManagerIncidentListPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/management/incidents/:incidentId" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <ManagerIncidentDetailPage />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/manager/interactions" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
@@ -557,29 +577,36 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/manager/map" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
+            <Navigate to="/analytics/heatmap" replace />
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/manager/interactions/:feedbackId" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
             <DashboardLayout>
-              <InteractionApprovalDetailPage />
+              <FeedbackDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
       } />
       <Route path="/manager/approvals" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
             <DashboardLayout>
               <InteractionApprovalInboxPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/manager/approvals/:feedbackId" element={
+      <Route path="/manager/approvals/:incidentId" element={
         <ProtectedRoute>
-          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
             <DashboardLayout>
-              <InteractionApprovalDetailPage />
+              <ManagerIncidentDetailPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
@@ -598,6 +625,15 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <SentimentDashboard />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/analytics/sentiment/negative" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <SentimentNegativeListPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>
@@ -644,7 +680,7 @@ export const AppRoutes = () => {
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
-              <AdminIncidentMapPage />
+              <AdminIncidentMapPage mode="admin" />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

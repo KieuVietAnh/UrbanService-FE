@@ -16,45 +16,45 @@ const normalizeMonths = (value, fallback = 12) => {
 
 export const feedbackDashboardApi = {
   async getOverview() {
-    return unwrap(await axiosClient.get('/api/feedbacks/dashboard/overview'));
+    return unwrap(await axiosClient.get('/api/incidents/dashboard/overview'));
   },
 
   async getStatusDistribution() {
-    const payload = unwrap(await axiosClient.get('/api/feedbacks/dashboard/status-distribution'));
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/status-distribution'));
     return Array.isArray(payload) ? payload : [];
   },
 
   async getPriorityDistribution() {
-    const payload = unwrap(await axiosClient.get('/api/feedbacks/dashboard/priority-distribution'));
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/priority-distribution'));
     return Array.isArray(payload) ? payload : [];
   },
 
   async getCategoryDistribution() {
-    const payload = unwrap(await axiosClient.get('/api/feedbacks/dashboard/category-distribution'));
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/category-distribution'));
     return Array.isArray(payload) ? payload : [];
   },
 
   async getAreaDistribution() {
-    const payload = unwrap(await axiosClient.get('/api/feedbacks/dashboard/area-distribution'));
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/area-distribution'));
     return Array.isArray(payload) ? payload : [];
   },
 
   async getMonthlyTrend(months = 12) {
-    const payload = unwrap(await axiosClient.get('/api/feedbacks/dashboard/monthly-trend', {
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/monthly-trend', {
       params: { months: normalizeMonths(months) },
     }));
     return Array.isArray(payload) ? payload : [];
   },
 
   async getUrgentOpen(limit = 10) {
-    const payload = unwrap(await axiosClient.get('/api/feedbacks/dashboard/urgent-open', {
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/urgent-open', {
       params: { limit: normalizeLimit(limit) },
     }));
     return Array.isArray(payload) ? payload : [];
   },
 
   async getRecent(limit = 10) {
-    const payload = unwrap(await axiosClient.get('/api/feedbacks/dashboard/recent', {
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/recent', {
       params: { limit: normalizeLimit(limit) },
     }));
     return Array.isArray(payload) ? payload : [];

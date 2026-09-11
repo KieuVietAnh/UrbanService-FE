@@ -29,7 +29,7 @@ const getIcon = (notification) => {
 export const NotificationBell = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead } = useNotifications(user?.userId);
+  const { notifications, unreadCount, totalCount, loading, error, markAsRead, markAllAsRead } = useNotifications(user?.userId);
   const visibleNotifications = useMemo(() => notifications.slice(0, 5), [notifications]);
 
   const openNotification = async (notification) => {
@@ -58,7 +58,7 @@ export const NotificationBell = () => {
         <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-white/10">
           <div>
             <h3 className="text-base font-semibold text-slate-950 dark:text-white">Thông báo</h3>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{unreadCount} chưa đọc · {notifications.length} thông báo</p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{unreadCount} chưa đọc · {totalCount} thông báo</p>
           </div>
           <button
             type="button"
@@ -70,7 +70,7 @@ export const NotificationBell = () => {
           </button>
         </header>
 
-        <div className="max-h-[390px] overflow-y-auto p-2">
+        <div className="p-2">
           {loading && notifications.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-slate-500">Đang tải thông báo...</div>
           ) : error && notifications.length === 0 ? (

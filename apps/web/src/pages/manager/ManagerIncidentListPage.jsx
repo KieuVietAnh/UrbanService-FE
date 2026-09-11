@@ -1,501 +1,1229 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import * as Lucide from 'lucide-react';
-import {
-  getPriorityIntent,
-  getSeverityIntent,
-  getStatusIntent,
-} from '@urbanmind/shared-types';
-import { incidentManagementApi, toolsApi } from '@urbanmind/shared-api';
+import { extractApiErrorMessage, incidentManagementApi, toolsApi } from '@urbanmind/shared-api';
+import { getScopedSessionKey } from '../../utils/scopedSessionKey';
+import { ManagerListRefreshIndicator, ManagerPageHeader } from '../../components/manager/ManagerPageElements';
 
-import Badge from '../../components/design-system/Badge';
-import Button from '../../components/design-system/Button';
-import EmptyState from '../../components/design-system/EmptyState';
-import Input from '../../components/design-system/Input';
-import Select from '../../components/design-system/Select';
-import { ManagerPageHeader } from '../../components/manager/ManagerPageElements';
-import { getCategoryLabel } from '../../utils/categoryLabels';
-import {
-  MISSING_INCIDENT_VALUE,
-  collectIncidentEnumValues,
-  formatManagerIncidentCode,
-  formatManagerIncidentCount,
-  formatManagerIncidentDateTime,
-  getManagerIncidentPriorityLabel,
-  getManagerIncidentSeverityLabel,
-  getManagerIncidentStatusLabel,
-  hasManagerIncidentFilters,
-} from './managerIncidentUtils';
+const PAGE_SIZE = 10;
+const SMART_SEARCH_PAGE_SIZE = 100;
+const SMART_SEARCH_MAX_ITEMS = 1000;
 
-const PAGE_SIZE_OPTIONS = [10, 20, 30];
+const INCIDENT_LIST_SNAPSHOT_KEY_BASE = 'urbanservice-management-incident-list-snapshot-v2';
+const INCIDENT_RETURN_STORAGE_KEY_BASE = 'urbanservice-management-incident-return-v2';
+const INCIDENT_SNAPSHOT_TTL = 5 * 60 * 1000;
 
-const PAGE_STATE = Object.freeze({
-  LOADING: 'loading',
-  READY: 'ready',
-  EMPTY: 'empty',
-  ERROR: 'error',
-  API_UNAVAILABLE: 'api-unavailable',
-});
+const readIncidentSnapshot = (queryKey, storageKey) => {
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return null;
+    const snapshot = JSON.parse(raw);
+    if (!snapshot || !Array.isArray(snapshot.incidents)) return null;
+    if (snapshot.queryKey !== queryKey) return null;
+    if (Date.now() - Number(snapshot.savedAt || 0) > INCIDENT_SNAPSHOT_TTL) {
+      window.sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    return snapshot;
+  } catch {
+    return null;
+  }
+};
 
-const getAreaId = (area) => area?.areaId ?? area?.id;
-const getAreaName = (area) => area?.areaName || area?.name || area?.displayName || MISSING_INCIDENT_VALUE;
-const getCategoryId = (category) => category?.categoryId ?? category?.id;
+const writeIncidentSnapshot = (storageKey, snapshot) => {
+  try {
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ ...snapshot, savedAt: Date.now() })
+    );
+  } catch (error) {
+    console.warn('Không thể lưu trạng thái danh sách sự vụ', error);
+  }
+};
 
-function FilterField({ label, htmlFor, children, className = '' }) {
+const readIncidentReturnContext = (storageKey) => {
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeKey = (value) => String(value ?? '').replace(/[-_\s]/g, '').toLowerCase();
+const getPayload = (response) => response?.data ?? response ?? {};
+
+const STATUS_META = {
+  new: { label: 'Mới', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
+  submitted: { label: 'Mới gửi', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
+  aireviewed: { label: 'AI đã phân loại', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
+  verified: { label: 'Đã xác minh', className: 'bg-sky-50 text-sky-700 ring-sky-100' },
+  open: { label: 'Đang mở', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
+  pending: { label: 'Chờ xử lý', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  assigned: { label: 'Đã phân công', className: 'bg-violet-50 text-violet-700 ring-violet-100' },
+  inprogress: { label: 'Đang xử lý', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
+  resolved: { label: 'Đã xử lý', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  submittedforapproval: { label: 'Chờ phê duyệt', className: 'bg-indigo-50 text-indigo-700 ring-indigo-100' },
+  approved: { label: 'Đã phê duyệt', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
+  rejected: { label: 'Đã từ chối', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  needrework: { label: 'Cần xử lý lại', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  closed: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+  merged: { label: 'Đã gộp', className: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  cancelled: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-600 ring-slate-200' },
+};
+
+const PRIORITY_META = {
+  critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  urgent: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
+  high: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100' },
+  medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100' },
+  low: { label: 'Thấp', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
+};
+
+const STATUS_OPTIONS = [
+  ['New', 'Mới'],
+  ['Submitted', 'Mới gửi'],
+  ['AiReviewed', 'AI đã phân loại'],
+  ['Verified', 'Đã xác minh'],
+  ['Open', 'Đang mở'],
+  ['Pending', 'Chờ xử lý'],
+  ['Assigned', 'Đã phân công'],
+  ['InProgress', 'Đang xử lý'],
+  ['Resolved', 'Đã xử lý'],
+  ['SubmittedForApproval', 'Chờ phê duyệt'],
+  ['Approved', 'Đã phê duyệt'],
+  ['Rejected', 'Đã từ chối'],
+  ['NeedRework', 'Cần xử lý lại'],
+  ['Closed', 'Đã đóng'],
+  ['Cancelled', 'Đã hủy'],
+];
+
+const PRIORITY_OPTIONS = [
+  ['Critical', 'Khẩn cấp'],
+  ['High', 'Cao'],
+  ['Medium', 'Trung bình'],
+  ['Low', 'Thấp'],
+];
+
+const SEVERITY_OPTIONS = [
+  ['Critical', 'Khẩn cấp'],
+  ['High', 'Cao'],
+  ['Medium', 'Trung bình'],
+  ['Low', 'Thấp'],
+];
+
+const buildAreaFilterOptions = (areas) => [
+  ['', 'Tất cả phường'],
+  ...areas.map((area) => [getOptionId(area), getOptionName(area)]),
+];
+
+const OBSOLETE_CATEGORY_NAMES = new Set(['cấp nước', 'water supply']);
+
+const isVisibleManagerCategory = (category) => {
+  const name = getOptionName(category).trim().toLowerCase();
+  return name && !OBSOLETE_CATEGORY_NAMES.has(name);
+};
+
+const buildCategoryFilterOptions = (categories) => [
+  ['', 'Tất cả danh mục'],
+  ['__unclassified__', 'Chưa phân loại'],
+  ...categories
+    .filter(isVisibleManagerCategory)
+    .map((category) => [getOptionId(category), getOptionName(category)]),
+];
+
+const STATUS_FILTER_OPTIONS = [
+  ['', 'Tất cả trạng thái'],
+  ['__group_active__', 'Đang xử lý'],
+  ['__group_completed__', 'Đã hoàn thành'],
+  ...STATUS_OPTIONS,
+];
+
+const STATUS_GROUPS = {
+  active: ['Assigned', 'InProgress'],
+  completed: ['Approved', 'Closed'],
+};
+
+
+const formatDateTime = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+
+  return `${hours}:${minutes} ${day}/${month}/${year}`;
+};
+
+const formatIncidentId = (incidentId) => {
+  if (!incidentId) return '—';
+  const value = String(incidentId);
+  const suffix = value.split('-').pop() || value;
+  return `INC-${suffix.slice(0, 8).toUpperCase()}`;
+};
+
+const normalizeSearchText = (value) => String(value ?? '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[đĐ]/g, 'd')
+  .toLowerCase()
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const getMetaLabel = (map, value) => map[normalizeKey(value)]?.label || value || '';
+
+const getSearchableDateText = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const rawDay = String(date.getDate());
+  const rawMonth = String(date.getMonth() + 1);
+  const day = rawDay.padStart(2, '0');
+  const month = rawMonth.padStart(2, '0');
+  const year = String(date.getFullYear());
+  const shortYear = year.slice(-2);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return [
+    // Có số 0 ở đầu.
+    `${day}/${month}/${year}`,
+    `${day}/${month}/${shortYear}`,
+    `${day}/${month}`,
+    `${day}-${month}-${year}`,
+    `${day}-${month}-${shortYear}`,
+    `${day}-${month}`,
+
+    // Không bắt buộc số 0 ở đầu, ví dụ 23/8 hoặc 3/8.
+    `${rawDay}/${rawMonth}/${year}`,
+    `${rawDay}/${rawMonth}/${shortYear}`,
+    `${rawDay}/${rawMonth}`,
+    `${rawDay}-${rawMonth}-${year}`,
+    `${rawDay}-${rawMonth}-${shortYear}`,
+    `${rawDay}-${rawMonth}`,
+
+    `${day} ${month} ${year}`,
+    `${rawDay} ${rawMonth} ${year}`,
+    `${hours}:${minutes}`,
+    `${hours}:${minutes} ${day}/${month}/${year}`,
+    `${hours}:${minutes} ${day}/${month}/${shortYear}`,
+    `${hours}:${minutes} ${rawDay}/${rawMonth}/${year}`,
+    `${hours}:${minutes} ${rawDay}/${rawMonth}/${shortYear}`,
+  ].join(' ');
+};
+
+const matchesSmartSearch = (incident, rawSearch) => {
+  const needle = normalizeSearchText(rawSearch);
+  if (!needle) return true;
+
+  const incidentId = incident?.incidentId ?? incident?.id ?? '';
+  const status = incident?.status ?? '';
+  const priority = incident?.priority ?? '';
+  const severity = incident?.severity ?? '';
+
+  const searchable = normalizeSearchText([
+    incidentId,
+    formatIncidentId(incidentId),
+    incident?.title,
+    incident?.description,
+    incident?.locationText,
+    incident?.areaName,
+    incident?.categoryName,
+    status,
+    getMetaLabel(STATUS_META, status),
+    priority,
+    getMetaLabel(PRIORITY_META, priority),
+    severity,
+    getMetaLabel(PRIORITY_META, severity),
+    getSearchableDateText(incident?.createdAt),
+    getSearchableDateText(incident?.updatedAt),
+    incident?.reportCount,
+    incident?.subscriberCount,
+    incident?.assignedStaffName,
+  ].filter(Boolean).join(' '));
+
+  return needle
+    .split(' ')
+    .filter(Boolean)
+    .every((token) => searchable.includes(token));
+};
+
+const getOptionId = (item) => item?.areaId ?? item?.categoryId ?? item?.id ?? item?.value ?? '';
+const getOptionName = (item) => item?.areaName ?? item?.categoryName ?? item?.name ?? item?.label ?? '';
+
+const normalizeListResponse = (response, requestedPage) => {
+  const payload = getPayload(response);
+  const nested = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+  const items = Array.isArray(nested)
+    ? nested
+    : Array.isArray(nested?.items)
+      ? nested.items
+      : Array.isArray(nested?.records)
+        ? nested.records
+        : [];
+
+  const totalItems = Number(nested?.totalItems ?? nested?.totalCount ?? nested?.count ?? items.length);
+  const pageNumber = Number(nested?.pageNumber ?? nested?.currentPage ?? requestedPage ?? 1) || 1;
+  const pageSize = Number(nested?.pageSize ?? nested?.limit ?? PAGE_SIZE) || PAGE_SIZE;
+  const totalPages = Math.max(1, Number(nested?.totalPages) || Math.ceil((Number.isFinite(totalItems) ? totalItems : items.length) / pageSize));
+
+  return {
+    items,
+    pagination: {
+      pageNumber,
+      pageSize,
+      totalItems: Number.isFinite(totalItems) ? totalItems : items.length,
+      totalPages,
+      hasPreviousPage: nested?.hasPreviousPage ?? pageNumber > 1,
+      hasNextPage: nested?.hasNextPage ?? pageNumber < totalPages,
+    },
+  };
+};
+
+const StatusBadge = ({ status }) => {
+  const meta = STATUS_META[normalizeKey(status)] || {
+    label: status || 'Chưa rõ',
+    className: 'bg-slate-100 text-slate-600 ring-slate-200',
+  };
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
+};
+
+const PriorityBadge = ({ priority }) => {
+  const meta = PRIORITY_META[normalizeKey(priority)] || {
+    label: priority || 'Chưa đặt',
+    className: 'bg-slate-100 text-slate-600 ring-slate-200',
+  };
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
+};
+
+const SeverityBadge = ({ severity }) => {
+  const meta = PRIORITY_META[normalizeKey(severity)] || {
+    label: severity || 'Chưa đặt',
+    className: 'bg-slate-100 text-slate-600 ring-slate-200',
+  };
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${meta.className}`}>{meta.label}</span>;
+};
+
+
+
+const MainFilterMenu = ({
+  label,
+  value,
+  options,
+  icon: Icon,
+  onChange,
+  widthClass = 'w-[280px]',
+  maxHeightClass = 'max-h-[320px]',
+}) => {
+  const detailsRef = useRef(null);
+  const selectedLabel = options.find(([optionValue]) => String(optionValue) === String(value))?.[1] || label;
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      const details = detailsRef.current;
+      if (!details?.open) return;
+      if (details.contains(event.target)) return;
+      details.open = false;
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
+  const choose = (nextValue) => {
+    onChange(nextValue);
+    if (detailsRef.current) detailsRef.current.open = false;
+  };
+
   return (
-    <div className={`min-w-0 space-y-2 ${className}`}>
-      <label htmlFor={htmlFor} className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
+    <details ref={detailsRef} className="group relative min-w-0">
+      <summary className="flex h-10 min-w-0 cursor-pointer list-none items-center gap-3 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 [&::-webkit-details-marker]:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+        <Icon size={16} className="shrink-0 text-slate-400" />
+        <span className="min-w-0 flex-1 truncate">{selectedLabel}</span>
+        <Lucide.ChevronDown size={15} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+      </summary>
 
-function IncidentListSkeleton() {
-  return (
-    <section className="admin-panel overflow-hidden" aria-busy="true" aria-label="Đang tải danh sách sự vụ">
-      <div className="border-b border-slate-200 px-5 py-5 sm:px-6 dark:border-slate-800">
-        <div className="h-5 w-40 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
-        <div className="mt-2 h-3 w-72 max-w-full animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800/70" />
+      <div className={`absolute left-0 top-[calc(100%+8px)] z-50 ${widthClass} overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:border-slate-700 dark:bg-slate-900`}>
+        <div className={`${maxHeightClass} overflow-y-auto overscroll-contain pr-1`}>
+          {options.map(([optionValue, optionLabel]) => {
+            const isSelected = String(value) === String(optionValue);
+            return (
+              <button
+                key={`${optionValue}-${optionLabel}`}
+                type="button"
+                onClick={() => choose(optionValue)}
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                  isSelected
+                    ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+                    : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+                }`}
+              >
+                <span className="min-w-0 flex-1 whitespace-normal leading-5">{optionLabel}</span>
+                {isSelected ? <Lucide.Check size={15} className="shrink-0" /> : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="divide-y divide-slate-100 dark:divide-slate-800">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <div key={index} className="grid gap-4 px-5 py-5 sm:px-6 xl:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)_minmax(14rem,1.2fr)_auto] xl:items-center">
-            <div>
-              <div className="h-3 w-24 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-              <div className="mt-3 h-5 w-3/4 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-              <div className="mt-3 h-3 w-1/2 animate-pulse rounded bg-slate-100 dark:bg-slate-800/70" />
-            </div>
-            <div className="h-10 w-36 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-            <div className="flex gap-2">
-              <div className="h-7 w-20 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
-              <div className="h-7 w-24 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
-            </div>
-            <div className="h-10 w-28 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
-          </div>
+    </details>
+  );
+};
+
+const QuickFilterMenu = ({
+  label,
+  value,
+  options,
+  icon: Icon,
+  onChange,
+  metaMap,
+}) => {
+  const detailsRef = useRef(null);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      const details = detailsRef.current;
+      if (!details?.open) return;
+      if (details.contains(event.target)) return;
+      details.open = false;
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
+  const selectedMeta = value ? metaMap?.[normalizeKey(value)] : null;
+  const selectedLabel = selectedMeta?.label || options.find(([optionValue]) => optionValue === value)?.[1] || 'Tất cả';
+
+  const choose = (nextValue) => {
+    onChange(nextValue);
+    if (detailsRef.current) detailsRef.current.open = false;
+  };
+
+  return (
+    <details ref={detailsRef} className="group relative">
+      <summary
+        className={`flex h-10 min-w-[196px] cursor-pointer list-none items-center gap-2 rounded-xl border px-3.5 text-sm font-medium transition [&::-webkit-details-marker]:hidden ${
+          value
+            ? 'border-blue-300 bg-blue-50 text-blue-700 shadow-sm'
+            : 'border-slate-300 bg-white text-slate-700 shadow-sm hover:border-slate-400'
+        } dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200`}
+      >
+        <Icon size={15} className="shrink-0 text-slate-400" />
+        <span className="min-w-0 flex-1 truncate">{label}: {selectedLabel}</span>
+        <Lucide.ChevronDown size={14} className="shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="absolute left-0 top-[calc(100%+8px)] z-40 w-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:border-slate-700 dark:bg-slate-900">
+        <div className="px-2.5 pb-2 pt-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-400">{label}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => choose('')}
+          className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+            !value
+              ? 'bg-blue-50 font-semibold text-blue-700'
+              : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+          }`}
+        >
+          <span className="h-2 w-2 rounded-full bg-slate-300" />
+          <span className="flex-1">Tất cả</span>
+          {!value ? <Lucide.Check size={15} /> : null}
+        </button>
+
+        {options.map(([optionValue, optionLabel]) => {
+          const meta = metaMap?.[normalizeKey(optionValue)];
+          const isSelected = value === optionValue;
+          const dotClass = meta?.className?.includes('rose')
+            ? 'bg-rose-500'
+            : meta?.className?.includes('orange')
+              ? 'bg-orange-500'
+              : meta?.className?.includes('amber')
+                ? 'bg-amber-400'
+                : 'bg-slate-400';
+
+          return (
+            <button
+              key={optionValue}
+              type="button"
+              onClick={() => choose(optionValue)}
+              className={`mt-1 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                isSelected
+                  ? 'bg-blue-50 font-semibold text-blue-700'
+                  : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+              <span className="flex-1">{optionLabel}</span>
+              {isSelected ? <Lucide.Check size={15} /> : null}
+            </button>
+          );
+        })}
+      </div>
+    </details>
+  );
+};
+
+const TableSkeleton = () => (
+  <div className="space-y-3 p-5 sm:p-6">
+    {Array.from({ length: 6 }, (_, index) => (
+      <div key={index} className="grid grid-cols-[3.4fr_1.2fr_1fr_1.3fr_1.4fr_0.5fr] gap-4">
+        {Array.from({ length: 6 }, (_, cellIndex) => (
+          <div key={cellIndex} className="h-10 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
         ))}
       </div>
-      <span className="sr-only">Đang tải dữ liệu</span>
-    </section>
+    ))}
+  </div>
+);
+
+export const IncidentManagement = () => {
+  const { user } = useAuth();
+  const incidentSnapshotKey = useMemo(
+    () => getScopedSessionKey(INCIDENT_LIST_SNAPSHOT_KEY_BASE, user),
+    [user],
   );
-}
-
-function IncidentBadges({ incident }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      <Badge intent={getStatusIntent(incident?.status)}>
-        {getManagerIncidentStatusLabel(incident?.status)}
-      </Badge>
-      <Badge intent={getPriorityIntent(incident?.priority)}>
-        Ưu tiên: {getManagerIncidentPriorityLabel(incident?.priority)}
-      </Badge>
-      <Badge intent={getSeverityIntent(incident?.severity)}>
-        Mức độ: {getManagerIncidentSeverityLabel(incident?.severity)}
-      </Badge>
-      {incident?.mergedIntoIncidentId ? <Badge intent="neutral">Đã gộp</Badge> : null}
-    </div>
+  const incidentReturnKey = useMemo(
+    () => getScopedSessionKey(INCIDENT_RETURN_STORAGE_KEY_BASE, user),
+    [user],
   );
-}
-
-function DetailLink({ incident }) {
-  const incidentId = incident?.incidentId;
-  if (!incidentId) return <span className="text-sm text-slate-500">{MISSING_INCIDENT_VALUE}</span>;
-
-  return (
-    <Link
-      to={`/manager/incidents/${incidentId}`}
-      className="inline-flex min-h-10 min-w-[8.75rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-sm font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50"
-      aria-label={`Xem chi tiết sự vụ ${formatManagerIncidentCode(incidentId)}`}
-    >
-      Xem chi tiết
-      <Lucide.ArrowRight size={16} aria-hidden="true" />
-    </Link>
-  );
-}
-
-function IncidentCards({ incidents }) {
-  return (
-    <div className="divide-y divide-slate-100 xl:hidden dark:divide-slate-800">
-      {incidents.map((incident) => (
-        <article key={incident.incidentId} className="px-5 py-5 sm:px-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.08em] text-blue-700 dark:text-blue-300">
-                {formatManagerIncidentCode(incident.incidentId)}
-              </p>
-              <h3 className="mt-1.5 text-base font-bold leading-6 text-slate-950 dark:text-white">
-                {incident.title || MISSING_INCIDENT_VALUE}
-              </h3>
-            </div>
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300" aria-hidden="true">
-              <Lucide.BriefcaseBusiness size={19} />
-            </span>
-          </div>
-
-          <div className="mt-4"><IncidentBadges incident={incident} /></div>
-
-          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Phường / Khu vực</dt>
-              <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{incident.areaName || MISSING_INCIDENT_VALUE}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Danh mục</dt>
-              <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{getCategoryLabel(incident.categoryName, MISSING_INCIDENT_VALUE)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Staff phụ trách</dt>
-              <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{incident.assignedStaffName || 'Chưa phân công'}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Số Report</dt>
-              <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{formatManagerIncidentCount(incident.reportCount)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Người theo dõi</dt>
-              <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{formatManagerIncidentCount(incident.subscriberCount)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Cập nhật gần nhất</dt>
-              <dd className="mt-1 font-semibold text-slate-800 dark:text-slate-100">{formatManagerIncidentDateTime(incident.updatedAt || incident.createdAt)}</dd>
-            </div>
-          </dl>
-
-          {incident.locationText ? (
-            <p className="mt-4 flex items-start gap-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-              <Lucide.MapPin className="mt-1 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              {incident.locationText}
-            </p>
-          ) : null}
-
-          <div className="mt-5"><DetailLink incident={incident} /></div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function IncidentTable({ incidents }) {
-  return (
-    <div className="hidden xl:block">
-      <table className="w-full table-fixed text-sm">
-        <caption className="sr-only">Danh sách sự vụ thuộc phạm vi quản lý</caption>
-        <colgroup>
-          <col className="w-[22%]" />
-          <col className="w-[14%]" />
-          <col className="w-[18%]" />
-          <col className="w-[11%]" />
-          <col className="w-[9%]" />
-          <col className="w-[8%]" />
-          <col className="w-[18%]" />
-        </colgroup>
-        <thead className="admin-table-head">
-          <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.06em]">
-            <th scope="col" className="px-5 py-3">Sự vụ</th>
-            <th scope="col" className="px-4 py-3">Khu vực / Danh mục</th>
-            <th scope="col" className="px-4 py-3">Trạng thái xử lý</th>
-            <th scope="col" className="px-4 py-3">Staff phụ trách</th>
-            <th scope="col" className="px-4 py-3">Quy mô</th>
-            <th scope="col" className="px-4 py-3">Cập nhật</th>
-            <th scope="col" className="px-5 py-3"><span className="sr-only">Thao tác</span></th>
-          </tr>
-        </thead>
-        <tbody className="admin-table-body divide-y divide-slate-100 dark:divide-slate-800">
-          {incidents.map((incident) => (
-            <tr key={incident.incidentId} className="admin-table-row align-top">
-              <th scope="row" className="px-5 py-4 text-left font-normal">
-                <p className="text-xs font-bold uppercase tracking-[0.08em] text-blue-700 dark:text-blue-300">
-                  {formatManagerIncidentCode(incident.incidentId)}
-                </p>
-                <p className="mt-1.5 line-clamp-2 font-bold leading-6 text-slate-950 dark:text-white">
-                  {incident.title || MISSING_INCIDENT_VALUE}
-                </p>
-                {incident.locationText ? <p className="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">{incident.locationText}</p> : null}
-              </th>
-              <td className="px-4 py-4">
-                <p className="font-semibold text-slate-800 dark:text-slate-100">{incident.areaName || MISSING_INCIDENT_VALUE}</p>
-                <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{getCategoryLabel(incident.categoryName, MISSING_INCIDENT_VALUE)}</p>
-              </td>
-              <td className="px-4 py-4"><IncidentBadges incident={incident} /></td>
-              <td className="px-4 py-4">
-                <p className="line-clamp-2 font-semibold leading-5 text-slate-800 dark:text-slate-100">{incident.assignedStaffName || 'Chưa phân công'}</p>
-              </td>
-              <td className="px-4 py-4">
-                <p className="font-bold text-slate-900 dark:text-white">{formatManagerIncidentCount(incident.reportCount)} Report</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatManagerIncidentCount(incident.subscriberCount)} người theo dõi</p>
-              </td>
-              <td className="px-4 py-4">
-                <time dateTime={incident.updatedAt || incident.createdAt || undefined} className="text-xs leading-5 text-slate-600 dark:text-slate-300">
-                  {formatManagerIncidentDateTime(incident.updatedAt || incident.createdAt)}
-                </time>
-              </td>
-              <td className="px-3 py-4 text-right"><DetailLink incident={incident} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Pagination({ pagination, pageSize, loading, onPageChange, onPageSizeChange }) {
-  const pageNumber = Math.max(Number(pagination.pageNumber) || 1, 1);
-  const totalPages = Math.max(Number(pagination.totalPages) || 1, 1);
-  const totalItems = Number(pagination.totalItems) || 0;
-
-  return (
-    <footer className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800">
-      <p className="text-sm text-slate-500 dark:text-slate-400" aria-live="polite">
-        <strong className="text-slate-800 dark:text-slate-200">{totalItems.toLocaleString('vi-VN')}</strong> sự vụ · Trang {pageNumber}/{totalPages}
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="manager-incident-page-size" className="text-sm font-medium text-slate-600 dark:text-slate-300">Số dòng</label>
-        <Select id="manager-incident-page-size" value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))} className="h-10 w-20" disabled={loading}>
-          {PAGE_SIZE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
-        </Select>
-        <Button type="button" variant="outline" size="sm" disabled={loading || !pagination.hasPreviousPage} onClick={() => onPageChange(pageNumber - 1)}>
-          <Lucide.ChevronLeft size={16} aria-hidden="true" />
-          Trước
-        </Button>
-        <Button type="button" variant="outline" size="sm" disabled={loading || !pagination.hasNextPage} onClick={() => onPageChange(pageNumber + 1)}>
-          Sau
-          <Lucide.ChevronRight size={16} aria-hidden="true" />
-        </Button>
-      </div>
-    </footer>
-  );
-}
-
-function PageMessage({ state, hasActiveFilters, onRetry }) {
-  const content = {
-    [PAGE_STATE.API_UNAVAILABLE]: {
-      icon: Lucide.ServerOff,
-      title: 'Chưa có API hỗ trợ danh sách sự vụ',
-      description: 'Backend hiện chưa cung cấp nguồn dữ liệu phù hợp cho danh sách sự vụ.',
-    },
-    [PAGE_STATE.ERROR]: {
-      icon: Lucide.TriangleAlert,
-      title: 'Không thể tải danh sách sự vụ',
-      description: 'Đã xảy ra lỗi khi kết nối với máy chủ. Vui lòng thử lại.',
-      action: (
-        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-          <Lucide.RefreshCw size={16} aria-hidden="true" />
-          Thử lại
-        </Button>
-      ),
-    },
-    [PAGE_STATE.EMPTY]: hasActiveFilters
-      ? {
-        icon: Lucide.SearchX,
-        title: 'Không tìm thấy sự vụ phù hợp',
-        description: 'Hãy thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.',
-      }
-      : {
-        icon: Lucide.ClipboardList,
-        title: 'Chưa có sự vụ nào',
-        description: 'Các sự vụ thuộc phạm vi quản lý sẽ xuất hiện tại đây.',
-      },
-  }[state];
-
-  return content ? <EmptyState {...content} /> : null;
-}
-
-export function ManagerIncidentListPage() {
-  const [areas, setAreas] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [draftSearch, setDraftSearch] = useState('');
-  const [filters, setFilters] = useState({
-    search: '',
-    areaId: '',
-    categoryId: '',
-    status: '',
-    priority: '',
-    severity: '',
-    includeMerged: false,
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestIdRef = useRef(0);
+  const lastLoadedQueryRef = useRef('');
+  const restoredCacheConsumedRef = useRef(false);
+  const restoreScrollConsumedRef = useRef(false);
+  const queryKey = searchParams.toString();
+  const [initialSnapshot] = useState(() => readIncidentSnapshot(queryKey, incidentSnapshotKey));
+  const [returnContext] = useState(() => {
+    const stored = readIncidentReturnContext(incidentReturnKey);
+    if (!stored || stored.queryKey !== queryKey) return null;
+    return stored;
   });
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [incidents, setIncidents] = useState([]);
-  const [pagination, setPagination] = useState({
+
+  const pageNumber = Math.max(1, Number(searchParams.get('page')) || 1);
+  const search = searchParams.get('search') || '';
+  const [searchInput, setSearchInput] = useState(search);
+  const areaId = searchParams.get('areaId') || '';
+  const categoryId = searchParams.get('categoryId') || '';
+  const categoryGroup = searchParams.get('categoryGroup') || '';
+  const status = searchParams.get('status') || '';
+  const statusGroup = searchParams.get('statusGroup') || '';
+  const priority = searchParams.get('priority') || '';
+  const severity = searchParams.get('severity') || '';
+
+  const [incidents, setIncidents] = useState(() => initialSnapshot?.incidents || []);
+  const [areas, setAreas] = useState(() => initialSnapshot?.areas || []);
+  const [categories, setCategories] = useState(() => initialSnapshot?.categories || []);
+  const [pagination, setPagination] = useState(() => initialSnapshot?.pagination || {
     pageNumber: 1,
-    pageSize: 10,
+    pageSize: PAGE_SIZE,
     totalItems: 0,
-    totalPages: 0,
+    totalPages: 1,
     hasPreviousPage: false,
     hasNextPage: false,
   });
-  const [state, setState] = useState(PAGE_STATE.LOADING);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [loading, setLoading] = useState(() => !initialSnapshot);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [refreshError, setRefreshError] = useState('');
+  const [searchTruncated, setSearchTruncated] = useState(false);
+
+  const updateFilters = useCallback((patch) => {
+    const next = new URLSearchParams(searchParams);
+    Object.entries(patch).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '' || value === 'all') next.delete(key);
+      else next.set(key, String(value));
+    });
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // Search input is deliberately decoupled from the URL.
+  // Updating searchParams on every keystroke makes a controlled input lose fast
+  // numeric/date characters because router updates can arrive between key events.
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
   useEffect(() => {
-    let active = true;
-    const loadLookups = async () => {
-      const [areaResult, categoryResult] = await Promise.allSettled([
-        toolsApi.getAreas(),
-        toolsApi.getCategories(),
-      ]);
-      if (!active) return;
+    const timerId = window.setTimeout(() => {
+      const nextSearch = searchInput.trim();
+      if (nextSearch === search.trim()) return;
+      updateFilters({ search: nextSearch, page: 1 });
+    }, 350);
+
+    return () => window.clearTimeout(timerId);
+  }, [search, searchInput, updateFilters]);
+
+  const fetchIncidents = useCallback(async ({ background = false } = {}) => {
+    const requestId = ++requestIdRef.current;
+    if (background) {
+      setRefreshing(true);
+      setRefreshError('');
+    } else {
+      setLoading(true);
+      setError('');
+    }
+
+    try {
+      const normalizedSearch = search.trim();
+      const groupedStatuses = STATUS_GROUPS[statusGroup] || null;
+      const unclassifiedOnly = categoryGroup === 'unclassified';
+
+      if (unclassifiedOnly) {
+        const collected = [];
+        let requestedPage = 1;
+        let totalPages = 1;
+
+        do {
+          const response = await incidentManagementApi.getIncidents({
+            pageNumber: requestedPage,
+            pageSize: SMART_SEARCH_PAGE_SIZE,
+            areaId,
+            status,
+            priority,
+            severity,
+            search: '',
+            includeMerged: false,
+          });
+
+          if (requestId !== requestIdRef.current) return;
+
+          const normalizedPage = normalizeListResponse(response, requestedPage);
+          collected.push(...normalizedPage.items);
+          totalPages = normalizedPage.pagination.totalPages;
+          requestedPage += 1;
+        } while (requestedPage <= totalPages);
+
+        const matchedCategory = collected.filter((item) => {
+          const itemCategoryId = item?.categoryId ?? item?.category?.categoryId ?? item?.category?.id;
+          const itemCategoryName = String(item?.categoryName ?? item?.category?.name ?? '').trim().toLowerCase();
+          const isUnclassified = itemCategoryId === undefined || itemCategoryId === null || itemCategoryId === '' || itemCategoryName === 'chưa phân loại' || itemCategoryName === 'unclassified';
+          return isUnclassified && (!normalizedSearch || matchesSmartSearch(item, normalizedSearch));
+        });
+
+        matchedCategory.sort((left, right) => {
+          const leftTime = new Date(left?.updatedAt ?? left?.createdAt ?? 0).getTime() || 0;
+          const rightTime = new Date(right?.updatedAt ?? right?.createdAt ?? 0).getTime() || 0;
+          return rightTime - leftTime;
+        });
+
+        setSearchTruncated(false);
+        const totalItems = matchedCategory.length;
+        const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePageNumber = Math.min(pageNumber, totalResultPages);
+        const startIndex = (safePageNumber - 1) * PAGE_SIZE;
+
+        lastLoadedQueryRef.current = queryKey;
+        setIncidents(matchedCategory.slice(startIndex, startIndex + PAGE_SIZE));
+        setPagination({
+          pageNumber: safePageNumber,
+          pageSize: PAGE_SIZE,
+          totalItems,
+          totalPages: totalResultPages,
+          hasPreviousPage: safePageNumber > 1,
+          hasNextPage: safePageNumber < totalResultPages,
+        });
+      } else if (groupedStatuses) {
+        const collected = [];
+
+        for (const groupedStatus of groupedStatuses) {
+          let requestedPage = 1;
+          let totalPages = 1;
+
+          do {
+            const response = await incidentManagementApi.getIncidents({
+              pageNumber: requestedPage,
+              pageSize: SMART_SEARCH_PAGE_SIZE,
+              areaId,
+              categoryId,
+              status: groupedStatus,
+              priority,
+              severity,
+              search: '',
+              includeMerged: false,
+            });
+
+            if (requestId !== requestIdRef.current) return;
+
+            const normalizedPage = normalizeListResponse(response, requestedPage);
+            collected.push(...normalizedPage.items);
+            totalPages = normalizedPage.pagination.totalPages;
+            requestedPage += 1;
+          } while (requestedPage <= totalPages);
+        }
+
+        const deduplicated = Array.from(new Map(
+          collected.map((incident) => [String(incident?.incidentId ?? incident?.id ?? ''), incident])
+        ).values()).filter(Boolean);
+
+        const matched = normalizedSearch
+          ? deduplicated.filter((incident) => matchesSmartSearch(incident, normalizedSearch))
+          : deduplicated;
+
+        matched.sort((left, right) => {
+          const leftTime = new Date(left?.updatedAt ?? left?.createdAt ?? 0).getTime() || 0;
+          const rightTime = new Date(right?.updatedAt ?? right?.createdAt ?? 0).getTime() || 0;
+          return rightTime - leftTime;
+        });
+
+        setSearchTruncated(false);
+        const totalItems = matched.length;
+        const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePageNumber = Math.min(pageNumber, totalResultPages);
+        const startIndex = (safePageNumber - 1) * PAGE_SIZE;
+
+        lastLoadedQueryRef.current = queryKey;
+        setIncidents(matched.slice(startIndex, startIndex + PAGE_SIZE));
+        setPagination({
+          pageNumber: safePageNumber,
+          pageSize: PAGE_SIZE,
+          totalItems,
+          totalPages: totalResultPages,
+          hasPreviousPage: safePageNumber > 1,
+          hasNextPage: safePageNumber < totalResultPages,
+        });
+      } else if (normalizedSearch) {
+        // Smart search: the backend Search field does not cover operational
+        // metadata such as severity/status/priority/createdAt. When the user
+        // searches, load the filtered incident set in chunks and search those
+        // fields locally so one search box can find all visible incident data.
+        const collected = [];
+        let requestedPage = 1;
+        let totalPages = 1;
+
+        do {
+          const response = await incidentManagementApi.getIncidents({
+            pageNumber: requestedPage,
+            pageSize: SMART_SEARCH_PAGE_SIZE,
+            areaId,
+            categoryId,
+            status,
+            priority,
+            severity,
+            search: '',
+            includeMerged: false,
+          });
+
+          if (requestId !== requestIdRef.current) return;
+
+          const normalizedPage = normalizeListResponse(response, requestedPage);
+          collected.push(...normalizedPage.items);
+          totalPages = normalizedPage.pagination.totalPages;
+          requestedPage += 1;
+        } while (
+          requestedPage <= totalPages &&
+          collected.length < SMART_SEARCH_MAX_ITEMS
+        );
+
+        const reachedSearchLimit = collected.length >= SMART_SEARCH_MAX_ITEMS && requestedPage <= totalPages;
+        const matched = collected.filter((incident) =>
+          matchesSmartSearch(incident, normalizedSearch)
+        );
+
+        setSearchTruncated(reachedSearchLimit);
+
+        const totalItems = matched.length;
+        const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePageNumber = Math.min(pageNumber, totalResultPages);
+        const startIndex = (safePageNumber - 1) * PAGE_SIZE;
+        const pageItems = matched.slice(startIndex, startIndex + PAGE_SIZE);
+
+        lastLoadedQueryRef.current = queryKey;
+        setIncidents(pageItems);
+        setPagination({
+          pageNumber: safePageNumber,
+          pageSize: PAGE_SIZE,
+          totalItems,
+          totalPages: totalResultPages,
+          hasPreviousPage: safePageNumber > 1,
+          hasNextPage: safePageNumber < totalResultPages,
+        });
+      } else {
+        setSearchTruncated(false);
+        const response = await incidentManagementApi.getIncidents({
+          pageNumber,
+          pageSize: PAGE_SIZE,
+          areaId,
+          categoryId,
+          status,
+          priority,
+          severity,
+          search: '',
+          includeMerged: false,
+        });
+
+        if (requestId !== requestIdRef.current) return;
+
+        const normalized = normalizeListResponse(response, pageNumber);
+        lastLoadedQueryRef.current = queryKey;
+        setIncidents(normalized.items);
+        setPagination(normalized.pagination);
+      }
+    } catch (fetchError) {
+      if (requestId !== requestIdRef.current) return;
+      const message = extractApiErrorMessage(fetchError, 'Không thể tải danh sách sự vụ.');
+      if (background) {
+        setRefreshError(message);
+      } else {
+        setError(message);
+        setIncidents([]);
+        setSearchTruncated(false);
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [areaId, categoryGroup, categoryId, pageNumber, priority, queryKey, search, severity, status, statusGroup]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([toolsApi.getAreas(), toolsApi.getCategories()]).then(([areaResult, categoryResult]) => {
+      if (cancelled) return;
       setAreas(areaResult.status === 'fulfilled' && Array.isArray(areaResult.value) ? areaResult.value : []);
       setCategories(categoryResult.status === 'fulfilled' && Array.isArray(categoryResult.value) ? categoryResult.value : []);
-    };
-    void loadLookups();
-    return () => { active = false; };
+    });
+    return () => { cancelled = true; };
   }, []);
 
-  const loadIncidents = useCallback(async (signal) => {
-    if (!incidentManagementApi.capabilities.list.available) {
-      setState(PAGE_STATE.API_UNAVAILABLE);
-      return;
+  useEffect(() => {
+    if (initialSnapshot?.queryKey === queryKey) {
+      lastLoadedQueryRef.current = queryKey;
     }
-
-    setState(PAGE_STATE.LOADING);
-    try {
-      const response = await incidentManagementApi.getIncidents({
-        pageNumber,
-        pageSize,
-        ...filters,
-      }, { signal });
-      setIncidents(response.items);
-      setPagination(response);
-      setState(response.items.length > 0 ? PAGE_STATE.READY : PAGE_STATE.EMPTY);
-    } catch (error) {
-      if (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return;
-      setIncidents([]);
-      const status = Number(error?.status ?? error?.response?.status);
-      setState([404, 405].includes(status) ? PAGE_STATE.API_UNAVAILABLE : PAGE_STATE.ERROR);
-    }
-  }, [filters, pageNumber, pageSize]);
+  }, [initialSnapshot, queryKey]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    void loadIncidents(controller.signal);
-    return () => controller.abort();
-  }, [loadIncidents, refreshKey]);
+    const canRestoreWithoutRequest = Boolean(
+      !restoredCacheConsumedRef.current &&
+      returnContext &&
+      initialSnapshot &&
+      initialSnapshot.queryKey === queryKey
+    );
 
-  const statusOptions = useMemo(
-    () => collectIncidentEnumValues(incidents, 'status', filters.status),
-    [filters.status, incidents],
-  );
-  const priorityOptions = useMemo(
-    () => collectIncidentEnumValues(incidents, 'priority', filters.priority),
-    [filters.priority, incidents],
-  );
-  const severityOptions = useMemo(
-    () => collectIncidentEnumValues(incidents, 'severity', filters.severity),
-    [filters.severity, incidents],
-  );
-  const hasActiveFilters = hasManagerIncidentFilters(filters);
-  const loading = state === PAGE_STATE.LOADING;
+    if (canRestoreWithoutRequest) {
+      restoredCacheConsumedRef.current = true;
+    } else {
+      // Sau lần tải đầu tiên, giữ nguyên bảng hiện tại khi đổi bộ lọc/phân trang.
+      // Chỉ refresh dữ liệu nền để tránh skeleton làm thay đổi chiều cao và gây giật scroll.
+      const hasLoadedOnce = lastLoadedQueryRef.current !== '';
+      fetchIncidents({
+        background: hasLoadedOnce || Boolean(initialSnapshot && initialSnapshot.queryKey === queryKey),
+      });
+    }
 
-  const changeFilter = (name, value) => {
-    setFilters((current) => ({ ...current, [name]: value }));
-    setPageNumber(1);
-  };
+    return () => { requestIdRef.current += 1; };
+  }, [fetchIncidents, initialSnapshot, queryKey, returnContext]);
 
-  const clearFilters = () => {
-    setDraftSearch('');
-    setFilters({ search: '', areaId: '', categoryId: '', status: '', priority: '', severity: '', includeMerged: false });
-    setPageNumber(1);
-  };
+  useEffect(() => {
+    if (!incidents.length || lastLoadedQueryRef.current !== queryKey) return;
+    writeIncidentSnapshot(incidentSnapshotKey, {
+      queryKey,
+      incidents,
+      areas,
+      categories,
+      pagination,
+    });
+  }, [areas, categories, incidentSnapshotKey, incidents, pagination, queryKey]);
+
+  useLayoutEffect(() => {
+    // Restore vị trí chỉ một lần khi quay lại từ trang chi tiết.
+    // Nếu để effect chạy lại theo `incidents`, mỗi lần filter/pagination cập nhật dữ liệu
+    // nó sẽ kéo vùng cuộn về scrollY cũ và tạo cảm giác giật lên/giật xuống.
+    if (restoreScrollConsumedRef.current) return undefined;
+
+    const savedContext = returnContext;
+    const restoreIncidentId = String(savedContext?.incidentId || location.state?.restoreIncidentId || '');
+    if (!restoreIncidentId || loading || incidents.length === 0) return undefined;
+    if (savedContext?.queryKey && savedContext.queryKey !== queryKey) return undefined;
+
+    const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+    if (!scrollContainer) return undefined;
+
+    restoreScrollConsumedRef.current = true;
+
+    // Khôi phục đúng vị trí cũ trước khi browser paint để tránh nhảy lên đầu rồi cuộn xuống.
+    scrollContainer.scrollTo({
+      top: Number(savedContext?.scrollY) || 0,
+      left: 0,
+      behavior: 'auto',
+    });
+
+    const restoredRow = document.querySelector(
+      `[data-admin-incident-id="${restoreIncidentId}"]`,
+    );
+
+    if (restoredRow && typeof restoredRow.animate === 'function') {
+      restoredRow.animate(
+        [
+          {
+            backgroundColor: 'rgba(239, 246, 255, 0.96)',
+            boxShadow: 'inset 0 0 0 1px rgba(147, 197, 253, 0.8)',
+          },
+          {
+            backgroundColor: 'rgba(239, 246, 255, 0.96)',
+            boxShadow: 'inset 0 0 0 1px rgba(147, 197, 253, 0.8)',
+            offset: 0.72,
+          },
+          {
+            backgroundColor: 'rgba(239, 246, 255, 0)',
+            boxShadow: 'inset 0 0 0 1px rgba(147, 197, 253, 0)',
+          },
+        ],
+        {
+          duration: 2300,
+          easing: 'ease-out',
+        },
+      );
+    }
+
+    // Consume only the history flag, without causing a React Router navigation.
+    // This keeps the restored scroll position intact and prevents future filters
+    // from being treated as another return-from-detail event.
+    try {
+      const historyState = window.history.state;
+      if (historyState?.usr?.restoreIncidentId) {
+        const nextUserState = { ...historyState.usr };
+        delete nextUserState.restoreIncidentId;
+
+        window.history.replaceState(
+          {
+            ...historyState,
+            usr: nextUserState,
+          },
+          document.title,
+        );
+      }
+    } catch { /* noop */ }
+
+    try { window.sessionStorage.removeItem(incidentReturnKey); } catch { /* noop */ }
+
+    return undefined;
+  }, [incidentReturnKey, incidents, loading, location.state?.restoreIncidentId, queryKey, returnContext]);
+
+  const handleOpenIncidentDetail = useCallback((incident) => {
+    const incidentId = incident?.incidentId ?? incident?.id;
+    if (!incidentId) return;
+    const scrollY = document.querySelector('[data-dashboard-scroll-container]')?.scrollTop || 0;
+    try {
+      window.sessionStorage.setItem(incidentReturnKey, JSON.stringify({
+        incidentId: String(incidentId),
+        queryKey,
+        scrollY,
+      }));
+    } catch (storageError) {
+      console.warn('Không thể lưu vị trí danh sách sự vụ', storageError);
+    }
+
+    // Đánh dấu history entry của danh sách trước khi mở chi tiết.
+    // Khi dùng nút Quay lại hoặc Browser Back, DashboardLayout sẽ không reset scroll.
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: {
+        ...(location.state || {}),
+        restoreIncidentId: String(incidentId),
+      },
+    });
+
+    const incidentBasePath = location.pathname.startsWith('/management/incidents')
+      ? '/management/incidents'
+      : '/manager/incidents';
+
+    navigate(`${incidentBasePath}/${incidentId}`, {
+      state: {
+        incident,
+        from: `${incidentBasePath}${queryKey ? `?${queryKey}` : ''}`,
+      },
+    });
+  }, [incidentReturnKey, location.hash, location.pathname, location.search, location.state, navigate, queryKey]);
+
+  const hasFilters = Boolean(search || areaId || categoryId || categoryGroup || status || statusGroup || priority || severity);
+  const selectedArea = useMemo(() => areas.find((area) => String(getOptionId(area)) === String(areaId)), [areaId, areas]);
 
   return (
-    <main className="space-y-6 pb-8">
+    <div className="admin-page-shell manager-ui-page space-y-6">
       <ManagerPageHeader
         title="Quản lý sự vụ"
-        description="Theo dõi, kiểm tra và phân công các sự vụ thuộc phạm vi quản lý."
-        icon={Lucide.BriefcaseBusiness}
-        statusLabel="Nguồn dữ liệu"
-        statusValue="Incident"
-        statusTone="info"
+        description="Theo dõi các sự vụ đã được tổng hợp từ phản ánh và điều phối xử lý theo khu vực."
+        icon={Lucide.Siren}
+        actions={(
+          <button
+            type="button"
+            onClick={() => fetchIncidents({ background: incidents.length > 0 })}
+            className="btn admin-secondary-action h-10 rounded-xl px-3.5 text-sm font-semibold normal-case"
+            disabled={loading || refreshing}
+          >
+            <Lucide.RefreshCcw size={15} className={loading || refreshing ? 'animate-spin' : ''} />
+            Làm mới
+          </button>
+        )}
       />
 
-      <section className="admin-panel p-5 sm:p-6" aria-labelledby="manager-incident-filter-title">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 id="manager-incident-filter-title" className="admin-section-title">Bộ lọc sự vụ</h2>
-            <p className="admin-section-description mt-1">Các điều kiện dưới đây được gửi trực tiếp đến API quản lý Incident.</p>
+      <section className="admin-panel relative overflow-visible">
+        <div className="manager-list-panel-header px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách sự vụ</h2>
+                <ManagerListRefreshIndicator visible={refreshing} />
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <span>Tổng cộng {pagination.totalItems} sự vụ</span>
+                {selectedArea ? (
+                  <span className="manager-active-filter-chip">
+                    <Lucide.MapPin size={13} aria-hidden="true" />
+                    {getOptionName(selectedArea)}
+                  </span>
+                ) : null}
+                {searchTruncated ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20" title={`Tìm kiếm cục bộ đang giới hạn ${SMART_SEARCH_MAX_ITEMS.toLocaleString('vi-VN')} sự vụ đầu tiên theo bộ lọc hiện tại.`}>
+                    <Lucide.AlertTriangle size={13} aria-hidden="true" />
+                    Tìm trong {SMART_SEARCH_MAX_ITEMS.toLocaleString('vi-VN')} sự vụ đầu tiên
+                  </span>
+                ) : null}
+              </div>
+              {refreshError ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200" role="status">
+                  <Lucide.TriangleAlert size={14} aria-hidden="true" />
+                  <span className="min-w-0 flex-1">Không thể làm mới dữ liệu. Danh sách hiện tại vẫn được giữ nguyên.</span>
+                  <button type="button" onClick={() => fetchIncidents({ background: incidents.length > 0 })} className="inline-flex h-7 items-center gap-1 rounded-lg px-2 font-semibold hover:bg-amber-100 dark:hover:bg-amber-500/10">
+                    <Lucide.RefreshCcw size={12} />Thử lại
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid gap-3 xl:grid-cols-[minmax(320px,1.45fr)_minmax(170px,0.85fr)_minmax(190px,0.95fr)_minmax(180px,0.9fr)]">
+                <label className="relative block min-w-0">
+                  <span className="sr-only">Tìm kiếm sự vụ</span>
+                  <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    className="input h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    placeholder="Tìm mã, nội dung, phường, trạng thái, mức độ, ngày..."
+                    autoComplete="off"
+                  />
+                  {searchInput ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchInput('');
+                        updateFilters({ search: '', page: 1 });
+                      }}
+                      className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/70"
+                      aria-label="Xóa từ khóa"
+                    >
+                      <Lucide.X size={15} />
+                    </button>
+                  ) : null}
+                </label>
+
+                <MainFilterMenu
+                  label="Phường"
+                  value={areaId}
+                  options={buildAreaFilterOptions(areas)}
+                  icon={Lucide.MapPin}
+                  onChange={(nextValue) => updateFilters({ areaId: nextValue, page: 1 })}
+                  widthClass="w-[300px]"
+                />
+
+                <MainFilterMenu
+                  label="Danh mục"
+                  value={categoryGroup === 'unclassified' ? '__unclassified__' : categoryId}
+                  options={buildCategoryFilterOptions(categories)}
+                  icon={Lucide.FolderKanban}
+                  onChange={(nextValue) => {
+                    if (nextValue === '__unclassified__') {
+                      updateFilters({ categoryId: '', categoryGroup: 'unclassified', page: 1 });
+                      return;
+                    }
+                    updateFilters({ categoryId: nextValue, categoryGroup: '', page: 1 });
+                  }}
+                  widthClass="w-[320px]"
+                />
+
+                <MainFilterMenu
+                  label="Trạng thái"
+                  value={statusGroup ? `__group_${statusGroup}__` : status}
+                  options={STATUS_FILTER_OPTIONS}
+                  icon={Lucide.Filter}
+                  onChange={(nextValue) => {
+                    if (nextValue === '__group_active__') {
+                      updateFilters({ status: '', statusGroup: 'active', page: 1 });
+                      return;
+                    }
+                    if (nextValue === '__group_completed__') {
+                      updateFilters({ status: '', statusGroup: 'completed', page: 1 });
+                      return;
+                    }
+                    updateFilters({ status: nextValue, statusGroup: '', page: 1 });
+                  }}
+                  widthClass="w-[300px]"
+                  maxHeightClass="max-h-[360px]"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="mr-1 text-xs font-semibold uppercase tracking-[0.06em] text-slate-400">Lọc nhanh</span>
+
+                <QuickFilterMenu
+                  label="Ưu tiên"
+                  value={priority}
+                  options={PRIORITY_OPTIONS}
+                  icon={Lucide.Gauge}
+                  metaMap={PRIORITY_META}
+                  onChange={(nextValue) => updateFilters({ priority: nextValue, page: 1 })}
+                />
+
+                <QuickFilterMenu
+                  label="Mức nghiêm trọng"
+                  value={severity}
+                  options={SEVERITY_OPTIONS}
+                  icon={Lucide.Activity}
+                  metaMap={PRIORITY_META}
+                  onChange={(nextValue) => updateFilters({ severity: nextValue, page: 1 })}
+                />
+
+                {hasFilters ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchParams({}, { replace: true })}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+                  >
+                    <Lucide.RotateCcw size={14} />
+                    Xóa tất cả
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </div>
-          {hasActiveFilters ? (
-            <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
-              <Lucide.RotateCcw size={16} aria-hidden="true" />
-              Xóa bộ lọc
-            </Button>
-          ) : null}
         </div>
 
-        <form
-          className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-12"
-          onSubmit={(event) => {
-            event.preventDefault();
-            changeFilter('search', draftSearch.trim());
-          }}
-        >
-          <FilterField label="Tìm kiếm" htmlFor="manager-incident-search" className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
-            <div className="flex gap-2">
-              <Input id="manager-incident-search" value={draftSearch} onChange={(event) => setDraftSearch(event.target.value)} placeholder="Mã, tiêu đề hoặc nội dung sự vụ" />
-              <Button type="submit" size="sm" className="shrink-0 whitespace-nowrap" disabled={loading}>
-                <Lucide.Search size={16} aria-hidden="true" />
-                Tìm
-              </Button>
-            </div>
-          </FilterField>
-          <FilterField label="Phường / Khu vực" htmlFor="manager-incident-area" className="xl:col-span-2">
-            <Select id="manager-incident-area" value={filters.areaId} onChange={(event) => changeFilter('areaId', event.target.value)}>
-              <option value="">Tất cả khu vực</option>
-              {areas.map((area) => <option key={getAreaId(area)} value={getAreaId(area)}>{getAreaName(area)}</option>)}
-            </Select>
-          </FilterField>
-          <FilterField label="Danh mục" htmlFor="manager-incident-category" className="xl:col-span-2">
-            <Select id="manager-incident-category" value={filters.categoryId} onChange={(event) => changeFilter('categoryId', event.target.value)}>
-              <option value="">Tất cả danh mục</option>
-              {categories.map((category) => <option key={getCategoryId(category)} value={getCategoryId(category)}>{getCategoryLabel(category?.name || category?.categoryName, MISSING_INCIDENT_VALUE)}</option>)}
-            </Select>
-          </FilterField>
-          <FilterField label="Trạng thái" htmlFor="manager-incident-status" className="xl:col-span-2">
-            <Select id="manager-incident-status" value={filters.status} onChange={(event) => changeFilter('status', event.target.value)}>
-              <option value="">Tất cả trạng thái</option>
-              {statusOptions.map((value) => <option key={value} value={value}>{getManagerIncidentStatusLabel(value)}</option>)}
-            </Select>
-          </FilterField>
-          <FilterField label="Mức ưu tiên" htmlFor="manager-incident-priority" className="xl:col-span-2">
-            <Select id="manager-incident-priority" value={filters.priority} onChange={(event) => changeFilter('priority', event.target.value)}>
-              <option value="">Tất cả mức ưu tiên</option>
-              {priorityOptions.map((value) => <option key={value} value={value}>{getManagerIncidentPriorityLabel(value)}</option>)}
-            </Select>
-          </FilterField>
-          <FilterField label="Mức độ nghiêm trọng" htmlFor="manager-incident-severity" className="xl:col-span-3">
-            <Select id="manager-incident-severity" value={filters.severity} onChange={(event) => changeFilter('severity', event.target.value)}>
-              <option value="">Tất cả mức độ</option>
-              {severityOptions.map((value) => <option key={value} value={value}>{getManagerIncidentSeverityLabel(value)}</option>)}
-            </Select>
-          </FilterField>
-          <div className="flex items-end sm:col-span-2 lg:col-span-2 xl:col-span-4">
-            <label className="flex min-h-10 w-full cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-              <input type="checkbox" checked={filters.includeMerged} onChange={(event) => changeFilter('includeMerged', event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-              Hiển thị sự vụ đã gộp
-            </label>
+        {loading ? (
+          <TableSkeleton />
+        ) : error ? (
+          <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600"><Lucide.WifiOff size={24} /></div>
+            <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không thể tải danh sách sự vụ</h3>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">{error}</p>
+            <button type="button" onClick={() => fetchIncidents()} className="btn btn-outline mt-5 h-10 rounded-xl text-sm"><Lucide.RefreshCcw size={15} />Thử lại</button>
           </div>
-        </form>
+        ) : incidents.length === 0 ? (
+          <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500"><Lucide.Siren size={24} /></div>
+            <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không tìm thấy sự vụ phù hợp</h3>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{hasFilters ? 'Thử xóa bớt bộ lọc hoặc thay đổi từ khóa.' : 'Chưa có dữ liệu sự vụ để hiển thị.'}</p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-hidden">
+              <table className="manager-data-table table w-full table-fixed text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
+                  <th className="w-auto px-5 py-3.5">Sự vụ</th>
+                  <th className="hidden w-[150px] whitespace-nowrap px-4 py-3.5 xl:table-cell">Mức nghiêm trọng</th>
+                  <th className="hidden w-[110px] whitespace-nowrap px-4 py-3.5 lg:table-cell">Ưu tiên</th>
+                  <th className="hidden w-[150px] px-4 py-3.5 sm:table-cell">Trạng thái</th>
+                  <th className="hidden w-[170px] px-4 py-3.5 md:table-cell">Ngày tạo</th>
+                  <th className="w-[52px] px-3 py-3.5"><span className="sr-only">Thao tác</span></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {incidents.map((incident) => {
+                  const incidentId = incident?.incidentId ?? incident?.id;
+                  const title = incident?.title ?? incident?.summary ?? 'Sự vụ chưa có tiêu đề';
+                  const areaName = incident?.areaName ?? incident?.wardName ?? incident?.area?.name ?? 'Chưa xác định phường';
+                  const categoryName = incident?.categoryName ?? incident?.category?.name ?? 'Chưa phân loại';
+                  const reportCount = Number(incident?.reportCount ?? incident?.reportsCount ?? 0) || 0;
+                  const subscriberCount = Number(incident?.subscriberCount ?? incident?.subscribersCount ?? 0) || 0;
+                  return (
+                    <tr
+                      key={incidentId}
+                      data-admin-incident-id={String(incidentId)}
+                      className="manager-entity-row cursor-pointer"
+                      onClick={() => handleOpenIncidentDetail(incident)}
+                    >
+                      <td className="min-w-0 px-5 py-4">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
+                            <Lucide.Siren size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.05em] text-blue-600 dark:text-blue-300">
+                                {formatIncidentId(incidentId)}
+                              </span>
+                              <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+                              <p className="min-w-0 truncate font-semibold text-slate-900 dark:text-slate-100" title={title}>{title}</p>
+                            </div>
+                            <p className="mt-1.5 truncate text-xs text-slate-500 dark:text-slate-400" title={`${areaName} · ${categoryName} · ${reportCount} phản ánh · ${subscriberCount} theo dõi`}>
+                              {areaName} · {categoryName} · {reportCount} phản ánh · {subscriberCount} theo dõi
+                            </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 xl:hidden dark:text-slate-400">
+                              <span className="sm:hidden">Trạng thái: <span className="font-semibold text-slate-700 dark:text-slate-200">{getMetaLabel(STATUS_META, incident?.status) || 'Chưa rõ'}</span></span>
+                              <span className="xl:hidden">Nghiêm trọng: <span className="font-semibold text-slate-700 dark:text-slate-200">{getMetaLabel(PRIORITY_META, incident?.severity) || 'Chưa đặt'}</span></span>
+                              <span className="lg:hidden">Ưu tiên: <span className="font-semibold text-slate-700 dark:text-slate-200">{getMetaLabel(PRIORITY_META, incident?.priority) || 'Chưa đặt'}</span></span>
+                              <span className="md:hidden">Tạo: <span className="font-semibold text-slate-700 dark:text-slate-200">{formatDateTime(incident?.createdAt)}</span></span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="hidden px-4 py-4 xl:table-cell"><SeverityBadge severity={incident?.severity} /></td>
+                      <td className="hidden px-4 py-4 lg:table-cell"><PriorityBadge priority={incident?.priority} /></td>
+                      <td className="hidden px-4 py-4 sm:table-cell"><StatusBadge status={incident?.status} /></td>
+                      <td className="hidden px-4 py-4 md:table-cell">
+                        <p className="whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {formatDateTime(incident?.createdAt)}
+                        </p>
+                        {incident?.updatedAt && incident?.updatedAt !== incident?.createdAt ? (
+                          <p className="mt-1 whitespace-nowrap text-[11px] text-slate-400 dark:text-slate-500">
+                            Cập nhật {formatDateTime(incident?.updatedAt)}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); handleOpenIncidentDetail(incident); }}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-500/10"
+                          aria-label={`Xem chi tiết ${title}`}
+                          title="Xem chi tiết"
+                        >
+                          <Lucide.ChevronRight size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              </table>
+            </div>
+
+            {pagination.totalItems > 0 ? (
+              <div className="manager-pagination flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+                <p className="text-sm text-slate-500 dark:text-slate-400">Trang <span className="font-semibold text-slate-700 dark:text-slate-200">{pagination.pageNumber}</span> / {pagination.totalPages}</p>
+                <div className="flex items-center gap-2">
+                  <button type="button" disabled={!pagination.hasPreviousPage || refreshing} onClick={() => updateFilters({ page: Math.max(1, pagination.pageNumber - 1) })} className="btn btn-outline h-10 min-h-0 rounded-xl border-slate-300 px-3 text-sm disabled:opacity-50 dark:border-slate-700"><Lucide.ChevronLeft size={16} />Trước</button>
+                  <button type="button" disabled={!pagination.hasNextPage || refreshing} onClick={() => updateFilters({ page: Math.min(pagination.totalPages, pagination.pageNumber + 1) })} className="btn btn-outline h-10 min-h-0 rounded-xl border-slate-300 px-3 text-sm disabled:opacity-50 dark:border-slate-700">Sau<Lucide.ChevronRight size={16} /></button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
       </section>
-
-      {loading ? <IncidentListSkeleton /> : null}
-      {state === PAGE_STATE.READY ? (
-        <section className="admin-panel overflow-hidden" aria-labelledby="manager-incident-list-title">
-          <header className="border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
-            <h2 id="manager-incident-list-title" className="admin-section-title">Danh sách sự vụ</h2>
-            <p className="admin-section-description mt-1">Theo dõi trạng thái, quy mô Report và Staff đang phụ trách.</p>
-          </header>
-          <IncidentCards incidents={incidents} />
-          <IncidentTable incidents={incidents} />
-          <Pagination pagination={pagination} pageSize={pageSize} loading={loading} onPageChange={setPageNumber} onPageSizeChange={(value) => { setPageSize(value); setPageNumber(1); }} />
-        </section>
-      ) : null}
-      {[PAGE_STATE.EMPTY, PAGE_STATE.ERROR, PAGE_STATE.API_UNAVAILABLE].includes(state) ? (
-        <PageMessage state={state} hasActiveFilters={hasActiveFilters} onRetry={() => setRefreshKey((value) => value + 1)} />
-      ) : null}
-    </main>
+    </div>
   );
-}
+};
 
-export default ManagerIncidentListPage;
+export const ManagerIncidentListPage = IncidentManagement;

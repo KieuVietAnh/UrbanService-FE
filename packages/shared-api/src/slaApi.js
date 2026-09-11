@@ -152,6 +152,27 @@ async getFeedbackSlaTimeline(feedbackId) {
   return unwrapApiData(response);
 },
 
+
+  async getCurrentIncidentSla(incidentId, requestConfig = {}) {
+    const response = await axiosClient.get(`/api/slas/incident/${incidentId}`, requestConfig);
+    return unwrapApiData(response);
+  },
+
+  async getIncidentSlaStatus(incidentId, requestConfig = {}) {
+    const response = await axiosClient.get(`/api/slas/incident/${incidentId}/status`, requestConfig);
+    return unwrapApiData(response);
+  },
+
+  async getIncidentSlaTimeline(incidentId, requestConfig = {}) {
+    const response = await axiosClient.get(`/api/slas/incident/${incidentId}/timeline`, requestConfig);
+    return unwrapApiData(response);
+  },
+
+  async checkIncidentSlaViolation(incidentSlaId) {
+    const response = await axiosClient.post(`/api/slas/${incidentSlaId}/check`);
+    return unwrapApiData(response);
+  },
+
   async getDashboardOverview() {
     const response = await axiosClient.get('/api/slas/dashboard/overview');
     return unwrapApiData(response);

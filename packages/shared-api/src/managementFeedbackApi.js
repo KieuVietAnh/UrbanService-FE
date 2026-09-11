@@ -694,7 +694,7 @@ export const managementFeedbackApi = {
     } catch (error) {
       if (error?.response?.status === 404) return [];
       console.warn('managementFeedbackApi.getCoordinatorCoverages failed', error);
-      return [];
+      throw error;
     }
   },
 
