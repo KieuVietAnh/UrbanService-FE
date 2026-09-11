@@ -13,6 +13,5 @@ export default [
   },
   { name: 'Phân tích SLA', path: '/analytics/sla', icon: 'BarChart3' },
   { name: 'Cảm xúc người dân (AI)', path: '/analytics/sentiment', icon: 'Smile' },
-  { name: 'Bản đồ điểm nóng', path: '/analytics/heatmap', icon: 'Flame' },
-  { name: 'Cài đặt', path: '/settings', icon: 'Settings' }
+  { name: 'Bản đồ điểm nóng', path: '/analytics/heatmap', icon: 'Flame' }
 ];

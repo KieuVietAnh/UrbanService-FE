@@ -958,7 +958,7 @@ export const InteractionHistoryMonitoring = () => {
     <article className="admin-page-shell manager-ui-page space-y-6">
       <ManagerPageHeader
         title="Giám sát phản ánh"
-        description="Theo dõi trạng thái phản ánh xuyên suốt từ khi tiếp nhận đến khi xử lý và hoàn tất."
+        description="Theo dõi phản ánh từ tiếp nhận đến hoàn tất xử lý."
         icon={Lucide.MessagesSquare}
         statusLabel="Phạm vi đang giám sát"
         statusValue={dataUnavailable ? 'Không thể tải' : `${serverTotalItems} phản ánh`}

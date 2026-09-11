@@ -54,6 +54,7 @@ const HelperWorkspacePage = lazy(() => import('../pages/community/HelperWorkspac
 
 const SLAAnalytics = lazy(() => import('../pages/analytics/SLAAnalytics').then((m) => ({ default: m.SLAAnalytics })));
 const SentimentDashboard = lazy(() => import('../pages/analytics/SentimentDashboard').then((m) => ({ default: m.SentimentDashboard })));
+const SentimentNegativeListPage = lazy(() => import('../pages/analytics/SentimentNegativeListPage').then((m) => ({ default: m.SentimentNegativeListPage })));
 const HeatmapDashboard = lazy(() => import('../pages/analytics/HeatmapDashboard').then((m) => ({ default: m.HeatmapDashboard })));
 const InteractionHistoryMonitoring = lazy(() => import('../pages/analytics/InteractionHistoryMonitoring').then((m) => ({ default: m.InteractionHistoryMonitoring })));
 const InteractionApprovalInboxPage = lazy(() => import('../pages/manager/InteractionApprovalInboxPage').then((m) => ({ default: m.InteractionApprovalInboxPage })));
@@ -579,9 +580,7 @@ export const AppRoutes = () => {
       <Route path="/manager/map" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
-            <DashboardLayout>
-              <AdminIncidentMapPage mode="manager" />
-            </DashboardLayout>
+            <Navigate to="/analytics/heatmap" replace />
           </RoleGuard>
         </ProtectedRoute>
       } />
@@ -626,6 +625,15 @@ export const AppRoutes = () => {
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
             <DashboardLayout>
               <SentimentDashboard />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
+      <Route path="/analytics/sentiment/negative" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER, APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <SentimentNegativeListPage />
             </DashboardLayout>
           </RoleGuard>
         </ProtectedRoute>

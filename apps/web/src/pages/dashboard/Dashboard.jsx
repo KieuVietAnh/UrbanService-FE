@@ -18,6 +18,7 @@ import usePublicLandingFeed from '../../hooks/usePublicLandingFeed';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
 import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
+import { buildManagerDashboardStats, managerMetricValue } from './managerDashboardUtils.mjs';
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-area-filter-v2';
@@ -891,7 +892,9 @@ export const Dashboard = () => {
         ] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
-            : analyticsApi.getSystemDashboardStats(currentRole),
+            : isManager
+              ? Promise.resolve(cachedDashboard?.stats || SAFE_DASHBOARD_STATS)
+              : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
           currentRole === APP_ROLES.SERVICE_USER
             ? toolsApi.getAreas().catch(() => [])
@@ -907,35 +910,7 @@ export const Dashboard = () => {
             categoryDistribution: adminDashboard.categoryDistribution,
           }
           : isManager
-            ? {
-              ...baseStats,
-              categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
-                ? managerDashboard.categoryDistribution
-                : baseStats.categoryDistribution,
-              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
-                ? managerDashboard.statusDistribution
-                : baseStats.statusDistribution,
-              slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
-                ? Number(managerDashboard.slaOverview.breachedSla)
-                : baseStats.slaBreaches,
-              processingRate: Number.isFinite(Number(managerDashboard?.overview?.completionRate))
-                ? Math.round(Number(managerDashboard.overview.completionRate))
-                : baseStats.processingRate,
-              managerOverview: managerDashboard?.overview || null,
-              areaDistribution: Array.isArray(managerDashboard?.areaDistribution)
-                ? managerDashboard.areaDistribution
-                : [],
-              monthlyTrend: Array.isArray(managerDashboard?.monthlyTrend)
-                ? managerDashboard.monthlyTrend
-                : [],
-              urgentOpen: Array.isArray(managerDashboard?.urgentOpen)
-                ? managerDashboard.urgentOpen
-                : [],
-              slaOverview: managerDashboard?.slaOverview || null,
-              managerDataIssues: Array.isArray(managerDashboard?.dataIssues)
-                ? managerDashboard.dataIssues
-                : [],
-            }
+            ? buildManagerDashboardStats(baseStats, managerDashboard, cachedDashboard?.stats || {})
             : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
@@ -1019,7 +994,9 @@ export const Dashboard = () => {
         console.error(err);
 
         if (!hasCachedContent) {
-          setStats(SAFE_DASHBOARD_STATS);
+          setStats(currentRole === APP_ROLES.INTERACTION_MANAGER
+            ? buildManagerDashboardStats(SAFE_DASHBOARD_STATS, { dataIssues: ['dữ liệu tổng quan'] }, {})
+            : SAFE_DASHBOARD_STATS);
           setCategories([]);
           setAreas([]);
           setTickets([]);
@@ -1065,7 +1042,9 @@ export const Dashboard = () => {
         const [resStats, fetchedCategories, ticketPage, adminDashboard, managerDashboard] = await Promise.all([
           currentRole === APP_ROLES.SERVICE_USER
             ? Promise.resolve(SAFE_DASHBOARD_STATS)
-            : analyticsApi.getSystemDashboardStats(currentRole),
+            : isManager
+              ? Promise.resolve(readManagerDashboardSnapshot()?.stats || SAFE_DASHBOARD_STATS)
+              : analyticsApi.getSystemDashboardStats(currentRole),
           toolsApi.getCategories().catch(() => []),
           isAdmin ? Promise.resolve(null) : fetchScopedTickets(),
           isAdmin ? fetchAdminDashboardContent() : Promise.resolve(null),
@@ -1105,35 +1084,7 @@ export const Dashboard = () => {
             categoryDistribution: adminDashboard.categoryDistribution,
           }
           : isManager
-            ? {
-              ...baseStats,
-              categoryDistribution: Array.isArray(managerDashboard?.categoryDistribution)
-                ? managerDashboard.categoryDistribution
-                : baseStats.categoryDistribution,
-              statusDistribution: Array.isArray(managerDashboard?.statusDistribution)
-                ? managerDashboard.statusDistribution
-                : baseStats.statusDistribution,
-              slaBreaches: Number.isFinite(Number(managerDashboard?.slaOverview?.breachedSla))
-                ? Number(managerDashboard.slaOverview.breachedSla)
-                : baseStats.slaBreaches,
-              processingRate: Number.isFinite(Number(managerDashboard?.overview?.completionRate))
-                ? Math.round(Number(managerDashboard.overview.completionRate))
-                : baseStats.processingRate,
-              managerOverview: managerDashboard?.overview || null,
-              areaDistribution: Array.isArray(managerDashboard?.areaDistribution)
-                ? managerDashboard.areaDistribution
-                : [],
-              monthlyTrend: Array.isArray(managerDashboard?.monthlyTrend)
-                ? managerDashboard.monthlyTrend
-                : [],
-              urgentOpen: Array.isArray(managerDashboard?.urgentOpen)
-                ? managerDashboard.urgentOpen
-                : [],
-              slaOverview: managerDashboard?.slaOverview || null,
-              managerDataIssues: Array.isArray(managerDashboard?.dataIssues)
-                ? managerDashboard.dataIssues
-                : [],
-            }
+            ? buildManagerDashboardStats(baseStats, managerDashboard, readManagerDashboardSnapshot()?.stats || {})
             : baseStats;
         const nextCategories = Array.isArray(fetchedCategories)
           ? fetchedCategories
@@ -2600,6 +2551,7 @@ export const Dashboard = () => {
     const runningSla = toDashboardCount(slaSummary?.runningSla);
     const completedSla = toDashboardCount(slaSummary?.completedSla);
     const managerDataIssues = Array.isArray(stats?.managerDataIssues) ? stats.managerDataIssues : [];
+    const managerOverviewAvailable = stats?.managerOverviewAvailable ?? Boolean(stats?.managerOverview);
     const activeWorkCount = assignedCount + inProgressCount;
 
     const trendMax = Math.max(
@@ -2616,8 +2568,10 @@ export const Dashboard = () => {
     const kpis = [
       {
         label: 'Tổng sự vụ',
-        value: totalIncidents,
-        description: newIncidentToday > 0 ? `${newIncidentToday} mới hôm nay` : 'Không có sự vụ mới hôm nay',
+        value: managerMetricValue(managerOverviewAvailable, totalIncidents),
+        description: managerOverviewAvailable
+          ? (newIncidentToday > 0 ? `${newIncidentToday} mới hôm nay` : 'Không có sự vụ mới hôm nay')
+          : 'Chưa tải được KPI sự vụ',
         icon: Lucide.Siren,
         toneClass: 'bg-blue-50 text-blue-700',
         to: '/manager/incidents',
@@ -2625,8 +2579,8 @@ export const Dashboard = () => {
       },
       {
         label: 'Đang xử lý',
-        value: activeWorkCount,
-        description: `${assignedCount} đã phân công · ${inProgressCount} đang xử lý`,
+        value: managerMetricValue(managerOverviewAvailable, activeWorkCount),
+        description: managerOverviewAvailable ? `${assignedCount} đã phân công · ${inProgressCount} đang xử lý` : 'Chưa tải được KPI sự vụ',
         icon: Lucide.Workflow,
         toneClass: 'bg-slate-100 text-slate-700',
         to: '/manager/incidents?statusGroup=active',
@@ -2634,8 +2588,8 @@ export const Dashboard = () => {
       },
       {
         label: 'Chờ duyệt kết quả',
-        value: pendingApprovalCount,
-        description: 'Kết quả đang chờ Manager quyết định',
+        value: managerMetricValue(managerOverviewAvailable, pendingApprovalCount),
+        description: managerOverviewAvailable ? 'Kết quả đang chờ người quản lý quyết định' : 'Chưa tải được KPI sự vụ',
         icon: Lucide.ClipboardCheck,
         toneClass: 'bg-emerald-50 text-emerald-700',
         to: '/manager/approvals',
@@ -2643,8 +2597,8 @@ export const Dashboard = () => {
       },
       {
         label: 'Đã hoàn thành',
-        value: completedIncidentCount,
-        description: `${urgentOpenCount} sự vụ khẩn cấp vẫn đang mở`,
+        value: managerMetricValue(managerOverviewAvailable, completedIncidentCount),
+        description: managerOverviewAvailable ? `${urgentOpenCount} sự vụ khẩn cấp vẫn đang mở` : 'Chưa tải được KPI sự vụ',
         icon: Lucide.CircleCheck,
         toneClass: 'bg-cyan-50 text-cyan-700',
         to: '/manager/incidents?statusGroup=completed',
@@ -2655,7 +2609,7 @@ export const Dashboard = () => {
     const priorityRows = [
       {
         label: 'Duyệt kết quả xử lý',
-        description: 'Kết quả Staff đã gửi và đang chờ quyết định.',
+        description: 'Kết quả nhân viên đã gửi và đang chờ quyết định.',
         value: pendingApprovalCount,
         to: '/manager/approvals',
         icon: Lucide.ClipboardCheck,
@@ -2766,7 +2720,7 @@ export const Dashboard = () => {
           <article className="admin-panel flex h-full flex-col overflow-hidden">
             <ManagerSectionHeader
               title="Sự vụ khẩn cấp"
-              description="3 sự vụ có Priority Urgent cần được kiểm tra trước."
+              description="3 sự vụ ưu tiên Khẩn cấp cần được kiểm tra trước."
               icon={Lucide.TriangleAlert}
               actions={<Link to="/manager/incidents?priority=Urgent" className="text-sm font-semibold text-blue-700 hover:text-blue-800">{urgentOpenCount} đang mở</Link>}
             />

@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { ThemeToggle } from '../../components/design-system';
 import { normalizeRole } from '../../utils/roleMap';
+import { getHeaderBreadcrumbOverride } from './headerBreadcrumbs';
 
 const citizenNavigation = [
   { label: 'Trang chủ', to: '/', end: true },
@@ -341,6 +342,29 @@ export const Header = ({ onMenuToggle }) => {
 
     if (location.pathname === '/dashboard') {
       return <span className="font-semibold text-slate-950">{dashboardLabel}</span>;
+    }
+
+    const breadcrumbOverride = getHeaderBreadcrumbOverride(location.pathname);
+    if (breadcrumbOverride) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Link to="/dashboard" className="font-medium text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
+            {dashboardLabel}
+          </Link>
+          {breadcrumbOverride.map((item, index) => (
+            <span key={`${item.label}-${index}`} className="flex items-center gap-1.5">
+              <Lucide.ChevronRight size={14} className="text-slate-300 dark:text-slate-700" aria-hidden="true" />
+              {item.href ? (
+                <Link to={item.href} className="font-semibold text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300">
+                  {item.label}
+                </Link>
+              ) : (
+                <span className="font-semibold text-slate-950 dark:text-slate-100">{item.label}</span>
+              )}
+            </span>
+          ))}
+        </div>
+      );
     }
 
     if (location.pathname.startsWith('/tickets/assign/')) {

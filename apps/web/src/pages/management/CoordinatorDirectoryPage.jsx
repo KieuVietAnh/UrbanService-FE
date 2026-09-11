@@ -55,6 +55,8 @@ export default function CoordinatorDirectoryPage() {
   const [loading, setLoading] = useState(!initialCache.hasLoaded);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [metadataError, setMetadataError] = useState('');
+  const [metadataLoading, setMetadataLoading] = useState(true);
   const [search, setSearch] = useState(initialCache.search);
   const [areaId, setAreaId] = useState(initialCache.areaId);
   const [categoryId, setCategoryId] = useState(initialCache.categoryId);
@@ -64,19 +66,34 @@ export default function CoordinatorDirectoryPage() {
   const [restoreComplete, setRestoreComplete] = useState(() => !restoredContext);
   const [highlightedCoordinatorId, setHighlightedCoordinatorId] = useState('');
 
-  useEffect(() => {
-    Promise.allSettled([
+  const loadReferenceData = useCallback(async () => {
+    setMetadataLoading(true);
+    setMetadataError('');
+    const [areaResult, categoryResult, coordinatorResult] = await Promise.allSettled([
       toolsApi.getAreas(),
       toolsApi.getCategories(),
       managementFeedbackApi.getServiceProviders({ includeInactive: true }),
-    ]).then(([areaResult, categoryResult, coordinatorResult]) => {
-      setAreas(areaResult.status === 'fulfilled' ? unwrapList(areaResult.value) : []);
-      setCategories(categoryResult.status === 'fulfilled' ? unwrapList(categoryResult.value) : []);
-      if (coordinatorResult.status === 'fulfilled') {
-        setSummaryItems(unwrapList(coordinatorResult.value));
-      }
-    });
+    ]);
+
+    setAreas(areaResult.status === 'fulfilled' ? unwrapList(areaResult.value) : []);
+    setCategories(categoryResult.status === 'fulfilled' ? unwrapList(categoryResult.value) : []);
+    if (coordinatorResult.status === 'fulfilled') {
+      setSummaryItems(unwrapList(coordinatorResult.value));
+    }
+
+    const failed = [];
+    if (areaResult.status === 'rejected') failed.push('khu vực');
+    if (categoryResult.status === 'rejected') failed.push('danh mục');
+    if (coordinatorResult.status === 'rejected') failed.push('chỉ số tổng quan');
+    if (failed.length) {
+      setMetadataError(`Không thể tải ${failed.join(', ')}. Một số bộ lọc hoặc chỉ số có thể chưa đầy đủ.`);
+    }
+    setMetadataLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadReferenceData();
+  }, [loadReferenceData]);
 
   const fetchCoordinators = useCallback(async ({ keepCurrent = false } = {}) => {
     const requestId = ++coordinatorRequestIdRef.current;
@@ -399,6 +416,24 @@ export default function CoordinatorDirectoryPage() {
         })}
       </section>
 
+      {metadataError ? (
+        <section className="admin-error-note flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+          <span className="inline-flex items-start gap-2 text-sm font-medium">
+            <Lucide.CircleAlert size={17} className="mt-0.5 shrink-0" />
+            {metadataError}
+          </span>
+          <button
+            type="button"
+            onClick={() => void loadReferenceData()}
+            disabled={metadataLoading}
+            className="btn admin-secondary-action h-9 shrink-0 rounded-xl px-4 text-xs font-semibold normal-case"
+          >
+            <Lucide.RefreshCw size={15} className={metadataLoading ? 'animate-spin' : ''} />
+            {metadataLoading ? 'Đang tải' : 'Tải lại dữ liệu'}
+          </button>
+        </section>
+      ) : null}
+
       <section className="admin-panel overflow-hidden p-5 dark:border-slate-700 dark:bg-slate-950/70">
         <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px_180px]">
           <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 dark:border-slate-700 dark:bg-slate-950/70">
@@ -410,6 +445,7 @@ export default function CoordinatorDirectoryPage() {
             onChange={setAreaId}
             ariaLabel="Lọc khu vực"
             className="h-11"
+            disabled={metadataLoading || areas.length === 0}
             options={[
               { value: '', label: 'Tất cả khu vực' },
               ...areas.map((area) => ({ value: area.areaId ?? area.id, label: area.areaName ?? area.name })),
@@ -420,6 +456,7 @@ export default function CoordinatorDirectoryPage() {
             onChange={setCategoryId}
             ariaLabel="Lọc danh mục"
             className="h-11"
+            disabled={metadataLoading || categories.length === 0}
             options={[
               { value: '', label: 'Tất cả danh mục' },
               ...categories.map((category) => ({ value: category.categoryId ?? category.id, label: getCategoryLabel(category.categoryName ?? category.name) })),

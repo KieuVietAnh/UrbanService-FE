@@ -8,10 +8,11 @@ import { managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { duplicateManagementApi, extractApiErrorMessage, toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
-import { ManagerConfirmDialog, ManagerToast } from '../../components/manager/ManagerPageElements';
+import { ManagerConfirmDialog, ManagerSelectMenu, ManagerToast } from '../../components/manager/ManagerPageElements';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { getScopedSessionKey } from '../../utils/scopedSessionKey';
 import { FeedbackLocationMapCard } from '../../components/maps/FeedbackLocationMapCard';
+import { fetchAllAiReviewedPages, getReviewQueueReturnContext } from './managerReportReviewUtils';
 
 const normalizePriority = (value = '') => {
   const normalized = `${value || ''}`.trim().toLowerCase();
@@ -92,66 +93,21 @@ const REVIEW_PRIORITY_OPTIONS = [
   { value: 'Urgent', label: 'Khẩn cấp' },
 ];
 
-const ReviewChoiceSelect = ({ label, value, options, onChange, disabled = false, helper = '' }) => {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const selected = options.find((option) => String(option.value) === String(value));
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
-
-  return (
-    <div ref={rootRef} className="relative min-w-0">
-      <span className="mb-2 block whitespace-nowrap text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-200">{label}</span>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border bg-white px-3.5 py-2.5 text-left text-sm font-semibold transition dark:bg-slate-950 ${
-          open
-            ? 'border-blue-400 ring-2 ring-blue-100 dark:ring-blue-500/15'
-            : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'
-        } ${disabled ? 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-900' : 'text-slate-700 dark:text-slate-200'}`}
-      >
-        <span className="min-w-0 flex-1 truncate leading-5" title={selected?.label || 'Chọn giá trị'}>{selected?.label || 'Chọn giá trị'}</span>
-        <Lucide.ChevronDown size={16} className={`shrink-0 text-slate-400 transition ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
-      </button>
-
-      {open && !disabled ? (
-        <div className="absolute z-[80] mt-2 min-w-full w-max max-w-[min(28rem,calc(100vw-3rem))] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.14)] dark:border-slate-700 dark:bg-slate-950">
-          {options.map((option) => {
-            const active = String(option.value) === String(value);
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition ${
-                  active
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
-                    : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900'
-                }`}
-              >
-                <span className="whitespace-normal pr-3 leading-5">{option.label}</span>
-                {active ? <Lucide.Check size={15} aria-hidden="true" /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-      {helper ? <p className="mt-1.5 text-xs leading-5 text-slate-400 dark:text-slate-500">{helper}</p> : null}
-    </div>
-  );
-};
+const ReviewChoiceSelect = ({ label, value, options, onChange, disabled = false, helper = '' }) => (
+  <div className="min-w-0">
+    <span className="mb-2 block whitespace-nowrap text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-200">{label}</span>
+    <ManagerSelectMenu
+      value={value}
+      options={options}
+      onChange={onChange}
+      placeholder="Chọn giá trị"
+      ariaLabel={label}
+      disabled={disabled}
+      className="w-full"
+    />
+    {helper ? <p className="mt-1.5 text-xs leading-5 text-slate-400 dark:text-slate-500">{helper}</p> : null}
+  </div>
+);
 
 const shortenFeedbackId = (value = '') => {
   const text = `${value || ''}`;
@@ -338,6 +294,7 @@ const getReviewMediaUrls = (ticket = {}) => {
 export const ManagerReportReviewQueuePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const reviewReturnContext = getReviewQueueReturnContext(location.state);
   const isManagerFlow = location.pathname.startsWith('/manager/');
   const { user } = useAuth();
   const aiQueueCacheKey = useMemo(
@@ -387,6 +344,7 @@ export const ManagerReportReviewQueuePage = () => {
   ));
   const [loading, setLoading] = useState(false);
   const [queueError, setQueueError] = useState('');
+  const [queueWarning, setQueueWarning] = useState('');
   const [categoriesError, setCategoriesError] = useState('');
   const [actionError, setActionError] = useState('');
   const [actionToast, setActionToast] = useState({ type: '', text: '' });
@@ -422,11 +380,18 @@ export const ManagerReportReviewQueuePage = () => {
 
     const loadQueue = async () => {
       setQueueError('');
+      setQueueWarning('');
       try {
-        const res = await managementFeedbackApi.getAiReviewedFeedbacks({ pageSize: 50 });
-        const normalized = Array.isArray(res) ? res : [];
+        const result = await fetchAllAiReviewedPages(
+          ({ pageNumber, pageSize }) => managementFeedbackApi.getAiReviewedFeedbackPage({ pageNumber, pageSize }),
+          { pageSize: 100 },
+        );
+        const normalized = result.items;
         setTickets(normalized);
         mergeAiQueueCache(aiQueueCacheKey, { tickets: normalized });
+        if (result.partial) {
+          setQueueWarning(`Đã tải ${normalized.length}/${result.totalItems} phản ánh. Một số trang dữ liệu chưa tải được; hãy thử làm mới trước khi xử lý hàng chờ còn lại.`);
+        }
         if (normalized.length > 0) {
           const focusedFeedbackId = location.state?.mapState?.focusFeedbackId;
           const focusedTicket = focusedFeedbackId
@@ -438,14 +403,16 @@ export const ManagerReportReviewQueuePage = () => {
         }
       } catch (err) {
         console.error('Failed to load AI reviewed queue', err);
-        setTickets([]);
-        setSelectedTicket(null);
-        setQueueError(
-          extractApiErrorMessage(
-            err,
-            'Không thể tải hàng chờ duyệt phản ánh. Vui lòng thử lại.',
-          ),
+        const hasStaleQueue = initialTickets.length > 0;
+        if (!hasStaleQueue) {
+          setTickets([]);
+          setSelectedTicket(null);
+        }
+        const message = extractApiErrorMessage(
+          err,
+          'Không thể tải hàng chờ duyệt phản ánh. Vui lòng thử lại.',
         );
+        setQueueError(hasStaleQueue ? `${message} Đang hiển thị dữ liệu gần nhất đã lưu trên trình duyệt.` : message);
       }
     };
 
@@ -478,7 +445,7 @@ export const ManagerReportReviewQueuePage = () => {
 
     loadQueue();
     loadCategories();
-  }, [aiQueueCacheKey, initialQueueCache, location.state?.mapState?.focusFeedbackId, handleSelectTicket]);
+  }, [aiQueueCacheKey, initialQueueCache, initialTickets.length, location.state?.mapState?.focusFeedbackId, handleSelectTicket]);
 
   useEffect(() => {
     if (!isManagerFlow) {
@@ -819,16 +786,8 @@ export const ManagerReportReviewQueuePage = () => {
       await managementFeedbackApi.updateFeedback(selectedTicket.feedbackId, {
         categoryId,
         priority,
+        severity: editSeverity || null,
       });
-
-      // Current StaffFeedbackUpdateRequest does not expose severity. Preserve the Manager's
-      // selection only as a short-lived handoff hint for the later Incident decision step.
-      if (editSeverity) {
-        sessionStorage.setItem(
-          `manager-feedback-severity:${selectedTicket.feedbackId}`,
-          editSeverity,
-        );
-      }
 
       await managementFeedbackApi.verifyFeedback(selectedTicket.feedbackId);
 
@@ -972,16 +931,17 @@ export const ManagerReportReviewQueuePage = () => {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3">
-            {location.state?.from === '/management/map' ? (
+            {reviewReturnContext ? (
               <button
                 type="button"
-                onClick={() => navigate('/management/map', {
-                  state: { mapState: location.state?.mapState || null },
-                })}
+                onClick={() => navigate(
+                  reviewReturnContext.href,
+                  reviewReturnContext.state ? { state: reviewReturnContext.state } : undefined,
+                )}
                 className="btn admin-secondary-action h-10 rounded-xl px-3.5 text-sm font-semibold normal-case"
               >
                 <Lucide.ArrowLeft size={15} aria-hidden="true" />
-                Quay lại bản đồ
+                {reviewReturnContext.label}
               </button>
             ) : null}
 
@@ -1004,6 +964,12 @@ export const ManagerReportReviewQueuePage = () => {
           message={queueError}
           onClose={() => setQueueError('')}
         />
+      ) : null}
+
+      {queueWarning ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100" role="status">
+          <span className="inline-flex items-start gap-2"><Lucide.TriangleAlert size={16} className="mt-0.5 shrink-0" />{queueWarning}</span>
+        </div>
       ) : null}
 
       <section className="manager-kpi-grid grid gap-4 md:grid-cols-3">
@@ -1493,7 +1459,7 @@ export const ManagerReportReviewQueuePage = () => {
                         <div>
                           <p className="text-sm font-bold text-slate-800">Hành động đề xuất</p>
                           <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-                            <li className="flex gap-2"><Lucide.Check size={15} className="mt-1 shrink-0 text-emerald-600" />Kiểm tra danh mục và mức độ ưu tiên AI đề xuất.</li>
+                            <li className="flex gap-2"><Lucide.Check size={15} className="mt-1 shrink-0 text-emerald-600" />Kiểm tra danh mục, độ ưu tiên và mức nghiêm trọng AI đề xuất.</li>
                             <li className="flex gap-2"><Lucide.Check size={15} className="mt-1 shrink-0 text-emerald-600" />Điều chỉnh nếu cần rồi xác nhận phản ánh.</li>
                             <li className="flex gap-2"><Lucide.Check size={15} className="mt-1 shrink-0 text-emerald-600" />Xem lại các lưu ý rủi ro trước khi xác nhận.</li>
                           </ul>
@@ -1595,6 +1561,7 @@ export const ManagerReportReviewQueuePage = () => {
                         locationText={selectedTicket.locationText}
                         areaName={selectedTicket.areaName || selectedTicket.wardName || selectedTicket.area?.name}
                         variant="admin"
+                        internalMapPath="/manager/map"
                         compact
                         bare
                         showHeader={false}

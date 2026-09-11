@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { normalizeThemeValue } from './themeUtils.mjs';
 
 const STORAGE_KEY = 'urbanmind_theme';
 const ThemeContext = createContext(null);
@@ -8,7 +9,7 @@ export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return saved;
+      if (saved) return normalizeThemeValue(saved);
     } catch (e) { void e; }
     // prefer system if no saved value
     if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';

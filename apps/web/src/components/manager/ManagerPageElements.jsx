@@ -115,6 +115,7 @@ export const ManagerSelectMenu = ({
   placeholder = 'Chọn',
   ariaLabel,
   className = '',
+  disabled = false,
 }) => {
   const anchorRef = useRef(null);
   const menuRef = useRef(null);
@@ -183,8 +184,9 @@ export const ManagerSelectMenu = ({
     <div ref={anchorRef} className={`relative min-w-0 ${className}`}>
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:border-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        onClick={() => { if (!disabled) setOpen((current) => !current); }}
+        disabled={disabled}
+        className="flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 transition hover:border-blue-300 focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:border-slate-300 dark:disabled:bg-slate-900 focus-visible:ring-2 focus-visible:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
         aria-label={ariaLabel || placeholder}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -193,7 +195,7 @@ export const ManagerSelectMenu = ({
         <Lucide.ChevronDown size={15} className={`shrink-0 text-slate-400 transition ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
 
-      {open && menuStyle && typeof document !== 'undefined'
+      {open && !disabled && menuStyle && typeof document !== 'undefined'
         ? createPortal(
             <div
               ref={menuRef}

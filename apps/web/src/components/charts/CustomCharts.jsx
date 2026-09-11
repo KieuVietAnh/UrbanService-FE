@@ -22,108 +22,59 @@ export const SentimentDonutChart = ({ positive = 0, neutral = 0, negative = 0, a
     }
 
     setProgress(0);
-    const duration = 900;
+    const duration = 700;
     const startAt = performance.now();
-
     const tick = (now) => {
       const elapsed = Math.min(1, (now - startAt) / duration);
-      const eased = 1 - Math.pow(1 - elapsed, 3);
-      setProgress(eased);
-
-      if (elapsed < 1) {
-        animationFrameRef.current = requestAnimationFrame(tick);
-      }
+      setProgress(1 - Math.pow(1 - elapsed, 3));
+      if (elapsed < 1) animationFrameRef.current = requestAnimationFrame(tick);
     };
-
     animationFrameRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
+    return () => { if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current); };
   }, [animate, positive, neutral, negative]);
 
   const radius = 50;
   const circumference = 2 * Math.PI * radius;
-  const animatedPosPct = posPct * progress;
-  const animatedNeuPct = neuPct * progress;
-  const animatedNegPct = negPct * progress;
-  const posDash = (animatedPosPct / 100) * circumference;
-  const neuDash = (animatedNeuPct / 100) * circumference;
-  const negDash = (animatedNegPct / 100) * circumference;
-  const posStrokeOffset = 0;
-  const neuStrokeOffset = posDash;
-  const negStrokeOffset = posDash + neuDash;
-  const displayedPositivePct = Math.round(animatedPosPct);
+  const segments = [
+    { key: 'positive', pct: posPct, stroke: '#10b981' },
+    { key: 'neutral', pct: neuPct, stroke: '#f59e0b' },
+    { key: 'negative', pct: negPct, stroke: '#ef4444' },
+  ];
+  let offset = 0;
 
   return (
-    <div className="flex flex-col items-center justify-center p-4 bg-base-100 rounded-2xl border border-base-300">
-      <h4 className="text-sm font-bold mb-4 text-center">Chỉ Số Cảm Xúc Cư Dân (AI)</h4>
-      <div className="relative w-40 h-40">
-        <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90" role="img" aria-label={`Tích cực ${Math.round(posPct)}%, trung tính ${Math.round(neuPct)}%, tiêu cực ${Math.round(negPct)}%`}>
-          <circle cx="60" cy="60" r={radius} fill="transparent" stroke="var(--fallback-b3, #e5e7eb)" strokeWidth="12" />
-
-          {posPct > 0 && (
-            <circle
-              cx="60"
-              cy="60"
-              r={radius}
-              fill="transparent"
-              stroke="#10b981"
-              strokeWidth="12"
-              strokeLinecap="round"
-              strokeDasharray={`${posDash} ${circumference - posDash}`}
-              strokeDashoffset={-posStrokeOffset}
-            />
-          )}
-
-          {neuPct > 0 && (
-            <circle
-              cx="60"
-              cy="60"
-              r={radius}
-              fill="transparent"
-              stroke="#f59e0b"
-              strokeWidth="12"
-              strokeLinecap="round"
-              strokeDasharray={`${neuDash} ${circumference - neuDash}`}
-              strokeDashoffset={-neuStrokeOffset}
-            />
-          )}
-
-          {negPct > 0 && (
-            <circle
-              cx="60"
-              cy="60"
-              r={radius}
-              fill="transparent"
-              stroke="#ef4444"
-              strokeWidth="12"
-              strokeLinecap="round"
-              strokeDasharray={`${negDash} ${circumference - negDash}`}
-              strokeDashoffset={-negStrokeOffset}
-            />
-          )}
+    <div className="flex flex-col items-center justify-center">
+      <div className="relative h-44 w-44 sm:h-48 sm:w-48">
+        <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90" role="img" aria-label={`Tích cực ${Math.round(posPct)}%, trung tính ${Math.round(neuPct)}%, tiêu cực ${Math.round(negPct)}%`}>
+          <circle cx="60" cy="60" r={radius} fill="transparent" stroke="#e2e8f0" strokeWidth="12" />
+          {segments.map((segment) => {
+            const dash = ((segment.pct * progress) / 100) * circumference;
+            const dashOffset = offset;
+            offset += dash;
+            if (segment.pct <= 0) return null;
+            return (
+              <circle
+                key={segment.key}
+                cx="60" cy="60" r={radius}
+                fill="transparent"
+                stroke={segment.stroke}
+                strokeWidth="12"
+                strokeLinecap="round"
+                strokeDasharray={`${dash} ${circumference - dash}`}
+                strokeDashoffset={-dashOffset}
+              />
+            );
+          })}
         </svg>
-
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-black tabular-nums text-emerald-500">{displayedPositivePct}%</span>
-          <span className="text-[9px] uppercase tracking-wider font-bold text-gray-500">Tích cực</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <strong className="text-3xl font-black tabular-nums text-slate-950">{total}</strong>
+          <span className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">đã phân loại</span>
         </div>
       </div>
-
-      <div className="flex gap-4 mt-6 text-xs font-semibold">
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-          <span>Tích cực: {positive}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-amber-500"></span>
-          <span>Trung tính: {neutral}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-red-500"></span>
-          <span>Tiêu cực: {negative}</span>
-        </div>
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-500" />Tích cực {positive}</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-amber-500" />Trung tính {neutral}</span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-rose-500" />Tiêu cực {negative}</span>
       </div>
     </div>
   );

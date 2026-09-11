@@ -680,6 +680,8 @@ export const IncidentDetailPage = () => {
       || returnPath.startsWith('/manager/incident-matches/')
       || returnPath.startsWith('/manager/duplicates/')
       || returnPath.startsWith('/staff/duplicates/')
+      || returnPath.startsWith('/analytics/sla')
+      || returnPath.startsWith('/analytics/sentiment')
     );
 
     if (canReturnInApp) {
@@ -697,6 +699,12 @@ export const IncidentDetailPage = () => {
       state: { restoreIncidentId: incident?.incidentId ?? incident?.id ?? incidentId },
     });
   }, [incident, incidentId, isApprovalView, location.pathname, location.state?.from, navigate]);
+
+  const backLabel = typeof location.state?.from === 'string' && location.state.from.startsWith('/analytics/sla')
+    ? 'Quay lại Phân tích SLA'
+    : typeof location.state?.from === 'string' && location.state.from.startsWith('/analytics/sentiment')
+      ? 'Quay lại Cảm xúc người dân'
+      : 'Quay lại danh sách';
 
   const reports = useMemo(() => {
     if (Array.isArray(incident?.reports)) return incident.reports;
@@ -1358,7 +1366,7 @@ export const IncidentDetailPage = () => {
     return (
       <div className="admin-page-shell manager-ui-page space-y-5 pb-4">
         <button type="button" onClick={goBack} className="admin-secondary-link inline-flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition">
-          <Lucide.ArrowLeft size={16} />Quay lại danh sách
+          <Lucide.ArrowLeft size={16} />{backLabel}
         </button>
         <section className="admin-page-hero">
           <div className="relative space-y-3">
@@ -1393,7 +1401,7 @@ export const IncidentDetailPage = () => {
           <h1 className="mt-4 text-lg font-semibold text-slate-950 dark:text-slate-100">Không thể tải chi tiết sự vụ</h1>
           <p className="mt-2 max-w-lg text-sm text-slate-500 dark:text-slate-400">{error || 'Không tìm thấy dữ liệu sự vụ.'}</p>
           <div className="mt-5 flex gap-2">
-            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">Quay lại danh sách</button>
+            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{backLabel}</button>
             <button type="button" onClick={() => loadIncident()} className="btn h-10 rounded-xl border-0 bg-blue-600 text-white hover:bg-blue-700">Thử lại</button>
           </div>
         </section>
@@ -1433,7 +1441,7 @@ export const IncidentDetailPage = () => {
   return (
     <div className="admin-page-shell manager-ui-page space-y-5 pb-4">
       <button type="button" onClick={goBack} className="admin-secondary-link inline-flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition">
-        <Lucide.ArrowLeft size={16} />Quay lại danh sách
+        <Lucide.ArrowLeft size={16} />{backLabel}
       </button>
 
       <ManagerToast

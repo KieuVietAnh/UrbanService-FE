@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { getScopedSessionKey } from '../../utils/scopedSessionKey';
 import * as Lucide from 'lucide-react';
+import { fetchAllApprovalSummaryPages } from './approvalSummaryUtils.mjs';
 import { incidentManagementApi } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import {
@@ -295,13 +296,17 @@ export const InteractionApprovalInboxPage = () => {
     const controller = new AbortController();
     summaryAbortRef.current = controller;
     try {
-      const response = await incidentManagementApi.getIncidents({
-        pageNumber: 1,
-        pageSize: 1000,
-        status: 'SubmittedForApproval',
-        includeMerged: false,
-      }, { signal: controller.signal });
-      if (!controller.signal.aborted) setSummaryItems(Array.isArray(response?.items) ? response.items : []);
+      const response = await fetchAllApprovalSummaryPages(
+        incidentManagementApi.getIncidents,
+        { pageSize: 500, signal: controller.signal },
+      );
+      if (!controller.signal.aborted) {
+        if (response.partial) {
+          console.warn('Số liệu tổng hợp hàng đợi duyệt đang thiếu một phần trang dữ liệu; giữ dữ liệu tổng hợp gần nhất.');
+        } else {
+          setSummaryItems(response.items);
+        }
+      }
     } catch (summaryError) {
       if (!isCanceledRequest(summaryError) && !controller.signal.aborted) {
         console.warn('Không thể tải số liệu tổng hợp hàng đợi duyệt sự vụ.', summaryError);

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
   CircleMarker,
+  GeoJSON,
   MapContainer,
   Marker,
   Popup,
@@ -95,6 +96,12 @@ const defaultIcon = new L.Icon({
 
 const isValidCoordinate = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 const isValidLocation = (latitude, longitude) => isValidCoordinate(latitude, -90, 90) && isValidCoordinate(longitude, -180, 180);
+const hasCoordinateValue = (value) => value != null && !(typeof value === 'string' && !value.trim());
+const hasValidLocationValue = (latitude, longitude) => (
+  hasCoordinateValue(latitude) &&
+  hasCoordinateValue(longitude) &&
+  isValidLocation(Number(latitude), Number(longitude))
+);
 
 const distanceMeters = (lat1, lon1, lat2, lon2) => {
   const toRad = (deg) => (deg * Math.PI) / 180;
@@ -107,6 +114,32 @@ const distanceMeters = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
+
+function AreaBoundaryAutoFit({ boundaryGeoJson, centerLatitude, centerLongitude, areaKey }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (boundaryGeoJson) {
+      const layer = L.geoJSON(boundaryGeoJson);
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, {
+          padding: [36, 36],
+          maxZoom: 14,
+          animate: true,
+          duration: 0.65,
+        });
+        return;
+      }
+    }
+
+    if (hasValidLocationValue(centerLatitude, centerLongitude)) {
+      map.setView([Number(centerLatitude), Number(centerLongitude)], 14, { animate: true });
+    }
+  }, [areaKey, boundaryGeoJson, centerLatitude, centerLongitude, map]);
+
+  return null;
+}
 
 function AutoFitBounds({ incidents, fitRequestKey }) {
   const map = useMap();
@@ -519,6 +552,12 @@ export const IncidentMap = ({
   heatWeightBuilder = null,
   initialViewState = null,
   onViewStateChange = null,
+  areaBoundaryGeoJson = null,
+  areaBoundaryKey = null,
+  areaCenterLatitude = null,
+  areaCenterLongitude = null,
+  fitBoundaryGeoJson = null,
+  autoFitIncidents = false,
 }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -624,13 +663,41 @@ export const IncidentMap = ({
             key={theme}
           />
           <PersistMapView onViewStateChange={onViewStateChange} />
+          {areaBoundaryGeoJson ? (
+            <GeoJSON
+              key={`manager-area-boundary-${areaBoundaryKey || 'selected'}`}
+              data={areaBoundaryGeoJson}
+              style={{
+                color: '#2563eb',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.12,
+                opacity: 0.92,
+                weight: 3,
+              }}
+              interactive={false}
+            />
+          ) : null}
           {focusFeedbackId ? (
             <FocusIncident
               feedbackId={focusFeedbackId}
               latitude={focusLatitude}
               longitude={focusLongitude}
             />
-          ) : (!hasInitialView || fitRequestKey > 0) ? (
+          ) : areaBoundaryGeoJson || hasValidLocationValue(areaCenterLatitude, areaCenterLongitude) ? (
+            <AreaBoundaryAutoFit
+              boundaryGeoJson={areaBoundaryGeoJson}
+              centerLatitude={areaCenterLatitude}
+              centerLongitude={areaCenterLongitude}
+              areaKey={areaBoundaryKey}
+            />
+          ) : fitBoundaryGeoJson ? (
+            <AreaBoundaryAutoFit
+              boundaryGeoJson={fitBoundaryGeoJson}
+              centerLatitude={null}
+              centerLongitude={null}
+              areaKey="all-managed-areas"
+            />
+          ) : autoFitIncidents || !hasInitialView || fitRequestKey > 0 ? (
             <AutoFitBounds
               incidents={markers}
               fitRequestKey={fitRequestKey}

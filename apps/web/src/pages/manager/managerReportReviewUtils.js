@@ -148,3 +148,54 @@ export const getRelatedIncidentId = (report = {}) => {
     : String(incidentId);
 };
 
+
+
+export const getReviewQueueReturnContext = (state = {}) => {
+  const from = typeof state?.from === 'string' ? state.from : '';
+  if (from === '/management/map') {
+    return {
+      href: '/management/map',
+      label: 'Quay lại bản đồ',
+      state: { mapState: state?.mapState || null },
+    };
+  }
+  if (from.startsWith('/analytics/sentiment')) {
+    return {
+      href: from,
+      label: 'Quay lại Cảm xúc người dân',
+      state: null,
+    };
+  }
+  return null;
+};
+
+export const fetchAllAiReviewedPages = async (fetchPage, { pageSize = 100 } = {}) => {
+  const firstPage = await fetchPage({ pageNumber: 1, pageSize });
+  const firstItems = Array.isArray(firstPage?.items) ? firstPage.items : [];
+  const totalPages = Math.max(1, Number(firstPage?.totalPages) || 1);
+  const totalItems = Number.isFinite(Number(firstPage?.totalItems))
+    ? Number(firstPage.totalItems)
+    : firstItems.length;
+
+  if (totalPages === 1) {
+    return { items: firstItems, totalItems, partial: false };
+  }
+
+  const remaining = await Promise.allSettled(
+    Array.from({ length: totalPages - 1 }, (_, index) => (
+      fetchPage({ pageNumber: index + 2, pageSize })
+    )),
+  );
+  const fulfilled = remaining.filter((result) => result.status === 'fulfilled');
+
+  return {
+    items: [
+      ...firstItems,
+      ...fulfilled.flatMap((result) => (
+        Array.isArray(result.value?.items) ? result.value.items : []
+      )),
+    ],
+    totalItems,
+    partial: fulfilled.length !== remaining.length,
+  };
+};
