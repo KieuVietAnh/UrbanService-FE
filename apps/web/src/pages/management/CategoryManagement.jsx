@@ -8,11 +8,11 @@ import { SuccessAlert, ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
+import { ManagerListRefreshIndicator, ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 import {
   AdminCardGridSkeleton,
   AdminEmptyState,
   AdminErrorState,
-  AdminRefreshIndicator,
 } from '../../components/admin/AdminDataStates';
 
 const categoryIconSet = [
@@ -474,41 +474,42 @@ export const CategoryManagement = () => {
         />
       ) : null}
 
-      <section className="admin-panel p-5 sm:p-6">
-        <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h3 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách danh mục</h3>
-              <AdminRefreshIndicator visible={refreshing} label="Đang cập nhật danh mục..." />
+      <section className="admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách danh mục</h2>
+                  <ManagerListRefreshIndicator visible={refreshing && !loading} label="Đang cập nhật" />
+                </div>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Tổng cộng {categories.length} danh mục · {filteredCategories.length} phù hợp</p>
+              </div>
+              {(search || statusFilter !== 'all') ? (
+                <button type="button" onClick={() => { setSearch(''); setStatusFilter('all'); }} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <Lucide.RotateCcw size={15} /> Xóa bộ lọc
+                </button>
+              ) : null}
             </div>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Theo dõi phạm vi tiếp nhận và đầu mối phụ trách của từng nhóm phản ánh.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <label className="input input-bordered flex h-11 min-w-[260px] items-center gap-2 rounded-2xl bg-white text-sm dark:border-white/10 dark:bg-slate-900">
-              <Lucide.Search size={16} className="text-slate-400" />
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="grow"
-                placeholder="Tìm tên, mô tả, đầu mối..."
+            <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(320px,1.45fr)_minmax(220px,0.8fr)]">
+              <label className="relative block min-w-0">
+                <Lucide.Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-900" placeholder="Tìm tên, mô tả, đầu mối..." />
+              </label>
+              <ManagerSelectMenu
+                value={statusFilter}
+                onChange={setStatusFilter}
+                ariaLabel="Lọc trạng thái danh mục"
+                options={[
+                  { value: 'all', label: 'Tất cả trạng thái' },
+                  { value: 'active', label: 'Đang hoạt động' },
+                  { value: 'inactive', label: 'Tạm khóa' },
+                  { value: 'assigned', label: 'Đã gắn đầu mối' },
+                  { value: 'unassigned', label: 'Chưa gắn đầu mối' },
+                  { value: 'review', label: 'Cần rà soát' },
+                ]}
               />
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="select select-bordered h-11 rounded-2xl text-sm dark:border-white/10 dark:bg-slate-900"
-            >
-              <option value="all">Tất cả trạng thái</option>
-              <option value="active">Đang hoạt động</option>
-              <option value="inactive">Tạm khóa</option>
-              <option value="assigned">Đã gắn đầu mối</option>
-              <option value="unassigned">Chưa gắn đầu mối</option>
-              <option value="review">Cần rà soát</option>
-            </select>
+            </div>
           </div>
         </div>
 

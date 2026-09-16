@@ -6,6 +6,7 @@ import { userApi } from '../../services/api/userApi';
 import * as Lucide from 'lucide-react';
 import { readAdminUserManagementCache, writeAdminUserManagementCache } from '../../services/cache/adminUserManagementCache';
 import { ADMIN_ROLE_DESCRIPTIONS } from './adminRoleDescriptions.mjs';
+import { ManagerListRefreshIndicator } from '../../components/manager/ManagerPageElements';
 
 const ROLE_META = {
   'service-user': {
@@ -121,7 +122,7 @@ const USER_MANAGEMENT_SCOPED_STYLES = `
     .um-users-filter-search { grid-column: 1 / -1; }
   }
   @media (min-width: 1280px) {
-    .um-users-filter-grid { grid-template-columns: minmax(260px, 320px) 170px 190px 150px; }
+    .um-users-filter-grid { grid-template-columns: minmax(320px, 1.45fr) minmax(180px, 0.8fr) minmax(190px, 0.85fr) minmax(170px, 0.75fr); }
     .um-users-filter-search { grid-column: auto; }
   }
   .um-role-badge,
@@ -1278,57 +1279,74 @@ export const UserManagement = () => {
         />
       </section>
 
-      <section className="um-users-card overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-950/70">
-        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:px-6 xl:flex-row xl:items-center xl:justify-between dark:border-slate-700">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">Danh sách tài khoản</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {loading ? 'Đang tải dữ liệu...' : refreshing ? 'Đang cập nhật dữ liệu...' : `${filteredUsers.length}/${stats.total} tài khoản`}
-            </p>
-          </div>
-
-          <div className="um-users-filter-grid grid w-full gap-3 xl:w-auto">
-            <div className="um-users-filter-search relative">
-              <Lucide.Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Tìm tên, email, số điện thoại..."
-                className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:bg-slate-950"
-              />
+      <section className="um-users-card admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách tài khoản</h2>
+                  <ManagerListRefreshIndicator visible={refreshing && !loading} label="Đang cập nhật" />
+                </div>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {loading ? 'Đang tải dữ liệu...' : `Tổng cộng ${stats.total} tài khoản · ${filteredUsers.length} phù hợp`}
+                </p>
+              </div>
+              {(searchTerm || roleFilter !== 'all' || statusFilter !== 'all' || sortBy !== 'newest') ? (
+                <button
+                  type="button"
+                  onClick={() => { setSearchTerm(''); setRoleFilter('all'); setStatusFilter('all'); setSortBy('newest'); }}
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  <Lucide.RotateCcw size={15} />
+                  Xóa bộ lọc
+                </button>
+              ) : null}
             </div>
 
-            <CustomSelect
-              value={roleFilter}
-              onChange={setRoleFilter}
-              options={[{ value: 'all', label: 'Tất cả vai trò' }, { value: 'internal', label: 'Tài khoản nội bộ' }, ...roleOptions]}
-              ariaLabel="Lọc theo vai trò"
-            />
+            <div className="um-users-filter-grid grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(320px,1.45fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(170px,0.75fr)]">
+              <div className="um-users-filter-search relative min-w-0">
+                <Lucide.Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Tìm tên, email, số điện thoại..."
+                  className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:bg-slate-950"
+                />
+              </div>
 
-            <CustomSelect
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={[
-                { value: 'all', label: 'Tất cả trạng thái' },
-                { value: 'active', label: 'Hoạt động' },
-                { value: 'locked', label: 'Đã khóa' },
-              ]}
-              ariaLabel="Lọc theo trạng thái"
-            />
+              <CustomSelect
+                value={roleFilter}
+                onChange={setRoleFilter}
+                options={[{ value: 'all', label: 'Tất cả vai trò' }, { value: 'internal', label: 'Tài khoản nội bộ' }, ...roleOptions]}
+                ariaLabel="Lọc theo vai trò"
+              />
 
-            <CustomSelect
-              value={sortBy}
-              onChange={setSortBy}
-              options={[
-                { value: 'newest', label: 'Mới nhất' },
-                { value: 'name-asc', label: 'Tên A-Z' },
-                { value: 'name-desc', label: 'Tên Z-A' },
-                { value: 'role', label: 'Theo vai trò' },
-                { value: 'status', label: 'Theo trạng thái' },
-              ]}
-              ariaLabel="Sắp xếp danh sách"
-            />
+              <CustomSelect
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { value: 'all', label: 'Tất cả trạng thái' },
+                  { value: 'active', label: 'Hoạt động' },
+                  { value: 'locked', label: 'Đã khóa' },
+                ]}
+                ariaLabel="Lọc theo trạng thái"
+              />
+
+              <CustomSelect
+                value={sortBy}
+                onChange={setSortBy}
+                options={[
+                  { value: 'newest', label: 'Mới nhất' },
+                  { value: 'name-asc', label: 'Tên A-Z' },
+                  { value: 'name-desc', label: 'Tên Z-A' },
+                  { value: 'role', label: 'Theo vai trò' },
+                  { value: 'status', label: 'Theo trạng thái' },
+                ]}
+                ariaLabel="Sắp xếp danh sách"
+              />
+            </div>
           </div>
         </div>
 

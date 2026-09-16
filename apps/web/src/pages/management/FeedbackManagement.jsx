@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
+import { ManagerListRefreshIndicator, ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 import { managementFeedbackApi, toolsApi } from '@urbanmind/shared-api';
 import { getCategoryLabel } from '../../utils/categoryLabels';
 import {
@@ -118,6 +119,10 @@ const hasPreciseLocation = (feedback = {}) => {
     Number.isFinite(Number(longitude));
 };
 
+
+const getCategoryId = (feedback) => (
+  feedback?.categoryId ?? feedback?.category?.categoryId ?? feedback?.category?.id ?? ''
+);
 
 const getCategoryName = (feedback, categories = []) => {
   const safeCategories = Array.isArray(categories) ? categories : [];
@@ -337,6 +342,7 @@ export const FeedbackManagement = () => {
     status: params.get('status') || 'all',
     search: params.get('search') || '',
     locationFilter: params.get('locationFilter') || 'all',
+    categoryFilter: params.get('categoryId') || 'all',
     page: Math.max(1, Number(params.get('page')) || 1),
   }), []);
 
@@ -349,6 +355,7 @@ export const FeedbackManagement = () => {
         status: restoredContext.statusFilter ?? initialUrlFilters.status,
         search: restoredContext.searchTerm ?? initialUrlFilters.search,
         locationFilter: restoredContext.locationFilter ?? initialUrlFilters.locationFilter,
+        categoryFilter: restoredContext.categoryFilter ?? initialUrlFilters.categoryFilter,
         page: Math.max(
           1,
           Number(restoredContext.pageNumber ?? initialUrlFilters.page) || 1
@@ -472,9 +479,10 @@ export const FeedbackManagement = () => {
       if (filters.status === 'all' && !filterAdminFeedbacksByMetric([feedback], filters.group).length) return false;
       if (filters.locationFilter === 'withPreciseLocation' && !hasPreciseLocation(feedback)) return false;
       if (filters.locationFilter === 'withoutPreciseLocation' && hasPreciseLocation(feedback)) return false;
+      if (filters.categoryFilter !== 'all' && String(getCategoryId(feedback)) !== String(filters.categoryFilter)) return false;
       return feedbackMatchesSearch(feedback, filters.search, categories);
     });
-  }, [allFeedbacks, categories, filters.group, filters.locationFilter, filters.search, filters.status]);
+  }, [allFeedbacks, categories, filters.categoryFilter, filters.group, filters.locationFilter, filters.search, filters.status]);
 
   const pagination = useMemo(() => {
     const totalItems = matchingFeedbacks.length;
@@ -501,7 +509,33 @@ export const FeedbackManagement = () => {
   const metricFilter = filters.group;
   const pageNumber = pagination.pageNumber;
   const locationFilter = filters.locationFilter || 'all';
+  const categoryFilter = filters.categoryFilter || 'all';
   const stats = feedbackSummary;
+
+  const statusOptions = useMemo(() => ([
+    { value: 'all', label: 'Tất cả trạng thái' },
+    ...Object.values(STATUS_META).map((meta) => ({ value: meta.value, label: meta.label })),
+  ]), []);
+
+  const categoryOptions = useMemo(() => ([
+    { value: 'all', label: 'Tất cả danh mục' },
+    ...categories
+      .map((category) => ({
+        value: String(category?.categoryId ?? category?.id ?? ''),
+        label: getCategoryLabel(category?.categoryName ?? category?.name),
+      }))
+      .filter((option) => option.value),
+  ]), [categories]);
+
+  const locationOptions = useMemo(() => ([
+    { value: 'all', label: 'Tất cả vị trí' },
+    { value: 'withPreciseLocation', label: 'Có tọa độ chính xác' },
+    { value: 'withoutPreciseLocation', label: 'Chưa có tọa độ chính xác' },
+  ]), []);
+
+  const hasActiveListFilters = Boolean(
+    searchTerm || statusFilter !== 'all' || metricFilter !== 'total' || locationFilter !== 'all' || categoryFilter !== 'all'
+  );
 
   useEffect(() => {
     if (loading || filters.page === pagination.pageNumber) return;
@@ -514,6 +548,7 @@ export const FeedbackManagement = () => {
     else if (filters.group !== 'total') nextParams.set('metric', filters.group);
     if (filters.search.trim()) nextParams.set('search', filters.search.trim());
     if (filters.locationFilter && filters.locationFilter !== 'all') nextParams.set('locationFilter', filters.locationFilter);
+    if (filters.categoryFilter && filters.categoryFilter !== 'all') nextParams.set('categoryId', filters.categoryFilter);
     if (filters.page > 1) nextParams.set('page', String(filters.page));
 
     const nextQuery = nextParams.toString();
@@ -534,6 +569,7 @@ export const FeedbackManagement = () => {
       current.status === urlFilters.status &&
       current.search === urlFilters.search &&
       current.locationFilter === urlFilters.locationFilter &&
+      current.categoryFilter === urlFilters.categoryFilter &&
       current.page === urlFilters.page
         ? current
         : urlFilters
@@ -549,10 +585,11 @@ export const FeedbackManagement = () => {
       statusFilter,
       metricFilter,
       locationFilter,
+      categoryFilter,
       feedbackSummary,
       ...pagination,
     });
-  }, [allFeedbacks, categories, feedbackSummary, feedbacks, locationFilter, metricFilter, pagination, searchTerm, statusFilter]);
+  }, [allFeedbacks, categories, categoryFilter, feedbackSummary, feedbacks, locationFilter, metricFilter, pagination, searchTerm, statusFilter]);
 
   const updateFilters = useCallback((patch) => {
     setFilters((current) => ({ ...current, ...patch }));
@@ -590,6 +627,7 @@ export const FeedbackManagement = () => {
           metricFilter,
           pageNumber,
           locationFilter,
+          categoryFilter,
           scrollY,
         })
       );
@@ -606,7 +644,7 @@ export const FeedbackManagement = () => {
         from: '/management/feedbacks',
       },
     });
-  }, [locationFilter, metricFilter, navigate, pageNumber, searchTerm, statusFilter]);
+  }, [categoryFilter, locationFilter, metricFilter, navigate, pageNumber, searchTerm, statusFilter]);
 
   const handleRequestFeedbackDelete = useCallback((event, feedback) => {
     event.stopPropagation();
@@ -804,7 +842,7 @@ export const FeedbackManagement = () => {
             </div>
             <div className="min-w-0">
               <h1 className="admin-hero-title">
-                Quản lý phản ánh
+                Tra cứu phản ánh
               </h1>
               <p className="admin-hero-description">
                 Theo dõi phản ánh, trạng thái xử lý và các điểm cần điều phối.
@@ -851,33 +889,53 @@ export const FeedbackManagement = () => {
         })}
       </section>
 
-      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
-        <div className="border-b border-slate-200 px-5 py-5 sm:px-6 dark:border-slate-800">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách phản ánh</h2>
+      <section className="admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách phản ánh</h2>
+                  <ManagerListRefreshIndicator visible={refreshing && !loading} label="Đang cập nhật" />
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <span>Tổng cộng {pagination.totalItems} phản ánh</span>
+                  {hasActiveListFilters ? (
+                    <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                      Đang lọc · {filteredFeedbacks.length} kết quả
+                    </span>
+                  ) : null}
+                </div>
               </div>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Hiển thị {filteredFeedbacks.length} trên tổng số {pagination.totalItems} phản ánh
-              </p>
+
+              {hasActiveListFilters ? (
+                <button
+                  type="button"
+                  onClick={() => updateFilters({ search: '', status: 'all', group: 'total', categoryFilter: 'all', locationFilter: 'all', page: 1 })}
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                  title="Xóa toàn bộ bộ lọc"
+                >
+                  <Lucide.RotateCcw size={15} />
+                  Xóa bộ lọc
+                </button>
+              ) : null}
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap xl:w-auto">
-              <label className="relative block min-w-0 flex-1 xl:w-80">
+            <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(320px,1.45fr)_minmax(190px,0.8fr)_minmax(190px,0.8fr)_minmax(190px,0.8fr)]">
+              <label className="relative block min-w-0">
                 <span className="sr-only">Tìm kiếm phản ánh</span>
                 <Lucide.Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   value={searchTerm}
                   onChange={(event) => updateFilters({ search: event.target.value, page: 1 })}
-                  className="input h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  className="input h-10 w-full rounded-xl border-slate-300 bg-white pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   placeholder="Tìm theo mã, nội dung, vị trí..."
                 />
                 {searchTerm && (
                   <button
                     type="button"
                     onClick={() => updateFilters({ search: '', page: 1 })}
-                    className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                     aria-label="Xóa từ khóa tìm kiếm"
                   >
                     <Lucide.X size={15} />
@@ -885,34 +943,29 @@ export const FeedbackManagement = () => {
                 )}
               </label>
 
-              <label className="relative block sm:w-56">
-                <span className="sr-only">Lọc theo trạng thái</span>
-                <Lucide.Filter className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
-                <select
-                  value={statusFilter}
-                  onChange={(event) => handleStatusFilterChange(event.target.value)}
-                  className="select h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-700 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                >
-                  <option value="all">Tất cả trạng thái</option>
-                  {Object.values(STATUS_META).map((meta) => (
-                    <option key={meta.value} value={meta.value}>{meta.label}</option>
-                  ))}
-                </select>
-              </label>
+              <ManagerSelectMenu
+                value={statusFilter}
+                onChange={handleStatusFilterChange}
+                options={statusOptions}
+                placeholder="Tất cả trạng thái"
+                ariaLabel="Lọc phản ánh theo trạng thái"
+              />
 
-              <label className="relative block sm:w-64">
-                <span className="sr-only">Lọc theo vị trí</span>
-                <Lucide.MapPin className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
-                <select
-                  value={locationFilter}
-                  onChange={(event) => updateFilters({ locationFilter: event.target.value, page: 1 })}
-                  className="select h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm text-slate-700 focus:border-blue-300 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                >
-                  <option value="all">Tất cả vị trí</option>
-                  <option value="withPreciseLocation">Có tọa độ chính xác</option>
-                  <option value="withoutPreciseLocation">Chưa có tọa độ chính xác</option>
-                </select>
-              </label>
+              <ManagerSelectMenu
+                value={categoryFilter}
+                onChange={(value) => updateFilters({ categoryFilter: value, page: 1 })}
+                options={categoryOptions}
+                placeholder="Tất cả danh mục"
+                ariaLabel="Lọc phản ánh theo danh mục"
+              />
+
+              <ManagerSelectMenu
+                value={locationFilter}
+                onChange={(value) => updateFilters({ locationFilter: value, page: 1 })}
+                options={locationOptions}
+                placeholder="Tất cả vị trí"
+                ariaLabel="Lọc phản ánh theo vị trí"
+              />
             </div>
           </div>
         </div>
@@ -938,14 +991,14 @@ export const FeedbackManagement = () => {
             </div>
             <h3 className="mt-4 text-base font-semibold text-slate-950 dark:text-slate-100">Không tìm thấy phản ánh phù hợp</h3>
             <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-              {searchTerm || statusFilter !== 'all' || metricFilter !== 'total' || locationFilter !== 'all'
+              {hasActiveListFilters
                 ? 'Thử xóa từ khóa hoặc chọn bộ lọc khác.'
                 : 'Danh sách chưa có dữ liệu để hiển thị.'}
             </p>
-            {(searchTerm || statusFilter !== 'all' || metricFilter !== 'total' || locationFilter !== 'all') && (
+            {hasActiveListFilters && (
               <button
                 type="button"
-                onClick={() => updateFilters({ search: '', status: 'all', group: 'total', locationFilter: 'all', page: 1 })}
+                onClick={() => updateFilters({ search: '', status: 'all', group: 'total', categoryFilter: 'all', locationFilter: 'all', page: 1 })}
                 className="btn btn-outline mt-5 h-10 rounded-xl border-slate-300 px-4 text-sm dark:border-slate-700"
               >
                 <Lucide.RotateCcw size={15} />

@@ -6,9 +6,9 @@ import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import {
   AdminEmptyState,
   AdminErrorState,
-  AdminRefreshIndicator,
 } from '../../components/admin/AdminDataStates';
 import { getCategoryLabel } from '../../utils/categoryLabels';
+import { ManagerListRefreshIndicator, ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 
 const PRIORITIES = [
   { value: 'Critical', label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' },
@@ -290,21 +290,36 @@ export const SLAConfiguration = () => {
         ))}
       </section>
 
-      <section className="admin-panel p-5 sm:p-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end">
-          <label className="form-control flex-1"><span className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Tìm kiếm</span><div className="relative"><Lucide.Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} className="input input-bordered h-11 w-full rounded-xl pl-10" placeholder="Tên chính sách SLA..." /></div></label>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <select value={filters.priority} onChange={(e) => { setFilters((v) => ({ ...v, priority: e.target.value })); setPage(1); }} className="select select-bordered h-11 rounded-xl"><option value="">Tất cả ưu tiên</option>{PRIORITIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
-            <select value={filters.areaId} onChange={(e) => { setFilters((v) => ({ ...v, areaId: e.target.value })); setPage(1); }} className="select select-bordered h-11 rounded-xl"><option value="">Mọi khu vực</option>{areas.map((item) => <option key={item.areaId ?? item.id} value={item.areaId ?? item.id}>{item.areaName || item.name}</option>)}</select>
-            <select value={filters.categoryId} onChange={(e) => { setFilters((v) => ({ ...v, categoryId: e.target.value })); setPage(1); }} className="select select-bordered h-11 rounded-xl"><option value="">Mọi danh mục</option>{categories.map((item) => <option key={item.categoryId ?? item.id} value={item.categoryId ?? item.id}>{getCategoryLabel(item.categoryName || item.name)}</option>)}</select>
-            <select value={filters.isActive} onChange={(e) => { setFilters((v) => ({ ...v, isActive: e.target.value })); setPage(1); }} className="select select-bordered h-11 rounded-xl"><option value="">Mọi trạng thái</option><option value="true">Đang bật</option><option value="false">Đã tắt</option></select>
-            <select value={filters.isCurrentlyEffective} onChange={(e) => { setFilters((v) => ({ ...v, isCurrentlyEffective: e.target.value })); setPage(1); }} className="select select-bordered h-11 rounded-xl"><option value="">Mọi hiệu lực</option><option value="true">Đang có hiệu lực</option><option value="false">Chưa/đã hết hiệu lực</option></select>
+      <section className="admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách chính sách SLA</h2>
+                  <ManagerListRefreshIndicator visible={refreshing && !loading} label="Đang cập nhật" />
+                </div>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Tổng cộng {pagination.totalItems} chính sách</p>
+              </div>
+              {(search || filters.priority || filters.areaId || filters.categoryId || filters.isActive || filters.isCurrentlyEffective) ? (
+                <button type="button" onClick={() => { setSearch(''); setFilters({ priority: '', areaId: '', categoryId: '', isActive: '', isCurrentlyEffective: '' }); setPage(1); }} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <Lucide.RotateCcw size={15} /> Xóa bộ lọc
+                </button>
+              ) : null}
+            </div>
+            <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <label className="relative block min-w-0 xl:col-span-1">
+                <Lucide.Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-900" placeholder="Tên chính sách SLA..." />
+              </label>
+              <ManagerSelectMenu value={filters.priority} onChange={(value) => { setFilters((v) => ({ ...v, priority: value })); setPage(1); }} ariaLabel="Lọc theo ưu tiên" options={[{ value: '', label: 'Tất cả ưu tiên' }, ...PRIORITIES.map((item) => ({ value: item.value, label: item.label }))]} />
+              <ManagerSelectMenu value={filters.areaId} onChange={(value) => { setFilters((v) => ({ ...v, areaId: value })); setPage(1); }} ariaLabel="Lọc theo khu vực" options={[{ value: '', label: 'Tất cả khu vực' }, ...areas.map((item) => ({ value: item.areaId ?? item.id, label: item.areaName || item.name }))]} />
+              <ManagerSelectMenu value={filters.categoryId} onChange={(value) => { setFilters((v) => ({ ...v, categoryId: value })); setPage(1); }} ariaLabel="Lọc theo danh mục" options={[{ value: '', label: 'Tất cả danh mục' }, ...categories.map((item) => ({ value: item.categoryId ?? item.id, label: getCategoryLabel(item.categoryName || item.name) }))]} />
+              <ManagerSelectMenu value={filters.isActive} onChange={(value) => { setFilters((v) => ({ ...v, isActive: value })); setPage(1); }} ariaLabel="Lọc theo trạng thái" options={[{ value: '', label: 'Tất cả trạng thái' }, { value: 'true', label: 'Đang bật' }, { value: 'false', label: 'Đã tắt' }]} />
+              <ManagerSelectMenu value={filters.isCurrentlyEffective} onChange={(value) => { setFilters((v) => ({ ...v, isCurrentlyEffective: value })); setPage(1); }} ariaLabel="Lọc theo hiệu lực" options={[{ value: '', label: 'Tất cả hiệu lực' }, { value: 'true', label: 'Đang có hiệu lực' }, { value: 'false', label: 'Chưa/đã hết hiệu lực' }]} />
+            </div>
           </div>
         </div>
-        <div className="mt-4"><AdminRefreshIndicator visible={refreshing} label="Đang đồng bộ chính sách..." /></div>
-      </section>
-
-      <section className="admin-panel overflow-hidden">
         {loading ? <div className="p-6"><PolicySkeleton /></div> : error && policies.length === 0 ? <AdminErrorState description={error} onRetry={() => loadPolicies()} /> : policies.length === 0 ? <AdminEmptyState icon={Lucide.TimerOff} title="Chưa có chính sách phù hợp" description="Thử đổi bộ lọc hoặc tạo chính sách SLA đầu tiên." /> : (
           <div className="overflow-x-auto">
             <table className="table w-full">

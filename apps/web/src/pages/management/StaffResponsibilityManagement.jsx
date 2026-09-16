@@ -5,6 +5,7 @@ import { staffResponsibilityApi, toolsApi } from '@urbanmind/shared-api';
 import { userApi } from '../../services/api/userApi';
 import {
   ManagerConfirmDialog,
+  ManagerListRefreshIndicator,
   ManagerMetricCard,
   ManagerPageHeader,
   ManagerSelectMenu,
@@ -13,7 +14,6 @@ import {
 import {
   AdminEmptyState,
   AdminErrorState,
-  AdminRefreshIndicator,
 } from '../../components/admin/AdminDataStates';
 
 const normalizeRole = (value) => String(value || '').trim().replace(/[-_\s]/g, '').toLowerCase();
@@ -303,35 +303,38 @@ export const StaffResponsibilityManagement = () => {
         <ManagerMetricCard label="Phạm vi chính" value={loading ? '—' : primaryCount} description="Phạm vi được đánh dấu ưu tiên chính." icon={Lucide.BadgeCheck} toneClass="bg-emerald-50 text-emerald-700" />
       </section>
 
-      <section className="admin-panel overflow-hidden">
-        <header className="relative border-b border-slate-200 p-4 sm:p-5 dark:border-slate-800">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0">
-              <h2 className="admin-section-title">Danh sách phạm vi phụ trách</h2>
-              <p className="admin-section-description mt-1">Tra cứu, chỉnh sửa và tạm dừng phạm vi theo nhân viên, phường hoặc danh mục.</p>
+      <section className="admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách phạm vi phụ trách</h2>
+                  <ManagerListRefreshIndicator visible={refreshing && !loading} label="Đang cập nhật" />
+                </div>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {loading ? 'Đang tải dữ liệu...' : `Tổng cộng ${assignments.length} phạm vi · ${filteredAssignments.length} phù hợp`}
+                </p>
+              </div>
+              {(query || areaFilter || categoryFilter || activeFilter !== 'active') ? (
+                <button type="button" onClick={() => { setQuery(''); setAreaFilter(''); setCategoryFilter(''); setActiveFilter('active'); setCurrentPage(1); }} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <Lucide.RotateCcw size={15} /> Xóa bộ lọc
+                </button>
+              ) : null}
             </div>
-            <div className="shrink-0 text-xs text-slate-500">
-              {loading ? 'Đang tải dữ liệu…' : `${filteredAssignments.length}/${assignments.length} phạm vi`}
+
+            <div className="grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(320px,1.45fr)_minmax(190px,0.8fr)_minmax(190px,0.8fr)_minmax(180px,0.75fr)]">
+              <label className="relative block min-w-0">
+                <span className="sr-only">Tìm phạm vi phụ trách</span>
+                <Lucide.Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setCurrentPage(1); }} placeholder="Tìm nhân viên, phường, danh mục..." className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-900" />
+              </label>
+              <ManagerSelectMenu value={areaFilter} options={filterAreaOptions} onChange={(value) => { setAreaFilter(value); setCurrentPage(1); }} placeholder="Tất cả khu vực" ariaLabel="Lọc khu vực" />
+              <ManagerSelectMenu value={categoryFilter} options={filterCategoryOptions} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} placeholder="Tất cả danh mục" ariaLabel="Lọc danh mục" />
+              <ManagerSelectMenu value={activeFilter} options={activeOptions} onChange={(value) => { setActiveFilter(value); setCurrentPage(1); }} placeholder="Tất cả trạng thái" ariaLabel="Lọc trạng thái" />
             </div>
           </div>
-
-          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(260px,1fr)_220px_220px_190px]">
-            <label className="relative block">
-              <span className="sr-only">Tìm phạm vi phụ trách</span>
-              <Lucide.Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setCurrentPage(1); }} placeholder="Tìm nhân viên, phường, danh mục..." className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-900" />
-            </label>
-            <ManagerSelectMenu value={areaFilter} options={filterAreaOptions} onChange={(value) => { setAreaFilter(value); setCurrentPage(1); }} placeholder="Tất cả khu vực" ariaLabel="Lọc khu vực" />
-            <ManagerSelectMenu value={categoryFilter} options={filterCategoryOptions} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} placeholder="Tất cả danh mục" ariaLabel="Lọc danh mục" />
-            <ManagerSelectMenu value={activeFilter} options={activeOptions} onChange={(value) => { setActiveFilter(value); setCurrentPage(1); }} placeholder="Trạng thái" ariaLabel="Lọc trạng thái" />
-          </div>
-
-          {refreshing ? (
-            <div className="mt-4 flex items-center justify-end xl:absolute xl:right-5 xl:top-5 xl:mt-0">
-              <AdminRefreshIndicator visible label="Đang cập nhật…" />
-            </div>
-          ) : null}
-        </header>
+        </div>
 
         {error && assignments.length === 0 ? (
           <div className="p-5"><AdminErrorState title="Không thể tải phạm vi phụ trách" description={error} onRetry={() => load()} /></div>

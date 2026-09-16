@@ -402,6 +402,7 @@ const QuickFilterMenu = ({
   icon: Icon,
   onChange,
   metaMap,
+  className = '',
 }) => {
   const detailsRef = useRef(null);
 
@@ -426,7 +427,7 @@ const QuickFilterMenu = ({
   };
 
   return (
-    <details ref={detailsRef} className="group relative">
+    <details ref={detailsRef} className={`group relative min-w-0 ${className}`}>
       <summary
         className={`flex h-10 min-w-[196px] cursor-pointer list-none items-center gap-2 rounded-xl border px-3.5 text-sm font-medium transition [&::-webkit-details-marker]:hidden ${
           value
@@ -538,6 +539,7 @@ export const IncidentManagement = () => {
   const priority = searchParams.get('priority') || '';
   const severity = searchParams.get('severity') || '';
   const coordinateFilter = searchParams.get('coordinates') || '';
+  const isAdminIncidentList = location.pathname.startsWith('/management/incidents');
 
   const [incidents, setIncidents] = useState(() => initialSnapshot?.incidents || []);
   const [areas, setAreas] = useState(() => initialSnapshot?.areas || []);
@@ -597,7 +599,7 @@ export const IncidentManagement = () => {
       const groupedStatuses = STATUS_GROUPS[statusGroup] || null;
       const unclassifiedOnly = categoryGroup === 'unclassified';
 
-      if (coordinateFilter) {
+      if (isAdminIncidentList && coordinateFilter) {
         const collected = [];
         const statusesToLoad = groupedStatuses?.length ? groupedStatuses : [status];
 
@@ -865,7 +867,7 @@ export const IncidentManagement = () => {
         setRefreshing(false);
       }
     }
-  }, [areaId, categoryGroup, categoryId, coordinateFilter, pageNumber, priority, queryKey, search, severity, status, statusGroup]);
+  }, [areaId, categoryGroup, categoryId, coordinateFilter, isAdminIncidentList, pageNumber, priority, queryKey, search, severity, status, statusGroup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1027,7 +1029,7 @@ export const IncidentManagement = () => {
     });
   }, [incidentReturnKey, location.hash, location.pathname, location.search, location.state, navigate, queryKey]);
 
-  const hasFilters = Boolean(search || areaId || categoryId || categoryGroup || status || statusGroup || priority || severity || coordinateFilter);
+  const hasFilters = Boolean(search || areaId || categoryId || categoryGroup || status || statusGroup || priority || severity || (isAdminIncidentList && coordinateFilter));
   const selectedArea = useMemo(() => areas.find((area) => String(getOptionId(area)) === String(areaId)), [areaId, areas]);
 
   return (
@@ -1049,8 +1051,8 @@ export const IncidentManagement = () => {
         )}
       />
 
-      <section className="admin-panel relative overflow-visible">
-        <div className="manager-list-panel-header px-5 py-5 sm:px-6">
+      <section className="admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
@@ -1116,7 +1118,7 @@ export const IncidentManagement = () => {
                   options={buildAreaFilterOptions(areas)}
                   icon={Lucide.MapPin}
                   onChange={(nextValue) => updateFilters({ areaId: nextValue, page: 1 })}
-                  widthClass="w-[300px]"
+                  widthClass="w-full min-w-[260px]"
                 />
 
                 <MainFilterMenu
@@ -1131,7 +1133,7 @@ export const IncidentManagement = () => {
                     }
                     updateFilters({ categoryId: nextValue, categoryGroup: '', page: 1 });
                   }}
-                  widthClass="w-[320px]"
+                  widthClass="w-full min-w-[280px]"
                 />
 
                 <MainFilterMenu
@@ -1150,13 +1152,13 @@ export const IncidentManagement = () => {
                     }
                     updateFilters({ status: nextValue, statusGroup: '', page: 1 });
                   }}
-                  widthClass="w-[300px]"
+                  widthClass="w-full min-w-[260px]"
                   maxHeightClass="max-h-[360px]"
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="mr-1 text-xs font-semibold uppercase tracking-[0.06em] text-slate-400">Lọc nhanh</span>
+              <div className="grid w-full gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-400">Lọc nhanh</span>
 
                 <QuickFilterMenu
                   label="Ưu tiên"
@@ -1165,6 +1167,7 @@ export const IncidentManagement = () => {
                   icon={Lucide.Gauge}
                   metaMap={PRIORITY_META}
                   onChange={(nextValue) => updateFilters({ priority: nextValue, page: 1 })}
+                  className="w-full"
                 />
 
                 <QuickFilterMenu
@@ -1174,15 +1177,19 @@ export const IncidentManagement = () => {
                   icon={Lucide.Activity}
                   metaMap={PRIORITY_META}
                   onChange={(nextValue) => updateFilters({ severity: nextValue, page: 1 })}
+                  className="w-full"
                 />
 
-                <QuickFilterMenu
-                  label="Tọa độ"
-                  value={coordinateFilter}
-                  options={COORDINATE_OPTIONS}
-                  icon={Lucide.MapPin}
-                  onChange={(nextValue) => updateFilters({ coordinates: nextValue, page: 1 })}
-                />
+                {isAdminIncidentList ? (
+                  <QuickFilterMenu
+                    label="Tọa độ"
+                    value={coordinateFilter}
+                    options={COORDINATE_OPTIONS}
+                    icon={Lucide.MapPin}
+                    onChange={(nextValue) => updateFilters({ coordinates: nextValue, page: 1 })}
+                    className="w-full"
+                  />
+                ) : null}
 
                 {hasFilters ? (
                   <button
