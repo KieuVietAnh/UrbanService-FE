@@ -91,9 +91,9 @@ export default function OnboardingScreen() {
                   <Text style={styles.illustrationBadgeText}>{slide.hint}</Text>
                 </View>
                 <Text style={styles.emoji}>{slide.emoji}</Text>
-                <View style={styles.mockCard}>
-                  <View style={styles.mockDot} />
-                  <Text style={styles.mockCardText}>Đã xử lý • Chiếu sáng công cộng</Text>
+                <View style={styles.previewCard}>
+                  <View style={styles.previewDot} />
+                  <Text style={styles.previewCardText}>Đã xử lý • Chiếu sáng công cộng</Text>
                 </View>
               </View>
 
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   emoji: {
     fontSize: 72,
   },
-  mockCard: {
+  previewCard: {
     position: 'absolute',
     bottom: 16,
     right: 16,
@@ -210,13 +210,13 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
-  mockDot: {
+  previewDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: '#10B981',
   },
-  mockCardText: {
+  previewCardText: {
     fontFamily: 'Geist-SemiBold',
     fontSize: 12,
     color: '#0F172A',

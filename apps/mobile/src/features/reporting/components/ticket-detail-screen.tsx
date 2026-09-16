@@ -193,7 +193,7 @@ export default function TicketDetailScreen() {
   const comments = useMemo<CommentItem[]>(() => {
     const items = Array.isArray(ticket?.comments) ? ticket.comments : [];
     return items.map((c: any, index: number) => {
-      const createdAt = c.createdAt ?? new Date().toISOString();
+      const createdAt = c.createdAt ?? '';
       return {
         id: String(c.commentId ?? c.id ?? `comment-${index}`),
         senderName: c.authorName ?? c.userName ?? c.userFullName ?? 'Hệ thống',

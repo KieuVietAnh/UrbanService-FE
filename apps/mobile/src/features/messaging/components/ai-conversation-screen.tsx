@@ -62,6 +62,7 @@ const formatTime = (value: string) => {
 
 const normalizeMessage = (
   raw: unknown,
+  index: number,
 ): AiMessage | null => {
   if (!isApiRecord(raw)) return null;
 
@@ -73,7 +74,7 @@ const normalizeMessage = (
     raw.messageId ??
       raw.id ??
       raw.uuid ??
-      `${raw.createdAt ?? Date.now()}`,
+      `message-${index}`,
   );
 
   const content =
@@ -105,7 +106,7 @@ const normalizeMessage = (
     createdAt: String(
       raw.createdAt ??
         raw.createdAtUtc ??
-        new Date().toISOString(),
+        '',
     ),
   };
 };
@@ -153,7 +154,7 @@ const normalizeChatReply = (payload: unknown) => {
   const createdAt =
     data.createdAt ??
     data.createdAtUtc ??
-    new Date().toISOString();
+    '';
 
   return {
     message: String(message),
@@ -196,15 +197,7 @@ export default function AiConversationDetailScreen() {
       }
 
       if (isPlaceholderConversation) {
-        return [
-          {
-            id: 'welcome',
-            content:
-              'Xin chào! Mình là trợ lý AI. Hãy hỏi về phản ánh, trạng thái xử lý hoặc hướng dẫn nhanh.',
-            sender: 'assistant',
-            createdAt: new Date().toISOString(),
-          },
-        ];
+        return [];
       }
 
       const raw =

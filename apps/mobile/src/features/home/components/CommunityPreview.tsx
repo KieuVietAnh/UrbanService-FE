@@ -15,12 +15,6 @@ type Props = {
   router: RouterLike;
 };
 
-const COMMUNITY_IMAGES = [
-  'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=480&q=80',
-  'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=480&q=80',
-  'https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=480&q=80',
-];
-
 export function CommunityPreview({ router }: Props) {
   const feedParams = { pageNumber: 1, pageSize: 8 };
   const { data, isLoading } = useQuery({
@@ -64,33 +58,41 @@ export function CommunityPreview({ router }: Props) {
 
           <View style={styles.communityBodyRow}>
             <View style={styles.communityMiniList}>
-              {items.slice(0, 2).map((item: any, index: number) => {
+              {items.slice(0, 2).map((item, index) => {
                 const id = item.feedbackId ?? item.id;
+                const attachment = item.attachments?.find((value) => value?.fileUrl || value?.url);
+                const imageUrl = item.imageUrl || attachment?.fileUrl || attachment?.url;
                 return (
                   <Animated.View key={id ?? index} entering={FadeInDown.delay(index * 70).springify().damping(18)}>
                     <Pressable
                       style={styles.communityMiniCard}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        if (id) router.push({ pathname: '/community/[id]', params: { id: String(id) } } as any);
+                        if (id) router.push(`/(resident)/community/${id}`);
                       }}
                     >
-                      <Image source={{ uri: COMMUNITY_IMAGES[index % COMMUNITY_IMAGES.length] }} style={styles.communityMiniImage} />
+                      {imageUrl ? (
+                        <Image source={{ uri: imageUrl }} style={styles.communityMiniImage} />
+                      ) : (
+                        <View style={[styles.communityMiniImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' }]}>
+                          <Icon name="image" size={20} color={colors.lightMuted} />
+                        </View>
+                      )}
                       <View style={{ flex: 1 }}>
                         <View style={styles.communityNewPill}>
                           <Text style={styles.communityNewText}>Mới</Text>
                         </View>
                         <Text style={styles.communityMiniTitle} numberOfLines={2}>
-                          {item.title ?? item.content ?? 'Bài viết cộng đồng'}
+                          {item.title || 'Bài viết cộng đồng'}
                         </Text>
                         <Text style={styles.communityMiniAddress} numberOfLines={1}>
-                          {item.locationText ?? item.address ?? 'Khu vực đang cập nhật'}
+                          {item.locationText || 'Khu vực đang cập nhật'}
                         </Text>
                         <View style={styles.communityStatsRow}>
                           <Icon name="thumbs-up" size={12} color="#6B7280" />
-                          <Text style={styles.communityStatText}>{item.supportCount ?? item.supporters ?? 0}</Text>
+                          <Text style={styles.communityStatText}>{item.supportCount ?? 0}</Text>
                           <Icon name="message-square" size={12} color="#6B7280" />
-                          <Text style={styles.communityStatText}>{item.commentCount ?? item.commentsCount ?? 0}</Text>
+                          <Text style={styles.communityStatText}>{item.commentCount ?? 0}</Text>
                         </View>
                       </View>
                     </Pressable>

@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
+    "test:data": "node --test tests/production-data.test.mjs",
     "test:staff": "node --test tests/staff.test.mjs tests/staff-sla.test.mjs"
   },
   "dependencies": {
