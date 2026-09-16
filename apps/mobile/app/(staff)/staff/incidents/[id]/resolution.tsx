@@ -1,1 +1,6 @@
-export { StaffResolutionScreen as default } from '@/features/staff/components/staff-resolution-screen';
+import React from 'react';
+import { StaffExecutionFlowScreen } from '@/features/staff/components/staff-execution-flow-screen';
+
+export default function IncidentResolution() {
+  return <StaffExecutionFlowScreen initialStep="evidence" />;
+}

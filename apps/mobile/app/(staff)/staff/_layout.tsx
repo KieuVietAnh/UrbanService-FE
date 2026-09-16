@@ -14,6 +14,7 @@ export default function StaffWorkspaceLayout() {
     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     <Stack.Screen name="index" options={{ headerShown: false }} />
     <Stack.Screen name="incidents/[id]" options={{ title: 'Chi tiết sự vụ' }} />
+    <Stack.Screen name="incidents/[id]/execution" options={{ title: 'Xử lý sự vụ' }} />
     <Stack.Screen name="incidents/[id]/provider" options={{ title: 'Đơn vị xử lý & liên hệ' }} />
     <Stack.Screen name="incidents/[id]/resolution" options={{ title: 'Minh chứng & kết quả' }} />
     <Stack.Screen name="feedbacks/[id]" options={{ title: 'Chi tiết Report' }} />
