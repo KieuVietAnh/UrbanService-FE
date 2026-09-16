@@ -69,8 +69,7 @@ const FeedbackDetailPage = lazy(() => import('../pages/management/FeedbackDetail
 const AdminIncidentMapPage = lazy(() => import('../pages/management/AdminIncidentMapPage').then((m) => ({ default: m.AdminIncidentMapPage })));
 const CategoryManagement = lazy(() => import('../pages/management/CategoryManagement').then((m) => ({ default: m.CategoryManagement })));
 const SLAConfiguration = lazy(() => import('../pages/management/SLAConfiguration').then((m) => ({ default: m.SLAConfiguration })));
-const AuditLog = lazy(() => import('../pages/admin/AuditLog').then((m) => ({ default: m.AuditLog })));
-const PerformanceDashboard = lazy(() => import('../pages/admin/PerformanceDashboard').then((m) => ({ default: m.PerformanceDashboard })));
+const StaffResponsibilityManagement = lazy(() => import('../pages/management/StaffResponsibilityManagement').then((m) => ({ default: m.StaffResponsibilityManagement })));
 
 const RouteFallback = ({ isAuthenticated = false }) => {
   const location = useLocation();
@@ -159,7 +158,7 @@ const roleEntryPaths = {
   [APP_ROLES.SYSTEM_STAFF]: '/dashboard',
   [APP_ROLES.SERVICE_PROVIDER]: '/provider/tasks',
   [APP_ROLES.INTERACTION_MANAGER]: '/manager/interactions',
-  [APP_ROLES.ADMINISTRATOR]: '/admin/audit',
+  [APP_ROLES.ADMINISTRATOR]: '/dashboard',
 };
 
 const SystemStaffLegacyRouteRedirect = () => {
@@ -667,6 +666,15 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
+      <Route path="/management/staff-responsibilities" element={
+        <ProtectedRoute>
+          <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
+            <DashboardLayout>
+              <StaffResponsibilityManagement />
+            </DashboardLayout>
+          </RoleGuard>
+        </ProtectedRoute>
+      } />
       <Route path="/management/feedbacks/:feedbackId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
@@ -734,18 +742,14 @@ export const AppRoutes = () => {
       <Route path="/admin/audit" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
-            <DashboardLayout>
-              <AuditLog />
-            </DashboardLayout>
+            <Navigate to="/dashboard" replace />
           </RoleGuard>
         </ProtectedRoute>
       } />
       <Route path="/admin/performance" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.ADMINISTRATOR]}>
-            <DashboardLayout>
-              <PerformanceDashboard />
-            </DashboardLayout>
+            <Navigate to="/dashboard" replace />
           </RoleGuard>
         </ProtectedRoute>
       } />
@@ -756,5 +760,7 @@ export const AppRoutes = () => {
   </Suspense>
   );
 };
+
+
 
 

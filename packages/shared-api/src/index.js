@@ -7,6 +7,7 @@ export { feedbackDashboardApi } from './feedbackDashboardApi.js';
 export { assignmentApi } from './assignmentApi.js';
 export { notificationApi } from './notificationApi.js';
 export { userApi } from './userApi.js';
+export { staffResponsibilityApi, normalizeStaffResponsibilityFilters, normalizeStaffResponsibilityCollection, normalizeStaffResponsibilityCreatePayload, normalizeStaffResponsibilityUpdatePayload } from './staffResponsibilityApi.js';
 export { userAreaAlertApi } from './userAreaAlertApi.js';
 export { slaApi } from './slaApi.js';
 // NOTE: `mockDb` is a development-only in-memory store. It is no longer exported
@@ -54,3 +55,5 @@ export {
   normalizeIncidentTimelineParams,
   normalizeIncidentTimelineResponse,
 } from './incidentManagementApi.js';
+
+
