@@ -26,6 +26,8 @@ const getErrorMessage = (error, fallback) =>
 const getScrollContainer = () =>
   document.querySelector('[data-dashboard-scroll-container]') || document.scrollingElement;
 
+const COORDINATOR_PAGE_SIZE = 8;
+
 export default function CoordinatorDirectoryPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -65,6 +67,7 @@ export default function CoordinatorDirectoryPage() {
   );
   const [restoreComplete, setRestoreComplete] = useState(() => !restoredContext);
   const [highlightedCoordinatorId, setHighlightedCoordinatorId] = useState('');
+  const [page, setPage] = useState(1);
 
   const loadReferenceData = useCallback(async () => {
     setMetadataLoading(true);
@@ -299,6 +302,20 @@ export default function CoordinatorDirectoryPage() {
     return items;
   }, [items, statusFilter]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / COORDINATOR_PAGE_SIZE));
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * COORDINATOR_PAGE_SIZE;
+    return filteredItems.slice(start, start + COORDINATOR_PAGE_SIZE);
+  }, [filteredItems, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, areaId, categoryId, statusFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const summaryCards = [
     {
       label: 'Tổng điều phối viên',
@@ -340,7 +357,7 @@ export default function CoordinatorDirectoryPage() {
             <div className="admin-hero-icon"><Lucide.Network size={22} /></div>
             <div className="min-w-0">
               <h1 className="admin-hero-title">Quản lý điều phối viên</h1>
-              <p className="admin-hero-description">Quản lý đơn vị cung cấp, người phụ trách và phạm vi xử lý phản ánh theo khu vực, danh mục.</p>
+              <p className="admin-hero-description">Quản lý điều phối viên và phạm vi phụ trách theo khu vực, danh mục.</p>
             </div>
           </div>
           {canManage && (
@@ -434,7 +451,7 @@ export default function CoordinatorDirectoryPage() {
         </section>
       ) : null}
 
-      <section className="admin-panel overflow-hidden p-5 dark:border-slate-700 dark:bg-slate-950/70">
+      <section className="admin-panel relative overflow-hidden p-5 dark:border-slate-700 dark:bg-slate-950/70">
         <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_220px_220px_180px]">
           <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 dark:border-slate-700 dark:bg-slate-950/70">
             <Lucide.Search size={17} className="text-slate-400" />
@@ -477,11 +494,13 @@ export default function CoordinatorDirectoryPage() {
 
         {error && <div className="mt-4"><ErrorAlert title="Không tải được dữ liệu" message={error} /></div>}
 
-        <div className="mt-4 flex min-h-5 items-center justify-end text-xs font-medium text-slate-500 dark:text-slate-400" aria-live="polite">
-          {refreshing && <span className="inline-flex items-center gap-2"><span className="loading loading-spinner loading-xs text-blue-600" /> Đang cập nhật danh sách...</span>}
-        </div>
+        {refreshing && (
+          <div className="absolute right-5 top-5 z-10 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-sm backdrop-blur dark:border-blue-500/20 dark:bg-slate-900/95 dark:text-slate-300" aria-live="polite">
+            <span className="loading loading-spinner loading-xs text-blue-600" /> Đang cập nhật
+          </div>
+        )}
 
-        <div className="mt-2 min-w-0 overflow-hidden border-t border-slate-200 dark:border-slate-700">
+        <div className="mt-4 min-w-0 overflow-hidden border-t border-slate-200 dark:border-slate-700">
           <table className="table table-fixed w-full text-sm text-slate-700 dark:text-slate-200">
             <colgroup>
               <col className="w-[25%]" />
@@ -499,7 +518,7 @@ export default function CoordinatorDirectoryPage() {
                 <tr><td colSpan="6" className="py-12 text-center"><div className="inline-flex items-center gap-3 text-sm font-medium text-slate-500 dark:text-slate-400"><span className="loading loading-spinner loading-md text-blue-600" /> Đang tải danh sách điều phối viên...</div></td></tr>
               ) : filteredItems.length === 0 ? (
                 <tr><td colSpan="6" className="py-12 text-center text-slate-500">Không có điều phối viên phù hợp với bộ lọc.</td></tr>
-              ) : filteredItems.map((item) => {
+              ) : paginatedItems.map((item) => {
                 const id = item.coordinatorId ?? item.id;
                 return (
                   <tr
@@ -524,6 +543,17 @@ export default function CoordinatorDirectoryPage() {
             </tbody>
           </table>
         </div>
+
+        {!loading && filteredItems.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+            <span>Hiển thị {Math.min((page - 1) * COORDINATOR_PAGE_SIZE + 1, filteredItems.length)}–{Math.min(page * COORDINATOR_PAGE_SIZE, filteredItems.length)} / {filteredItems.length} điều phối viên</span>
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className="btn btn-sm rounded-xl border border-slate-200 bg-white px-3 font-semibold text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Trước</button>
+              <span className="min-w-24 text-center font-semibold text-slate-700 dark:text-slate-200">Trang {page} / {totalPages}</span>
+              <button type="button" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} className="btn btn-sm rounded-xl border border-slate-200 bg-white px-3 font-semibold text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Sau</button>
+            </div>
+          </div>
+        )}
       </section>
 
     </div>

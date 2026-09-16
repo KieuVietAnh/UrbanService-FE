@@ -3,9 +3,16 @@ export const getHeaderBreadcrumbOverride = (pathname = '') => {
     '/management/staff-responsibilities': 'Phạm vi phụ trách nhân viên',
     '/management/feedbacks': 'Tra cứu phản ánh',
     '/management/map': 'Bản đồ sự vụ',
+    '/management/coordinators': 'Quản lý điều phối viên',
   };
   if (adminOverrides[pathname]) {
     return [{ label: adminOverrides[pathname], href: null }];
+  }
+  if (pathname.startsWith('/management/coordinators/')) {
+    return [
+      { label: 'Quản lý điều phối viên', href: '/management/coordinators' },
+      { label: 'Chi tiết điều phối viên', href: null },
+    ];
   }
   if (pathname === '/notifications') {
     return [{ label: 'Thông báo', href: null }];
