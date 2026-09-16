@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api/userApi';
 import * as Lucide from 'lucide-react';
 import { readAdminUserManagementCache, writeAdminUserManagementCache } from '../../services/cache/adminUserManagementCache';
+import { ADMIN_ROLE_DESCRIPTIONS } from './adminRoleDescriptions.mjs';
 
 const ROLE_META = {
   'service-user': {
@@ -60,15 +61,27 @@ const normalizeAdminUser = (user = {}) => ({
   role: getRoleSlugFromApi(user.roleName) || user.role || '',
 });
 
-const ROLE_DESCRIPTIONS = {
-  'service-user': 'Gửi phản ánh, theo dõi trạng thái xử lý và đánh giá kết quả.',
-  'system-staff': 'Tiếp nhận, kiểm tra, phân loại và điều phối phản ánh mới.',
-  'service-provider': 'Cập nhật tiến độ xử lý từ hiện trường hoặc từ đầu mối bên ngoài.',
-  'interaction-manager': 'Theo dõi tương tác cộng đồng, cảm xúc người dùng và các kênh phản hồi.',
-  administrator: 'Quản trị tài khoản, danh mục, SLA, tích hợp, nhật ký hệ thống và vận hành nền tảng.',
-};
+const ROLE_DESCRIPTIONS = ADMIN_ROLE_DESCRIPTIONS;
 
 const USERS_PAGE_SIZE = 8;
+
+const getPaginationItems = (currentPage, totalPages) => {
+  if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+  const visiblePages = [...pages]
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b);
+
+  const items = [];
+  visiblePages.forEach((page, index) => {
+    const previous = visiblePages[index - 1];
+    if (previous && page - previous > 1) items.push(`ellipsis-${previous}-${page}`);
+    items.push(page);
+  });
+
+  return items;
+};
 
 const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const normalizePhoneNumber = (value = '') => value.replace(/\D/g, '').slice(0, 10);
@@ -108,7 +121,7 @@ const USER_MANAGEMENT_SCOPED_STYLES = `
     .um-users-filter-search { grid-column: 1 / -1; }
   }
   @media (min-width: 1280px) {
-    .um-users-filter-grid { grid-template-columns: minmax(260px, 320px) 170px 160px 150px; }
+    .um-users-filter-grid { grid-template-columns: minmax(260px, 320px) 170px 190px 150px; }
     .um-users-filter-search { grid-column: auto; }
   }
   .um-role-badge,
@@ -124,15 +137,9 @@ const USER_MANAGEMENT_SCOPED_STYLES = `
     min-width: 112px;
     justify-content: center;
   }
-  .um-user-actions {
-    min-width: 260px;
-  }
-  .um-user-action-button {
-    min-width: 112px;
-  }
-  .um-user-lock-button {
-    min-width: 96px;
-  }
+  .um-user-actions { min-width: 0; }
+  .um-user-action-button { min-width: 104px; }
+  .um-user-lock-button { min-width: 88px; }
   .um-access-status-toggle {
     min-width: 178px;
     min-height: 62px;
@@ -492,6 +499,8 @@ const EditAccessModal = ({
   const currentMeta = getRoleMeta(targetUser.role);
   const nextMeta = getRoleMeta(editRole);
   const roleChanged = editRole !== targetUser.role;
+  const statusChanged = editActive !== Boolean(targetUser.isActive);
+  const hasChanges = roleChanged || statusChanged;
   const isAdminRole = editRole === 'administrator';
 
   return createPortal((
@@ -503,168 +512,99 @@ const EditAccessModal = ({
     >
       <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" />
 
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)] dark:border-slate-700 dark:bg-slate-950">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 p-6 dark:border-slate-700 dark:bg-slate-900/80">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)] dark:border-slate-700 dark:bg-slate-950">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-5 dark:border-slate-700 dark:bg-slate-900/80">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
-              <Lucide.UserCog size={20} />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/20">
+              <Lucide.UserCog size={19} />
             </span>
             <div className="min-w-0">
-              <h3 id="edit-access-title" className="text-xl font-semibold text-slate-950 dark:text-slate-100">Chỉnh quyền tài khoản</h3>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Đổi vai trò nghiệp vụ hoặc khóa/mở quyền đăng nhập của tài khoản này.
-              </p>
+              <h3 id="edit-access-title" className="text-xl font-semibold text-slate-950 dark:text-slate-100">Chỉnh sửa quyền truy cập</h3>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Cập nhật vai trò và trạng thái đăng nhập của tài khoản.</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-ghost btn-sm btn-circle"
-            aria-label="Đóng"
-          >
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm btn-circle" aria-label="Đóng">
             <Lucide.X size={18} />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-5 p-6">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
-            <div className="flex items-center gap-3">
-              {targetUser.avatarUrl ? (
-                <div className="avatar">
-                  <div className="h-12 w-12 rounded-xl ring-1 ring-slate-200">
-                    <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
-                  </div>
+        <form onSubmit={onSubmit} className="space-y-4 p-5">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 dark:border-slate-700 dark:bg-slate-900/70">
+            {targetUser.avatarUrl ? (
+              <div className="avatar">
+                <div className="h-11 w-11 rounded-xl ring-1 ring-slate-200 dark:ring-slate-700">
+                  <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
                 </div>
-              ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-sm font-semibold text-blue-700 ring-1 ring-blue-100">
-                  {getInitials(targetUser.fullName)}
-                </div>
-              )}
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{targetUser.fullName || 'Chưa có tên'}</p>
-                <p className="truncate text-sm text-slate-500 dark:text-slate-400">{targetUser.email || 'Chưa có email'}</p>
               </div>
+            ) : (
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/20">
+                {getInitials(targetUser.fullName)}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{targetUser.fullName || 'Chưa có tên'}</p>
+              <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">{targetUser.email || 'Chưa có email'}</p>
             </div>
+            <span className={`um-role-badge hidden items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 sm:inline-flex ${currentMeta.className}`}>
+              {currentMeta.label}
+            </span>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-              <div className="grid gap-3 sm:grid-cols-[150px_1fr] sm:items-start">
-                <label className="pt-3">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Vai trò truy cập</span>
-                </label>
-
-                <div>
-                  <CustomSelect
-                    value={editRole}
-                    onChange={onRoleChange}
-                    options={accessRoleOptions}
-                    ariaLabel="Chọn vai trò truy cập"
-                    getDescription={(item) => ROLE_DESCRIPTIONS[item.value]}
-                    menuClassName="max-h-[320px] overflow-y-auto"
-                  />
-
-                  <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    {ROLE_DESCRIPTIONS[editRole] || 'Vai trò này chưa có mô tả nghiệp vụ.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="sm:col-span-2 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-stretch">
-              <div className="um-access-role-compare-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400 dark:text-slate-500">Vai trò hiện tại</p>
-                    <span className={`um-role-badge mt-3 inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${currentMeta.className}`}>
-                      {currentMeta.label}
-                    </span>
-                  </div>
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-400 ring-1 ring-slate-200 dark:bg-slate-950/50 dark:text-slate-500 dark:ring-slate-700">
-                    <Lucide.UserRound size={15} />
-                  </span>
-                </div>
-              </div>
-
-              <div className="hidden sm:flex items-center justify-center">
-                <span className={`um-access-compare-arrow flex items-center justify-center rounded-full ring-1 ${roleChanged
-                  ? 'bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/25'
-                  : 'bg-slate-50 text-slate-400 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-500 dark:ring-slate-700'
-                }`}>
-                  <Lucide.ArrowRight size={16} />
-                </span>
-              </div>
-
-              <div className={`um-access-role-compare-card rounded-2xl border p-4 shadow-sm transition ${roleChanged
-                ? 'border-blue-200 bg-blue-50/60 ring-1 ring-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:ring-blue-400/20'
-                : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/70'
-              }`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400 dark:text-slate-500">Vai trò sau chỉnh sửa</p>
-                    <span className={`um-role-badge mt-3 inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${nextMeta.className}`}>
-                      {nextMeta.label}
-                    </span>
-                  </div>
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1 ${roleChanged
-                    ? 'bg-blue-100 text-blue-700 ring-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:ring-blue-400/30'
-                    : 'bg-slate-50 text-slate-400 ring-slate-200 dark:bg-slate-950/50 dark:text-slate-500 dark:ring-slate-700'
-                  }`}>
-                    {roleChanged ? <Lucide.Sparkles size={15} /> : <Lucide.Check size={15} />}
-                  </span>
-                </div>
-                <p className={`um-access-compare-helper mt-3 text-xs font-medium ${roleChanged
-                  ? 'text-blue-600 dark:text-blue-300'
-                  : 'text-slate-400 dark:text-slate-500'
-                }`}>
-                  {roleChanged ? 'Vai trò sẽ được cập nhật sau khi lưu thay đổi.' : 'Chưa có thay đổi vai trò.'}
-                </p>
-              </div>
-            </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Vai trò</label>
+            <CustomSelect
+              value={editRole}
+              onChange={onRoleChange}
+              options={accessRoleOptions}
+              ariaLabel="Chọn vai trò truy cập"
+              getDescription={(item) => ROLE_DESCRIPTIONS[item.value]}
+              menuClassName="max-h-[320px] overflow-y-auto"
+            />
+            <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {ROLE_DESCRIPTIONS[editRole] || 'Vai trò này chưa có mô tả nghiệp vụ.'}
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-            <div className="grid gap-4 sm:grid-cols-[1fr_190px] sm:items-center">
-              <div>
-                <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Trạng thái tài khoản</p>
-                <p className="mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Khi khóa tài khoản, người dùng sẽ không thể đăng nhập cho đến khi quản trị viên mở lại.
-                </p>
-              </div>
-              <label className="um-access-status-toggle grid cursor-pointer grid-cols-[104px_44px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/60">
-                <span className={`um-access-status-toggle-label text-sm font-semibold leading-tight ${editActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
-                  {editActive ? 'Đang hoạt động' : 'Đã khóa'}
-                </span>
-                <input
-                  type="checkbox"
-                  className="toggle toggle-primary toggle-sm shrink-0"
-                  checked={editActive}
-                  onChange={(e) => onActiveChange(e.target.checked)}
-                />
-              </label>
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/70">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Quyền đăng nhập</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Khóa tài khoản sẽ ngăn người dùng đăng nhập cho đến khi được mở lại.</p>
             </div>
+            <label className="flex shrink-0 items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950/70">
+              <span className={`text-sm font-semibold ${editActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
+                {editActive ? 'Hoạt động' : 'Đã khóa'}
+              </span>
+              <input
+                type="checkbox"
+                className="toggle toggle-primary toggle-sm"
+                checked={editActive}
+                onChange={(e) => onActiveChange(e.target.checked)}
+              />
+            </label>
           </div>
 
-          <div className={`um-access-policy-note rounded-2xl border p-4 text-sm leading-6 transition ${isAdminRole
-            ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200'
-            : 'border-slate-200 bg-slate-50/80 text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400'
-          }`}>
-            <span className="font-semibold">{isAdminRole ? 'Lưu ý:' : 'Ghi chú:'}</span>{' '}
-            {isAdminRole
-              ? 'Vai trò Quản trị viên có quyền truy cập cấu hình hệ thống, nhật ký hệ thống và quản lý tài khoản. Chỉ cấp cho tài khoản thật sự cần vận hành hệ thống.'
-              : 'Thay đổi vai trò hoặc trạng thái chỉ được áp dụng sau khi bấm Lưu thay đổi.'}
-          </div>
+          {hasChanges && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-blue-800 dark:border-blue-400/25 dark:bg-blue-500/10 dark:text-blue-200">
+              <span className="font-semibold">Thay đổi đang chờ:</span>{' '}
+              {roleChanged ? `${currentMeta.label} → ${nextMeta.label}` : 'Giữ nguyên vai trò'}
+              {statusChanged ? ` · ${editActive ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}` : ''}
+            </div>
+          )}
 
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end dark:border-slate-700">
-            <button type="button" onClick={onClose} className="btn btn-ghost rounded-xl text-sm font-medium">
-              Hủy
-            </button>
+          {isAdminRole && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+              <span className="font-semibold">Lưu ý:</span> Quản trị viên có quyền quản lý cấu hình và tài khoản toàn hệ thống. Chỉ cấp vai trò này khi thật sự cần thiết.
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end dark:border-slate-700">
+            <button type="button" onClick={onClose} className="btn btn-ghost rounded-xl text-sm font-medium">Hủy</button>
             <button
               type="submit"
               className="btn rounded-xl border-0 bg-blue-600 text-sm font-medium text-white hover:bg-blue-700"
-              disabled={accessLoading}
+              disabled={accessLoading || !hasChanges}
             >
-              {accessLoading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={16} />}
+              <Lucide.Save size={16} />
               Lưu thay đổi
             </button>
           </div>
@@ -674,6 +614,56 @@ const EditAccessModal = ({
   ), document.body);
 };
 
+const ConfirmAccessSaveModal = ({ targetUser, currentRole, nextRole, currentActive, nextActive, loading, onBack, onConfirm }) => {
+  if (!targetUser) return null;
+
+  const currentMeta = getRoleMeta(currentRole);
+  const nextMeta = getRoleMeta(nextRole);
+  const roleChanged = currentRole !== nextRole;
+  const statusChanged = Boolean(currentActive) !== Boolean(nextActive);
+
+  return createPortal((
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="confirm-access-save-title">
+      <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
+      <div className="relative w-full max-w-md overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.30)] dark:border-slate-700 dark:bg-slate-950">
+        <div className="border-b border-slate-200 px-5 py-5 dark:border-slate-700">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/20">
+              <Lucide.ShieldCheck size={19} />
+            </span>
+            <div>
+              <h3 id="confirm-access-save-title" className="text-lg font-semibold text-slate-950 dark:text-slate-100">Lưu thay đổi quyền?</h3>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Kiểm tra lại trước khi áp dụng cho {targetUser.fullName || targetUser.email || 'tài khoản này'}.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 px-5 py-4 text-sm">
+          {roleChanged && (
+            <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+              <span className="text-slate-500 dark:text-slate-400">Vai trò</span>
+              <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{currentMeta.label} → {nextMeta.label}</span>
+            </div>
+          )}
+          {statusChanged && (
+            <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+              <span className="text-slate-500 dark:text-slate-400">Trạng thái</span>
+              <span className={`font-semibold ${nextActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{nextActive ? 'Hoạt động' : 'Đã khóa'}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+          <button type="button" onClick={onBack} className="btn btn-ghost rounded-xl text-sm font-medium" disabled={loading}>Quay lại</button>
+          <button type="button" onClick={onConfirm} className="btn rounded-xl border-0 bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700" disabled={loading}>
+            {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Check size={16} />}
+            Xác nhận lưu
+          </button>
+        </div>
+      </div>
+    </div>
+  ), document.body);
+};
 
 const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
   if (!targetUser) return null;
@@ -800,6 +790,7 @@ export const UserManagement = () => {
   const [editRole, setEditRole] = useState('service-user');
   const [editActive, setEditActive] = useState(true);
   const [accessLoading, setAccessLoading] = useState(false);
+  const [confirmAccessSaveOpen, setConfirmAccessSaveOpen] = useState(false);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -926,6 +917,7 @@ export const UserManagement = () => {
     const startIndex = (safeCurrentPage - 1) * USERS_PAGE_SIZE;
     return filteredUsers.slice(startIndex, startIndex + USERS_PAGE_SIZE);
   }, [filteredUsers, safeCurrentPage]);
+  const paginationItems = useMemo(() => getPaginationItems(safeCurrentPage, totalPages), [safeCurrentPage, totalPages]);
   const hasActiveFilters = Boolean(searchTerm.trim()) || roleFilter !== 'all' || statusFilter !== 'all';
 
   const createRoleOptions = useMemo(() => availableRoles.map((item) => ({
@@ -1010,10 +1002,11 @@ export const UserManagement = () => {
 
   const closeAccessModal = () => {
     if (accessLoading) return;
+    setConfirmAccessSaveOpen(false);
     setSelectedUser(null);
   };
 
-  const handleSaveAccess = async (e) => {
+  const handleSaveAccess = (e) => {
     e.preventDefault();
     if (!selectedUser) return;
 
@@ -1021,12 +1014,24 @@ export const UserManagement = () => {
     const statusChanged = editActive !== Boolean(selectedUser.isActive);
 
     if (!roleChanged && !statusChanged) {
-      setSelectedUser(null);
+      setMessage({ type: 'info', text: 'Không có thay đổi nào để lưu.' });
+      return;
+    }
+
+    setConfirmAccessSaveOpen(true);
+  };
+
+  const handleConfirmSaveAccess = async () => {
+    if (!selectedUser) return;
+
+    const roleChanged = editRole !== selectedUser.role;
+    const statusChanged = editActive !== Boolean(selectedUser.isActive);
+    if (!roleChanged && !statusChanged) {
+      setConfirmAccessSaveOpen(false);
       return;
     }
 
     setAccessLoading(true);
-
     let roleApiMissing = false;
 
     try {
@@ -1073,7 +1078,7 @@ export const UserManagement = () => {
       writeAdminUserManagementCache(updatedUsers);
       void fetchUsers({ silent: true });
       setMessage({ type: 'success', text: 'Đã cập nhật quyền truy cập tài khoản.' });
-
+      setConfirmAccessSaveOpen(false);
       setSelectedUser(null);
     } catch (err) {
       console.error(err);
@@ -1207,7 +1212,7 @@ export const UserManagement = () => {
                 Quản lý người dùng
               </h1>
               <p className="admin-hero-description">
-                Quản lý tài khoản, đổi vai trò nghiệp vụ và khóa/mở quyền truy cập hệ thống.
+                Quản lý tài khoản, vai trò và quyền truy cập hệ thống.
               </p>
             </div>
           </div>
@@ -1481,8 +1486,8 @@ export const UserManagement = () => {
               </div>
             </div>
 
-            <div className="hidden overflow-x-auto xl:block">
-              <table className="um-users-table table w-full min-w-[960px] text-sm">
+            <div className="hidden xl:block">
+              <table className="um-users-table table w-full text-sm">
               <colgroup>
                 <col className="w-[40%]" />
                 <col className="w-[18%]" />
@@ -1607,19 +1612,23 @@ export const UserManagement = () => {
                 >
                   Trước
                 </button>
-                {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => setCurrentPage(page)}
-                    className={`btn btn-sm rounded-xl text-sm font-medium ${page === safeCurrentPage
-                      ? 'border-0 bg-blue-600 text-white hover:bg-blue-700'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                    aria-current={page === safeCurrentPage ? 'page' : undefined}
-                  >
-                    {page}
-                  </button>
+                {paginationItems.map((item) => (
+                  typeof item === 'number' ? (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCurrentPage(item)}
+                      className={`btn btn-sm rounded-xl text-sm font-medium ${item === safeCurrentPage
+                        ? 'border-0 bg-blue-600 text-white hover:bg-blue-700'
+                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                      aria-current={item === safeCurrentPage ? 'page' : undefined}
+                    >
+                      {item}
+                    </button>
+                  ) : (
+                    <span key={item} className="px-1 text-slate-400" aria-hidden="true">…</span>
+                  )
                 ))}
                 <button
                   type="button"
@@ -1647,6 +1656,17 @@ export const UserManagement = () => {
         onSubmit={handleSaveAccess}
       />
 
+      <ConfirmAccessSaveModal
+        targetUser={confirmAccessSaveOpen ? selectedUser : null}
+        currentRole={selectedUser?.role}
+        nextRole={editRole}
+        currentActive={selectedUser?.isActive}
+        nextActive={editActive}
+        loading={accessLoading}
+        onBack={() => !accessLoading && setConfirmAccessSaveOpen(false)}
+        onConfirm={handleConfirmSaveAccess}
+      />
+
       <ConfirmStatusModal
         targetUser={pendingStatusUser}
         loading={statusLoading}
@@ -1663,8 +1683,8 @@ export const UserManagement = () => {
         >
           <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]" />
 
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-slate-200 bg-white p-0 shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
+          <div className="relative w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white p-0 shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-5">
               <div className="flex items-start gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
                   <Lucide.UserPlus size={20} />
@@ -1684,7 +1704,7 @@ export const UserManagement = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} noValidate className="space-y-5 p-6">
+            <form onSubmit={handleCreateUser} noValidate className="space-y-4 p-5">
               {createFormError && (
                 <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-700">
                   <Lucide.AlertCircle className="mt-0.5 shrink-0" size={18} />

@@ -1,4 +1,12 @@
 export const getHeaderBreadcrumbOverride = (pathname = '') => {
+  const adminOverrides = {
+    '/management/staff-responsibilities': 'Phạm vi phụ trách nhân viên',
+    '/management/feedbacks': 'Tra cứu phản ánh',
+    '/management/map': 'Bản đồ sự vụ',
+  };
+  if (adminOverrides[pathname]) {
+    return [{ label: adminOverrides[pathname], href: null }];
+  }
   if (pathname === '/notifications') {
     return [{ label: 'Thông báo', href: null }];
   }
@@ -13,3 +21,5 @@ export const getHeaderBreadcrumbOverride = (pathname = '') => {
   }
   return null;
 };
+
+
