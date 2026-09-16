@@ -30,7 +30,7 @@ const normalizeAiConversation = (raw: unknown): AiConversationItem | null => {
     ),
     updatedAt: String(
       item.lastMessageAt ?? item.lastMessageAtUtc ?? item.lastUpdatedAt ?? item.updatedAt ??
-      item.lastUpdated ?? item.createdAt ?? new Date().toISOString()
+      item.lastUpdated ?? item.createdAt ?? ''
     ),
   };
 };

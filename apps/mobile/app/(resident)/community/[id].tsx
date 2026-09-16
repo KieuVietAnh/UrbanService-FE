@@ -120,11 +120,11 @@ export default function CommunityDetailScreen() {
         ? item.commentList
         : [];
 
-    return rawComments.map((c) => ({
-      id: String(c.commentId ?? c.id ?? Math.random()),
+    return rawComments.map((c, index) => ({
+      id: String(c.commentId ?? c.id ?? `comment-${feedbackId}-${index}`),
       senderName: String(c.authorName ?? c.userName ?? c.userFullName ?? 'Cộng đồng'),
       content: String(c.content ?? c.text ?? ''),
-      createdAt: String(c.createdAt ?? new Date().toISOString()),
+      createdAt: String(c.createdAt ?? ''),
     }));
   }, [item]);
 

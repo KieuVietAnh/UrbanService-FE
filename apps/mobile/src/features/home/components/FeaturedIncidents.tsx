@@ -9,7 +9,7 @@ import { SkeletonCard } from '@/components/shared';
 import { TicketStatusBadge } from '@/components/ui';
 import { Text } from '@/components/ui';
 import { colors } from '@/constants/theme';
-import { feedbackApi, reportingKeys } from '@/features/reporting/api';
+import { communityApi, communityKeys } from '@/features/community/api';
 import type { RouterLike, TicketLike } from '../types';
 import { styles } from '../homeStyles';
 import { SectionHeader } from './SectionHeader';
@@ -19,27 +19,6 @@ type Props = {
   nearby: TicketLike[];
   router: RouterLike;
 };
-
-const FALLBACK_INCIDENTS = [
-  {
-    title: 'Đèn đường không sáng',
-    locationText: 'Đường số 15, P. Tân Hưng',
-    status: 'InProgress',
-  },
-  {
-    title: 'Ổ gà, mặt đường hư hỏng',
-    locationText: 'Đường Nguyễn Thị Thập',
-    status: 'Verified',
-  },
-  {
-    title: 'Rác thải tràn ra đường',
-    locationText: 'Đường số 7, P. Tân Hưng',
-    status: 'Submitted',
-  },
-] as TicketLike[];
-
-const DISTANCES = ['120m', '250m', '380m', '560m'];
-const DISTANCE_COLORS = ['#EF4444', '#F59E0B', '#22C55E', '#10B981'];
 
 const resolveMediaUrl = (value: unknown) => {
   if (!value || typeof value !== 'string') return null;
@@ -139,13 +118,13 @@ const getIncidentImages = (ticket: TicketLike) => {
 };
 
 export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
-  const items = nearby.length > 0 ? nearby : FALLBACK_INCIDENTS;
+  const items = nearby;
   const detailQueries = useQueries({
     queries: items.slice(0, 5).map((item) => {
       const id = item.feedbackId ?? item.id;
       return {
-        queryKey: reportingKeys.detail(String(id ?? '')),
-        queryFn: () => feedbackApi.getById(String(id)),
+        queryKey: communityKeys.detail(String(id ?? '')),
+        queryFn: () => communityApi.getFeedDetail(String(id)),
         enabled: Boolean(id) && getIncidentImages(item).length === 0,
         staleTime: 1000 * 60 * 5,
         retry: 1,
@@ -156,7 +135,7 @@ export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
   return (
     <View style={styles.section}>
       <SectionHeader
-        title="Sự cố nổi bật gần bạn"
+        title="Phản ánh cộng đồng mới"
         actionLabel="Xem tất cả"
         onAction={() => router.push('/(resident)/community')}
       />
@@ -168,6 +147,12 @@ export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
             </View>
           ))}
         </ScrollView>
+      ) : items.length === 0 ? (
+        <View style={styles.emptyStateCard}>
+          <Icon name="inbox" size={28} color={colors.lightMuted} />
+          <Text style={styles.emptyTitle}>Chưa có phản ánh cộng đồng</Text>
+          <Text style={styles.emptySubtitle}>Phản ánh mới từ API sẽ xuất hiện tại đây.</Text>
+        </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredRow}>
           {items.slice(0, 5).map((item, index) => {
@@ -175,7 +160,7 @@ export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
             const mergedItem = detail ? ({ ...item, ...detail } as TicketLike) : item;
             return (
               <FeaturedIncidentCard
-                key={item.feedbackId ?? item.id ?? `fallback-${index}`}
+                key={item.feedbackId ?? item.id ?? `community-${index}`}
                 item={mergedItem}
                 index={index}
                 router={router}
@@ -206,15 +191,12 @@ function FeaturedIncidentCard({ item, index, router }: { item: TicketLike; index
         }}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          if (id) router.push(`/(resident)/tickets/${id}`);
+          if (id) router.push(`/(resident)/community/${id}`);
         }}
         style={styles.featuredPressable}
       >
         <View style={styles.featuredImageWrap}>
           <IncidentImageCollage images={images} />
-          <View style={[styles.distanceBadge, { backgroundColor: DISTANCE_COLORS[index % DISTANCE_COLORS.length] }]}>
-            <Text style={styles.distanceText}>{DISTANCES[index % DISTANCES.length]}</Text>
-          </View>
         </View>
         <Text style={styles.featuredTitle} numberOfLines={2}>
           {item.title ?? 'Sự cố gần bạn'}

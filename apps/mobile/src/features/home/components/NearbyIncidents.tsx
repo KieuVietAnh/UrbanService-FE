@@ -61,8 +61,8 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
 
   const markers = nearby
     .filter((it) => Number.isFinite(Number((it as any)?.latitude)) && Number.isFinite(Number((it as any)?.longitude)))
-    .map((it) => ({
-      id: String((it as any).feedbackId ?? (it as any).id ?? Math.random()),
+    .map((it, index) => ({
+      id: String((it as any).feedbackId ?? (it as any).id ?? `community-marker-${index}`),
       latitude: Number((it as any).latitude),
       longitude: Number((it as any).longitude),
     }));
@@ -83,17 +83,17 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
         <View style={styles.mapCard}>
           <View style={styles.mapHeaderOverlay}>
             <View>
-              <Text style={styles.mapTitle}>Sự cố gần bạn</Text>
+              <Text style={styles.mapTitle}>Bản đồ phản ánh cộng đồng</Text>
               <View style={styles.mapCountRow}>
                 <View style={styles.mapCountDot} />
-                <Text style={styles.mapSubtitle}>{nearby.length} sự cố trong bán kính 1 km</Text>
+                <Text style={styles.mapSubtitle}>{nearby.length} phản ánh mới từ cộng đồng</Text>
               </View>
             </View>
             <Pressable
               style={styles.mapLink}
               onPress={() => router.push('/(resident)/community/map')}
               accessibilityRole="button"
-              accessibilityLabel={`${nearby.length} phản ánh trong bán kính 1 km, xem bản đồ`}
+              accessibilityLabel={`${nearby.length} phản ánh cộng đồng, xem bản đồ`}
             >
               <Text style={styles.mapLinkText}>Xem bản đồ</Text>
               <Icon name="chevron-right" size={15} color={colors.primary} />
@@ -116,7 +116,7 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 const id = (nearby[0] as any).feedbackId ?? (nearby[0] as any).id;
-                if (id) router.push(`/(resident)/tickets/${id}`);
+                if (id) router.push(`/(resident)/community/${id}`);
               }}
               accessibilityRole="button"
               accessibilityLabel="Mở chi tiết phản ánh gần bạn"
