@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
@@ -153,6 +154,7 @@ export const HeatmapDashboard = () => {
   const [categoryFilter, setCategoryFilter] = useState(() => filterFromSearch(location.search, 'category', cached?.categoryFilter || 'all'));
   const [severityFilter, setSeverityFilter] = useState(() => filterFromSearch(location.search, 'severity', cached?.severityFilter || 'all'));
   const [priorityFilter, setPriorityFilter] = useState(() => filterFromSearch(location.search, 'priority', cached?.priorityFilter || 'all'));
+  const [coordinateFilter, setCoordinateFilter] = useState(() => filterFromSearch(location.search, 'coordinates', cached?.coordinateFilter || 'all'));
   const [showHeatLayer, setShowHeatLayer] = useState(cached?.showHeatLayer ?? true);
   const [showMarkers, setShowMarkers] = useState(cached?.showMarkers ?? true);
   const [mapView, setMapView] = useState(cached?.mapView || null);
@@ -216,11 +218,12 @@ export const HeatmapDashboard = () => {
       categoryFilter,
       severityFilter,
       priorityFilter,
+      coordinateFilter,
       showHeatLayer,
       showMarkers,
       mapView,
     });
-  }, [areaFilter, areas, categoryFilter, incidents, mapView, priorityFilter, search, severityFilter, showHeatLayer, showMarkers, statusFilter, totalCount]);
+  }, [areaFilter, areas, categoryFilter, coordinateFilter, incidents, mapView, priorityFilter, search, severityFilter, showHeatLayer, showMarkers, statusFilter, totalCount]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -230,6 +233,7 @@ export const HeatmapDashboard = () => {
     if (categoryFilter !== 'all') params.set('category', categoryFilter);
     if (severityFilter !== 'all') params.set('severity', severityFilter);
     if (priorityFilter !== 'all') params.set('priority', priorityFilter);
+    if (coordinateFilter !== 'all') params.set('coordinates', coordinateFilter);
     const nextSearch = params.toString();
     const currentSearch = location.search.replace(/^\?/, '');
     if (nextSearch !== currentSearch) {
@@ -244,7 +248,7 @@ export const HeatmapDashboard = () => {
         },
       );
     }
-  }, [areaFilter, categoryFilter, location.pathname, location.search, location.state, navigate, priorityFilter, search, severityFilter, statusFilter]);
+  }, [areaFilter, categoryFilter, coordinateFilter, location.pathname, location.search, location.state, navigate, priorityFilter, search, severityFilter, statusFilter]);
 
   const filterOptions = useMemo(() => buildMapFilterOptions(incidents, areas), [areas, incidents]);
   const selectedArea = useMemo(() => resolveSelectedMapArea(areas, areaFilter), [areaFilter, areas]);
@@ -260,7 +264,8 @@ export const HeatmapDashboard = () => {
     status: statusFilter,
     priority: priorityFilter,
     severity: severityFilter,
-  }), [areaFilter, categoryFilter, incidents, priorityFilter, search, severityFilter, statusFilter]);
+    coordinates: coordinateFilter,
+  }), [areaFilter, categoryFilter, coordinateFilter, incidents, priorityFilter, search, severityFilter, statusFilter]);
   const allMappedIncidents = useMemo(() => incidents.filter(hasCoordinates), [incidents]);
   const filteredIncidents = useMemo(() => scopedIncidents.filter(hasCoordinates), [scopedIncidents]);
   const summary = useMemo(() => summarizeMapIncidents(scopedIncidents, filteredIncidents), [filteredIncidents, scopedIncidents]);
@@ -270,7 +275,7 @@ export const HeatmapDashboard = () => {
 
   const hasActiveFilters = Boolean(
     search.trim() || areaFilter !== 'all' || statusFilter !== 'all' || categoryFilter !== 'all' ||
-    severityFilter !== 'all' || priorityFilter !== 'all'
+    severityFilter !== 'all' || priorityFilter !== 'all' || coordinateFilter !== 'all'
   );
 
   const scrollToMap = useCallback(() => {
@@ -314,6 +319,7 @@ export const HeatmapDashboard = () => {
     setCategoryFilter('all');
     setSeverityFilter('all');
     setPriorityFilter('all');
+    setCoordinateFilter('all');
     setFitRequestKey((key) => key + 1);
   };
 
@@ -447,7 +453,7 @@ export const HeatmapDashboard = () => {
                   options={[{ value: 'all', label: 'Tất cả dịch vụ' }, ...filterOptions.categories]}
                 />
               </div>
-              <div className="lg:col-span-4">
+              <div className="lg:col-span-3">
                 <ManagerSelectMenu
                   value={statusFilter}
                   onChange={(value) => updateFilter('status', setStatusFilter, value)}
@@ -461,7 +467,7 @@ export const HeatmapDashboard = () => {
                   ]}
                 />
               </div>
-              <div className="lg:col-span-4">
+              <div className="lg:col-span-3">
                 <ManagerSelectMenu
                   value={severityFilter}
                   onChange={(value) => updateFilter('severity', setSeverityFilter, value)}
@@ -475,7 +481,7 @@ export const HeatmapDashboard = () => {
                   ]}
                 />
               </div>
-              <div className="lg:col-span-4">
+              <div className="lg:col-span-3">
                 <ManagerSelectMenu
                   value={priorityFilter}
                   onChange={(value) => updateFilter('priority', setPriorityFilter, value)}
@@ -490,11 +496,34 @@ export const HeatmapDashboard = () => {
                   ]}
                 />
               </div>
+              <div className="lg:col-span-3">
+                <ManagerSelectMenu
+                  value={coordinateFilter}
+                  onChange={(value) => updateFilter('coordinates', setCoordinateFilter, value)}
+                  ariaLabel="Lọc theo tọa độ"
+                  options={[
+                    { value: 'all', label: 'Tất cả tọa độ' },
+                    { value: 'mapped', label: 'Có tọa độ' },
+                    { value: 'missing', label: 'Thiếu tọa độ' },
+                  ]}
+                />
+              </div>
             </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800/80">
             <div className="flex flex-wrap items-center gap-2">
+              {summary.missingCoordinates > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/manager/incidents?coordinates=missing')}
+                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-400/25 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/15"
+                  title="Xem các sự vụ chưa có tọa độ"
+                >
+                  <Lucide.MapPinOff size={14} />
+                  {summary.missingCoordinates} sự vụ thiếu tọa độ
+                </button>
+              ) : null}
               <button type="button" onClick={() => setShowHeatLayer((value) => !value)} aria-pressed={showHeatLayer} className={`inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition ${showHeatLayer ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-300' : 'border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400'}`}>
                 <Lucide.Flame size={14} /> Vùng ưu tiên
                 <span className={`h-1.5 w-1.5 rounded-full ${showHeatLayer ? 'bg-rose-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
@@ -580,3 +609,4 @@ export const HeatmapDashboard = () => {
 };
 
 export default HeatmapDashboard;
+

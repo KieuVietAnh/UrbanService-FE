@@ -1,3 +1,4 @@
+
 const normalizeKey = (value) => String(value || '')
   .trim()
   .replace(/[^a-zA-Z0-9]/g, '')
@@ -68,7 +69,7 @@ export const resolveSelectedMapArea = (areas = [], areaFilter = 'all') => {
   )) || null;
 };
 
-const AUTO_SCROLL_FILTERS = new Set(['area', 'category', 'status', 'severity', 'priority']);
+const AUTO_SCROLL_FILTERS = new Set(['area', 'category', 'status', 'severity', 'priority', 'coordinates']);
 const AUTO_SCROLL_KPIS = new Set(['total', 'mapped', 'visible', 'priority']);
 
 export const shouldAutoScrollMapFilter = (filterKey) => AUTO_SCROLL_FILTERS.has(String(filterKey || ''));
@@ -108,7 +109,7 @@ export const buildMapFilterOptions = (incidents = [], areas = []) => ({
 
 export const filterMapIncidents = (incidents = [], filters = {}) => {
   const {
-    search = '', area = 'all', category = 'all', status = 'all', priority = 'all', severity = 'all',
+    search = '', area = 'all', category = 'all', status = 'all', priority = 'all', severity = 'all', coordinates = 'all',
   } = filters;
   const searchKey = normalizeText(search);
 
@@ -147,6 +148,12 @@ export const filterMapIncidents = (incidents = [], filters = {}) => {
 
     if (severity !== 'all' && normalizeText(item?.severity) !== severity) return false;
 
+    if (coordinates !== 'all') {
+      const hasCoordinates = Number.isFinite(Number(item?.latitude)) && Number.isFinite(Number(item?.longitude));
+      if (coordinates === 'mapped' && !hasCoordinates) return false;
+      if (coordinates === 'missing' && hasCoordinates) return false;
+    }
+
     return true;
   });
 };
@@ -167,3 +174,4 @@ export const summarizeMapIncidents = (scopedIncidents = [], mappedIncidents = []
   topArea: topCount(scopedIncidents, (item) => item?.areaName || item?.wardName),
   topCategory: topCount(scopedIncidents, (item) => item?.categoryName),
 });
+
