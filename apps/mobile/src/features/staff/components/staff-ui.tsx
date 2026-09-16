@@ -75,6 +75,7 @@ const icons = {
   back: 'm15 5-7 7 7 7',
   arrow: 'm9 5 7 7-7 7',
   check: 'm4 12 5 5L20 6',
+  send: 'm22 2-7 20-4-9-9-4ZM22 2 11 13',
 } as const;
 export type StaffIconName = keyof typeof icons;
 export function StaffIcon({ name, color = colors.primary, size = 24 }: { name: StaffIconName; color?: string; size?: number }) {

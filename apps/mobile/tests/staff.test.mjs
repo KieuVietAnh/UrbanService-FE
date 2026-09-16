@@ -329,6 +329,15 @@ test('staff messages use internal scope explicitly and preserve public/internal 
   } finally { get.mock.restore(); post.mock.restore(); }
 });
 
+test('Staff chat reuses the Resident keyboard composer contract without double Android offsets', () => {
+  const source = readFileSync(new URL('../src/features/staff/components/staff-chat-screen.tsx', import.meta.url), 'utf8');
+  assert.match(source, /KeyboardAwareComposerLayout/);
+  assert.match(source, /avoidContentOverlap/);
+  assert.doesNotMatch(source, /KeyboardAvoidingView|useHeaderHeight|keyboardVerticalOffset|composerMinHeight/);
+  assert.match(source, /width:\s*48,\s*height:\s*48/);
+  assert.match(source, /accessibilityLabel=\{internal \? 'Lưu ghi chú nội bộ' : 'Gửi phản hồi'\}/);
+});
+
 test('confirmed Incident execution capabilities support provider flow, direct status transition and resubmit', () => {
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.scope, 'provider-assignment');
