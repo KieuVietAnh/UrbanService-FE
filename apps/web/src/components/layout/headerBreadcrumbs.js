@@ -1,12 +1,18 @@
 export const getHeaderBreadcrumbOverride = (pathname = '') => {
   const adminOverrides = {
     '/management/staff-responsibilities': 'Phạm vi phụ trách nhân viên',
-    '/management/feedbacks': 'Tra cứu phản ánh',
+    '/management/feedbacks': 'Quản lý phản ánh',
     '/management/map': 'Bản đồ sự vụ',
     '/management/coordinators': 'Quản lý điều phối viên',
   };
   if (adminOverrides[pathname]) {
     return [{ label: adminOverrides[pathname], href: null }];
+  }
+  if (pathname.startsWith('/management/feedbacks/')) {
+    return [
+      { label: 'Quản lý phản ánh', href: '/management/feedbacks' },
+      { label: 'Chi tiết phản ánh', href: null },
+    ];
   }
   if (pathname.startsWith('/management/coordinators/')) {
     return [
@@ -28,5 +34,3 @@ export const getHeaderBreadcrumbOverride = (pathname = '') => {
   }
   return null;
 };
-
-

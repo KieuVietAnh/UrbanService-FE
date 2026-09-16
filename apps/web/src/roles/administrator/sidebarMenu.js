@@ -4,7 +4,7 @@ export default [
   { name: 'Quản lý người dùng', path: '/management/users', icon: 'Users2' },
   { name: 'Phạm vi phụ trách nhân viên', path: '/management/staff-responsibilities', icon: 'UserRoundCog' },
   { name: 'Quản lý điều phối viên', path: '/management/coordinators', icon: 'Network' },
-  { name: 'Tra cứu phản ánh', path: '/management/feedbacks', icon: 'MessageSquareText' },
+  { name: 'Quản lý phản ánh', path: '/management/feedbacks', icon: 'MessageSquareText' },
   { name: 'Quản lý sự vụ', path: '/management/incidents', icon: 'Siren' },
   { name: 'Bản đồ sự vụ', path: '/management/map', icon: 'MapPinned' },
   { name: 'Danh mục phản ánh', path: '/management/categories', icon: 'FolderKanban' },

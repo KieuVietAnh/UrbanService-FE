@@ -842,7 +842,7 @@ export const FeedbackManagement = () => {
             </div>
             <div className="min-w-0">
               <h1 className="admin-hero-title">
-                Tra cứu phản ánh
+                Quản lý phản ánh
               </h1>
               <p className="admin-hero-description">
                 Theo dõi phản ánh, trạng thái xử lý và các điểm cần điều phối.
