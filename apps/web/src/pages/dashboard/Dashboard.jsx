@@ -19,6 +19,7 @@ import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
 import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
 import { buildManagerDashboardStats, managerMetricValue } from './managerDashboardUtils.mjs';
+import AdminDashboardPage from '../admin/AdminDashboardPage';
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-area-filter-v2';
@@ -672,7 +673,7 @@ const CitizenCommunityPreview = () => {
   );
 };
 
-export const Dashboard = () => {
+const RoleDashboard = () => {
   const { user } = useAuth();
   const currentRole = normalizeRole(user?.role);
   const navigate = useNavigate();
@@ -3265,4 +3266,13 @@ export const Dashboard = () => {
   }
 
   return null;
+};
+
+
+
+
+export const Dashboard = () => {
+  const { user } = useAuth();
+  const currentRole = normalizeRole(user?.role);
+  return currentRole === APP_ROLES.ADMINISTRATOR ? <AdminDashboardPage /> : <RoleDashboard />;
 };
