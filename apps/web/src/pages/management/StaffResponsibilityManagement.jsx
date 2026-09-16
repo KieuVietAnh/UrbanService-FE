@@ -231,7 +231,7 @@ export const StaffResponsibilityManagement = () => {
       description: `Các thay đổi về ${changes.join(', ')} sẽ được áp dụng cho nhân viên này.`,
       confirmLabel: 'Xác nhận lưu',
       cancelLabel: 'Quay lại',
-      tone: 'warning',
+      tone: 'info',
     });
   };
 
@@ -248,7 +248,7 @@ export const StaffResponsibilityManagement = () => {
         : 'Phạm vi này sẽ được đưa trở lại danh sách phân công đang hoạt động.',
       confirmLabel: isActive ? 'Tạm dừng' : 'Kích hoạt',
       cancelLabel: 'Hủy',
-      tone: isActive ? 'warning' : 'warning',
+      tone: isActive ? 'warning' : 'success',
     });
   };
 

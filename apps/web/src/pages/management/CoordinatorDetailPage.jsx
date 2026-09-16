@@ -551,6 +551,7 @@ export default function CoordinatorDetailPage() {
           : 'Điều phối viên sẽ hoạt động trở lại và có thể được đề xuất cho sự vụ phù hợp với phạm vi đang bật.'}
         confirmLabel={item?.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
         cancelLabel="Hủy"
+        tone={item?.isActive ? 'danger' : 'success'}
         loading={statusSaving}
         onConfirm={toggleActive}
         onCancel={() => setShowStatusConfirm(false)}
@@ -562,6 +563,7 @@ export default function CoordinatorDetailPage() {
         description="Thông tin đơn vị và người phụ trách sẽ được cập nhật theo nội dung bạn vừa chỉnh sửa."
         confirmLabel="Xác nhận lưu"
         cancelLabel="Quay lại"
+        tone="info"
         loading={profileSaving}
         onConfirm={saveCoordinator}
         onCancel={() => setShowProfileSaveConfirm(false)}
@@ -575,6 +577,7 @@ export default function CoordinatorDetailPage() {
           : 'Phạm vi mới sẽ được dùng khi hệ thống đề xuất điều phối viên phù hợp.'}
         confirmLabel={editingCoverageId ? 'Xác nhận lưu' : 'Thêm phạm vi'}
         cancelLabel="Quay lại"
+        tone={editingCoverageId ? "info" : "success"}
         loading={coverageSaving}
         onConfirm={saveCoverage}
         onCancel={() => setShowCoverageSaveConfirm(false)}

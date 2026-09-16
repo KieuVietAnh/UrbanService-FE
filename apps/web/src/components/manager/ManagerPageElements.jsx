@@ -270,7 +270,7 @@ export const ManagerToast = ({
   title,
   message,
   onClose,
-  duration = 2200,
+  duration = 2600,
 }) => {
   const closeRef = useRef(onClose);
 
@@ -286,44 +286,73 @@ export const ManagerToast = ({
 
   if (!message || typeof document === 'undefined') return null;
 
-  const isError = type === 'error';
-  const Icon = isError ? Lucide.CircleAlert : Lucide.CircleCheck;
-  const resolvedTitle = title || (isError ? 'Không thể hoàn tất thao tác' : 'Thao tác thành công');
+  const normalizedType = type === 'error' ? 'danger' : type;
+  const config = normalizedType === 'warning'
+    ? {
+      icon: Lucide.TriangleAlert,
+      title: 'Cần chú ý',
+      border: 'border-amber-200 dark:border-amber-900/70',
+      iconClass: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+      accent: 'bg-amber-500',
+      live: 'polite',
+      role: 'status',
+    }
+    : normalizedType === 'info'
+      ? {
+        icon: Lucide.Info,
+        title: 'Thông tin',
+        border: 'border-blue-200 dark:border-blue-900/70',
+        iconClass: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+        accent: 'bg-blue-500',
+        live: 'polite',
+        role: 'status',
+      }
+      : normalizedType === 'danger'
+        ? {
+          icon: Lucide.CircleAlert,
+          title: 'Không thể hoàn tất thao tác',
+          border: 'border-rose-200 dark:border-rose-900/70',
+          iconClass: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+          accent: 'bg-rose-500',
+          live: 'assertive',
+          role: 'alert',
+        }
+        : {
+          icon: Lucide.CircleCheckBig,
+          title: 'Thao tác thành công',
+          border: 'border-emerald-200 dark:border-emerald-900/70',
+          iconClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+          accent: 'bg-emerald-500',
+          live: 'polite',
+          role: 'status',
+        };
+
+  const Icon = config.icon;
 
   return createPortal(
     <div
       className="pointer-events-none fixed right-4 top-4 z-[12000] w-[calc(100vw-2rem)] max-w-sm sm:right-6 sm:top-24"
-      aria-live={isError ? 'assertive' : 'polite'}
+      aria-live={config.live}
       aria-atomic="true"
     >
       <section
-        className={`pointer-events-auto flex items-start gap-3 rounded-2xl border bg-white px-4 py-3.5 text-sm text-slate-700 shadow-[0_18px_50px_rgba(15,23,42,0.18)] dark:bg-slate-950 dark:text-slate-200 ${
-          isError
-            ? 'border-rose-200 dark:border-rose-900/70'
-            : 'border-emerald-200 dark:border-emerald-900/70'
-        }`}
-        role={isError ? 'alert' : 'status'}
+        className={`pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-[20px] border bg-white px-4 py-3.5 text-sm text-slate-700 shadow-[0_18px_50px_rgba(15,23,42,0.18)] dark:bg-slate-950 dark:text-slate-200 ${config.border}`}
+        role={config.role}
       >
-        <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-            isError
-              ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
-              : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-          }`}
-          aria-hidden="true"
-        >
-          <Icon size={17} />
+        <span className={`absolute inset-y-0 left-0 w-1 ${config.accent}`} aria-hidden="true" />
+        <span className={`ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${config.iconClass}`} aria-hidden="true">
+          <Icon size={18} />
         </span>
 
         <div className="min-w-0 flex-1 pt-0.5">
-          <p className="font-semibold text-slate-900 dark:text-slate-100">{resolvedTitle}</p>
+          <p className="font-semibold text-slate-950 dark:text-slate-100">{title || config.title}</p>
           <p className="mt-0.5 break-words leading-5 text-slate-600 dark:text-slate-300">{message}</p>
         </div>
 
         <button
           type="button"
           onClick={() => closeRef.current?.()}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-900"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-slate-900 dark:hover:text-slate-200"
           aria-label="Đóng thông báo"
         >
           <Lucide.X size={15} />
@@ -370,23 +399,40 @@ export const ManagerConfirmDialog = ({
 
   if (!open || typeof document === 'undefined') return null;
 
-  const toneConfig = tone === 'warning'
+  const normalizedTone = tone === 'primary' ? 'info' : tone;
+  const toneConfig = normalizedTone === 'success'
     ? {
-      icon: Lucide.TriangleAlert,
-      iconClass: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-      buttonClass: 'bg-amber-600 hover:bg-amber-700',
+      icon: Lucide.CircleCheckBig,
+      iconClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+      buttonClass: 'bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500/30',
+      accentClass: 'bg-emerald-500',
     }
-    : {
-      icon: Lucide.CircleAlert,
-      iconClass: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-      buttonClass: 'bg-rose-600 hover:bg-rose-700',
-    };
+    : normalizedTone === 'info'
+      ? {
+        icon: Lucide.Info,
+        iconClass: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+        buttonClass: 'bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-500/30',
+        accentClass: 'bg-blue-500',
+      }
+      : normalizedTone === 'warning'
+        ? {
+          icon: Lucide.TriangleAlert,
+          iconClass: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+          buttonClass: 'bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-500/30',
+          accentClass: 'bg-amber-500',
+        }
+        : {
+          icon: Lucide.CircleAlert,
+          iconClass: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
+          buttonClass: 'bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-500/30',
+          accentClass: 'bg-rose-500',
+        };
 
   const Icon = toneConfig.icon;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5"
+      className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/55 p-3 backdrop-blur-[3px] sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -394,27 +440,26 @@ export const ManagerConfirmDialog = ({
         if (event.target === event.currentTarget && !loading) onCancel?.();
       }}
     >
-      <section className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
-        <div className="min-h-0 overflow-y-auto p-5 sm:p-6">
+      <section className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
+        <span className={`absolute inset-x-0 top-0 h-1 ${toneConfig.accentClass}`} aria-hidden="true" />
+        <div className="min-h-0 overflow-y-auto p-5 pt-6 sm:p-6 sm:pt-7">
           <div className="flex items-start gap-4">
             <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneConfig.iconClass}`} aria-hidden="true">
               <Icon size={21} />
             </span>
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">{title}</h2>
-              {description ? (
-                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
-              ) : null}
+              {description ? <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p> : null}
             </div>
           </div>
         </div>
 
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
+        <footer className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-900/40">
           <button
             type="button"
             onClick={onCancel}
             disabled={loading}
-            className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-900"
+            className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
           >
             {cancelLabel}
           </button>
@@ -422,7 +467,7 @@ export const ManagerConfirmDialog = ({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${toneConfig.buttonClass}`}
+            className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold text-white shadow-sm transition focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${toneConfig.buttonClass}`}
           >
             {loading ? <Lucide.LoaderCircle size={15} className="animate-spin" /> : null}
             {confirmLabel}
