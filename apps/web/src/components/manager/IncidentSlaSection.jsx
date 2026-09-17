@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Lucide from 'lucide-react';
+import * as signalR from '@microsoft/signalr';
 import { extractApiErrorMessage, slaApi } from '@urbanmind/shared-api';
+import { buildHubUrl, getSignalRAccessToken } from '../../utils/signalRAccessToken';
 import { ManagerConfirmDialog, ManagerSectionHeader, ManagerSelectMenu } from './ManagerPageElements';
 
 const SLA_STATUS_META = {
@@ -167,6 +169,7 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
   const [pauseForm, setPauseForm] = useState({ reasonCode: 'WaitingCitizen', reasonNote: '' });
   const [noteDraft, setNoteDraft] = useState('');
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   const load = useCallback(async ({ background = false } = {}) => {
     if (!incidentId) return;
@@ -235,6 +238,43 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
     return () => window.clearInterval(timer);
   }, [isRunning]);
 
+  /*
+   * Backend phát sự kiện `SlaUpdated` cho mọi client kèm IncidentId, nên phải tự
+   * lọc theo sự vụ đang mở. Mất kết nối không phải lỗi nghiêm trọng: số liệu vẫn
+   * đúng tới lần tải gần nhất, chỉ là thôi tự cập nhật, nên chỉ hạ chỉ báo trực
+   * tiếp chứ không báo lỗi cho người dùng.
+   */
+  useEffect(() => {
+    if (!incidentId || !getSignalRAccessToken()) return undefined;
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(buildHubUrl('/hubs/sla'), { accessTokenFactory: () => getSignalRAccessToken() })
+      .withAutomaticReconnect()
+      .configureLogging(signalR.LogLevel.Warning)
+      .build();
+
+    let disposed = false;
+    const mark = (connected) => { if (!disposed) setRealtimeConnected(connected); };
+
+    connection.on('SlaUpdated', (payload) => {
+      const updatedIncidentId = String(payload?.incidentId ?? payload?.IncidentId ?? '');
+      if (!updatedIncidentId) return;
+      if (updatedIncidentId.toLowerCase() !== String(incidentId).toLowerCase()) return;
+      void load({ background: true });
+    });
+
+    connection.onreconnected(() => mark(true));
+    connection.onreconnecting(() => mark(false));
+    connection.onclose(() => mark(false));
+
+    connection.start().then(() => mark(true)).catch(() => mark(false));
+
+    return () => {
+      disposed = true;
+      void connection.stop();
+    };
+  }, [incidentId, load]);
+
   const runAction = useCallback(async (key, action, successMessage) => {
     setActionLoading(key);
     setActionError('');
@@ -296,14 +336,22 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
     setConfirmAction({ type, title, description });
   };
 
+  const pauseHistories = useMemo(() => {
+    const list = Array.isArray(detail?.pauseHistories) ? [...detail.pauseHistories] : [];
+    return list.sort((left, right) => new Date(right?.pausedAt || 0) - new Date(left?.pausedAt || 0));
+  }, [detail]);
+
   const meta = useMemo(() => ([
     { label: 'Chính sách áp dụng', value: detail?.policyName },
     { label: 'Mức ưu tiên', value: detail?.priority },
     { label: 'Bắt đầu lúc', value: formatDateTime(detail?.startedAt ?? status?.startedAt) },
     { label: 'Phản hồi đầu tiên', value: detail?.respondedAt ? formatDateTime(detail.respondedAt) : 'Chưa ghi nhận' },
-    { label: 'Tổng thời gian tạm dừng', value: `${Number(detail?.totalPausedMinutes ?? 0)} phút` },
+    {
+      label: 'Tổng thời gian tạm dừng',
+      value: `${Number(detail?.totalPausedMinutes ?? 0)} phút · ${pauseHistories.length} lần`,
+    },
     { label: 'Người khởi động', value: detail?.startedByUserName },
-  ]), [detail, status]);
+  ]), [detail, pauseHistories.length, status]);
 
   if (loading && !loaded) {
     return (
@@ -326,7 +374,20 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
         title="SLA sự vụ"
         description="Hạn phản hồi, hạn hoàn thành và lịch sử thay đổi SLA của sự vụ này."
         icon={Lucide.Timer}
-        actions={hasSla ? <SlaBadge value={detail?.status ?? status?.status} meta={SLA_STATUS_META} /> : null}
+        actions={hasSla ? (
+          <span className="inline-flex items-center gap-2">
+            {realtimeConnected ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20"
+                title="Đang nhận cập nhật SLA theo thời gian thực"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                Trực tiếp
+              </span>
+            ) : null}
+            <SlaBadge value={detail?.status ?? status?.status} meta={SLA_STATUS_META} />
+          </span>
+        ) : null}
       />
 
       <div className="px-5 pb-5 sm:px-6 sm:pb-6">
@@ -483,6 +544,46 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
                 )
               ) : null}
             </div>
+
+            {pauseHistories.length > 0 ? (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+                <p className="inline-flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <Lucide.PauseCircle size={16} aria-hidden="true" />
+                  Lịch sử tạm dừng
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:bg-slate-900">{pauseHistories.length}</span>
+                </p>
+                <ul className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                  {pauseHistories.map((pause) => {
+                    const reasonLabel = PAUSE_REASON_OPTIONS
+                      .find((option) => option.value === pause?.reasonCode)?.label
+                      || pause?.reasonCode
+                      || 'Không rõ lý do';
+                    const stillPaused = !pause?.resumedAt;
+
+                    return (
+                      <li key={pause?.slaPauseHistoryId} className="px-4 py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{reasonLabel}</p>
+                          <span className={`text-xs font-semibold ${stillPaused ? 'text-amber-600' : 'text-slate-400'}`}>
+                            {stillPaused
+                              ? 'Đang tạm dừng'
+                              : `${Number(pause?.pausedMinutes ?? 0)} phút`}
+                          </span>
+                        </div>
+                        {pause?.reasonNote ? (
+                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600 dark:text-slate-300">{pause.reasonNote}</p>
+                        ) : null}
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          {formatDateTime(pause?.pausedAt)}
+                          {pause?.resumedAt ? ` → ${formatDateTime(pause.resumedAt)}` : ''}
+                          {pause?.pausedByUserName ? ` · ${pause.pausedByUserName}` : ''}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
