@@ -6,6 +6,7 @@ import { managementTypes } from '@urbanmind/shared-types';
 import { getAdminFeedbackCategories, loadAdminFeedbackDetail, peekAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
 import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
+import { ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
 
 const ADMIN_FEEDBACK_RETURN_STORAGE_KEY = 'urbanmind-admin-feedback-return';
 
@@ -26,6 +27,12 @@ const getFeedbackListReturnUrl = () => {
     }
     if (String(context?.searchTerm || '').trim()) {
       params.set('search', String(context.searchTerm).trim());
+    }
+    if (context?.categoryFilter && context.categoryFilter !== 'all') {
+      params.set('category', String(context.categoryFilter));
+    }
+    if (context?.locationFilter && context.locationFilter !== 'all') {
+      params.set('locationFilter', String(context.locationFilter));
     }
     if (Number(context?.pageNumber) > 1) {
       params.set('page', String(context.pageNumber));
@@ -54,6 +61,7 @@ const STATUS_META = {
 };
 
 const PRIORITY_META = {
+  Urgent: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/20' },
   Critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/20' },
   High: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/20' },
   Medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/20' },
@@ -106,6 +114,17 @@ const getCategoryName = (feedback, categories) => {
 
 const getReporter = (feedback) => feedback?.userName || feedback?.reporterName || feedback?.citizenName || feedback?.createdBy || feedback?.email || 'Chưa có thông tin';
 
+const getSubmissionChannel = (feedback) => feedback?.submissionChannel || feedback?.sourceChannel || feedback?.channel || feedback?.source || '';
+
+const formatConfidence = (feedback) => {
+  const raw = feedback?.confidence ?? feedback?.confidenceScore ?? feedback?.aiConfidence;
+  if (raw === undefined || raw === null || raw === '') return '';
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return String(raw);
+  const percent = value <= 1 ? value * 100 : value;
+  return `${Math.round(percent)}%`;
+};
+
 const normalizeAttachment = (file) => {
   if (!file) return null;
   if (typeof file === 'string') return { id: file, url: file, name: file.split('/').pop() || 'Tệp đính kèm', mimeType: '' };
@@ -143,28 +162,10 @@ const Badge = ({ type, value }) => {
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${meta.className}`}>{meta.label}</span>;
 };
 
-const SectionHeading = ({ icon: Icon, title, description, action }) => (
-  <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 dark:border-white/10 px-5 py-4 sm:px-6">
-    <div className="flex min-w-0 items-start gap-3">
-      <span className="admin-mini-icon" aria-hidden="true"><Icon size={17} /></span>
-      <div className="min-w-0">
-        <h2 className="admin-section-title">{title}</h2>
-        {description ? <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">{description}</p> : null}
-      </div>
-    </div>
-    {action}
-  </header>
-);
-
-const DetailRow = ({ icon: Icon, label, value }) => (
-  <div className="flex gap-3 py-3.5 first:pt-0 last:pb-0">
-    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-white/[0.06] text-slate-500 dark:text-slate-400" aria-hidden="true">
-      <Icon size={15} />
-    </span>
-    <div className="min-w-0">
-      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="mt-1 break-words text-sm font-semibold leading-5 text-slate-900 dark:text-slate-100">{value || '—'}</p>
-    </div>
+const InfoItem = ({ label, value, children }) => (
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">{label}</p>
+    <div className="mt-2 min-w-0 text-sm font-semibold text-slate-800 dark:text-slate-100">{children ?? value ?? '—'}</div>
   </div>
 );
 
@@ -246,7 +247,6 @@ export const FeedbackDetailPage = () => {
   const attachments = useMemo(() => getAttachments(feedback), [feedback]);
   const mediaLoading = loading && !detailResolved && attachments.length === 0;
   const safeActiveIndex = Math.min(activeMedia, Math.max(attachments.length - 1, 0));
-  const currentMedia = attachments[safeActiveIndex];
   const activePreview = previewIndex === null ? null : attachments[previewIndex];
   const activePreviewIsVideo = isVideo(activePreview);
 
@@ -259,7 +259,6 @@ export const FeedbackDetailPage = () => {
   };
   const latitude = feedback?.latitude ?? feedback?.lat ?? feedback?.location?.latitude ?? feedback?.location?.lat;
   const longitude = feedback?.longitude ?? feedback?.lng ?? feedback?.location?.longitude ?? feedback?.location?.lng;
-  const hasCoordinates = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
 
   useEffect(() => {
     setActiveMedia(0);
@@ -346,16 +345,13 @@ export const FeedbackDetailPage = () => {
             <div className="h-4 w-40 rounded-full bg-slate-200 dark:bg-white/10" />
           </div>
         </div>
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           <div className="space-y-5">
             <div className="admin-panel h-52 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
-            <div className="admin-panel aspect-video min-h-[280px] animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
+            <div className="admin-panel h-[420px] animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
             <div className="admin-panel h-72 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
           </div>
-          <div className="space-y-5">
-            <div className="admin-panel h-80 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
-            <div className="admin-panel h-40 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
-          </div>
+          <div className="admin-panel h-80 animate-pulse bg-slate-100 dark:bg-white/[0.04]" />
         </div>
       </div>
     );
@@ -384,7 +380,7 @@ export const FeedbackDetailPage = () => {
   const description = feedback?.description || feedback?.content || 'Chưa có nội dung chi tiết.';
 
   return (
-    <div className="admin-page-shell space-y-5 pb-4">
+    <div className="admin-page-shell manager-ui-page space-y-5 pb-4">
       <button type="button" onClick={goBack} className="admin-secondary-link inline-flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition">
         <Lucide.ArrowLeft size={16} />
         {returnPath === '/management/map' || returnPath === '/manager/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}
@@ -397,154 +393,102 @@ export const FeedbackDetailPage = () => {
         </div>
       ) : null}
 
-      <header className="admin-page-hero">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-sm font-bold text-blue-700"><Lucide.Hash size={14} />{formatFeedbackId(feedbackId)}</span>
-              <Badge type="status" value={feedback?.status} />
-              <Badge type="priority" value={feedback?.priority} />
-              {loading ? <span className="loading loading-spinner loading-xs text-blue-600" aria-label="Đang cập nhật" /> : null}
-            </div>
-            <h1 className="admin-hero-title mt-3 max-w-4xl break-words">{title}</h1>
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600 dark:text-slate-300">
-              <span className="inline-flex min-w-0 items-center gap-2"><Lucide.MapPin size={16} className="shrink-0 text-slate-400" /><span className="break-words">{resolvedLocationText}</span></span>
-              <span className="inline-flex items-center gap-2"><Lucide.Clock3 size={16} className="text-slate-400" />Gửi lúc {formatDateTime(feedback?.createdAt)}</span>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="min-w-0 space-y-5">
-          <section className="admin-panel overflow-hidden">
-            <SectionHeading icon={Lucide.FileText} title="Nội dung phản ánh" description="Thông tin do người dân cung cấp" />
-            <div className="px-5 py-5 sm:px-6 sm:py-6">
-              <div className="rounded-xl bg-slate-50/80 px-4 py-4 ring-1 ring-inset ring-slate-200/70 dark:bg-white/[0.025] dark:ring-white/10 sm:px-5">
-                <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-700 dark:text-slate-200">{description}</p>
+      <section className="incident-detail-hero admin-page-hero overflow-hidden">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-blue-100/60 blur-3xl dark:bg-blue-500/10" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+              <Lucide.MessageSquareText size={21} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.08em] text-blue-600 dark:text-blue-300">{formatFeedbackId(feedbackId)}</p>
+              <h1 className="mt-1.5 text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-[1.75rem] dark:text-white">{title}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-slate-500 dark:text-slate-400">
+                <span className="inline-flex min-w-0 items-center gap-1.5"><Lucide.MapPin size={14} />{resolvedLocationText}</span>
+                <span className="inline-flex items-center gap-1.5"><Lucide.Clock3 size={14} />{formatDateTime(feedback?.createdAt)}</span>
               </div>
             </div>
-          </section>
-
-          <section className="admin-panel overflow-hidden">
-            <SectionHeading
-              icon={Lucide.Images}
-              title="Hình ảnh và video"
-              description={mediaLoading ? 'Đang tải tệp đính kèm...' : attachments.length ? `${attachments.length} tệp đính kèm` : 'Không có tệp đính kèm'}
-              action={attachments.length > 1 ? <span className="rounded-full bg-slate-100 dark:bg-white/[0.06] px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">{safeActiveIndex + 1}/{attachments.length}</span> : null}
-            />
-            <div className="p-4 sm:p-5">
-              {mediaLoading ? (
-                <div className="min-h-64 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/[0.04]" aria-label="Đang tải hình ảnh và video" />
-              ) : attachments.length ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewIndex(safeActiveIndex)}
-                    className="group relative flex aspect-video min-h-[260px] max-h-[520px] w-full items-center justify-center overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-950 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/45"
-                    aria-label={`Mở xem toàn màn hình tệp ${safeActiveIndex + 1}`}
-                  >
-                    {failedMedia.has(currentMedia?.id || currentMedia?.url) ? (
-                      <div className="px-6 text-center text-slate-300">
-                        <Lucide.ImageOff className="mx-auto" size={32} />
-                        <p className="mt-3 text-sm font-medium">Không thể tải tệp này</p>
-                      </div>
-                    ) : isVideo(currentMedia) ? (
-                      <>
-                        <video key={currentMedia.url} src={currentMedia.url} muted playsInline preload="metadata" onError={() => markMediaFailed(currentMedia)} className="pointer-events-none h-full max-h-[520px] w-full object-contain" />
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition group-hover:bg-black/20">
-                          <span className="flex h-14 w-14 items-center justify-center rounded-full border border-white/30 bg-black/55 text-white backdrop-blur">
-                            <Lucide.Play size={24} fill="currentColor" aria-hidden="true" />
-                          </span>
-                        </span>
-                      </>
-                    ) : (
-                      <img src={currentMedia.url} alt={currentMedia.name || 'Hình ảnh phản ánh'} onError={() => markMediaFailed(currentMedia)} className="h-full max-h-[520px] w-full object-contain" />
-                    )}
-                    {!failedMedia.has(currentMedia?.id || currentMedia?.url) ? (
-                      <span className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-black/55 px-3 py-2 text-xs font-semibold text-white opacity-0 backdrop-blur transition group-hover:opacity-100 group-focus-visible:opacity-100">
-                        <Lucide.Maximize2 size={14} aria-hidden="true" />
-                        Xem toàn màn hình
-                      </span>
-                    ) : null}
-                  </button>
-
-                  {attachments.length > 1 ? (
-                    <div className="mt-3 flex gap-2.5 overflow-x-auto pb-1" aria-label="Danh sách tệp đính kèm">
-                      {attachments.map((file, index) => {
-                        const selected = index === safeActiveIndex;
-                        const failed = failedMedia.has(file.id || file.url);
-                        return (
-                          <button
-                            key={file.id || `${file.url}-${index}`}
-                            type="button"
-                            onClick={() => setActiveMedia(index)}
-                            aria-label={`Xem tệp ${index + 1}: ${file.name}`}
-                            aria-pressed={selected}
-                            className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border-2 bg-slate-100 dark:bg-white/[0.06] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${selected ? 'border-blue-500 shadow-sm' : 'border-transparent hover:border-slate-300'}`}
-                          >
-                            {failed ? <Lucide.ImageOff className="absolute inset-0 m-auto text-slate-400" size={20} /> : isVideo(file) ? <><video src={file.url} preload="metadata" className="h-full w-full object-cover" /><span className="absolute inset-0 flex items-center justify-center bg-slate-950/30 text-white"><Lucide.PlayCircle size={21} /></span></> : <img src={file.url} alt="" loading="lazy" onError={() => markMediaFailed(file)} className="h-full w-full object-cover" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div className="admin-empty-panel flex min-h-40 items-center justify-center px-5 py-10 text-center">
-                  <div>
-                    <Lucide.ImageOff className="mx-auto text-slate-300" size={30} />
-                    <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Chưa có hình ảnh hoặc video</p>
-                    <p className="mt-1 text-xs text-slate-400">Phản ánh này không kèm theo tệp minh chứng.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <FeedbackLocationMapCard
-            feedbackId={feedbackId}
-            latitude={latitude}
-            longitude={longitude}
-            locationText={resolvedLocationText}
-            areaName={feedback?.areaName || feedback?.wardName}
-            variant="admin"
-            internalMapPath={feedbackMapPath}
-          />
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+            {loading ? <span className="loading loading-spinner loading-xs text-blue-600" aria-label="Đang cập nhật" /> : null}
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400"><span>Trạng thái:</span><Badge type="status" value={feedback?.status} /></div>
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400"><span>Ưu tiên:</span><Badge type="priority" value={feedback?.priority} /></div>
+            <button type="button" onClick={() => setReloadNonce((value) => value + 1)} disabled={loading} className="btn admin-secondary-action ml-0 h-9 rounded-xl px-3 text-xs font-semibold normal-case lg:ml-1">
+              <Lucide.RefreshCcw size={14} className={loading ? 'animate-spin' : ''} />Làm mới
+            </button>
+          </div>
         </div>
+      </section>
 
-        <aside className="space-y-5 xl:sticky xl:top-5 xl:self-start">
-          <section className="admin-panel overflow-hidden">
-            <SectionHeading icon={Lucide.Info} title="Thông tin phản ánh" />
-            <div className="divide-y divide-slate-200 dark:divide-white/10 px-5 py-4">
-              <DetailRow icon={Lucide.Tag} label="Danh mục" value={getCategoryName(feedback, categories)} />
-              <DetailRow icon={Lucide.UserRound} label="Người gửi" value={getReporter(feedback)} />
-              <DetailRow icon={Lucide.CalendarPlus} label="Ngày tiếp nhận" value={formatDateTime(feedback?.createdAt)} />
-              <DetailRow icon={Lucide.RefreshCw} label="Cập nhật gần nhất" value={formatDateTime(feedback?.updatedAt || feedback?.updatedDate)} />
-            </div>
-          </section>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <InfoItem label="Danh mục" value={getCategoryName(feedback, categories)} />
+        <InfoItem label="Người gửi" value={getReporter(feedback)} />
+        <InfoItem label="Ngày tiếp nhận" value={formatDateTime(feedback?.createdAt)} />
+        <InfoItem label="Cập nhật gần nhất" value={formatDateTime(feedback?.updatedAt || feedback?.updatedDate)} />
+      </section>
 
-          <section className="admin-panel overflow-hidden">
-            <SectionHeading icon={Lucide.Navigation} title="Điều hướng" />
-            <div className="space-y-2.5 p-5">
-              <button
-                type="button"
-                disabled={!hasCoordinates}
-                onClick={() => navigate(feedbackMapPath, { state: { mapState: { focusFeedbackId: feedbackId, focusLatitude: Number(latitude), focusLongitude: Number(longitude) } } })}
-                className="btn admin-primary-action h-11 w-full rounded-xl text-sm font-semibold normal-case disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                <Lucide.MapPinned size={17} />
-                Mở vị trí trên bản đồ
-              </button>
-              <button type="button" onClick={goBack} className="btn admin-secondary-action h-11 w-full rounded-xl text-sm font-semibold normal-case">
-                <Lucide.List size={17} />
-                {returnPath === '/management/map' || returnPath === '/manager/map' ? 'Về bản đồ phản ánh' : returnPath === '/dashboard' ? 'Về tổng quan hệ thống' : 'Về danh sách phản ánh'}
-              </button>
-              {!hasCoordinates ? <p className="pt-1 text-center text-xs leading-5 text-slate-400">Phản ánh chưa có tọa độ bản đồ.</p> : null}
-            </div>
-          </section>
-        </aside>
-      </div>
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
+        <ManagerSectionHeader id="feedback-information-title" title="Thông tin phản ánh" description="Thông tin người dân cung cấp và dữ liệu tiếp nhận hiện tại." icon={Lucide.FileText} />
+        <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
+            <InfoItem label="Phường / khu vực" value={feedback?.areaName || feedback?.wardName || 'Chưa xác định'} />
+            <InfoItem label="Danh mục" value={getCategoryName(feedback, categories)} />
+            {getSubmissionChannel(feedback) ? <InfoItem label="Kênh gửi" value={getSubmissionChannel(feedback)} /> : null}
+            {formatConfidence(feedback) ? <InfoItem label="Độ tin cậy" value={formatConfidence(feedback)} /> : null}
+          </div>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-400">Nội dung phản ánh</p>
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 dark:text-slate-300">{description}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+        <FeedbackLocationMapCard
+          feedbackId={feedbackId}
+          latitude={latitude}
+          longitude={longitude}
+          locationText={resolvedLocationText}
+          areaName={feedback?.areaName || feedback?.wardName}
+          variant="admin"
+          internalMapPath={feedbackMapPath}
+        />
+
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
+          <ManagerSectionHeader
+            id="feedback-evidence-title"
+            title="Hình ảnh và video"
+            description={mediaLoading ? 'Đang tải tệp đính kèm…' : attachments.length ? `${attachments.length} tệp đính kèm` : 'Không có tệp đính kèm'}
+            icon={Lucide.Images}
+            actions={attachments.length > 1 ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-300">{safeActiveIndex + 1}/{attachments.length}</span> : null}
+          />
+          <div className="flex min-h-0 flex-1 flex-col px-5 pb-5 sm:px-6 sm:pb-6">
+            {mediaLoading ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Đang tải hình ảnh và video">
+                {Array.from({ length: 3 }, (_, index) => <div key={index} className="aspect-[4/3] animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />)}
+              </div>
+            ) : attachments.length ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {attachments.map((file, index) => {
+                  const failed = failedMedia.has(file.id || file.url);
+                  return (
+                    <button key={file.id || `${file.url}-${index}`} type="button" onClick={() => setPreviewIndex(index)} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left transition hover:border-blue-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <div className="aspect-[4/3] w-full overflow-hidden bg-slate-950">
+                        {failed ? <Lucide.ImageOff className="m-auto h-full text-slate-400" size={26} /> : isVideo(file) ? <><video src={file.url} preload="metadata" onError={() => markMediaFailed(file)} className="h-full w-full object-cover" /><span className="absolute inset-0 flex items-center justify-center bg-slate-950/25 text-white"><Lucide.PlayCircle size={26} /></span></> : <img src={file.url} alt={file.name || `Minh chứng ${index + 1}`} loading="lazy" onError={() => markMediaFailed(file)} className="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]" />}
+                      </div>
+                      <div className="px-3 py-2"><p className="truncate text-xs font-semibold text-slate-700 dark:text-slate-200">{file.name || `Minh chứng ${index + 1}`}</p></div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center dark:border-slate-800 dark:bg-slate-900/60">
+                <div><Lucide.ImageOff size={26} className="mx-auto text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Chưa có hình ảnh hoặc video</p><p className="mt-1 text-xs text-slate-400">Phản ánh này không kèm theo tệp minh chứng.</p></div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {activePreview && typeof document !== 'undefined'
         ? createPortal(

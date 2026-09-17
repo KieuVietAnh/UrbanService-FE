@@ -1,3 +1,4 @@
+
 // src/components/layout/Sidebar.jsx
 
 import { useState } from 'react';
@@ -181,7 +182,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         </div>
 
         {/* Navigation Menu */}
-        <nav className="admin-sidebar-nav min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden px-2.5 py-2">
+        <nav className={`admin-sidebar-nav min-h-0 flex-1 overflow-x-hidden px-2.5 py-2 ${currentRole === APP_ROLES.ADMINISTRATOR ? 'space-y-1 overflow-y-hidden' : 'space-y-1.5 overflow-y-auto'}`}>
           {currentRole === APP_ROLES.SYSTEM_STAFF ? (
             systemStaffSidebarSections.map((section) => {
               const visibleItems = section.items;
@@ -243,26 +244,26 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
       {isLogoutModalOpen && (
         <div className="modal modal-open">
-          <div className="modal-box max-w-md rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl">
-            <div className="border-b border-slate-200 p-6">
+          <div className="modal-box w-full max-w-[420px] rounded-[28px] border border-slate-200/90 bg-white p-0 shadow-[0_30px_90px_rgba(15,23,42,0.28)]">
+            <div className="p-6 sm:p-7">
               <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-700">
+                <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
                   <Lucide.LogOut size={22} />
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-950">Xác nhận đăng xuất</h3>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <h3 className="text-xl font-bold tracking-[-0.02em] text-slate-950">Xác nhận đăng xuất</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Bạn sẽ rời khỏi phiên làm việc hiện tại và cần đăng nhập lại để tiếp tục sử dụng UrbanMind.
+                    Bạn sẽ kết thúc phiên làm việc hiện tại và cần đăng nhập lại để tiếp tục sử dụng UrbanMind.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-3 p-5 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={handleLogoutCancel}
-                className="btn btn-ghost rounded-2xl"
+                className="btn admin-secondary-action h-11 rounded-xl px-5 text-sm font-semibold normal-case"
                 disabled={isLoggingOut}
               >
                 Hủy
@@ -270,7 +271,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
               <button
                 type="button"
                 onClick={handleLogoutConfirm}
-                className="btn btn-error rounded-2xl"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isLoggingOut}
               >
                 {isLoggingOut ? (

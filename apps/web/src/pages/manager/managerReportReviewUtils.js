@@ -53,7 +53,7 @@ export const getReviewPriority = (report = {}) => {
     || report?.urgencyLevel
     || '';
   const key = normalizeKey(rawValue);
-  if (key === 'critical' || key === 'urgent') return 'Critical';
+  if (key === 'critical' || key === 'urgent') return 'Urgent';
   if (key === 'high') return 'High';
   if (key === 'medium' || key === 'normal') return 'Medium';
   if (key === 'low') return 'Low';

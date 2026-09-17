@@ -51,6 +51,7 @@ const priorityLabels = {
   Low: 'Thấp',
   Medium: 'Trung bình',
   High: 'Cao',
+  Urgent: 'Khẩn cấp',
   Critical: 'Khẩn cấp',
 };
 

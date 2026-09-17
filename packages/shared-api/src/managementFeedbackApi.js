@@ -367,6 +367,46 @@ const normalizeInteractionMessagesPayload = (payload = {}) => {
   return candidates.filter(Boolean);
 };
 
+
+const normalizeFeedbackPagePayload = (response, fallbackPageSize = 10) => {
+  const payload = response?.data ?? response ?? {};
+  const source = payload?.data ?? payload;
+  const rawItems = Array.isArray(source)
+    ? source
+    : Array.isArray(source?.items)
+      ? source.items
+      : [];
+  const items = normalizeTicketsResponse(rawItems);
+  const pageNumber = Number(source?.pageNumber ?? 1);
+  const pageSize = Number(source?.pageSize ?? fallbackPageSize);
+  const totalItems = Number(source?.totalItems ?? source?.totalCount ?? items.length);
+  const calculatedTotalPages = pageSize > 0 ? Math.ceil(totalItems / pageSize) : 0;
+  const totalPages = Number(source?.totalPages ?? calculatedTotalPages);
+
+  return {
+    items,
+    pageNumber: Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : 1,
+    pageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : fallbackPageSize,
+    totalItems: Number.isFinite(totalItems) && totalItems >= 0 ? totalItems : items.length,
+    totalPages: Number.isFinite(totalPages) && totalPages >= 0 ? totalPages : calculatedTotalPages,
+    hasPreviousPage: typeof source?.hasPreviousPage === 'boolean' ? source.hasPreviousPage : pageNumber > 1,
+    hasNextPage: typeof source?.hasNextPage === 'boolean' ? source.hasNextPage : pageNumber < totalPages,
+  };
+};
+
+const ADMIN_FEEDBACK_SUMMARY_GROUPS = {
+  pending: ['Submitted', 'AiReviewed', 'Verified'],
+  inProgress: ['Assigned', 'InProgress', 'SubmittedForApproval', 'NeedRework'],
+  completed: ['Resolved', 'Approved', 'Rejected', 'Closed', 'Cancelled'],
+};
+
+const getFeedbackCountByStatus = async (status) => {
+  const response = await axiosClient.get('/api/management/feedbacks', {
+    params: normalizeFeedbackListParams({ PageNumber: 1, PageSize: 1, Status: status }),
+  });
+  return normalizeFeedbackPagePayload(response, 1).totalItems;
+};
+
 export const managementFeedbackApi = {
   // Get all feedbacks with pagination and filters
   async getFeedbacks(params = {}) {
@@ -376,47 +416,30 @@ export const managementFeedbackApi = {
     return response;
   },
 
-  async getFeedbackSummary() {
+  async getFeedbackPage(params = {}) {
+    const normalizedParams = normalizeFeedbackListParams(params);
     const response = await axiosClient.get('/api/management/feedbacks', {
-      params: normalizeFeedbackListParams({ PageNumber: 1, PageSize: 1000 }),
+      params: normalizedParams,
     });
-    const payload = response?.data ?? response ?? {};
-    const items = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.items)
-        ? payload.items
-        : Array.isArray(payload?.data?.items)
-          ? payload.data.items
-          : [];
-    const total = Number(
-      payload?.totalItems ??
-      payload?.totalCount ??
-      payload?.data?.totalItems ??
-      payload?.data?.totalCount ??
-      items.length
-    );
+    return normalizeFeedbackPagePayload(response, Number(normalizedParams.PageSize) || 10);
+  },
 
-    const normalizeStatus = (value) => String(value ?? '')
-      .replace(/[-_\s]/g, '')
-      .toLowerCase();
-    const pendingStatuses = new Set(['submitted', 'aireviewed', 'verified']);
-    const inProgressStatuses = new Set(['assigned', 'inprogress', 'submittedforapproval', 'needrework']);
-    const completedStatuses = new Set(['resolved', 'approved', 'rejected', 'closed', 'cancelled']);
-    const summary = {
-      total: Number.isFinite(total) ? total : items.length,
-      pending: 0,
-      inProgress: 0,
-      completed: 0,
+  async getFeedbackSummary() {
+    const statuses = [...new Set(Object.values(ADMIN_FEEDBACK_SUMMARY_GROUPS).flat())];
+    const [totalCount, ...statusCounts] = await Promise.all([
+      getFeedbackCountByStatus(),
+      ...statuses.map((status) => getFeedbackCountByStatus(status)),
+    ]);
+    const countsByStatus = Object.fromEntries(statuses.map((status, index) => [status, statusCounts[index] || 0]));
+    const sumGroup = (group) => ADMIN_FEEDBACK_SUMMARY_GROUPS[group]
+      .reduce((sum, status) => sum + Number(countsByStatus[status] || 0), 0);
+
+    return {
+      total: Number(totalCount) || 0,
+      pending: sumGroup('pending'),
+      inProgress: sumGroup('inProgress'),
+      completed: sumGroup('completed'),
     };
-
-    items.forEach((feedback) => {
-      const status = normalizeStatus(feedback?.status);
-      if (pendingStatuses.has(status)) summary.pending += 1;
-      else if (inProgressStatuses.has(status)) summary.inProgress += 1;
-      else if (completedStatuses.has(status)) summary.completed += 1;
-    });
-
-    return { items, ...summary };
   },
 
   // Get specific feedback by ID

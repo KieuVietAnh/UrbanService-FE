@@ -19,6 +19,7 @@ import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
 import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
 import { buildManagerDashboardStats, managerMetricValue } from './managerDashboardUtils.mjs';
+import AdminDashboardPage from '../admin/AdminDashboardPage';
 import { IncidentDistributionPanel } from '../../components/manager/IncidentDistributionPanel';
 
 const DASHBOARD_AREA_STORAGE_KEY =
@@ -673,7 +674,7 @@ const CitizenCommunityPreview = () => {
   );
 };
 
-export const Dashboard = () => {
+const RoleDashboard = () => {
   const { user } = useAuth();
   const currentRole = normalizeRole(user?.role);
   const navigate = useNavigate();
@@ -1334,6 +1335,7 @@ export const Dashboard = () => {
   // Convert ticket priority string to Figma priority badge
   const renderPriorityBadge = (p) => {
     switch (p) {
+      case 'Urgent':
       case 'Critical':
         return <span className="badge-priority-critical">KHẨN CẤP</span>;
       case 'High':
@@ -1423,7 +1425,7 @@ export const Dashboard = () => {
     }
 
     if (staffFilter === 'high-priority') {
-      return ['Critical', 'High'].includes(ticket.priority);
+      return ['Urgent', 'Critical', 'High'].includes(ticket.priority);
     }
 
     return true;
@@ -3308,4 +3310,13 @@ export const Dashboard = () => {
   }
 
   return null;
+};
+
+
+
+
+export const Dashboard = () => {
+  const { user } = useAuth();
+  const currentRole = normalizeRole(user?.role);
+  return currentRole === APP_ROLES.ADMINISTRATOR ? <AdminDashboardPage /> : <RoleDashboard />;
 };

@@ -1,6 +1,7 @@
 const normalizePriorityKey = (value) => `${value ?? ''}`.trim().toLowerCase();
 
 const PRIORITY_SEMANTICS = {
+  Urgent: { intent: 'danger', urgency: 'critical' },
   Critical: { intent: 'danger', urgency: 'critical' },
   High: { intent: 'warning', urgency: 'high' },
   Medium: { intent: 'info', urgency: 'medium' },

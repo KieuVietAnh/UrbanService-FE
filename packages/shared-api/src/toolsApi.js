@@ -1,7 +1,5 @@
 import { axiosClient } from './axiosClient.js';
 
-const DEFAULT_CATEGORY_PARAMS = { includeInactive: false };
-
 const normalizeCollection = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.items)) return payload.items;
@@ -48,14 +46,32 @@ export const toolsApi = {
       return [];
     }
   },
-  async getCategories() {
+  async getCategories(params = {}) {
     try {
-      const response = await axiosClient.get('/api/categories', { params: DEFAULT_CATEGORY_PARAMS });
+      const response = await axiosClient.get('/api/categories', {
+        params: { includeInactive: params.includeInactive ?? false },
+      });
       return normalizeCollection(response);
     } catch (error) {
       console.warn('toolsApi.getCategories failed', error);
       throw error;
     }
+  },
+  async getCategory(categoryId) {
+    const response = await axiosClient.get(`/api/categories/${categoryId}`);
+    return response?.data ?? response;
+  },
+  async createCategory(payload) {
+    const response = await axiosClient.post('/api/categories', payload);
+    return response?.data ?? response;
+  },
+  async updateCategory(categoryId, payload) {
+    const response = await axiosClient.put(`/api/categories/${categoryId}`, payload);
+    return response?.data ?? response;
+  },
+  async setCategoryActive(categoryId, isActive) {
+    const response = await axiosClient.patch(`/api/categories/${categoryId}/active`, { isActive });
+    return response?.data ?? response;
   },
   async getOperators() { const db = await getMockDb(); return db?.getOperators?.() || []; },
   async getTickets() { const db = await getMockDb(); return db?.getTickets?.() || []; },

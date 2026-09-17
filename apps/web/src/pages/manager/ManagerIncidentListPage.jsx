@@ -54,6 +54,19 @@ const readIncidentReturnContext = (storageKey) => {
 };
 
 const normalizeKey = (value) => String(value ?? '').replace(/[-_\s]/g, '').toLowerCase();
+
+const parseIncidentLocationText = (value) => {
+  const match = String(value || '').match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  return match ? { latitude: Number(match[1]), longitude: Number(match[2]) } : { latitude: Number.NaN, longitude: Number.NaN };
+};
+
+const hasIncidentCoordinates = (incident = {}) => {
+  const parsed = parseIncidentLocationText(incident?.locationText);
+  const latitude = Number(incident?.latitude ?? incident?.lat ?? incident?.location?.latitude ?? parsed.latitude);
+  const longitude = Number(incident?.longitude ?? incident?.lng ?? incident?.lon ?? incident?.location?.longitude ?? parsed.longitude);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+};
+
 const getPayload = (response) => response?.data ?? response ?? {};
 
 const STATUS_META = {
@@ -102,7 +115,7 @@ const STATUS_OPTIONS = [
 ];
 
 const PRIORITY_OPTIONS = [
-  ['Critical', 'Khẩn cấp'],
+  ['Urgent', 'Khẩn cấp'],
   ['High', 'Cao'],
   ['Medium', 'Trung bình'],
   ['Low', 'Thấp'],
@@ -113,6 +126,11 @@ const SEVERITY_OPTIONS = [
   ['High', 'Cao'],
   ['Medium', 'Trung bình'],
   ['Low', 'Thấp'],
+];
+
+const COORDINATE_OPTIONS = [
+  ['mapped', 'Có tọa độ'],
+  ['missing', 'Thiếu tọa độ'],
 ];
 
 const buildAreaFilterOptions = (areas) => [
@@ -384,6 +402,7 @@ const QuickFilterMenu = ({
   icon: Icon,
   onChange,
   metaMap,
+  className = '',
 }) => {
   const detailsRef = useRef(null);
 
@@ -408,7 +427,7 @@ const QuickFilterMenu = ({
   };
 
   return (
-    <details ref={detailsRef} className="group relative">
+    <details ref={detailsRef} className={`group relative min-w-0 ${className}`}>
       <summary
         className={`flex h-10 min-w-[196px] cursor-pointer list-none items-center gap-2 rounded-xl border px-3.5 text-sm font-medium transition [&::-webkit-details-marker]:hidden ${
           value
@@ -517,8 +536,11 @@ export const IncidentManagement = () => {
   const categoryGroup = searchParams.get('categoryGroup') || '';
   const status = searchParams.get('status') || '';
   const statusGroup = searchParams.get('statusGroup') || '';
-  const priority = searchParams.get('priority') || '';
+  const rawPriority = searchParams.get('priority') || '';
+  const priority = rawPriority === 'Critical' ? 'Urgent' : rawPriority;
   const severity = searchParams.get('severity') || '';
+  const coordinateFilter = searchParams.get('coordinates') || '';
+  const isAdminIncidentList = location.pathname.startsWith('/management/incidents');
 
   const [incidents, setIncidents] = useState(() => initialSnapshot?.incidents || []);
   const [areas, setAreas] = useState(() => initialSnapshot?.areas || []);
@@ -578,7 +600,69 @@ export const IncidentManagement = () => {
       const groupedStatuses = STATUS_GROUPS[statusGroup] || null;
       const unclassifiedOnly = categoryGroup === 'unclassified';
 
-      if (unclassifiedOnly) {
+      if (isAdminIncidentList && coordinateFilter) {
+        const collected = [];
+        const statusesToLoad = groupedStatuses?.length ? groupedStatuses : [status];
+
+        for (const requestedStatus of statusesToLoad) {
+          let requestedPage = 1;
+          let totalPages = 1;
+          do {
+            const response = await incidentManagementApi.getIncidents({
+              pageNumber: requestedPage,
+              pageSize: SMART_SEARCH_PAGE_SIZE,
+              areaId,
+              categoryId: unclassifiedOnly ? '' : categoryId,
+              status: requestedStatus,
+              priority,
+              severity,
+              search: '',
+              includeMerged: false,
+            });
+
+            if (requestId !== requestIdRef.current) return;
+            const normalizedPage = normalizeListResponse(response, requestedPage);
+            collected.push(...normalizedPage.items);
+            totalPages = normalizedPage.pagination.totalPages;
+            requestedPage += 1;
+          } while (requestedPage <= totalPages);
+        }
+
+        let matched = Array.from(new Map(
+          collected.map((incident) => [String(incident?.incidentId ?? incident?.id ?? ''), incident])
+        ).values()).filter(Boolean);
+
+        if (unclassifiedOnly) {
+          matched = matched.filter((item) => {
+            const itemCategoryId = item?.categoryId ?? item?.category?.categoryId ?? item?.category?.id;
+            const itemCategoryName = String(item?.categoryName ?? item?.category?.name ?? '').trim().toLowerCase();
+            return itemCategoryId === undefined || itemCategoryId === null || itemCategoryId === '' || itemCategoryName === 'chưa phân loại' || itemCategoryName === 'unclassified';
+          });
+        }
+        if (normalizedSearch) matched = matched.filter((incident) => matchesSmartSearch(incident, normalizedSearch));
+        matched = matched.filter((incident) => coordinateFilter === 'missing' ? !hasIncidentCoordinates(incident) : hasIncidentCoordinates(incident));
+        matched.sort((left, right) => {
+          const leftTime = new Date(left?.updatedAt ?? left?.createdAt ?? 0).getTime() || 0;
+          const rightTime = new Date(right?.updatedAt ?? right?.createdAt ?? 0).getTime() || 0;
+          return rightTime - leftTime;
+        });
+
+        setSearchTruncated(false);
+        const totalItems = matched.length;
+        const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        const safePageNumber = Math.min(pageNumber, totalResultPages);
+        const startIndex = (safePageNumber - 1) * PAGE_SIZE;
+        lastLoadedQueryRef.current = queryKey;
+        setIncidents(matched.slice(startIndex, startIndex + PAGE_SIZE));
+        setPagination({
+          pageNumber: safePageNumber,
+          pageSize: PAGE_SIZE,
+          totalItems,
+          totalPages: totalResultPages,
+          hasPreviousPage: safePageNumber > 1,
+          hasNextPage: safePageNumber < totalResultPages,
+        });
+      } else if (unclassifiedOnly) {
         const collected = [];
         let requestedPage = 1;
         let totalPages = 1;
@@ -784,7 +868,7 @@ export const IncidentManagement = () => {
         setRefreshing(false);
       }
     }
-  }, [areaId, categoryGroup, categoryId, pageNumber, priority, queryKey, search, severity, status, statusGroup]);
+  }, [areaId, categoryGroup, categoryId, coordinateFilter, isAdminIncidentList, pageNumber, priority, queryKey, search, severity, status, statusGroup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -946,7 +1030,7 @@ export const IncidentManagement = () => {
     });
   }, [incidentReturnKey, location.hash, location.pathname, location.search, location.state, navigate, queryKey]);
 
-  const hasFilters = Boolean(search || areaId || categoryId || categoryGroup || status || statusGroup || priority || severity);
+  const hasFilters = Boolean(search || areaId || categoryId || categoryGroup || status || statusGroup || priority || severity || (isAdminIncidentList && coordinateFilter));
   const selectedArea = useMemo(() => areas.find((area) => String(getOptionId(area)) === String(areaId)), [areaId, areas]);
 
   return (
@@ -968,8 +1052,8 @@ export const IncidentManagement = () => {
         )}
       />
 
-      <section className="admin-panel relative overflow-visible">
-        <div className="manager-list-panel-header px-5 py-5 sm:px-6">
+      <section className="admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
@@ -1035,7 +1119,7 @@ export const IncidentManagement = () => {
                   options={buildAreaFilterOptions(areas)}
                   icon={Lucide.MapPin}
                   onChange={(nextValue) => updateFilters({ areaId: nextValue, page: 1 })}
-                  widthClass="w-[300px]"
+                  widthClass="w-full min-w-[260px]"
                 />
 
                 <MainFilterMenu
@@ -1050,7 +1134,7 @@ export const IncidentManagement = () => {
                     }
                     updateFilters({ categoryId: nextValue, categoryGroup: '', page: 1 });
                   }}
-                  widthClass="w-[320px]"
+                  widthClass="w-full min-w-[280px]"
                 />
 
                 <MainFilterMenu
@@ -1069,13 +1153,13 @@ export const IncidentManagement = () => {
                     }
                     updateFilters({ status: nextValue, statusGroup: '', page: 1 });
                   }}
-                  widthClass="w-[300px]"
+                  widthClass="w-full min-w-[260px]"
                   maxHeightClass="max-h-[360px]"
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="mr-1 text-xs font-semibold uppercase tracking-[0.06em] text-slate-400">Lọc nhanh</span>
+              <div className="grid w-full gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-400">Lọc nhanh</span>
 
                 <QuickFilterMenu
                   label="Ưu tiên"
@@ -1084,6 +1168,7 @@ export const IncidentManagement = () => {
                   icon={Lucide.Gauge}
                   metaMap={PRIORITY_META}
                   onChange={(nextValue) => updateFilters({ priority: nextValue, page: 1 })}
+                  className="w-full"
                 />
 
                 <QuickFilterMenu
@@ -1093,7 +1178,19 @@ export const IncidentManagement = () => {
                   icon={Lucide.Activity}
                   metaMap={PRIORITY_META}
                   onChange={(nextValue) => updateFilters({ severity: nextValue, page: 1 })}
+                  className="w-full"
                 />
+
+                {isAdminIncidentList ? (
+                  <QuickFilterMenu
+                    label="Tọa độ"
+                    value={coordinateFilter}
+                    options={COORDINATE_OPTIONS}
+                    icon={Lucide.MapPin}
+                    onChange={(nextValue) => updateFilters({ coordinates: nextValue, page: 1 })}
+                    className="w-full"
+                  />
+                ) : null}
 
                 {hasFilters ? (
                   <button

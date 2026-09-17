@@ -1,3 +1,4 @@
+
 // src/pages/manager/FeedbackReviewQueuePage.jsx
 import { useState, useEffect, useMemo, useRef, useCallback} from 'react';
 import { createPortal } from 'react-dom';
@@ -911,7 +912,7 @@ export const ManagerReportReviewQueuePage = () => {
         title="Xác nhận phản ánh?"
         description="Phản ánh sẽ được chuyển sang trạng thái Đã xác minh với danh mục, mức độ nghiêm trọng và mức độ ưu tiên đang chọn. Bạn có muốn tiếp tục?"
         confirmLabel="Xác nhận phản ánh"
-        tone="primary"
+        tone="success"
         loading={loading}
         onCancel={() => setApproveConfirmOpen(false)}
         onConfirm={handleApprove}
@@ -1273,7 +1274,7 @@ export const ManagerReportReviewQueuePage = () => {
                       <p className="mt-3 text-base font-semibold leading-7 text-slate-800">{selectedTicket.summary || selectedTicket.description || 'Không có tóm tắt từ AI.'}</p>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
                       <div className="admin-inset-panel px-4 py-3.5">
                         <div className="flex min-w-0 items-center gap-2.5">
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Lucide.ShieldCheck size={16} /></span>

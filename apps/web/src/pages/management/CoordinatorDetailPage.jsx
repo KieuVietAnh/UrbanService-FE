@@ -83,6 +83,8 @@ export default function CoordinatorDetailPage() {
   const [submitted, setSubmitted] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showStatusConfirm, setShowStatusConfirm] = useState(false);
+  const [showProfileSaveConfirm, setShowProfileSaveConfirm] = useState(false);
+  const [showCoverageSaveConfirm, setShowCoverageSaveConfirm] = useState(false);
 
   useEffect(() => {
     if (!showCoverageModal && !showLeaveConfirm) return undefined;
@@ -240,7 +242,7 @@ export default function CoordinatorDetailPage() {
   };
   const updateCoverageForm = (field, value) => setCoverageForm((current) => ({ ...current, [field]: value }));
 
-  const saveCoordinator = async (event) => {
+  const requestSaveCoordinator = (event) => {
     event.preventDefault();
     setSubmitted(true);
     const firstInvalidField = Object.keys(validation).find((field) => validation[field]);
@@ -249,6 +251,14 @@ export default function CoordinatorDetailPage() {
       requestAnimationFrame(() => document.querySelector(`[name="${firstInvalidField}"]`)?.focus());
       return;
     }
+    if (!isDirty) {
+      setMessage({ type: 'error', text: 'Không có thay đổi nào để lưu.' });
+      return;
+    }
+    setShowProfileSaveConfirm(true);
+  };
+
+  const saveCoordinator = async () => {
     setProfileSaving(true);
     setMessage({ type: '', text: '' });
     try {
@@ -266,6 +276,7 @@ export default function CoordinatorDetailPage() {
       setForm(normalizedForm);
       setOriginalForm(normalizedForm);
       setSubmitted(false);
+      setShowProfileSaveConfirm(false);
       clearCoordinatorDirectoryCache();
       setMessage({ type: 'success', text: 'Đã cập nhật điều phối viên.' });
     } catch (err) {
@@ -294,11 +305,7 @@ export default function CoordinatorDetailPage() {
       setMessage({ type: 'error', text: 'Hãy lưu hoặc bỏ các thay đổi thông tin trước khi đổi trạng thái điều phối viên.' });
       return;
     }
-    if (item?.isActive) {
-      setShowStatusConfirm(true);
-      return;
-    }
-    toggleActive();
+    setShowStatusConfirm(true);
   };
 
   const leaveDetail = () => navigate('/management/coordinators', { state: { restoreCoordinatorList: true } });
@@ -341,7 +348,7 @@ export default function CoordinatorDetailPage() {
     setShowCoverageModal(true);
   };
 
-  const saveCoverage = async (event) => {
+  const requestSaveCoverage = (event) => {
     event.preventDefault();
     setCoverageSubmitted(true);
     const firstCoverageError = Object.values(coverageValidation).find(Boolean);
@@ -349,6 +356,10 @@ export default function CoordinatorDetailPage() {
       setMessage({ type: 'error', text: firstCoverageError });
       return;
     }
+    setShowCoverageSaveConfirm(true);
+  };
+
+  const saveCoverage = async () => {
     setCoverageSaving(true);
     setMessage({ type: '', text: '' });
     const payload = {
@@ -365,6 +376,7 @@ export default function CoordinatorDetailPage() {
         await managementFeedbackApi.createCoordinatorCoverage(coordinatorId, payload);
       }
       setShowCoverageModal(false);
+      setShowCoverageSaveConfirm(false);
       clearCoordinatorDirectoryCache();
 
       if (!editingCoverageId && setupCoverage?.returnTo) {
@@ -425,10 +437,17 @@ export default function CoordinatorDetailPage() {
 
       <ManagerToast type={message.type === 'error' ? 'error' : 'success'} message={message.text} onClose={() => setMessage({ type: '', text: '' })} />
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
-        <form onSubmit={saveCoordinator} className="admin-panel p-5 sm:p-6 dark:border-slate-700 dark:bg-slate-950/70">
-          <div className="flex items-center justify-between"><div><h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Thông tin điều phối viên</h2><p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Thông tin đơn vị và người phụ trách.</p></div><Lucide.Contact size={22} className="text-blue-600 dark:text-blue-400" /></div>
-          <div className="mt-6 space-y-4">
+      <div className="space-y-6">
+        <form onSubmit={requestSaveCoordinator} className="admin-panel p-5 sm:p-6 dark:border-slate-700 dark:bg-slate-950/70">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Thông tin điều phối viên</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Thông tin đơn vị và người phụ trách.</p>
+            </div>
+            <Lucide.Contact size={22} className="shrink-0 text-blue-600 dark:text-blue-400" />
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
             {[
               ['providerName', 'Tên đơn vị cung cấp', true],
               ['coordinatorName', 'Tên người phụ trách', true],
@@ -438,44 +457,119 @@ export default function CoordinatorDetailPage() {
                 <input name={field} type="text" disabled={!canManage} value={form[field]} onChange={(event) => updateForm(field, event.target.value)} aria-invalid={submitted && Boolean(validation[field])} className={`input input-bordered w-full rounded-xl font-normal ${submitted && validation[field] ? 'border-rose-300 bg-rose-50/50 focus:border-rose-400' : 'border-slate-200 dark:border-slate-700'} bg-white text-slate-900 focus:border-blue-500 focus:outline-none dark:bg-slate-950/70 dark:text-slate-100 disabled:bg-slate-50 dark:disabled:bg-slate-900`} />
               </label>
             ))}
+
             <label className="block">
               <span className="mb-2 flex items-center text-sm font-medium text-slate-700 dark:text-slate-300">Số điện thoại *{submitted && <FieldHint message={validation.phoneNumber} />}</span>
               <input name="phoneNumber" type="tel" inputMode="numeric" autoComplete="tel" maxLength={10} disabled={!canManage} value={form.phoneNumber} onChange={(event) => updateForm('phoneNumber', event.target.value)} aria-invalid={submitted && Boolean(validation.phoneNumber)} className={`input input-bordered w-full rounded-xl font-normal tabular-nums ${submitted && validation.phoneNumber ? 'border-rose-300 bg-rose-50/50 focus:border-rose-400' : 'border-slate-200 dark:border-slate-700'} bg-white text-slate-900 focus:border-blue-500 focus:outline-none dark:bg-slate-950/70 dark:text-slate-100 disabled:bg-slate-50 dark:disabled:bg-slate-900`} placeholder="Ví dụ: 0912345678" />
             </label>
+
             <label className="block">
               <span className="mb-2 flex items-center text-sm font-medium text-slate-700 dark:text-slate-300">Email{submitted && <FieldHint message={validation.email} />}</span>
               <input name="email" type="email" disabled={!canManage} value={form.email} onChange={(event) => updateForm('email', event.target.value)} aria-invalid={submitted && Boolean(validation.email)} className={`input input-bordered w-full rounded-xl font-normal ${submitted && validation.email ? 'border-rose-300 bg-rose-50/50 focus:border-rose-400' : 'border-slate-200 dark:border-slate-700'} bg-white text-slate-900 focus:border-blue-500 focus:outline-none dark:bg-slate-950/70 dark:text-slate-100 disabled:bg-slate-50 dark:disabled:bg-slate-900`} />
             </label>
-            <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Địa chỉ</span><input type="text" disabled={!canManage} value={form.address} onChange={(event) => updateForm('address', event.target.value)} className="input input-bordered w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 disabled:bg-slate-50 dark:disabled:bg-slate-900" /></label>
-            <label className="block"><span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Ghi chú</span><textarea disabled={!canManage} value={form.note} onChange={(event) => updateForm('note', event.target.value)} className="textarea textarea-bordered min-h-24 w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 disabled:bg-slate-50 dark:disabled:bg-slate-900" /></label>
+
+            <label className="block md:col-span-2">
+              <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Địa chỉ</span>
+              <input type="text" disabled={!canManage} value={form.address} onChange={(event) => updateForm('address', event.target.value)} className="input input-bordered w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 disabled:bg-slate-50 dark:disabled:bg-slate-900" />
+            </label>
+
+            <label className="block md:col-span-2">
+              <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Ghi chú</span>
+              <textarea disabled={!canManage} value={form.note} onChange={(event) => updateForm('note', event.target.value)} className="textarea textarea-bordered min-h-24 w-full rounded-xl border-slate-200 bg-white font-normal text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 disabled:bg-slate-50 dark:disabled:bg-slate-900" />
+            </label>
           </div>
-          {canManage && <button type="submit" disabled={profileSaving || !isDirty} className="btn mt-6 h-11 w-full rounded-xl border-0 bg-blue-600 text-sm font-medium text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">{profileSaving ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={17} />} Lưu thay đổi</button>}
+
+          {canManage && (
+            <div className="mt-6 flex justify-end">
+              <button type="submit" disabled={profileSaving || !isDirty} className="btn h-11 min-h-11 rounded-xl border-0 bg-blue-600 px-5 text-sm font-medium text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">
+                {profileSaving ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={17} />} Lưu thay đổi
+              </button>
+            </div>
+          )}
         </form>
 
         <section className="admin-panel p-5 sm:p-6 dark:border-slate-700 dark:bg-slate-950/70">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Phạm vi phụ trách</h2><p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Chỉ điều phối viên có phạm vi đang hoạt động khớp khu vực và danh mục mới xuất hiện trong danh sách đề xuất xử lý.</p></div>{canManage && <button type="button" onClick={openNewCoverage} disabled={coverageLoading || Boolean(coverageError) || metadataLoading || Boolean(metadataError)} className="btn rounded-2xl border-0 bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"><Lucide.Plus size={17} /> Thêm phạm vi</button>}</div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Phạm vi phụ trách</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Chỉ điều phối viên có phạm vi đang hoạt động khớp khu vực và danh mục mới xuất hiện trong danh sách đề xuất xử lý.</p>
+            </div>
+            {canManage && <button type="button" onClick={openNewCoverage} disabled={coverageLoading || Boolean(coverageError) || metadataLoading || Boolean(metadataError)} className="btn rounded-2xl border-0 bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"><Lucide.Plus size={17} /> Thêm phạm vi</button>}
+          </div>
+
           {metadataError ? (
             <div className="mt-5 flex items-start justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
               <div><strong>Không tải đủ dữ liệu tham chiếu.</strong><p className="mt-1 text-amber-700/90 dark:text-amber-200/80">{metadataError}</p></div>
               <button type="button" onClick={loadMetadata} className="btn btn-sm rounded-xl border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-transparent dark:text-amber-200">Thử lại</button>
             </div>
           ) : null}
+
           {coverageError ? (
             <div className="mt-5 flex items-start justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
               <div><strong>Không thể tải phạm vi phụ trách.</strong><p className="mt-1">Dữ liệu bên dưới có thể chưa đầy đủ. Không sử dụng trạng thái rỗng để suy luận điều phối viên chưa có phạm vi.</p></div>
               <button type="button" onClick={() => loadCoverages()} className="btn btn-sm rounded-xl border border-rose-300 bg-white text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-transparent dark:text-rose-200">Thử lại</button>
             </div>
           ) : null}
-          <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
-            <table className="table w-full text-sm text-slate-700 dark:text-slate-200">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/80 dark:text-slate-400"><tr><th>Khu vực</th><th>Danh mục</th><th>Ưu tiên</th><th>Trạng thái</th>{canManage && <th />}</tr></thead>
-              <tbody>
-                {coverageLoading ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500"><span className="loading loading-spinner loading-sm mr-2 text-blue-600" />Đang tải phạm vi phụ trách...</td></tr> : coverageError ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500">Không thể hiển thị phạm vi phụ trách lúc này.</td></tr> : visibleCoverages.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500">{managedCategory ? `Chưa có phạm vi phụ trách cho ${managedCategory.categoryName}.` : 'Chưa có phạm vi phụ trách. Điều phối viên này chưa thể được đề xuất theo khu vực và danh mục.'}</td></tr> : visibleCoverages.map((coverage) => {
+
+          <div className="mt-5">
+            {coverageLoading ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 py-12 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+                <span className="loading loading-spinner loading-sm mr-2 text-blue-600" />
+                Đang tải phạm vi phụ trách...
+              </div>
+            ) : coverageError ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 py-12 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+                Không thể hiển thị phạm vi phụ trách lúc này.
+              </div>
+            ) : visibleCoverages.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-10 text-center text-sm leading-6 text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+                {managedCategory
+                  ? `Chưa có phạm vi phụ trách cho ${managedCategory.categoryName}.`
+                  : 'Chưa có phạm vi phụ trách. Điều phối viên này chưa thể được đề xuất theo khu vực và danh mục.'}
+              </div>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {visibleCoverages.map((coverage) => {
                   const id = coverage.coverageId ?? coverage.id;
-                  return <tr key={id}><td><div className="font-semibold text-slate-900 dark:text-slate-100">{coverage.areaName ?? coverage.area?.name ?? '—'}</div></td><td><div className="font-medium text-slate-800 dark:text-slate-200">{getCategoryLabel(coverage.categoryName ?? coverage.category?.name, '—')}</div></td><td><div className="flex items-center gap-2"><span className="font-semibold text-slate-900 dark:text-slate-100">{coverage.priorityOrder ?? coverage.priority ?? '—'}</span>{coverage.isPrimary && <span className="badge border-0 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chính</span>}</div></td><td><span className={`badge border-0 font-semibold ${coverage.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{coverage.isActive ? 'Hoạt động' : 'Đã tắt'}</span></td>{canManage && <td><button type="button" onClick={() => openEditCoverage(coverage)} className="btn btn-square btn-ghost btn-sm" aria-label="Sửa phạm vi phụ trách" title="Sửa phạm vi phụ trách"><Lucide.Pencil size={16} /></button></td>}</tr>;
+                  return (
+                    <article key={id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100/60 dark:border-slate-700 dark:bg-slate-950/55 dark:shadow-none">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400 dark:text-slate-500">Khu vực</p>
+                          <h3 className="mt-1 truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{coverage.areaName ?? coverage.area?.name ?? '—'}</h3>
+                        </div>
+                        {canManage ? (
+                          <button type="button" onClick={() => openEditCoverage(coverage)} className="btn btn-square btn-ghost btn-sm shrink-0" aria-label="Sửa phạm vi phụ trách" title="Sửa phạm vi phụ trách">
+                            <Lucide.Pencil size={16} />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="min-w-0 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">Danh mục</p>
+                          <p className="mt-1 truncate text-sm font-medium text-slate-800 dark:text-slate-200">{getCategoryLabel(coverage.categoryName ?? coverage.category?.name, '—')}</p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">Ưu tiên</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{coverage.priorityOrder ?? coverage.priority ?? '—'}</span>
+                            {coverage.isPrimary && <span className="badge border-0 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chính</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Trạng thái phạm vi</span>
+                        <span className={`badge border-0 font-semibold ${coverage.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                          {coverage.isActive ? 'Hoạt động' : 'Đã tắt'}
+                        </span>
+                      </div>
+                    </article>
+                  );
                 })}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -500,18 +594,47 @@ export default function CoordinatorDetailPage() {
 
       <ManagerConfirmDialog
         open={showStatusConfirm}
-        title="Vô hiệu hóa điều phối viên?"
-        description="Điều phối viên sẽ ngừng được đề xuất cho các sự vụ mới theo phạm vi phụ trách đang có. Dữ liệu và lịch sử vẫn được giữ lại."
-        confirmLabel="Vô hiệu hóa"
-        cancelLabel="Giữ hoạt động"
+        title={item?.isActive ? 'Vô hiệu hóa điều phối viên?' : 'Kích hoạt điều phối viên?'}
+        description={item?.isActive
+          ? 'Điều phối viên sẽ ngừng được đề xuất cho các sự vụ mới theo phạm vi phụ trách đang có. Dữ liệu và lịch sử vẫn được giữ lại.'
+          : 'Điều phối viên sẽ hoạt động trở lại và có thể được đề xuất cho sự vụ phù hợp với phạm vi đang bật.'}
+        confirmLabel={item?.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
+        cancelLabel="Hủy"
+        tone={item?.isActive ? 'danger' : 'success'}
         loading={statusSaving}
         onConfirm={toggleActive}
         onCancel={() => setShowStatusConfirm(false)}
       />
 
+      <ManagerConfirmDialog
+        open={showProfileSaveConfirm}
+        title="Lưu thay đổi điều phối viên?"
+        description="Thông tin đơn vị và người phụ trách sẽ được cập nhật theo nội dung bạn vừa chỉnh sửa."
+        confirmLabel="Xác nhận lưu"
+        cancelLabel="Quay lại"
+        tone="info"
+        loading={profileSaving}
+        onConfirm={saveCoordinator}
+        onCancel={() => setShowProfileSaveConfirm(false)}
+      />
+
+      <ManagerConfirmDialog
+        open={showCoverageSaveConfirm}
+        title={editingCoverageId ? 'Lưu thay đổi phạm vi?' : 'Thêm phạm vi phụ trách?'}
+        description={editingCoverageId
+          ? 'Khu vực, danh mục, mức ưu tiên hoặc trạng thái phạm vi sẽ được cập nhật.'
+          : 'Phạm vi mới sẽ được dùng khi hệ thống đề xuất điều phối viên phù hợp.'}
+        confirmLabel={editingCoverageId ? 'Xác nhận lưu' : 'Thêm phạm vi'}
+        cancelLabel="Quay lại"
+        tone={editingCoverageId ? "info" : "success"}
+        loading={coverageSaving}
+        onConfirm={saveCoverage}
+        onCancel={() => setShowCoverageSaveConfirm(false)}
+      />
+
       {showCoverageModal && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="coverage-modal-title">
-          <form onSubmit={saveCoverage} className="flex max-h-[min(680px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
+          <form onSubmit={requestSaveCoverage} className="flex max-h-[min(680px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800 sm:px-6 sm:py-5">
               <div className="min-w-0">
                 <h2 id="coverage-modal-title" className="text-xl font-semibold tracking-[-0.02em] text-slate-950 dark:text-slate-50">{editingCoverageId ? 'Cập nhật phạm vi' : 'Thêm phạm vi'}</h2>

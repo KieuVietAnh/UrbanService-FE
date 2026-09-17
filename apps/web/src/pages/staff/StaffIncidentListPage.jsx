@@ -41,7 +41,7 @@ const STATUS_FILTER_OPTIONS = Object.freeze([
   'Merged',
 ]);
 
-const PRIORITY_FILTER_OPTIONS = Object.freeze(['Critical', 'High', 'Medium', 'Low']);
+const PRIORITY_FILTER_OPTIONS = Object.freeze(['Urgent', 'High', 'Medium', 'Low']);
 const SEVERITY_FILTER_OPTIONS = Object.freeze(['Critical', 'High', 'Medium', 'Low']);
 
 const STATUS_LABELS = {
@@ -542,7 +542,7 @@ export default function StaffIncidentListPage() {
     areaId: searchParams.get('areaId') || '',
     categoryId: searchParams.get('categoryId') || '',
     status: searchParams.get('status') || '',
-    priority: searchParams.get('priority') || '',
+    priority: searchParams.get('priority') === 'Critical' ? 'Urgent' : (searchParams.get('priority') || ''),
     severity: searchParams.get('severity') || '',
     search: searchParams.get('search') || '',
     includeMerged: searchParams.get('includeMerged') === 'true',

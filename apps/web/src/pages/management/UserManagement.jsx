@@ -5,6 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api/userApi';
 import * as Lucide from 'lucide-react';
 import { readAdminUserManagementCache, writeAdminUserManagementCache } from '../../services/cache/adminUserManagementCache';
+import { ADMIN_ROLE_DESCRIPTIONS } from './adminRoleDescriptions.mjs';
+import { ManagerListRefreshIndicator } from '../../components/manager/ManagerPageElements';
 
 const ROLE_META = {
   'service-user': {
@@ -60,15 +62,35 @@ const normalizeAdminUser = (user = {}) => ({
   role: getRoleSlugFromApi(user.roleName) || user.role || '',
 });
 
-const ROLE_DESCRIPTIONS = {
-  'service-user': 'Gửi phản ánh, theo dõi trạng thái xử lý và đánh giá kết quả.',
-  'system-staff': 'Tiếp nhận, kiểm tra, phân loại và điều phối phản ánh mới.',
-  'service-provider': 'Cập nhật tiến độ xử lý từ hiện trường hoặc từ đầu mối bên ngoài.',
-  'interaction-manager': 'Theo dõi tương tác cộng đồng, cảm xúc người dùng và các kênh phản hồi.',
-  administrator: 'Quản trị tài khoản, danh mục, SLA, tích hợp, nhật ký hệ thống và vận hành nền tảng.',
-};
+const ROLE_DESCRIPTIONS = ADMIN_ROLE_DESCRIPTIONS;
 
 const USERS_PAGE_SIZE = 8;
+
+const ROLE_SLUG_TO_API_NAME = {
+  'service-user': 'SERVICEUSER',
+  'system-staff': 'SYSTEMSTAFF',
+  'service-provider': 'SERVICEPROVIDER',
+  'interaction-manager': 'INTERACTIONMANAGER',
+  administrator: 'SYSTEMADMIN',
+};
+
+const getPaginationItems = (currentPage, totalPages) => {
+  if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+  const visiblePages = [...pages]
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b);
+
+  const items = [];
+  visiblePages.forEach((page, index) => {
+    const previous = visiblePages[index - 1];
+    if (previous && page - previous > 1) items.push(`ellipsis-${previous}-${page}`);
+    items.push(page);
+  });
+
+  return items;
+};
 
 const isValidEmail = (value = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const normalizePhoneNumber = (value = '') => value.replace(/\D/g, '').slice(0, 10);
@@ -108,7 +130,7 @@ const USER_MANAGEMENT_SCOPED_STYLES = `
     .um-users-filter-search { grid-column: 1 / -1; }
   }
   @media (min-width: 1280px) {
-    .um-users-filter-grid { grid-template-columns: minmax(260px, 320px) 170px 160px 150px; }
+    .um-users-filter-grid { grid-template-columns: minmax(360px, 1.6fr) minmax(190px, 0.8fr) minmax(190px, 0.8fr); }
     .um-users-filter-search { grid-column: auto; }
   }
   .um-role-badge,
@@ -124,15 +146,9 @@ const USER_MANAGEMENT_SCOPED_STYLES = `
     min-width: 112px;
     justify-content: center;
   }
-  .um-user-actions {
-    min-width: 260px;
-  }
-  .um-user-action-button {
-    min-width: 112px;
-  }
-  .um-user-lock-button {
-    min-width: 96px;
-  }
+  .um-user-actions { min-width: 0; }
+  .um-user-action-button { min-width: 104px; }
+  .um-user-lock-button { min-width: 88px; }
   .um-access-status-toggle {
     min-width: 178px;
     min-height: 62px;
@@ -260,13 +276,13 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate', active = f
     emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
     rose: 'bg-rose-50 text-rose-700 ring-rose-100',
   }[tone];
+  const interactive = typeof onClick === 'function';
+  const Component = interactive ? 'button' : 'div';
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`group w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)] ${active
+    <Component
+      {...(interactive ? { type: 'button', onClick, 'aria-pressed': active } : {})}
+      className={`group w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 ${interactive ? 'hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)]' : ''} ${active
         ? 'border-blue-400 ring-2 ring-blue-100 shadow-[0_16px_42px_rgba(37,99,235,0.10)]'
         : 'border-slate-200'
       }`}
@@ -281,7 +297,7 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate', active = f
           <Icon size={20} />
         </span>
       </div>
-    </button>
+    </Component>
   );
 };
 
@@ -492,6 +508,8 @@ const EditAccessModal = ({
   const currentMeta = getRoleMeta(targetUser.role);
   const nextMeta = getRoleMeta(editRole);
   const roleChanged = editRole !== targetUser.role;
+  const statusChanged = editActive !== Boolean(targetUser.isActive);
+  const hasChanges = roleChanged || statusChanged;
   const isAdminRole = editRole === 'administrator';
 
   return createPortal((
@@ -503,168 +521,99 @@ const EditAccessModal = ({
     >
       <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" />
 
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)] dark:border-slate-700 dark:bg-slate-950">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 p-6 dark:border-slate-700 dark:bg-slate-900/80">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)] dark:border-slate-700 dark:bg-slate-950">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-5 dark:border-slate-700 dark:bg-slate-900/80">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
-              <Lucide.UserCog size={20} />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/20">
+              <Lucide.UserCog size={19} />
             </span>
             <div className="min-w-0">
-              <h3 id="edit-access-title" className="text-xl font-semibold text-slate-950 dark:text-slate-100">Chỉnh quyền tài khoản</h3>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Đổi vai trò nghiệp vụ hoặc khóa/mở quyền đăng nhập của tài khoản này.
-              </p>
+              <h3 id="edit-access-title" className="text-xl font-semibold text-slate-950 dark:text-slate-100">Chỉnh sửa quyền truy cập</h3>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Cập nhật vai trò và trạng thái đăng nhập của tài khoản.</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-ghost btn-sm btn-circle"
-            aria-label="Đóng"
-          >
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm btn-circle" aria-label="Đóng">
             <Lucide.X size={18} />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-5 p-6">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/70">
-            <div className="flex items-center gap-3">
-              {targetUser.avatarUrl ? (
-                <div className="avatar">
-                  <div className="h-12 w-12 rounded-xl ring-1 ring-slate-200">
-                    <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
-                  </div>
+        <form onSubmit={onSubmit} className="space-y-4 p-5">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 dark:border-slate-700 dark:bg-slate-900/70">
+            {targetUser.avatarUrl ? (
+              <div className="avatar">
+                <div className="h-11 w-11 rounded-xl ring-1 ring-slate-200 dark:ring-slate-700">
+                  <img src={targetUser.avatarUrl} alt={targetUser.fullName ? `Ảnh đại diện của ${targetUser.fullName}` : 'Ảnh đại diện'} />
                 </div>
-              ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-sm font-semibold text-blue-700 ring-1 ring-blue-100">
-                  {getInitials(targetUser.fullName)}
-                </div>
-              )}
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{targetUser.fullName || 'Chưa có tên'}</p>
-                <p className="truncate text-sm text-slate-500 dark:text-slate-400">{targetUser.email || 'Chưa có email'}</p>
               </div>
+            ) : (
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/20">
+                {getInitials(targetUser.fullName)}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{targetUser.fullName || 'Chưa có tên'}</p>
+              <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">{targetUser.email || 'Chưa có email'}</p>
             </div>
+            <span className={`um-role-badge hidden items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 sm:inline-flex ${currentMeta.className}`}>
+              {currentMeta.label}
+            </span>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-              <div className="grid gap-3 sm:grid-cols-[150px_1fr] sm:items-start">
-                <label className="pt-3">
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Vai trò truy cập</span>
-                </label>
-
-                <div>
-                  <CustomSelect
-                    value={editRole}
-                    onChange={onRoleChange}
-                    options={accessRoleOptions}
-                    ariaLabel="Chọn vai trò truy cập"
-                    getDescription={(item) => ROLE_DESCRIPTIONS[item.value]}
-                    menuClassName="max-h-[320px] overflow-y-auto"
-                  />
-
-                  <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    {ROLE_DESCRIPTIONS[editRole] || 'Vai trò này chưa có mô tả nghiệp vụ.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="sm:col-span-2 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-stretch">
-              <div className="um-access-role-compare-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400 dark:text-slate-500">Vai trò hiện tại</p>
-                    <span className={`um-role-badge mt-3 inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${currentMeta.className}`}>
-                      {currentMeta.label}
-                    </span>
-                  </div>
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-400 ring-1 ring-slate-200 dark:bg-slate-950/50 dark:text-slate-500 dark:ring-slate-700">
-                    <Lucide.UserRound size={15} />
-                  </span>
-                </div>
-              </div>
-
-              <div className="hidden sm:flex items-center justify-center">
-                <span className={`um-access-compare-arrow flex items-center justify-center rounded-full ring-1 ${roleChanged
-                  ? 'bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/25'
-                  : 'bg-slate-50 text-slate-400 ring-slate-200 dark:bg-slate-900/70 dark:text-slate-500 dark:ring-slate-700'
-                }`}>
-                  <Lucide.ArrowRight size={16} />
-                </span>
-              </div>
-
-              <div className={`um-access-role-compare-card rounded-2xl border p-4 shadow-sm transition ${roleChanged
-                ? 'border-blue-200 bg-blue-50/60 ring-1 ring-blue-100 dark:border-blue-400/30 dark:bg-blue-500/10 dark:ring-blue-400/20'
-                : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/70'
-              }`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400 dark:text-slate-500">Vai trò sau chỉnh sửa</p>
-                    <span className={`um-role-badge mt-3 inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ring-1 ${nextMeta.className}`}>
-                      {nextMeta.label}
-                    </span>
-                  </div>
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1 ${roleChanged
-                    ? 'bg-blue-100 text-blue-700 ring-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:ring-blue-400/30'
-                    : 'bg-slate-50 text-slate-400 ring-slate-200 dark:bg-slate-950/50 dark:text-slate-500 dark:ring-slate-700'
-                  }`}>
-                    {roleChanged ? <Lucide.Sparkles size={15} /> : <Lucide.Check size={15} />}
-                  </span>
-                </div>
-                <p className={`um-access-compare-helper mt-3 text-xs font-medium ${roleChanged
-                  ? 'text-blue-600 dark:text-blue-300'
-                  : 'text-slate-400 dark:text-slate-500'
-                }`}>
-                  {roleChanged ? 'Vai trò sẽ được cập nhật sau khi lưu thay đổi.' : 'Chưa có thay đổi vai trò.'}
-                </p>
-              </div>
-            </div>
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Vai trò</label>
+            <CustomSelect
+              value={editRole}
+              onChange={onRoleChange}
+              options={accessRoleOptions}
+              ariaLabel="Chọn vai trò truy cập"
+              getDescription={(item) => ROLE_DESCRIPTIONS[item.value]}
+              menuClassName="max-h-[320px] overflow-y-auto"
+            />
+            <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {ROLE_DESCRIPTIONS[editRole] || 'Vai trò này chưa có mô tả nghiệp vụ.'}
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-            <div className="grid gap-4 sm:grid-cols-[1fr_190px] sm:items-center">
-              <div>
-                <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Trạng thái tài khoản</p>
-                <p className="mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Khi khóa tài khoản, người dùng sẽ không thể đăng nhập cho đến khi quản trị viên mở lại.
-                </p>
-              </div>
-              <label className="um-access-status-toggle grid cursor-pointer grid-cols-[104px_44px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/60">
-                <span className={`um-access-status-toggle-label text-sm font-semibold leading-tight ${editActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
-                  {editActive ? 'Đang hoạt động' : 'Đã khóa'}
-                </span>
-                <input
-                  type="checkbox"
-                  className="toggle toggle-primary toggle-sm shrink-0"
-                  checked={editActive}
-                  onChange={(e) => onActiveChange(e.target.checked)}
-                />
-              </label>
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/70">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Quyền đăng nhập</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Khóa tài khoản sẽ ngăn người dùng đăng nhập cho đến khi được mở lại.</p>
             </div>
+            <label className="flex shrink-0 items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-950/70">
+              <span className={`text-sm font-semibold ${editActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
+                {editActive ? 'Hoạt động' : 'Đã khóa'}
+              </span>
+              <input
+                type="checkbox"
+                className="toggle toggle-primary toggle-sm"
+                checked={editActive}
+                onChange={(e) => onActiveChange(e.target.checked)}
+              />
+            </label>
           </div>
 
-          <div className={`um-access-policy-note rounded-2xl border p-4 text-sm leading-6 transition ${isAdminRole
-            ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200'
-            : 'border-slate-200 bg-slate-50/80 text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400'
-          }`}>
-            <span className="font-semibold">{isAdminRole ? 'Lưu ý:' : 'Ghi chú:'}</span>{' '}
-            {isAdminRole
-              ? 'Vai trò Quản trị viên có quyền truy cập cấu hình hệ thống, nhật ký hệ thống và quản lý tài khoản. Chỉ cấp cho tài khoản thật sự cần vận hành hệ thống.'
-              : 'Thay đổi vai trò hoặc trạng thái chỉ được áp dụng sau khi bấm Lưu thay đổi.'}
-          </div>
+          {hasChanges && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-blue-800 dark:border-blue-400/25 dark:bg-blue-500/10 dark:text-blue-200">
+              <span className="font-semibold">Thay đổi đang chờ:</span>{' '}
+              {roleChanged ? `${currentMeta.label} → ${nextMeta.label}` : 'Giữ nguyên vai trò'}
+              {statusChanged ? ` · ${editActive ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}` : ''}
+            </div>
+          )}
 
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end dark:border-slate-700">
-            <button type="button" onClick={onClose} className="btn btn-ghost rounded-xl text-sm font-medium">
-              Hủy
-            </button>
+          {isAdminRole && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+              <span className="font-semibold">Lưu ý:</span> Quản trị viên có quyền quản lý cấu hình và tài khoản toàn hệ thống. Chỉ cấp vai trò này khi thật sự cần thiết.
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end dark:border-slate-700">
+            <button type="button" onClick={onClose} className="btn btn-ghost rounded-xl text-sm font-medium">Hủy</button>
             <button
               type="submit"
               className="btn rounded-xl border-0 bg-blue-600 text-sm font-medium text-white hover:bg-blue-700"
-              disabled={accessLoading}
+              disabled={accessLoading || !hasChanges}
             >
-              {accessLoading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Save size={16} />}
+              <Lucide.Save size={16} />
               Lưu thay đổi
             </button>
           </div>
@@ -674,6 +623,56 @@ const EditAccessModal = ({
   ), document.body);
 };
 
+const ConfirmAccessSaveModal = ({ targetUser, currentRole, nextRole, currentActive, nextActive, loading, onBack, onConfirm }) => {
+  if (!targetUser) return null;
+
+  const currentMeta = getRoleMeta(currentRole);
+  const nextMeta = getRoleMeta(nextRole);
+  const roleChanged = currentRole !== nextRole;
+  const statusChanged = Boolean(currentActive) !== Boolean(nextActive);
+
+  return createPortal((
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="confirm-access-save-title">
+      <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
+      <div className="relative w-full max-w-md overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.30)] dark:border-slate-700 dark:bg-slate-950">
+        <div className="border-b border-slate-200 px-5 py-5 dark:border-slate-700">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/20">
+              <Lucide.ShieldCheck size={19} />
+            </span>
+            <div>
+              <h3 id="confirm-access-save-title" className="text-lg font-semibold text-slate-950 dark:text-slate-100">Lưu thay đổi quyền?</h3>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Kiểm tra lại trước khi áp dụng cho {targetUser.fullName || targetUser.email || 'tài khoản này'}.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 px-5 py-4 text-sm">
+          {roleChanged && (
+            <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+              <span className="text-slate-500 dark:text-slate-400">Vai trò</span>
+              <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{currentMeta.label} → {nextMeta.label}</span>
+            </div>
+          )}
+          {statusChanged && (
+            <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+              <span className="text-slate-500 dark:text-slate-400">Trạng thái</span>
+              <span className={`font-semibold ${nextActive ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{nextActive ? 'Hoạt động' : 'Đã khóa'}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 dark:border-slate-700">
+          <button type="button" onClick={onBack} className="btn btn-ghost rounded-xl text-sm font-medium" disabled={loading}>Quay lại</button>
+          <button type="button" onClick={onConfirm} className="btn rounded-xl border-0 bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700" disabled={loading}>
+            {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Check size={16} />}
+            Xác nhận lưu
+          </button>
+        </div>
+      </div>
+    </div>
+  ), document.body);
+};
 
 const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
   if (!targetUser) return null;
@@ -787,6 +786,92 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
 };
 
 
+const ResetPasswordModal = ({ targetUser, loading, onClose, onConfirm }) => {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  if (!targetUser) return null;
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const normalizedPassword = newPassword.trim();
+
+    if (normalizedPassword.length < 6) {
+      setFormError('Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+
+    if (normalizedPassword !== confirmNewPassword) {
+      setFormError('Xác nhận mật khẩu chưa khớp.');
+      return;
+    }
+
+    setFormError('');
+    onConfirm(normalizedPassword);
+  };
+
+  return createPortal((
+    <div className="fixed inset-0 z-[96] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]" />
+      <div className="relative w-full max-w-[480px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.24)] dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-700">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/25">
+              <Lucide.KeyRound size={20} />
+            </span>
+            <div className="min-w-0">
+              <h3 id="reset-password-title" className="text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-100">Đặt lại mật khẩu</h3>
+              <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">{targetUser.fullName || targetUser.email || 'Tài khoản được chọn'}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={loading} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-60 dark:hover:bg-slate-800 dark:hover:text-slate-200" aria-label="Đóng">
+            <Lucide.X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5" noValidate>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-6 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            Mật khẩu cũ sẽ không còn dùng được sau khi đặt lại. Hãy cung cấp mật khẩu mới cho đúng người dùng qua kênh an toàn.
+          </div>
+
+          {formError ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">{formError}</div> : null}
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Mật khẩu mới</span>
+            <div className="relative">
+              <input type={showNewPassword ? 'text' : 'password'} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setFormError(''); }} autoComplete="new-password" className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-white pr-11 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Ít nhất 6 ký tự" />
+              <button type="button" onClick={() => setShowNewPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" aria-label={showNewPassword ? 'Ẩn mật khẩu mới' : 'Hiện mật khẩu mới'}>
+                {showNewPassword ? <Lucide.EyeOff size={17} /> : <Lucide.Eye size={17} />}
+              </button>
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Xác nhận mật khẩu mới</span>
+            <div className="relative">
+              <input type={showConfirmNewPassword ? 'text' : 'password'} value={confirmNewPassword} onChange={(event) => { setConfirmNewPassword(event.target.value); setFormError(''); }} autoComplete="new-password" className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-white pr-11 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Nhập lại mật khẩu mới" />
+              <button type="button" onClick={() => setShowConfirmNewPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" aria-label={showConfirmNewPassword ? 'Ẩn xác nhận mật khẩu mới' : 'Hiện xác nhận mật khẩu mới'}>
+                {showConfirmNewPassword ? <Lucide.EyeOff size={17} /> : <Lucide.Eye size={17} />}
+              </button>
+            </div>
+          </label>
+
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end dark:border-slate-700">
+            <button type="button" onClick={onClose} disabled={loading} className="btn btn-ghost rounded-xl text-sm font-medium">Hủy</button>
+            <button type="submit" disabled={loading} className="btn rounded-xl border-0 bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600">
+              {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.KeyRound size={16} />}
+              Xác nhận đặt lại
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  ), document.body);
+};
+
 export const UserManagement = () => {
   const { user: currentAdmin } = useAuth();
   const [initialCache] = useState(readAdminUserManagementCache);
@@ -794,12 +879,15 @@ export const UserManagement = () => {
   const [loading, setLoading] = useState(() => !initialCache?.users?.length);
   const [refreshing, setRefreshing] = useState(false);
   const usersRef = useRef(initialCache?.users || []);
+  const requestIdRef = useRef(0);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [editRole, setEditRole] = useState('service-user');
   const [editActive, setEditActive] = useState(true);
   const [accessLoading, setAccessLoading] = useState(false);
+  const [confirmAccessSaveOpen, setConfirmAccessSaveOpen] = useState(false);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -816,32 +904,83 @@ export const UserManagement = () => {
   const [createFormError, setCreateFormError] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('newest');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    pageNumber: 1,
+    pageSize: USERS_PAGE_SIZE,
+    totalItems: initialCache?.users?.length || 0,
+    totalPages: initialCache?.users?.length ? 1 : 0,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  });
+  const [stats, setStats] = useState({ total: 0, active: 0, locked: 0, operatorCount: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
   const [pendingStatusUser, setPendingStatusUser] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [pendingResetUser, setPendingResetUser] = useState(null);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
 
   useEffect(() => {
     usersRef.current = users;
   }, [users]);
 
-  const fetchUsers = useCallback(async ({ silent = false } = {}) => {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+    }, 320);
+    return () => window.clearTimeout(timeout);
+  }, [searchTerm]);
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const nextStats = await userApi.getUserStats();
+      setStats(nextStats);
+    } catch (err) {
+      console.warn('Không thể tải thống kê người dùng', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  const fetchUsers = useCallback(async ({ silent = false, page = currentPage } = {}) => {
+    const requestId = ++requestIdRef.current;
     const hasCurrentUsers = usersRef.current.length > 0;
 
-    if (silent || hasCurrentUsers) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+    if (silent || hasCurrentUsers) setRefreshing(true);
+    else setLoading(true);
 
     try {
-      const res = await userApi.getUsers();
-      const nextUsers = (Array.isArray(res) ? res : []).map(normalizeAdminUser);
+      const roleName = roleFilter === 'all' ? undefined : ROLE_SLUG_TO_API_NAME[roleFilter];
+      const isActive = statusFilter === 'active'
+        ? true
+        : statusFilter === 'locked'
+          ? false
+          : undefined;
+      const res = await userApi.getUsersPage({
+        pageNumber: page,
+        pageSize: USERS_PAGE_SIZE,
+        search: debouncedSearch,
+        roleName,
+        isActive,
+      });
+      if (requestId !== requestIdRef.current) return null;
+
+      const nextUsers = (Array.isArray(res?.items) ? res.items : []).map(normalizeAdminUser);
       setUsers(nextUsers);
+      setPagination({
+        pageNumber: res?.pageNumber || page,
+        pageSize: res?.pageSize || USERS_PAGE_SIZE,
+        totalItems: Number(res?.totalItems) || 0,
+        totalPages: Number(res?.totalPages) || 0,
+        hasPreviousPage: Boolean(res?.hasPreviousPage),
+        hasNextPage: Boolean(res?.hasNextPage),
+      });
       writeAdminUserManagementCache(nextUsers);
       setMessage((prev) => (prev.type === 'error' ? { type: '', text: '' } : prev));
       return nextUsers;
     } catch (err) {
+      if (requestId !== requestIdRef.current) return null;
       console.error(err);
       if (!hasCurrentUsers) {
         setUsers([]);
@@ -851,14 +990,25 @@ export const UserManagement = () => {
       }
       return null;
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, []);
+  }, [currentPage, debouncedSearch, roleFilter, statusFilter]);
+
+  const hasInitialCachedUsers = Boolean(initialCache?.users?.length);
 
   useEffect(() => {
-    fetchUsers({ silent: Boolean(initialCache?.users?.length) });
-  }, [fetchUsers, initialCache]);
+    void fetchUsers({ silent: hasInitialCachedUsers, page: currentPage });
+    return () => {
+      requestIdRef.current += 1;
+    };
+  }, [currentPage, fetchUsers, hasInitialCachedUsers]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   useEffect(() => {
     if (!message.text) return undefined;
@@ -870,62 +1020,13 @@ export const UserManagement = () => {
     return () => window.clearTimeout(timeout);
   }, [message.type, message.text]);
 
-  const stats = useMemo(() => {
-    const total = users.length;
-    const active = users.filter((item) => item.isActive).length;
-    const locked = users.filter((item) => !item.isActive).length;
-    const operatorCount = users.filter((item) => ['system-staff', 'service-provider', 'interaction-manager', 'administrator'].includes(item.role)).length;
-
-    return { total, active, locked, operatorCount };
-  }, [users]);
-
-  const filteredUsers = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-
-    const nextUsers = users.filter((item) => {
-      const roleMeta = getRoleMeta(item.role);
-      const matchesSearch = !keyword || [item.fullName, item.email, item.phoneNumber, roleMeta.label]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword));
-      const matchesRole = roleFilter === 'all'
-        || (roleFilter === 'internal' && ['system-staff', 'service-provider', 'interaction-manager', 'administrator'].includes(item.role))
-        || item.role === roleFilter;
-      const matchesStatus = statusFilter === 'all'
-        || (statusFilter === 'active' && item.isActive)
-        || (statusFilter === 'locked' && !item.isActive);
-
-      return matchesSearch && matchesRole && matchesStatus;
-    });
-
-    return [...nextUsers].sort((a, b) => {
-      if (sortBy === 'name-asc') {
-        return String(a.fullName || '').localeCompare(String(b.fullName || ''), 'vi', { sensitivity: 'base' });
-      }
-
-      if (sortBy === 'name-desc') {
-        return String(b.fullName || '').localeCompare(String(a.fullName || ''), 'vi', { sensitivity: 'base' });
-      }
-
-      if (sortBy === 'role') {
-        return getRoleMeta(a.role).label.localeCompare(getRoleMeta(b.role).label, 'vi', { sensitivity: 'base' });
-      }
-
-      if (sortBy === 'status') {
-        return Number(b.isActive) - Number(a.isActive);
-      }
-
-      return 0;
-    });
-  }, [users, searchTerm, roleFilter, statusFilter, sortBy]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PAGE_SIZE));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const pageStart = filteredUsers.length === 0 ? 0 : (safeCurrentPage - 1) * USERS_PAGE_SIZE + 1;
-  const pageEnd = Math.min(safeCurrentPage * USERS_PAGE_SIZE, filteredUsers.length);
-  const paginatedUsers = useMemo(() => {
-    const startIndex = (safeCurrentPage - 1) * USERS_PAGE_SIZE;
-    return filteredUsers.slice(startIndex, startIndex + USERS_PAGE_SIZE);
-  }, [filteredUsers, safeCurrentPage]);
+  const filteredUsers = useMemo(() => users, [users]);
+  const totalPages = Math.max(1, pagination.totalPages || 1);
+  const safeCurrentPage = Math.min(Math.max(1, pagination.pageNumber || currentPage), totalPages);
+  const pageStart = pagination.totalItems === 0 ? 0 : (safeCurrentPage - 1) * USERS_PAGE_SIZE + 1;
+  const pageEnd = Math.min(safeCurrentPage * USERS_PAGE_SIZE, pagination.totalItems);
+  const paginatedUsers = filteredUsers;
+  const paginationItems = useMemo(() => getPaginationItems(safeCurrentPage, totalPages), [safeCurrentPage, totalPages]);
   const hasActiveFilters = Boolean(searchTerm.trim()) || roleFilter !== 'all' || statusFilter !== 'all';
 
   const createRoleOptions = useMemo(() => availableRoles.map((item) => ({
@@ -947,13 +1048,12 @@ export const UserManagement = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, roleFilter, statusFilter, sortBy]);
+  }, [debouncedSearch, roleFilter, statusFilter]);
 
   useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
+    const maxPage = Math.max(1, pagination.totalPages || 1);
+    if (currentPage > maxPage) setCurrentPage(maxPage);
+  }, [currentPage, pagination.totalPages]);
 
   const resetCreateForm = () => {
     setFullName('');
@@ -1010,10 +1110,11 @@ export const UserManagement = () => {
 
   const closeAccessModal = () => {
     if (accessLoading) return;
+    setConfirmAccessSaveOpen(false);
     setSelectedUser(null);
   };
 
-  const handleSaveAccess = async (e) => {
+  const handleSaveAccess = (e) => {
     e.preventDefault();
     if (!selectedUser) return;
 
@@ -1021,12 +1122,24 @@ export const UserManagement = () => {
     const statusChanged = editActive !== Boolean(selectedUser.isActive);
 
     if (!roleChanged && !statusChanged) {
-      setSelectedUser(null);
+      setMessage({ type: 'info', text: 'Không có thay đổi nào để lưu.' });
+      return;
+    }
+
+    setConfirmAccessSaveOpen(true);
+  };
+
+  const handleConfirmSaveAccess = async () => {
+    if (!selectedUser) return;
+
+    const roleChanged = editRole !== selectedUser.role;
+    const statusChanged = editActive !== Boolean(selectedUser.isActive);
+    if (!roleChanged && !statusChanged) {
+      setConfirmAccessSaveOpen(false);
       return;
     }
 
     setAccessLoading(true);
-
     let roleApiMissing = false;
 
     try {
@@ -1072,8 +1185,9 @@ export const UserManagement = () => {
       setUsers(updatedUsers);
       writeAdminUserManagementCache(updatedUsers);
       void fetchUsers({ silent: true });
+      void loadStats();
       setMessage({ type: 'success', text: 'Đã cập nhật quyền truy cập tài khoản.' });
-
+      setConfirmAccessSaveOpen(false);
       setSelectedUser(null);
     } catch (err) {
       console.error(err);
@@ -1110,6 +1224,7 @@ export const UserManagement = () => {
       setUsers(updatedUsers);
       writeAdminUserManagementCache(updatedUsers);
       void fetchUsers({ silent: true });
+      void loadStats();
       setMessage({ type: 'success', text: `${nextActive ? 'Đã mở khóa' : 'Đã khóa'} tài khoản ${targetName}.` });
       setPendingStatusUser(null);
     } catch (err) {
@@ -1117,6 +1232,32 @@ export const UserManagement = () => {
       setMessage({ type: 'error', text: getApiErrorMessage(err, 'Lỗi khi cập nhật trạng thái tài khoản.') });
     } finally {
       setStatusLoading(false);
+    }
+  };
+
+  const openResetPasswordModal = (targetUser) => {
+    setPendingResetUser(targetUser);
+  };
+
+  const closeResetPasswordModal = () => {
+    if (resetPasswordLoading) return;
+    setPendingResetUser(null);
+  };
+
+  const handleConfirmResetPassword = async (newPassword) => {
+    if (!pendingResetUser) return;
+
+    setResetPasswordLoading(true);
+    try {
+      await userApi.resetUserPassword(pendingResetUser.userId, newPassword);
+      const targetName = pendingResetUser.fullName || pendingResetUser.email || 'tài khoản';
+      setMessage({ type: 'success', text: `Đã đặt lại mật khẩu cho ${targetName}.` });
+      setPendingResetUser(null);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể đặt lại mật khẩu tài khoản.') });
+    } finally {
+      setResetPasswordLoading(false);
     }
   };
 
@@ -1174,6 +1315,7 @@ export const UserManagement = () => {
       setShowCreateModal(false);
       resetCreateForm();
       void fetchUsers({ silent: true });
+      void loadStats();
     } catch (err) {
       const errorMessage = getApiErrorMessage(err, 'Lỗi khi tạo tài khoản.');
       setCreateFormError(errorMessage);
@@ -1207,7 +1349,7 @@ export const UserManagement = () => {
                 Quản lý người dùng
               </h1>
               <p className="admin-hero-description">
-                Quản lý tài khoản, đổi vai trò nghiệp vụ và khóa/mở quyền truy cập hệ thống.
+                Quản lý tài khoản, vai trò và quyền truy cập hệ thống.
               </p>
             </div>
           </div>
@@ -1238,7 +1380,7 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.Users}
           label="Tổng tài khoản"
-          value={stats.total}
+          value={statsLoading ? '—' : stats.total}
           helper="Tất cả người dùng"
           tone="blue"
           active={roleFilter === 'all' && statusFilter === 'all'}
@@ -1247,7 +1389,7 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.UserCheck}
           label="Đang hoạt động"
-          value={stats.active}
+          value={statsLoading ? '—' : stats.active}
           helper="Có thể đăng nhập"
           tone="emerald"
           active={roleFilter === 'all' && statusFilter === 'active'}
@@ -1256,7 +1398,7 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.UserX}
           label="Đã khóa"
-          value={stats.locked}
+          value={statsLoading ? '—' : stats.locked}
           helper="Đang bị vô hiệu hóa"
           tone="rose"
           active={roleFilter === 'all' && statusFilter === 'locked'}
@@ -1265,65 +1407,69 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.UserCog}
           label="Tài khoản nội bộ"
-          value={stats.operatorCount}
+          value={statsLoading ? '—' : stats.operatorCount}
           helper="Nhân viên, điều phối, quản trị"
           tone="slate"
-          active={roleFilter === 'internal' && statusFilter === 'all'}
-          onClick={() => { setRoleFilter('internal'); setStatusFilter('all'); }}
+          active={false}
         />
       </section>
 
-      <section className="um-users-card overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-700 dark:bg-slate-950/70">
-        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:px-6 xl:flex-row xl:items-center xl:justify-between dark:border-slate-700">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">Danh sách tài khoản</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {loading ? 'Đang tải dữ liệu...' : refreshing ? 'Đang cập nhật dữ liệu...' : `${filteredUsers.length}/${stats.total} tài khoản`}
-            </p>
-          </div>
-
-          <div className="um-users-filter-grid grid w-full gap-3 xl:w-auto">
-            <div className="um-users-filter-search relative">
-              <Lucide.Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Tìm tên, email, số điện thoại..."
-                className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:bg-slate-950"
-              />
+      <section className="um-users-card admin-panel relative overflow-hidden">
+        <div className="manager-list-panel-header bg-transparent px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách tài khoản</h2>
+                  <ManagerListRefreshIndicator visible={refreshing && !loading} label="Đang cập nhật" />
+                </div>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {loading ? 'Đang tải dữ liệu...' : `Tổng cộng ${statsLoading ? '—' : stats.total} tài khoản · ${pagination.totalItems} phù hợp`}
+                </p>
+              </div>
+              {(searchTerm || roleFilter !== 'all' || statusFilter !== 'all') ? (
+                <button
+                  type="button"
+                  onClick={() => { setSearchTerm(''); setRoleFilter('all'); setStatusFilter('all'); setCurrentPage(1); }}
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  <Lucide.RotateCcw size={15} />
+                  Xóa bộ lọc
+                </button>
+              ) : null}
             </div>
 
-            <CustomSelect
-              value={roleFilter}
-              onChange={setRoleFilter}
-              options={[{ value: 'all', label: 'Tất cả vai trò' }, { value: 'internal', label: 'Tài khoản nội bộ' }, ...roleOptions]}
-              ariaLabel="Lọc theo vai trò"
-            />
+            <div className="um-users-filter-grid grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(360px,1.6fr)_minmax(190px,0.8fr)_minmax(190px,0.8fr)]">
+              <div className="um-users-filter-search relative min-w-0">
+                <Lucide.Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Tìm tên, email, số điện thoại..."
+                  className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-slate-50 pl-10 text-sm focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400 dark:focus:bg-slate-950"
+                />
+              </div>
 
-            <CustomSelect
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={[
-                { value: 'all', label: 'Tất cả trạng thái' },
-                { value: 'active', label: 'Hoạt động' },
-                { value: 'locked', label: 'Đã khóa' },
-              ]}
-              ariaLabel="Lọc theo trạng thái"
-            />
+              <CustomSelect
+                value={roleFilter}
+                onChange={setRoleFilter}
+                options={[{ value: 'all', label: 'Tất cả vai trò' }, ...roleOptions]}
+                ariaLabel="Lọc theo vai trò"
+              />
 
-            <CustomSelect
-              value={sortBy}
-              onChange={setSortBy}
-              options={[
-                { value: 'newest', label: 'Mới nhất' },
-                { value: 'name-asc', label: 'Tên A-Z' },
-                { value: 'name-desc', label: 'Tên Z-A' },
-                { value: 'role', label: 'Theo vai trò' },
-                { value: 'status', label: 'Theo trạng thái' },
-              ]}
-              ariaLabel="Sắp xếp danh sách"
-            />
+              <CustomSelect
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { value: 'all', label: 'Tất cả trạng thái' },
+                  { value: 'active', label: 'Hoạt động' },
+                  { value: 'locked', label: 'Đã khóa' },
+                ]}
+                ariaLabel="Lọc theo trạng thái"
+              />
+
+            </div>
           </div>
         </div>
 
@@ -1445,7 +1591,7 @@ export const UserManagement = () => {
                               Tài khoản hiện tại
                             </span>
                           ) : (
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2 sm:grid-cols-3">
                               <button
                                 type="button"
                                 onClick={() => openAccessModal(u)}
@@ -1453,6 +1599,14 @@ export const UserManagement = () => {
                               >
                                 <Lucide.UserCog size={14} />
                                 Chỉnh quyền
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openResetPasswordModal(u)}
+                                className="btn btn-sm h-10 rounded-xl border-amber-200 bg-amber-50 text-sm font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
+                              >
+                                <Lucide.KeyRound size={14} />
+                                Mật khẩu
                               </button>
                               <button
                                 type="button"
@@ -1481,8 +1635,8 @@ export const UserManagement = () => {
               </div>
             </div>
 
-            <div className="hidden overflow-x-auto xl:block">
-              <table className="um-users-table table w-full min-w-[960px] text-sm">
+            <div className="hidden xl:block">
+              <table className="um-users-table table w-full text-sm">
               <colgroup>
                 <col className="w-[40%]" />
                 <col className="w-[18%]" />
@@ -1557,7 +1711,7 @@ export const UserManagement = () => {
                         {isCurrentAdmin ? (
                           <span className="inline-flex min-w-[260px] justify-end text-sm text-slate-400">Tài khoản hiện tại</span>
                         ) : (
-                          <div className="um-user-actions flex flex-col justify-end gap-2 sm:flex-row">
+                          <div className="um-user-actions flex flex-wrap justify-end gap-2">
                             <button
                               type="button"
                               onClick={() => openAccessModal(u)}
@@ -1565,6 +1719,15 @@ export const UserManagement = () => {
                             >
                               <Lucide.UserCog size={14} />
                               Chỉnh quyền
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openResetPasswordModal(u)}
+                              className="um-user-action-button btn btn-sm rounded-xl border-amber-200 bg-amber-50 text-sm font-medium text-amber-700 hover:bg-amber-100 whitespace-nowrap dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
+                              title="Đặt lại mật khẩu"
+                            >
+                              <Lucide.KeyRound size={14} />
+                              Mật khẩu
                             </button>
                             <button
                               type="button"
@@ -1595,7 +1758,7 @@ export const UserManagement = () => {
 
             <div className="flex flex-col gap-3 border-t border-slate-200 px-6 py-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700 dark:text-slate-400">
               <span>
-                Hiển thị {pageStart}-{pageEnd} trong tổng {filteredUsers.length} tài khoản
+                Hiển thị {pageStart}-{pageEnd} trong tổng {pagination.totalItems} tài khoản
               </span>
 
               <div className="flex items-center justify-end gap-2">
@@ -1607,19 +1770,23 @@ export const UserManagement = () => {
                 >
                   Trước
                 </button>
-                {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => setCurrentPage(page)}
-                    className={`btn btn-sm rounded-xl text-sm font-medium ${page === safeCurrentPage
-                      ? 'border-0 bg-blue-600 text-white hover:bg-blue-700'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                    aria-current={page === safeCurrentPage ? 'page' : undefined}
-                  >
-                    {page}
-                  </button>
+                {paginationItems.map((item) => (
+                  typeof item === 'number' ? (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setCurrentPage(item)}
+                      className={`btn btn-sm rounded-xl text-sm font-medium ${item === safeCurrentPage
+                        ? 'border-0 bg-blue-600 text-white hover:bg-blue-700'
+                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                      aria-current={item === safeCurrentPage ? 'page' : undefined}
+                    >
+                      {item}
+                    </button>
+                  ) : (
+                    <span key={item} className="px-1 text-slate-400" aria-hidden="true">…</span>
+                  )
                 ))}
                 <button
                   type="button"
@@ -1647,11 +1814,29 @@ export const UserManagement = () => {
         onSubmit={handleSaveAccess}
       />
 
+      <ConfirmAccessSaveModal
+        targetUser={confirmAccessSaveOpen ? selectedUser : null}
+        currentRole={selectedUser?.role}
+        nextRole={editRole}
+        currentActive={selectedUser?.isActive}
+        nextActive={editActive}
+        loading={accessLoading}
+        onBack={() => !accessLoading && setConfirmAccessSaveOpen(false)}
+        onConfirm={handleConfirmSaveAccess}
+      />
+
       <ConfirmStatusModal
         targetUser={pendingStatusUser}
         loading={statusLoading}
         onClose={closeStatusConfirmModal}
         onConfirm={handleConfirmToggleStatus}
+      />
+
+      <ResetPasswordModal
+        targetUser={pendingResetUser}
+        loading={resetPasswordLoading}
+        onClose={closeResetPasswordModal}
+        onConfirm={handleConfirmResetPassword}
       />
 
       {showCreateModal && createPortal((
@@ -1663,8 +1848,8 @@ export const UserManagement = () => {
         >
           <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]" />
 
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] border border-slate-200 bg-white p-0 shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
+          <div className="relative w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white p-0 shadow-[0_28px_80px_rgba(15,23,42,0.25)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-5">
               <div className="flex items-start gap-3">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
                   <Lucide.UserPlus size={20} />
@@ -1684,7 +1869,7 @@ export const UserManagement = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} noValidate className="space-y-5 p-6">
+            <form onSubmit={handleCreateUser} noValidate className="space-y-4 p-5">
               {createFormError && (
                 <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-700">
                   <Lucide.AlertCircle className="mt-0.5 shrink-0" size={18} />
