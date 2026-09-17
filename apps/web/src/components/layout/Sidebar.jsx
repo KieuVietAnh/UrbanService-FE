@@ -182,7 +182,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         </div>
 
         {/* Navigation Menu */}
-        <nav className="admin-sidebar-nav min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden px-2.5 py-2">
+        <nav className={`admin-sidebar-nav min-h-0 flex-1 overflow-x-hidden px-2.5 py-2 ${currentRole === APP_ROLES.ADMINISTRATOR ? 'space-y-1 overflow-y-hidden' : 'space-y-1.5 overflow-y-auto'}`}>
           {currentRole === APP_ROLES.SYSTEM_STAFF ? (
             systemStaffSidebarSections.map((section) => {
               const visibleItems = section.items;

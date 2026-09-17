@@ -786,6 +786,92 @@ const ConfirmStatusModal = ({ targetUser, loading, onClose, onConfirm }) => {
 };
 
 
+const ResetPasswordModal = ({ targetUser, loading, onClose, onConfirm }) => {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  if (!targetUser) return null;
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const normalizedPassword = newPassword.trim();
+
+    if (normalizedPassword.length < 6) {
+      setFormError('Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+
+    if (normalizedPassword !== confirmNewPassword) {
+      setFormError('Xác nhận mật khẩu chưa khớp.');
+      return;
+    }
+
+    setFormError('');
+    onConfirm(normalizedPassword);
+  };
+
+  return createPortal((
+    <div className="fixed inset-0 z-[96] flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]" />
+      <div className="relative w-full max-w-[480px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.24)] dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-700">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/25">
+              <Lucide.KeyRound size={20} />
+            </span>
+            <div className="min-w-0">
+              <h3 id="reset-password-title" className="text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-100">Đặt lại mật khẩu</h3>
+              <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">{targetUser.fullName || targetUser.email || 'Tài khoản được chọn'}</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={loading} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-60 dark:hover:bg-slate-800 dark:hover:text-slate-200" aria-label="Đóng">
+            <Lucide.X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5" noValidate>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm leading-6 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            Mật khẩu cũ sẽ không còn dùng được sau khi đặt lại. Hãy cung cấp mật khẩu mới cho đúng người dùng qua kênh an toàn.
+          </div>
+
+          {formError ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">{formError}</div> : null}
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Mật khẩu mới</span>
+            <div className="relative">
+              <input type={showNewPassword ? 'text' : 'password'} value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setFormError(''); }} autoComplete="new-password" className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-white pr-11 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Ít nhất 6 ký tự" />
+              <button type="button" onClick={() => setShowNewPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" aria-label={showNewPassword ? 'Ẩn mật khẩu mới' : 'Hiện mật khẩu mới'}>
+                {showNewPassword ? <Lucide.EyeOff size={17} /> : <Lucide.Eye size={17} />}
+              </button>
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Xác nhận mật khẩu mới</span>
+            <div className="relative">
+              <input type={showConfirmNewPassword ? 'text' : 'password'} value={confirmNewPassword} onChange={(event) => { setConfirmNewPassword(event.target.value); setFormError(''); }} autoComplete="new-password" className="input input-bordered h-11 w-full rounded-xl border-slate-200 bg-white pr-11 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Nhập lại mật khẩu mới" />
+              <button type="button" onClick={() => setShowConfirmNewPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200" aria-label={showConfirmNewPassword ? 'Ẩn xác nhận mật khẩu mới' : 'Hiện xác nhận mật khẩu mới'}>
+                {showConfirmNewPassword ? <Lucide.EyeOff size={17} /> : <Lucide.Eye size={17} />}
+              </button>
+            </div>
+          </label>
+
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end dark:border-slate-700">
+            <button type="button" onClick={onClose} disabled={loading} className="btn btn-ghost rounded-xl text-sm font-medium">Hủy</button>
+            <button type="submit" disabled={loading} className="btn rounded-xl border-0 bg-amber-500 text-sm font-semibold text-white hover:bg-amber-600">
+              {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.KeyRound size={16} />}
+              Xác nhận đặt lại
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  ), document.body);
+};
+
 export const UserManagement = () => {
   const { user: currentAdmin } = useAuth();
   const [initialCache] = useState(readAdminUserManagementCache);
@@ -831,6 +917,8 @@ export const UserManagement = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [pendingStatusUser, setPendingStatusUser] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [pendingResetUser, setPendingResetUser] = useState(null);
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
 
   useEffect(() => {
     usersRef.current = users;
@@ -1144,6 +1232,32 @@ export const UserManagement = () => {
       setMessage({ type: 'error', text: getApiErrorMessage(err, 'Lỗi khi cập nhật trạng thái tài khoản.') });
     } finally {
       setStatusLoading(false);
+    }
+  };
+
+  const openResetPasswordModal = (targetUser) => {
+    setPendingResetUser(targetUser);
+  };
+
+  const closeResetPasswordModal = () => {
+    if (resetPasswordLoading) return;
+    setPendingResetUser(null);
+  };
+
+  const handleConfirmResetPassword = async (newPassword) => {
+    if (!pendingResetUser) return;
+
+    setResetPasswordLoading(true);
+    try {
+      await userApi.resetUserPassword(pendingResetUser.userId, newPassword);
+      const targetName = pendingResetUser.fullName || pendingResetUser.email || 'tài khoản';
+      setMessage({ type: 'success', text: `Đã đặt lại mật khẩu cho ${targetName}.` });
+      setPendingResetUser(null);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: getApiErrorMessage(err, 'Không thể đặt lại mật khẩu tài khoản.') });
+    } finally {
+      setResetPasswordLoading(false);
     }
   };
 
@@ -1477,7 +1591,7 @@ export const UserManagement = () => {
                               Tài khoản hiện tại
                             </span>
                           ) : (
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2 sm:grid-cols-3">
                               <button
                                 type="button"
                                 onClick={() => openAccessModal(u)}
@@ -1485,6 +1599,14 @@ export const UserManagement = () => {
                               >
                                 <Lucide.UserCog size={14} />
                                 Chỉnh quyền
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openResetPasswordModal(u)}
+                                className="btn btn-sm h-10 rounded-xl border-amber-200 bg-amber-50 text-sm font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
+                              >
+                                <Lucide.KeyRound size={14} />
+                                Mật khẩu
                               </button>
                               <button
                                 type="button"
@@ -1589,7 +1711,7 @@ export const UserManagement = () => {
                         {isCurrentAdmin ? (
                           <span className="inline-flex min-w-[260px] justify-end text-sm text-slate-400">Tài khoản hiện tại</span>
                         ) : (
-                          <div className="um-user-actions flex flex-col justify-end gap-2 sm:flex-row">
+                          <div className="um-user-actions flex flex-wrap justify-end gap-2">
                             <button
                               type="button"
                               onClick={() => openAccessModal(u)}
@@ -1597,6 +1719,15 @@ export const UserManagement = () => {
                             >
                               <Lucide.UserCog size={14} />
                               Chỉnh quyền
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openResetPasswordModal(u)}
+                              className="um-user-action-button btn btn-sm rounded-xl border-amber-200 bg-amber-50 text-sm font-medium text-amber-700 hover:bg-amber-100 whitespace-nowrap dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/15"
+                              title="Đặt lại mật khẩu"
+                            >
+                              <Lucide.KeyRound size={14} />
+                              Mật khẩu
                             </button>
                             <button
                               type="button"
@@ -1699,6 +1830,13 @@ export const UserManagement = () => {
         loading={statusLoading}
         onClose={closeStatusConfirmModal}
         onConfirm={handleConfirmToggleStatus}
+      />
+
+      <ResetPasswordModal
+        targetUser={pendingResetUser}
+        loading={resetPasswordLoading}
+        onClose={closeResetPasswordModal}
+        onConfirm={handleConfirmResetPassword}
       />
 
       {showCreateModal && createPortal((

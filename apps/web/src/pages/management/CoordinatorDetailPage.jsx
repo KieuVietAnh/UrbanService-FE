@@ -511,16 +511,65 @@ export default function CoordinatorDetailPage() {
             </div>
           ) : null}
 
-          <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
-            <table className="table w-full text-sm text-slate-700 dark:text-slate-200">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-900/80 dark:text-slate-400"><tr><th>Khu vực</th><th>Danh mục</th><th>Ưu tiên</th><th>Trạng thái</th>{canManage && <th />}</tr></thead>
-              <tbody>
-                {coverageLoading ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500"><span className="loading loading-spinner loading-sm mr-2 text-blue-600" />Đang tải phạm vi phụ trách...</td></tr> : coverageError ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500">Không thể hiển thị phạm vi phụ trách lúc này.</td></tr> : visibleCoverages.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="py-12 text-center text-slate-500">{managedCategory ? `Chưa có phạm vi phụ trách cho ${managedCategory.categoryName}.` : 'Chưa có phạm vi phụ trách. Điều phối viên này chưa thể được đề xuất theo khu vực và danh mục.'}</td></tr> : visibleCoverages.map((coverage) => {
+          <div className="mt-5">
+            {coverageLoading ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 py-12 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+                <span className="loading loading-spinner loading-sm mr-2 text-blue-600" />
+                Đang tải phạm vi phụ trách...
+              </div>
+            ) : coverageError ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 py-12 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-400">
+                Không thể hiển thị phạm vi phụ trách lúc này.
+              </div>
+            ) : visibleCoverages.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-10 text-center text-sm leading-6 text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+                {managedCategory
+                  ? `Chưa có phạm vi phụ trách cho ${managedCategory.categoryName}.`
+                  : 'Chưa có phạm vi phụ trách. Điều phối viên này chưa thể được đề xuất theo khu vực và danh mục.'}
+              </div>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {visibleCoverages.map((coverage) => {
                   const id = coverage.coverageId ?? coverage.id;
-                  return <tr key={id}><td><div className="font-semibold text-slate-900 dark:text-slate-100">{coverage.areaName ?? coverage.area?.name ?? '—'}</div></td><td><div className="font-medium text-slate-800 dark:text-slate-200">{getCategoryLabel(coverage.categoryName ?? coverage.category?.name, '—')}</div></td><td><div className="flex items-center gap-2"><span className="font-semibold text-slate-900 dark:text-slate-100">{coverage.priorityOrder ?? coverage.priority ?? '—'}</span>{coverage.isPrimary && <span className="badge border-0 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chính</span>}</div></td><td><span className={`badge border-0 font-semibold ${coverage.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{coverage.isActive ? 'Hoạt động' : 'Đã tắt'}</span></td>{canManage && <td><button type="button" onClick={() => openEditCoverage(coverage)} className="btn btn-square btn-ghost btn-sm" aria-label="Sửa phạm vi phụ trách" title="Sửa phạm vi phụ trách"><Lucide.Pencil size={16} /></button></td>}</tr>;
+                  return (
+                    <article key={id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100/60 dark:border-slate-700 dark:bg-slate-950/55 dark:shadow-none">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-400 dark:text-slate-500">Khu vực</p>
+                          <h3 className="mt-1 truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{coverage.areaName ?? coverage.area?.name ?? '—'}</h3>
+                        </div>
+                        {canManage ? (
+                          <button type="button" onClick={() => openEditCoverage(coverage)} className="btn btn-square btn-ghost btn-sm shrink-0" aria-label="Sửa phạm vi phụ trách" title="Sửa phạm vi phụ trách">
+                            <Lucide.Pencil size={16} />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="min-w-0 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">Danh mục</p>
+                          <p className="mt-1 truncate text-sm font-medium text-slate-800 dark:text-slate-200">{getCategoryLabel(coverage.categoryName ?? coverage.category?.name, '—')}</p>
+                        </div>
+                        <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/70">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">Ưu tiên</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{coverage.priorityOrder ?? coverage.priority ?? '—'}</span>
+                            {coverage.isPrimary && <span className="badge border-0 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Chính</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Trạng thái phạm vi</span>
+                        <span className={`badge border-0 font-semibold ${coverage.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                          {coverage.isActive ? 'Hoạt động' : 'Đã tắt'}
+                        </span>
+                      </div>
+                    </article>
+                  );
                 })}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         </section>
       </div>

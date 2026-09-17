@@ -156,6 +156,18 @@ export const userApi = {
     }
   },
 
+  async resetUserPassword(userId, newPassword) {
+    try {
+      await axiosClient.patch(`/api/admin/users/${userId}/reset-password`, {
+        newPassword,
+      });
+      return true;
+    } catch (error) {
+      console.warn('userApi.resetUserPassword failed', error);
+      throw error;
+    }
+  },
+
   async createUser(data) {
     try {
       const response = await axiosClient.post('/api/admin/users', data);
