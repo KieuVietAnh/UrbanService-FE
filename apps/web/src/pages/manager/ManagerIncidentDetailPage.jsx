@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
 import { ManagerConfirmDialog, ManagerListRefreshIndicator, ManagerSectionHeader, ManagerSelectMenu, ManagerToast } from '../../components/manager/ManagerPageElements';
 import IncidentLocationMapCard from '../../components/maps/IncidentLocationMapCard';
+import { IncidentSlaSection } from '../../components/manager/IncidentSlaSection';
 import {
   extractApiErrorMessage,
   managementFeedbackApi,
@@ -1600,6 +1601,15 @@ export const IncidentDetailPage = () => {
         ) : null}
         </div>
       </section>
+
+      <IncidentSlaSection
+        incidentId={incidentId}
+        canManage={currentRole === 'interaction-manager' && !isMergedIncident}
+        onChanged={(message) => {
+          if (message) setNotice(message);
+          if (timelineLoaded) void loadTimeline();
+        }}
+      />
 
       {isApprovalView ? (
         <section className="overflow-hidden rounded-[24px] border border-indigo-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-indigo-500/20 dark:bg-slate-950">

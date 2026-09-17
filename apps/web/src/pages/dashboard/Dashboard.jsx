@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
 import { slaApi } from '../../services/api/slaApi';
-import { axiosClient, toolsApi, managementFeedbackApi, feedbackDashboardApi } from '@urbanmind/shared-api';
+import { axiosClient, toolsApi, managementFeedbackApi, incidentDashboardApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 import { normalizeRole } from '../../utils/roleMap';
 import { APP_ROLES, getStatusLabel, managementTypes, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
@@ -782,9 +782,9 @@ export const Dashboard = () => {
 
   const fetchAdminDashboardContent = useCallback(async () => {
     const [overviewResult, categoryResult, recentResult, mapResult, slaOverviewResult] = await Promise.allSettled([
-      feedbackDashboardApi.getOverview(),
-      feedbackDashboardApi.getCategoryDistribution(),
-      feedbackDashboardApi.getRecent(10),
+      incidentDashboardApi.getOverview(),
+      incidentDashboardApi.getCategoryDistribution(),
+      incidentDashboardApi.getRecent(10),
       managementFeedbackApi.getFeedbacks({
         pageIndex: 0,
         pageSize: 1000,
@@ -813,12 +813,12 @@ export const Dashboard = () => {
       urgentResult,
       slaOverviewResult,
     ] = await Promise.allSettled([
-      feedbackDashboardApi.getOverview(),
-      feedbackDashboardApi.getStatusDistribution(),
-      feedbackDashboardApi.getCategoryDistribution(),
-      feedbackDashboardApi.getAreaDistribution(),
-      feedbackDashboardApi.getMonthlyTrend(6),
-      feedbackDashboardApi.getUrgentOpen(3),
+      incidentDashboardApi.getOverview(),
+      incidentDashboardApi.getStatusDistribution(),
+      incidentDashboardApi.getCategoryDistribution(),
+      incidentDashboardApi.getAreaDistribution(),
+      incidentDashboardApi.getMonthlyTrend(6),
+      incidentDashboardApi.getUrgentOpen(3),
       slaApi.getDashboardOverview(),
     ]);
 
