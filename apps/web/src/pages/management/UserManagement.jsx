@@ -66,6 +66,14 @@ const ROLE_DESCRIPTIONS = ADMIN_ROLE_DESCRIPTIONS;
 
 const USERS_PAGE_SIZE = 8;
 
+const ROLE_SLUG_TO_API_NAME = {
+  'service-user': 'SERVICEUSER',
+  'system-staff': 'SYSTEMSTAFF',
+  'service-provider': 'SERVICEPROVIDER',
+  'interaction-manager': 'INTERACTIONMANAGER',
+  administrator: 'SYSTEMADMIN',
+};
+
 const getPaginationItems = (currentPage, totalPages) => {
   if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
 
@@ -122,7 +130,7 @@ const USER_MANAGEMENT_SCOPED_STYLES = `
     .um-users-filter-search { grid-column: 1 / -1; }
   }
   @media (min-width: 1280px) {
-    .um-users-filter-grid { grid-template-columns: minmax(320px, 1.45fr) minmax(180px, 0.8fr) minmax(190px, 0.85fr) minmax(170px, 0.75fr); }
+    .um-users-filter-grid { grid-template-columns: minmax(360px, 1.6fr) minmax(190px, 0.8fr) minmax(190px, 0.8fr); }
     .um-users-filter-search { grid-column: auto; }
   }
   .um-role-badge,
@@ -268,13 +276,13 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate', active = f
     emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
     rose: 'bg-rose-50 text-rose-700 ring-rose-100',
   }[tone];
+  const interactive = typeof onClick === 'function';
+  const Component = interactive ? 'button' : 'div';
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`group w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)] ${active
+    <Component
+      {...(interactive ? { type: 'button', onClick, 'aria-pressed': active } : {})}
+      className={`group w-full rounded-2xl border bg-white p-5 text-left shadow-[0_10px_30px_rgba(15,23,42,0.04)] transition duration-200 ${interactive ? 'hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_42px_rgba(15,23,42,0.07)]' : ''} ${active
         ? 'border-blue-400 ring-2 ring-blue-100 shadow-[0_16px_42px_rgba(37,99,235,0.10)]'
         : 'border-slate-200'
       }`}
@@ -289,7 +297,7 @@ const StatCard = ({ icon: Icon, label, value, helper, tone = 'slate', active = f
           <Icon size={20} />
         </span>
       </div>
-    </button>
+    </Component>
   );
 };
 
@@ -785,8 +793,10 @@ export const UserManagement = () => {
   const [loading, setLoading] = useState(() => !initialCache?.users?.length);
   const [refreshing, setRefreshing] = useState(false);
   const usersRef = useRef(initialCache?.users || []);
+  const requestIdRef = useRef(0);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [editRole, setEditRole] = useState('service-user');
   const [editActive, setEditActive] = useState(true);
@@ -808,8 +818,17 @@ export const UserManagement = () => {
   const [createFormError, setCreateFormError] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('newest');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    pageNumber: 1,
+    pageSize: USERS_PAGE_SIZE,
+    totalItems: initialCache?.users?.length || 0,
+    totalPages: initialCache?.users?.length ? 1 : 0,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  });
+  const [stats, setStats] = useState({ total: 0, active: 0, locked: 0, operatorCount: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
   const [pendingStatusUser, setPendingStatusUser] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
@@ -817,23 +836,63 @@ export const UserManagement = () => {
     usersRef.current = users;
   }, [users]);
 
-  const fetchUsers = useCallback(async ({ silent = false } = {}) => {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+    }, 320);
+    return () => window.clearTimeout(timeout);
+  }, [searchTerm]);
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const nextStats = await userApi.getUserStats();
+      setStats(nextStats);
+    } catch (err) {
+      console.warn('Không thể tải thống kê người dùng', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  const fetchUsers = useCallback(async ({ silent = false, page = currentPage } = {}) => {
+    const requestId = ++requestIdRef.current;
     const hasCurrentUsers = usersRef.current.length > 0;
 
-    if (silent || hasCurrentUsers) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+    if (silent || hasCurrentUsers) setRefreshing(true);
+    else setLoading(true);
 
     try {
-      const res = await userApi.getUsers();
-      const nextUsers = (Array.isArray(res) ? res : []).map(normalizeAdminUser);
+      const roleName = roleFilter === 'all' ? undefined : ROLE_SLUG_TO_API_NAME[roleFilter];
+      const isActive = statusFilter === 'active'
+        ? true
+        : statusFilter === 'locked'
+          ? false
+          : undefined;
+      const res = await userApi.getUsersPage({
+        pageNumber: page,
+        pageSize: USERS_PAGE_SIZE,
+        search: debouncedSearch,
+        roleName,
+        isActive,
+      });
+      if (requestId !== requestIdRef.current) return null;
+
+      const nextUsers = (Array.isArray(res?.items) ? res.items : []).map(normalizeAdminUser);
       setUsers(nextUsers);
+      setPagination({
+        pageNumber: res?.pageNumber || page,
+        pageSize: res?.pageSize || USERS_PAGE_SIZE,
+        totalItems: Number(res?.totalItems) || 0,
+        totalPages: Number(res?.totalPages) || 0,
+        hasPreviousPage: Boolean(res?.hasPreviousPage),
+        hasNextPage: Boolean(res?.hasNextPage),
+      });
       writeAdminUserManagementCache(nextUsers);
       setMessage((prev) => (prev.type === 'error' ? { type: '', text: '' } : prev));
       return nextUsers;
     } catch (err) {
+      if (requestId !== requestIdRef.current) return null;
       console.error(err);
       if (!hasCurrentUsers) {
         setUsers([]);
@@ -843,14 +902,25 @@ export const UserManagement = () => {
       }
       return null;
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, []);
+  }, [currentPage, debouncedSearch, roleFilter, statusFilter]);
+
+  const hasInitialCachedUsers = Boolean(initialCache?.users?.length);
 
   useEffect(() => {
-    fetchUsers({ silent: Boolean(initialCache?.users?.length) });
-  }, [fetchUsers, initialCache]);
+    void fetchUsers({ silent: hasInitialCachedUsers, page: currentPage });
+    return () => {
+      requestIdRef.current += 1;
+    };
+  }, [currentPage, fetchUsers, hasInitialCachedUsers]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   useEffect(() => {
     if (!message.text) return undefined;
@@ -862,62 +932,12 @@ export const UserManagement = () => {
     return () => window.clearTimeout(timeout);
   }, [message.type, message.text]);
 
-  const stats = useMemo(() => {
-    const total = users.length;
-    const active = users.filter((item) => item.isActive).length;
-    const locked = users.filter((item) => !item.isActive).length;
-    const operatorCount = users.filter((item) => ['system-staff', 'service-provider', 'interaction-manager', 'administrator'].includes(item.role)).length;
-
-    return { total, active, locked, operatorCount };
-  }, [users]);
-
-  const filteredUsers = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase();
-
-    const nextUsers = users.filter((item) => {
-      const roleMeta = getRoleMeta(item.role);
-      const matchesSearch = !keyword || [item.fullName, item.email, item.phoneNumber, roleMeta.label]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(keyword));
-      const matchesRole = roleFilter === 'all'
-        || (roleFilter === 'internal' && ['system-staff', 'service-provider', 'interaction-manager', 'administrator'].includes(item.role))
-        || item.role === roleFilter;
-      const matchesStatus = statusFilter === 'all'
-        || (statusFilter === 'active' && item.isActive)
-        || (statusFilter === 'locked' && !item.isActive);
-
-      return matchesSearch && matchesRole && matchesStatus;
-    });
-
-    return [...nextUsers].sort((a, b) => {
-      if (sortBy === 'name-asc') {
-        return String(a.fullName || '').localeCompare(String(b.fullName || ''), 'vi', { sensitivity: 'base' });
-      }
-
-      if (sortBy === 'name-desc') {
-        return String(b.fullName || '').localeCompare(String(a.fullName || ''), 'vi', { sensitivity: 'base' });
-      }
-
-      if (sortBy === 'role') {
-        return getRoleMeta(a.role).label.localeCompare(getRoleMeta(b.role).label, 'vi', { sensitivity: 'base' });
-      }
-
-      if (sortBy === 'status') {
-        return Number(b.isActive) - Number(a.isActive);
-      }
-
-      return 0;
-    });
-  }, [users, searchTerm, roleFilter, statusFilter, sortBy]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PAGE_SIZE));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const pageStart = filteredUsers.length === 0 ? 0 : (safeCurrentPage - 1) * USERS_PAGE_SIZE + 1;
-  const pageEnd = Math.min(safeCurrentPage * USERS_PAGE_SIZE, filteredUsers.length);
-  const paginatedUsers = useMemo(() => {
-    const startIndex = (safeCurrentPage - 1) * USERS_PAGE_SIZE;
-    return filteredUsers.slice(startIndex, startIndex + USERS_PAGE_SIZE);
-  }, [filteredUsers, safeCurrentPage]);
+  const filteredUsers = useMemo(() => users, [users]);
+  const totalPages = Math.max(1, pagination.totalPages || 1);
+  const safeCurrentPage = Math.min(Math.max(1, pagination.pageNumber || currentPage), totalPages);
+  const pageStart = pagination.totalItems === 0 ? 0 : (safeCurrentPage - 1) * USERS_PAGE_SIZE + 1;
+  const pageEnd = Math.min(safeCurrentPage * USERS_PAGE_SIZE, pagination.totalItems);
+  const paginatedUsers = filteredUsers;
   const paginationItems = useMemo(() => getPaginationItems(safeCurrentPage, totalPages), [safeCurrentPage, totalPages]);
   const hasActiveFilters = Boolean(searchTerm.trim()) || roleFilter !== 'all' || statusFilter !== 'all';
 
@@ -940,13 +960,12 @@ export const UserManagement = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, roleFilter, statusFilter, sortBy]);
+  }, [debouncedSearch, roleFilter, statusFilter]);
 
   useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
+    const maxPage = Math.max(1, pagination.totalPages || 1);
+    if (currentPage > maxPage) setCurrentPage(maxPage);
+  }, [currentPage, pagination.totalPages]);
 
   const resetCreateForm = () => {
     setFullName('');
@@ -1078,6 +1097,7 @@ export const UserManagement = () => {
       setUsers(updatedUsers);
       writeAdminUserManagementCache(updatedUsers);
       void fetchUsers({ silent: true });
+      void loadStats();
       setMessage({ type: 'success', text: 'Đã cập nhật quyền truy cập tài khoản.' });
       setConfirmAccessSaveOpen(false);
       setSelectedUser(null);
@@ -1116,6 +1136,7 @@ export const UserManagement = () => {
       setUsers(updatedUsers);
       writeAdminUserManagementCache(updatedUsers);
       void fetchUsers({ silent: true });
+      void loadStats();
       setMessage({ type: 'success', text: `${nextActive ? 'Đã mở khóa' : 'Đã khóa'} tài khoản ${targetName}.` });
       setPendingStatusUser(null);
     } catch (err) {
@@ -1180,6 +1201,7 @@ export const UserManagement = () => {
       setShowCreateModal(false);
       resetCreateForm();
       void fetchUsers({ silent: true });
+      void loadStats();
     } catch (err) {
       const errorMessage = getApiErrorMessage(err, 'Lỗi khi tạo tài khoản.');
       setCreateFormError(errorMessage);
@@ -1244,7 +1266,7 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.Users}
           label="Tổng tài khoản"
-          value={stats.total}
+          value={statsLoading ? '—' : stats.total}
           helper="Tất cả người dùng"
           tone="blue"
           active={roleFilter === 'all' && statusFilter === 'all'}
@@ -1253,7 +1275,7 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.UserCheck}
           label="Đang hoạt động"
-          value={stats.active}
+          value={statsLoading ? '—' : stats.active}
           helper="Có thể đăng nhập"
           tone="emerald"
           active={roleFilter === 'all' && statusFilter === 'active'}
@@ -1262,7 +1284,7 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.UserX}
           label="Đã khóa"
-          value={stats.locked}
+          value={statsLoading ? '—' : stats.locked}
           helper="Đang bị vô hiệu hóa"
           tone="rose"
           active={roleFilter === 'all' && statusFilter === 'locked'}
@@ -1271,11 +1293,10 @@ export const UserManagement = () => {
         <StatCard
           icon={Lucide.UserCog}
           label="Tài khoản nội bộ"
-          value={stats.operatorCount}
+          value={statsLoading ? '—' : stats.operatorCount}
           helper="Nhân viên, điều phối, quản trị"
           tone="slate"
-          active={roleFilter === 'internal' && statusFilter === 'all'}
-          onClick={() => { setRoleFilter('internal'); setStatusFilter('all'); }}
+          active={false}
         />
       </section>
 
@@ -1289,13 +1310,13 @@ export const UserManagement = () => {
                   <ManagerListRefreshIndicator visible={refreshing && !loading} label="Đang cập nhật" />
                 </div>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {loading ? 'Đang tải dữ liệu...' : `Tổng cộng ${stats.total} tài khoản · ${filteredUsers.length} phù hợp`}
+                  {loading ? 'Đang tải dữ liệu...' : `Tổng cộng ${statsLoading ? '—' : stats.total} tài khoản · ${pagination.totalItems} phù hợp`}
                 </p>
               </div>
-              {(searchTerm || roleFilter !== 'all' || statusFilter !== 'all' || sortBy !== 'newest') ? (
+              {(searchTerm || roleFilter !== 'all' || statusFilter !== 'all') ? (
                 <button
                   type="button"
-                  onClick={() => { setSearchTerm(''); setRoleFilter('all'); setStatusFilter('all'); setSortBy('newest'); }}
+                  onClick={() => { setSearchTerm(''); setRoleFilter('all'); setStatusFilter('all'); setCurrentPage(1); }}
                   className="inline-flex h-9 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
                 >
                   <Lucide.RotateCcw size={15} />
@@ -1304,7 +1325,7 @@ export const UserManagement = () => {
               ) : null}
             </div>
 
-            <div className="um-users-filter-grid grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(320px,1.45fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(170px,0.75fr)]">
+            <div className="um-users-filter-grid grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(360px,1.6fr)_minmax(190px,0.8fr)_minmax(190px,0.8fr)]">
               <div className="um-users-filter-search relative min-w-0">
                 <Lucide.Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
@@ -1319,7 +1340,7 @@ export const UserManagement = () => {
               <CustomSelect
                 value={roleFilter}
                 onChange={setRoleFilter}
-                options={[{ value: 'all', label: 'Tất cả vai trò' }, { value: 'internal', label: 'Tài khoản nội bộ' }, ...roleOptions]}
+                options={[{ value: 'all', label: 'Tất cả vai trò' }, ...roleOptions]}
                 ariaLabel="Lọc theo vai trò"
               />
 
@@ -1334,18 +1355,6 @@ export const UserManagement = () => {
                 ariaLabel="Lọc theo trạng thái"
               />
 
-              <CustomSelect
-                value={sortBy}
-                onChange={setSortBy}
-                options={[
-                  { value: 'newest', label: 'Mới nhất' },
-                  { value: 'name-asc', label: 'Tên A-Z' },
-                  { value: 'name-desc', label: 'Tên Z-A' },
-                  { value: 'role', label: 'Theo vai trò' },
-                  { value: 'status', label: 'Theo trạng thái' },
-                ]}
-                ariaLabel="Sắp xếp danh sách"
-              />
             </div>
           </div>
         </div>
@@ -1618,7 +1627,7 @@ export const UserManagement = () => {
 
             <div className="flex flex-col gap-3 border-t border-slate-200 px-6 py-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700 dark:text-slate-400">
               <span>
-                Hiển thị {pageStart}-{pageEnd} trong tổng {filteredUsers.length} tài khoản
+                Hiển thị {pageStart}-{pageEnd} trong tổng {pagination.totalItems} tài khoản
               </span>
 
               <div className="flex items-center justify-end gap-2">

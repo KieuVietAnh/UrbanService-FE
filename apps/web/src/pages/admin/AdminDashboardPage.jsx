@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { IncidentMap } from '../../components/maps/IncidentMap';
-import { incidentManagementApi, slaApi } from '@urbanmind/shared-api';
+import { feedbackDashboardApi, incidentManagementApi, slaApi } from '@urbanmind/shared-api';
 import {
   ManagerMetricCard,
   ManagerPageHeader,
@@ -15,6 +15,7 @@ import {
 import {
   buildAdminDashboardMapUrl,
   buildAdminIncidentSummary,
+  buildAdminIncidentSummaryFromDashboard,
   filterAdminDashboardMapIncidents,
   getAdminDashboardCacheState,
   getAdminIncidentStatusLabel,
@@ -25,7 +26,6 @@ import {
   writeAdminDashboardCache,
 } from '../../services/cache/adminDashboardCache';
 
-const PAGE_SIZE = 500;
 const PRIORITY_LABELS = {
   low: 'Thấp',
   medium: 'Trung bình',
@@ -91,42 +91,16 @@ const readPriorityLabel = (value) => (
   'Chưa xác định'
 );
 
-const fetchAllIncidents = async (signal) => {
-  const first = await incidentManagementApi.getIncidents({
-    pageNumber: 1,
-    pageSize: PAGE_SIZE,
-    includeMerged: false,
-  }, { signal });
+const flattenAreaMapIncidents = (areaDistribution = []) => (
+  (Array.isArray(areaDistribution) ? areaDistribution : []).flatMap((area) => (
+    (Array.isArray(area?.points) ? area.points : []).map((point) => ({
+      ...point,
+      areaId: point?.areaId ?? area?.areaId,
+      areaName: point?.areaName ?? area?.areaName,
+    }))
+  ))
+);
 
-  const totalPages = Math.max(1, Number(first?.totalPages) || 1);
-  if (totalPages === 1) {
-    return {
-      items: first?.items || [],
-      totalItems: Number(first?.totalItems) || (first?.items || []).length,
-      partial: false,
-    };
-  }
-
-  const requests = [];
-  for (let pageNumber = 2; pageNumber <= totalPages; pageNumber += 1) {
-    requests.push(incidentManagementApi.getIncidents({
-      pageNumber,
-      pageSize: PAGE_SIZE,
-      includeMerged: false,
-    }, { signal }));
-  }
-
-  const results = await Promise.allSettled(requests);
-  const successful = results
-    .filter((result) => result.status === 'fulfilled')
-    .flatMap((result) => result.value?.items || []);
-
-  return {
-    items: [...(first?.items || []), ...successful],
-    totalItems: Number(first?.totalItems) || (first?.items || []).length + successful.length,
-    partial: results.some((result) => result.status === 'rejected'),
-  };
-};
 
 const StatusBadge = ({ status }) => {
   const tone = STATUS_TONES[normalizeToken(status)] || 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300';
@@ -149,7 +123,13 @@ export const AdminDashboardPage = () => {
     getAdminDashboardCacheState(readAdminDashboardCache())
   ));
   const [incidents, setIncidents] = useState(initialCacheState.incidents);
+  const [recentIncidentItems, setRecentIncidentItems] = useState(initialCacheState.recentIncidents);
   const [totalItems, setTotalItems] = useState(initialCacheState.totalItems);
+  const [dashboardOverview, setDashboardOverview] = useState(initialCacheState.dashboardOverview);
+  const [statusDistribution, setStatusDistribution] = useState(initialCacheState.statusDistribution);
+  const [priorityDistribution, setPriorityDistribution] = useState(initialCacheState.priorityDistribution);
+  const [categoryDistribution, setCategoryDistribution] = useState(initialCacheState.categoryDistribution);
+  const [areaDistribution, setAreaDistribution] = useState(initialCacheState.areaDistribution);
   const [slaOverview, setSlaOverview] = useState(initialCacheState.slaOverview);
   const [loading, setLoading] = useState(!initialCacheState.hasData);
   const [refreshing, setRefreshing] = useState(false);
@@ -169,23 +149,68 @@ export const AdminDashboardPage = () => {
 
     const task = (async () => {
       try {
-        const [incidentResult, slaResult] = await Promise.allSettled([
-          fetchAllIncidents(controller.signal),
+        const [
+          overviewResult,
+          statusResult,
+          priorityResult,
+          categoryResult,
+          areaResult,
+          recentResult,
+          slaResult,
+        ] = await Promise.allSettled([
+          feedbackDashboardApi.getOverview(),
+          feedbackDashboardApi.getStatusDistribution(),
+          feedbackDashboardApi.getPriorityDistribution(),
+          feedbackDashboardApi.getCategoryDistribution(),
+          feedbackDashboardApi.getAreaDistribution(5000),
+          incidentManagementApi.getIncidents({
+            pageNumber: 1,
+            pageSize: 5,
+            includeMerged: false,
+          }, { signal: controller.signal }),
           slaApi.getDashboardOverview(),
         ]);
 
         if (!mountedRef.current || requestId !== requestIdRef.current) return;
-        if (incidentResult.status === 'rejected') throw incidentResult.reason;
 
-        const incidentPayload = incidentResult.value;
-        const cachePatch = {
-          incidents: incidentPayload.items,
-          totalItems: incidentPayload.totalItems,
-        };
+        const coreResults = [overviewResult, statusResult, priorityResult, categoryResult, areaResult];
+        if (coreResults.every((result) => result.status === 'rejected')) {
+          throw overviewResult.reason || statusResult.reason || areaResult.reason || new Error('Không thể tải dữ liệu dashboard.');
+        }
 
-        setIncidents(incidentPayload.items);
-        setTotalItems(incidentPayload.totalItems);
+        const cachePatch = {};
 
+        if (overviewResult.status === 'fulfilled') {
+          setDashboardOverview(overviewResult.value);
+          setTotalItems(Number(overviewResult.value?.totalIncident) || 0);
+          cachePatch.dashboardOverview = overviewResult.value;
+          cachePatch.totalItems = Number(overviewResult.value?.totalIncident) || 0;
+        }
+        if (statusResult.status === 'fulfilled') {
+          setStatusDistribution(statusResult.value);
+          cachePatch.statusDistribution = statusResult.value;
+        }
+        if (priorityResult.status === 'fulfilled') {
+          setPriorityDistribution(priorityResult.value);
+          cachePatch.priorityDistribution = priorityResult.value;
+        }
+        if (categoryResult.status === 'fulfilled') {
+          setCategoryDistribution(categoryResult.value);
+          cachePatch.categoryDistribution = categoryResult.value;
+        }
+        if (areaResult.status === 'fulfilled') {
+          const nextAreas = areaResult.value;
+          const nextMapIncidents = flattenAreaMapIncidents(nextAreas);
+          setAreaDistribution(nextAreas);
+          setIncidents(nextMapIncidents);
+          cachePatch.areaDistribution = nextAreas;
+          cachePatch.incidents = nextMapIncidents;
+        }
+        if (recentResult.status === 'fulfilled') {
+          const nextRecent = recentResult.value?.items || [];
+          setRecentIncidentItems(nextRecent);
+          cachePatch.recentIncidents = nextRecent;
+        }
         if (slaResult.status === 'fulfilled') {
           setSlaOverview(slaResult.value);
           cachePatch.slaOverview = slaResult.value;
@@ -194,10 +219,15 @@ export const AdminDashboardPage = () => {
         writeAdminDashboardCache(cachePatch);
 
         const issues = [];
-        if (incidentPayload.partial) issues.push('một số trang sự vụ');
+        if (overviewResult.status === 'rejected') issues.push('KPI tổng quan');
+        if (statusResult.status === 'rejected') issues.push('phân bố trạng thái');
+        if (priorityResult.status === 'rejected') issues.push('phân bố ưu tiên');
+        if (categoryResult.status === 'rejected') issues.push('phân bố danh mục');
+        if (areaResult.status === 'rejected') issues.push('dữ liệu theo phường và bản đồ');
+        if (recentResult.status === 'rejected') issues.push('sự vụ gần đây');
         if (slaResult.status === 'rejected') issues.push('dữ liệu SLA');
         if (issues.length > 0) {
-          setWarning(`Chưa tải được ${issues.join(' và ')}. Những phần còn lại vẫn hiển thị dữ liệu hợp lệ.`);
+          setWarning(`Chưa tải được ${issues.join(', ')}. Các phần còn lại vẫn giữ dữ liệu hợp lệ.`);
         }
       } catch (loadError) {
         if (loadError?.name === 'AbortError' || !mountedRef.current || requestId !== requestIdRef.current) return;
@@ -222,6 +252,7 @@ export const AdminDashboardPage = () => {
     }
   }, []);
 
+
   useEffect(() => {
     mountedRef.current = true;
 
@@ -236,8 +267,24 @@ export const AdminDashboardPage = () => {
     };
   }, [initialCacheState.hasData, initialCacheState.shouldRevalidate, load]);
 
-  const summary = buildAdminIncidentSummary(incidents, totalItems);
-  const recentIncidents = sortRecentIncidents(incidents, 5);
+  const hasAggregateDashboardData = Boolean(dashboardOverview) || [
+    statusDistribution,
+    priorityDistribution,
+    categoryDistribution,
+    areaDistribution,
+  ].some((items) => items.length > 0);
+  const summary = hasAggregateDashboardData
+    ? buildAdminIncidentSummaryFromDashboard({
+        overview: dashboardOverview,
+        statusDistribution,
+        priorityDistribution,
+        categoryDistribution,
+        areaDistribution,
+      })
+    : buildAdminIncidentSummary(incidents, totalItems);
+  const recentIncidents = recentIncidentItems.length > 0
+    ? sortRecentIncidents(recentIncidentItems, 5)
+    : (!hasAggregateDashboardData ? sortRecentIncidents(incidents, 5) : []);
   const statusMax = Math.max(...summary.statuses.map((item) => item.count), 1);
   const areaMax = Math.max(...summary.areas.map((item) => item.count), 1);
   const categoryMax = Math.max(...summary.categories.map((item) => item.count), 1);
@@ -303,7 +350,7 @@ export const AdminDashboardPage = () => {
         )}
       />
 
-      {error && incidents.length === 0 ? (
+      {error && !initialCacheState.hasData && !hasAggregateDashboardData ? (
         <AdminErrorState
           title="Không thể tải tổng quan sự vụ"
           description={error}
@@ -346,7 +393,7 @@ export const AdminDashboardPage = () => {
               description="Sự vụ cần được theo dõi và điều phối sát."
               icon={Lucide.TriangleAlert}
               toneClass="bg-rose-50 text-rose-700"
-              to="/management/incidents?priority=High"
+              to="/management/incidents"
             />
             <ManagerMetricCard
               label="SLA cảnh báo / vi phạm"
@@ -363,7 +410,7 @@ export const AdminDashboardPage = () => {
               <article className="admin-panel overflow-hidden">
                 <ManagerSectionHeader
                   title="Tình hình theo phường"
-                  description="So sánh số sự vụ, sự vụ đang mở và mức ưu tiên cao để nhận biết khu vực cần chú ý."
+                  description="So sánh tổng sự vụ và số đang mở để nhận biết khu vực cần chú ý."
                   icon={Lucide.MapPinned}
                   actions={(
                     <button
@@ -399,7 +446,7 @@ export const AdminDashboardPage = () => {
                             </strong>
                             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                               <span><b className="font-semibold text-slate-700 dark:text-slate-200">{item.open || 0}</b> đang mở</span>
-                              <span><b className="font-semibold text-rose-700 dark:text-rose-300">{item.highPriority || 0}</b> ưu tiên cao / khẩn</span>
+                              <span><b className="font-semibold text-emerald-700 dark:text-emerald-300">{item.completed || 0}</b> đã hoàn thành</span>
                             </div>
                           </div>
                         </div>
@@ -633,7 +680,7 @@ export const AdminDashboardPage = () => {
             </div>
           </article>
 
-          {error && incidents.length > 0 ? (
+          {error && (incidents.length > 0 || hasAggregateDashboardData) ? (
             <p className="inline-flex items-center gap-2 text-sm font-medium text-rose-600" role="alert">
               <Lucide.CircleAlert size={16} aria-hidden="true" />
               {error}

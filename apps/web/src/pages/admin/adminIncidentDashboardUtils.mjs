@@ -25,13 +25,25 @@ const INCIDENT_STATUS_LABELS = {
 
 export const getAdminDashboardCacheState = (cache) => {
   const incidents = Array.isArray(cache?.incidents) ? cache.incidents : [];
-  const hasData = incidents.length > 0;
+  const recentIncidents = Array.isArray(cache?.recentIncidents) ? cache.recentIncidents : [];
+  const dashboardOverview = cache?.dashboardOverview || null;
+  const statusDistribution = Array.isArray(cache?.statusDistribution) ? cache.statusDistribution : [];
+  const priorityDistribution = Array.isArray(cache?.priorityDistribution) ? cache.priorityDistribution : [];
+  const categoryDistribution = Array.isArray(cache?.categoryDistribution) ? cache.categoryDistribution : [];
+  const areaDistribution = Array.isArray(cache?.areaDistribution) ? cache.areaDistribution : [];
+  const hasData = Boolean(dashboardOverview) || incidents.length > 0 || areaDistribution.length > 0;
 
   return {
     incidents,
+    recentIncidents,
     totalItems: Number.isFinite(Number(cache?.totalItems))
       ? Number(cache.totalItems)
       : incidents.length,
+    dashboardOverview,
+    statusDistribution,
+    priorityDistribution,
+    categoryDistribution,
+    areaDistribution,
     slaOverview: cache?.slaOverview || null,
     hasData,
     shouldRevalidate: hasData && cache?.isFresh !== true,
@@ -114,6 +126,67 @@ export const buildAdminIncidentSummary = (items = [], totalItems = items.length)
       item?.latitude ?? item?.lat ?? item?.location?.latitude,
       item?.longitude ?? item?.lng ?? item?.lon ?? item?.location?.longitude,
     )).length,
+    areas,
+    categories,
+    statuses,
+    topArea: areas[0] || null,
+    topCategory: categories[0] || null,
+  };
+};
+
+export const buildAdminIncidentSummaryFromDashboard = ({
+  overview = null,
+  statusDistribution = [],
+  priorityDistribution = [],
+  categoryDistribution = [],
+  areaDistribution = [],
+} = {}) => {
+  const statuses = (Array.isArray(statusDistribution) ? statusDistribution : [])
+    .map((item) => ({
+      key: String(item?.status ?? 'unknown'),
+      name: item?.status || 'Chưa xác định',
+      count: Number(item?.count) || 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
+
+  const priorities = Array.isArray(priorityDistribution) ? priorityDistribution : [];
+  const highPriority = priorities.reduce((sum, item) => (
+    HIGH_PRIORITY.has(normalizeKey(item?.priority)) ? sum + (Number(item?.count) || 0) : sum
+  ), 0);
+
+  const categories = (Array.isArray(categoryDistribution) ? categoryDistribution : [])
+    .map((item) => ({
+      key: String(item?.categoryId ?? item?.categoryName ?? 'unknown'),
+      name: item?.categoryName || 'Chưa xác định',
+      count: Number(item?.count) || 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
+
+  const areas = (Array.isArray(areaDistribution) ? areaDistribution : [])
+    .map((item) => ({
+      key: String(item?.areaId ?? item?.areaName ?? 'unknown'),
+      name: item?.areaName || 'Chưa xác định',
+      count: Number(item?.count) || 0,
+      open: Number(item?.openCount) || 0,
+      completed: Number(item?.completedCount) || 0,
+      mappedCount: Number(item?.mappedCount) || 0,
+      centerLatitude: item?.centerLatitude ?? null,
+      centerLongitude: item?.centerLongitude ?? null,
+      points: Array.isArray(item?.points) ? item.points : [],
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
+
+  const total = Number(overview?.totalIncident) || areas.reduce((sum, item) => sum + item.count, 0);
+  const open = statuses.reduce((sum, item) => (
+    ENDED.has(normalizeKey(item?.key)) ? sum : sum + item.count
+  ), 0);
+  const mappedCount = areas.reduce((sum, item) => sum + item.mappedCount, 0);
+
+  return {
+    total,
+    open,
+    highPriority,
+    missingCoordinates: Math.max(0, total - mappedCount),
     areas,
     categories,
     statuses,

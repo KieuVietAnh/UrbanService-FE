@@ -34,8 +34,10 @@ export const feedbackDashboardApi = {
     return Array.isArray(payload) ? payload : [];
   },
 
-  async getAreaDistribution() {
-    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/area-distribution'));
+  async getAreaDistribution(maxPointsPerArea = 500) {
+    const payload = unwrap(await axiosClient.get('/api/incidents/dashboard/area-distribution', {
+      params: { maxPointsPerArea: normalizeLimit(maxPointsPerArea, 500, 5000) },
+    }));
     return Array.isArray(payload) ? payload : [];
   },
 
