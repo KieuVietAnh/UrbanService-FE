@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDuplicateCandidatePayload, getCandidateReasoning } from './duplicateDetailUtils.js';
+import {
+  getCandidateReasoning,
+  getDuplicateCandidateDecisionState,
+  normalizeDuplicateCandidatePayload,
+  resolveDuplicateCandidateId,
+} from './duplicateDetailUtils.js';
+
+test('resolves the duplicate candidate id from Manager and legacy route params', () => {
+  assert.equal(resolveDuplicateCandidateId({ candidateId: 'manager-candidate' }), 'manager-candidate');
+  assert.equal(resolveDuplicateCandidateId({ duplicateCandidateId: 'legacy-candidate' }), 'legacy-candidate');
+  assert.equal(resolveDuplicateCandidateId({}), '');
+});
+
+test('does not treat missing or unsupported candidate data as processed', () => {
+  assert.equal(getDuplicateCandidateDecisionState(null), 'unavailable');
+  assert.equal(getDuplicateCandidateDecisionState({ status: 'Pending' }), 'pending');
+  assert.equal(getDuplicateCandidateDecisionState({ status: 'Confirmed' }), 'processed');
+  assert.equal(getDuplicateCandidateDecisionState({ status: 'Rejected' }), 'processed');
+  assert.equal(getDuplicateCandidateDecisionState({ status: 'Unexpected' }), 'unsupported');
+});
 
 test('normalizes feedback payload from API response', () => {
   const payload = {

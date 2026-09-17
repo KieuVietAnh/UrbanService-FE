@@ -11,7 +11,12 @@ import {
   ManagerPageHeader,
   ManagerToast,
 } from '../../components/manager/ManagerPageElements';
-import { normalizeDuplicateCandidatePayload, extractImageUrls } from './duplicateDetailUtils';
+import {
+  extractImageUrls,
+  getDuplicateCandidateDecisionState,
+  normalizeDuplicateCandidatePayload,
+  resolveDuplicateCandidateId,
+} from './duplicateDetailUtils';
 import { getScopedSessionKey } from '../../utils/scopedSessionKey';
 
 // formatDate removed from this file; other pages use their own helpers
@@ -254,7 +259,8 @@ export const DuplicateDetailPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { duplicateCandidateId } = useParams();
+  const routeParams = useParams();
+  const duplicateCandidateId = resolveDuplicateCandidateId(routeParams);
   const duplicateDirtyKey = useMemo(
     () => getScopedSessionKey('urbanservice-duplicate-cache-dirty-v2', user),
     [user],
@@ -380,7 +386,9 @@ export const DuplicateDetailPage = () => {
   const confidenceValue = getNormalizedConfidence(candidate?.confidenceScore ?? candidate?.confidence);
   const confidenceLabel = getRecommendationText(confidenceValue);
   const statusLabel = getStatusLabel(candidate?.status);
-  const candidateIsPending = String(candidate?.status || '').toLowerCase() === 'pending';
+  const decisionState = getDuplicateCandidateDecisionState(candidate);
+  const candidateIsPending = decisionState === 'pending';
+  const candidateIsProcessed = decisionState === 'processed';
   const currentIncidentId = candidate?.currentIncidentId || candidate?.incidentId || primaryFeedback?.incidentId;
   const suggestedIncidentId = candidate?.suggestedIncidentId || duplicateFeedback?.incidentId;
   const areInSameIncident = candidate?.areInSameIncident
@@ -607,41 +615,43 @@ export const DuplicateDetailPage = () => {
         )}
       />
 
-      <section className="manager-flow-strip" aria-label="Luồng xử lý đề xuất trùng lặp">
-        <div className="manager-flow-step is-complete">
-          <span className="manager-flow-step-index"><Lucide.Check size={14} /></span>
-          <div>
-            <p className="manager-flow-step-label">Bước 1</p>
-            <p className="manager-flow-step-title">AI phát hiện nghi trùng</p>
+      {candidate ? (
+        <section className="manager-flow-strip" aria-label="Luồng xử lý đề xuất trùng lặp">
+          <div className="manager-flow-step is-complete">
+            <span className="manager-flow-step-index"><Lucide.Check size={14} /></span>
+            <div>
+              <p className="manager-flow-step-label">Bước 1</p>
+              <p className="manager-flow-step-title">AI phát hiện nghi trùng</p>
+            </div>
           </div>
-        </div>
-        <Lucide.ChevronRight className="manager-flow-arrow" size={17} aria-hidden="true" />
-        <div className={`manager-flow-step ${candidateIsPending ? 'is-current' : 'is-complete'}`}>
-          <span className="manager-flow-step-index">
-            {candidateIsPending ? '2' : <Lucide.Check size={14} />}
-          </span>
-          <div>
-            <p className="manager-flow-step-label">Bước 2</p>
-            <p className="manager-flow-step-title">Manager đối chiếu</p>
+          <Lucide.ChevronRight className="manager-flow-arrow" size={17} aria-hidden="true" />
+          <div className={`manager-flow-step ${candidateIsPending ? 'is-current' : 'is-complete'}`}>
+            <span className="manager-flow-step-index">
+              {candidateIsPending ? '2' : <Lucide.Check size={14} />}
+            </span>
+            <div>
+              <p className="manager-flow-step-label">Bước 2</p>
+              <p className="manager-flow-step-title">Manager đối chiếu</p>
+            </div>
           </div>
-        </div>
-        <Lucide.ChevronRight className="manager-flow-arrow" size={17} aria-hidden="true" />
-        <div className={`manager-flow-step ${candidateIsPending ? '' : 'is-complete'}`}>
-          <span className="manager-flow-step-index">
-            {candidateIsPending ? '3' : <Lucide.Check size={14} />}
-          </span>
-          <div>
-            <p className="manager-flow-step-label">Bước 3</p>
-            <p className="manager-flow-step-title">
-              {candidateIsPending
-                ? 'Ra quyết định'
-                : candidate?.status === 'Confirmed'
-                  ? (areInSameIncident ? 'Đã liên kết vào sự vụ' : 'Đã xác nhận trùng · liên kết đã thay đổi')
-                  : 'Không trùng · tiếp tục xác minh'}
-            </p>
+          <Lucide.ChevronRight className="manager-flow-arrow" size={17} aria-hidden="true" />
+          <div className={`manager-flow-step ${candidateIsPending ? '' : 'is-complete'}`}>
+            <span className="manager-flow-step-index">
+              {candidateIsPending ? '3' : <Lucide.Check size={14} />}
+            </span>
+            <div>
+              <p className="manager-flow-step-label">Bước 3</p>
+              <p className="manager-flow-step-title">
+                {candidateIsPending
+                  ? 'Ra quyết định'
+                  : candidate?.status === 'Confirmed'
+                    ? (areInSameIncident ? 'Đã liên kết vào sự vụ' : 'Đã xác nhận trùng · liên kết đã thay đổi')
+                    : 'Không trùng · tiếp tục xác minh'}
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50/55 px-4 py-3 text-sm text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/[0.07] dark:text-blue-200">
         <strong>AI chỉ gợi ý.</strong> Quyết định trùng hay không trùng luôn do Manager xác nhận sau khi đối chiếu nội dung, hình ảnh, vị trí và sự vụ gợi ý.
@@ -1116,7 +1126,7 @@ export const DuplicateDetailPage = () => {
             </div>
           </div>
         </div>
-      ) : (
+      ) : candidateIsProcessed ? (
         <div className="admin-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="flex items-center gap-3">
             <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${candidate?.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
@@ -1131,7 +1141,15 @@ export const DuplicateDetailPage = () => {
             {statusLabel}
           </Badge>
         </div>
-      )}
+      ) : decisionState === 'unsupported' ? (
+        <div className="admin-panel flex items-center gap-3 border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
+          <Lucide.TriangleAlert size={18} aria-hidden="true" />
+          <div>
+            <div className="text-sm font-semibold">Không thể xác định trạng thái đề xuất</div>
+            <div className="mt-0.5 text-xs">Vui lòng tải lại trang hoặc liên hệ quản trị viên để kiểm tra dữ liệu.</div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
