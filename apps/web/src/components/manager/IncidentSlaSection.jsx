@@ -1,22 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
 import * as signalR from '@microsoft/signalr';
 import { extractApiErrorMessage, slaApi } from '@urbanmind/shared-api';
 import { buildHubUrl, getSignalRAccessToken } from '../../utils/signalRAccessToken';
-import { ManagerConfirmDialog, ManagerSectionHeader, ManagerSelectMenu } from './ManagerPageElements';
+import { ErrorAlert } from '../alerts/ErrorAlert';
+import { ManagerSectionHeader } from './ManagerPageElements';
 
-const SLA_STATUS_META = {
-  running: { label: 'Đang chạy', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
-  paused: { label: 'Tạm dừng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
-  completed: { label: 'Đã hoàn thành', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  cancelled: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-600 ring-slate-200' },
-};
+const SLA_PAUSE_REASONS = [
+  { value: 'WaitingCitizen', label: 'Chờ phản hồi từ người dân' },
+  { value: 'ForceMajeure', label: 'Sự kiện bất khả kháng' },
+  { value: 'ExternalDependency', label: 'Phụ thuộc đơn vị bên ngoài' },
+  { value: 'SystemMaintenance', label: 'Bảo trì hệ thống' },
+  { value: 'Other', label: 'Lý do khác' },
+];
 
-const TARGET_STATUS_META = {
-  pending: { label: 'Đang chờ', className: 'bg-blue-50 text-blue-700 ring-blue-100' },
-  met: { label: 'Đạt', className: 'bg-emerald-50 text-emerald-700 ring-emerald-100' },
-  breached: { label: 'Vi phạm', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
-};
+const ALLOWED_PAUSE_REASONS = new Set(SLA_PAUSE_REASONS.map((reason) => reason.value));
 
 const EVENT_LABELS = {
   started: 'Bắt đầu tính SLA',
@@ -39,14 +38,6 @@ const TRIGGER_LABELS = {
   system: 'Hệ thống',
 };
 
-const PAUSE_REASON_OPTIONS = [
-  { value: 'WaitingCitizen', label: 'Chờ người dân phản hồi' },
-  { value: 'ExternalDependency', label: 'Phụ thuộc đơn vị bên ngoài' },
-  { value: 'SystemMaintenance', label: 'Bảo trì hệ thống' },
-  { value: 'ForceMajeure', label: 'Sự kiện bất khả kháng' },
-  { value: 'Other', label: 'Lý do khác' },
-];
-
 const normalizeKey = (value) => String(value ?? '').replace(/[-_\s]/g, '').toLowerCase();
 
 const formatDateTime = (value) => {
@@ -56,126 +47,109 @@ const formatDateTime = (value) => {
   return date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 };
 
-/**
- * Đổi số mili giây thành chuỗi đọc được, cắt ở hai đơn vị lớn nhất để không
- * gây nhiễu. Giá trị âm được hiểu là đã quá hạn.
- */
-const formatDuration = (milliseconds) => {
-  const totalSeconds = Math.floor(Math.abs(milliseconds) / 1000);
+/** Đồng hồ đếm ngược dạng HH:MM:SS, số ngày được cộng dồn vào phần giờ. */
+const formatSlaCountdown = (value) => {
+  const totalSeconds = Math.max(0, Math.floor(Number(value) || 0));
   const days = Math.floor(totalSeconds / 86400);
   const hours = Math.floor((totalSeconds % 86400) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  if (days > 0) return `${days} ngày ${hours} giờ`;
-  if (hours > 0) return `${hours} giờ ${minutes} phút`;
-  if (minutes > 0) return `${minutes} phút ${seconds} giây`;
-  return `${seconds} giây`;
+  const hh = String(hours + (days * 24)).padStart(2, '0');
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+
+  return `${hh}:${mm}:${ss}`;
 };
 
-const SlaBadge = ({ value, meta }) => {
-  const resolved = meta[normalizeKey(value)] || {
-    label: 'Chưa xác định',
-    className: 'bg-slate-100 text-slate-600 ring-slate-200',
-  };
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${resolved.className}`}>
-      {resolved.label}
-    </span>
-  );
+const formatPauseDuration = (pause) => {
+  const pausedAtMs = pause?.pausedAt ? new Date(pause.pausedAt).getTime() : NaN;
+  const resumedAtMs = pause?.resumedAt ? new Date(pause.resumedAt).getTime() : NaN;
+
+  if (!Number.isFinite(pausedAtMs)) return '—';
+
+  // Chưa có mốc tiếp tục nghĩa là lần tạm dừng này vẫn đang diễn ra.
+  if (!Number.isFinite(resumedAtMs)) return 'Đang tạm dừng';
+
+  const totalSeconds = Math.max(0, Math.round((resumedAtMs - pausedAtMs) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours} giờ`);
+  if (minutes > 0) parts.push(`${minutes} phút`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds} giây`);
+
+  return parts.join(' ');
 };
 
-/**
- * Một mốc hạn của SLA, ví dụ hạn phản hồi hoặc hạn hoàn thành.
- *
- * Đồng hồ đếm ngược chạy theo giờ máy chủ chứ không theo giờ trình duyệt, vì
- * máy người dùng có thể lệch giờ và làm con số hiển thị sai.
- */
-const SlaCountdownCard = ({ title, icon: Icon, dueAt, targetStatus, isWarning, isBreached, progressPercent, nowMs }) => {
-  const dueMs = dueAt ? new Date(dueAt).getTime() : Number.NaN;
-  const hasDue = Number.isFinite(dueMs);
-  const remainingMs = hasDue ? dueMs - nowMs : 0;
-  const overdue = hasDue && remainingMs < 0;
-
-  const settled = ['met', 'breached'].includes(normalizeKey(targetStatus));
-  const clampedProgress = Math.min(100, Math.max(0, Number(progressPercent) || 0));
-
-  const tone = isBreached || overdue
-    ? { bar: 'bg-rose-500', text: 'text-rose-600', ring: 'border-rose-200 bg-rose-50/60' }
-    : isWarning
-      ? { bar: 'bg-amber-500', text: 'text-amber-600', ring: 'border-amber-200 bg-amber-50/60' }
-      : { bar: 'bg-blue-500', text: 'text-blue-600', ring: 'border-blue-200 bg-blue-50/50' };
-
-  return (
-    <div className={`rounded-2xl border p-4 ${settled ? 'border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/60' : tone.ring}`}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-          <Icon size={14} aria-hidden="true" />
-          {title}
-        </p>
-        <SlaBadge value={targetStatus} meta={TARGET_STATUS_META} />
-      </div>
-
-      <p className={`mt-3 text-2xl font-bold tracking-[-0.02em] ${settled ? 'text-slate-700 dark:text-slate-200' : tone.text}`}>
-        {!hasDue
-          ? '—'
-          : settled
-            ? formatDateTime(dueAt)
-            : overdue
-              ? `Quá hạn ${formatDuration(remainingMs)}`
-              : `Còn ${formatDuration(remainingMs)}`}
-      </p>
-
-      {!settled ? (
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-          <div className={`h-full rounded-full transition-[width] duration-500 ${tone.bar}`} style={{ width: `${clampedProgress}%` }} />
-        </div>
-      ) : null}
-
-      <p className="mt-2.5 text-xs text-slate-500 dark:text-slate-400">
-        Hạn: <span className="font-semibold text-slate-700 dark:text-slate-200">{formatDateTime(dueAt)}</span>
-      </p>
-    </div>
-  );
+const getSlaBadgeClass = (status) => {
+  const value = String(status || '').toLowerCase();
+  if (value.includes('breach')) return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (value.includes('met') || value.includes('completed')) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (value.includes('warning')) return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (value.includes('paused')) return 'border-slate-200 bg-slate-100 text-slate-700';
+  return 'border-blue-200 bg-blue-50 text-blue-700';
 };
 
-const MetaItem = ({ label, value }) => (
-  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-900/60">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-400">{label}</p>
-    <p className="mt-1.5 break-words text-sm font-semibold text-slate-800 dark:text-slate-100">{value ?? '—'}</p>
+const getSlaStatusLabel = (status) => {
+  const value = String(status || '').trim().toLowerCase();
+
+  if (value === 'running') return 'Đang chạy';
+  if (value === 'paused') return 'Tạm dừng';
+  if (value === 'completed') return 'Đã hoàn thành';
+  if (value === 'cancelled' || value === 'canceled') return 'Đã hủy';
+  if (value === 'met') return 'Đạt SLA';
+  if (value === 'pending') return 'Đang theo dõi';
+  if (value === 'warning') return 'Sắp đến hạn';
+  if (value === 'breached') return 'Vi phạm SLA';
+
+  return status || 'Chưa xác định';
+};
+
+const MetaItem = ({ label, children, wide = false }) => (
+  <div className={wide ? 'sm:col-span-2' : ''}>
+    <dt className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</dt>
+    <dd className="mt-1.5 break-words text-sm font-medium leading-6 text-slate-700 dark:text-slate-200">
+      {children || '—'}
+    </dd>
   </div>
 );
 
 /**
  * Khối SLA của một sự vụ.
  *
- * Tự tải dữ liệu theo `incidentId` và tự chịu trách nhiệm cho mọi thao tác vòng
- * đời SLA, nên trang chi tiết sự vụ chỉ cần gắn component vào là xong.
+ * Giữ nguyên bố cục của khối SLA cũ gắn với phản ánh: bốn thẻ tóm tắt, hai khối
+ * thời hạn có đồng hồ đếm ngược, hai cột lịch sử, và hộp thoại riêng cho từng
+ * thao tác. Khác biệt là mọi lời gọi đều theo incidentId, và có thêm những thao
+ * tác mà vòng đời SLA của sự vụ hỗ trợ nhưng bản cũ không có.
  */
 export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged }) => {
   const requestIdRef = useRef(0);
-  const clockOffsetRef = useRef(0);
 
-  const [detail, setDetail] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [timeline, setTimeline] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [slaDetail, setSlaDetail] = useState(null);
+  const [slaStatus, setSlaStatus] = useState(null);
+  const [slaTimeline, setSlaTimeline] = useState([]);
+  const [slaClock, setSlaClock] = useState({
+    responseSeconds: 0,
+    resolutionSeconds: 0,
+    syncedAt: 0,
+    status: '',
+  });
+  const [clockTick, setClockTick] = useState(() => Date.now());
   const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState('');
-  const [actionLoading, setActionLoading] = useState('');
-  const [actionError, setActionError] = useState('');
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [confirmAction, setConfirmAction] = useState(null);
-  const [pauseForm, setPauseForm] = useState({ reasonCode: 'WaitingCitizen', reasonNote: '' });
-  const [noteDraft, setNoteDraft] = useState('');
-  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [slaError, setSlaError] = useState('');
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [slaActionLoading, setSlaActionLoading] = useState('');
+  const [slaModal, setSlaModal] = useState(null);
+  const [pauseReasonOpen, setPauseReasonOpen] = useState(false);
+  const [slaModalForm, setSlaModalForm] = useState({ reasonCode: 'WaitingCitizen', note: '' });
   const [realtimeConnected, setRealtimeConnected] = useState(false);
 
-  const load = useCallback(async ({ background = false } = {}) => {
+  const refreshSlaData = useCallback(async () => {
     if (!incidentId) return;
     const requestId = ++requestIdRef.current;
-    if (!background) setLoading(true);
-    setError('');
 
     const [detailResult, statusResult, timelineResult] = await Promise.allSettled([
       slaApi.getCurrentIncidentSla(incidentId),
@@ -185,64 +159,65 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
 
     if (requestId !== requestIdRef.current) return;
 
-    if (detailResult.status === 'fulfilled') setDetail(detailResult.value ?? null);
+    if (detailResult.status === 'fulfilled') setSlaDetail(detailResult.value ?? null);
     if (timelineResult.status === 'fulfilled') {
-      setTimeline(Array.isArray(timelineResult.value) ? timelineResult.value : []);
+      setSlaTimeline(Array.isArray(timelineResult.value) ? timelineResult.value : []);
     }
 
     if (statusResult.status === 'fulfilled' && statusResult.value) {
       const nextStatus = statusResult.value;
-      setStatus(nextStatus);
+      setSlaStatus(nextStatus);
+
       /*
-       * Ghi lại độ lệch giữa đồng hồ máy chủ và đồng hồ trình duyệt để đếm
-       * ngược không bị sai khi máy người dùng lệch giờ.
+       * Số giây còn lại lấy từ máy chủ, mốc đồng bộ lấy lúc nhận phản hồi. Nhờ
+       * vậy đếm ngược không lệch khi đồng hồ máy người dùng sai giờ.
        */
-      const serverMs = nextStatus?.serverTime ? new Date(nextStatus.serverTime).getTime() : Number.NaN;
-      clockOffsetRef.current = Number.isFinite(serverMs) ? serverMs - Date.now() : 0;
-      setNowMs(Date.now() + clockOffsetRef.current);
+      setSlaClock({
+        responseSeconds: Math.max(0, Number(nextStatus.responseRemainingSeconds) || 0),
+        resolutionSeconds: Math.max(0, Number(nextStatus.resolutionRemainingSeconds) || 0),
+        syncedAt: Date.now(),
+        status: String(nextStatus.status || ''),
+      });
+      setClockTick(Date.now());
     }
 
     /*
-     * Sự vụ chưa khởi động SLA là trạng thái hợp lệ, không phải lỗi. Chỉ báo lỗi
-     * khi cả hai lời gọi chính đều thất bại.
+     * Sự vụ chưa khởi động SLA là trạng thái hợp lệ chứ không phải lỗi, nên chỉ
+     * báo lỗi khi cả hai lời gọi chính đều hỏng và không phải 404.
      */
     if (detailResult.status === 'rejected' && statusResult.status === 'rejected') {
-      const reason = detailResult.reason;
-      const notFound = Number(reason?.response?.status) === 404;
-      setDetail(null);
-      setStatus(null);
-      setError(notFound ? '' : extractApiErrorMessage(reason, 'Không thể tải dữ liệu SLA của sự vụ.'));
+      const notFound = Number(detailResult.reason?.response?.status) === 404;
+      setSlaDetail(null);
+      setSlaStatus(null);
+      setSlaError(notFound ? '' : extractApiErrorMessage(detailResult.reason, 'Không thể tải dữ liệu SLA của sự vụ.'));
+    } else {
+      setSlaError('');
     }
 
-    setLoading(false);
     setLoaded(true);
   }, [incidentId]);
 
   useEffect(() => {
-    setDetail(null);
-    setStatus(null);
-    setTimeline([]);
+    setSlaDetail(null);
+    setSlaStatus(null);
+    setSlaTimeline([]);
     setLoaded(false);
-    void load();
+    void refreshSlaData();
     return () => { requestIdRef.current += 1; };
-  }, [load]);
+  }, [refreshSlaData]);
 
-  const isRunning = normalizeKey(detail?.status ?? status?.status) === 'running';
-  const isPaused = normalizeKey(detail?.status ?? status?.status) === 'paused';
-  const isActive = isRunning || isPaused;
+  const isSlaRunning = String(slaClock.status || '').toLowerCase() === 'running';
 
-  // Đồng hồ chỉ chạy khi SLA còn đang tính giờ, tránh render thừa mỗi giây.
   useEffect(() => {
-    if (!isRunning) return undefined;
-    const timer = window.setInterval(() => setNowMs(Date.now() + clockOffsetRef.current), 1000);
-    return () => window.clearInterval(timer);
-  }, [isRunning]);
+    if (!isSlaRunning) return undefined;
+    const timerId = window.setInterval(() => setClockTick(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, [isSlaRunning, slaClock.syncedAt]);
 
   /*
-   * Backend phát sự kiện `SlaUpdated` cho mọi client kèm IncidentId, nên phải tự
-   * lọc theo sự vụ đang mở. Mất kết nối không phải lỗi nghiêm trọng: số liệu vẫn
-   * đúng tới lần tải gần nhất, chỉ là thôi tự cập nhật, nên chỉ hạ chỉ báo trực
-   * tiếp chứ không báo lỗi cho người dùng.
+   * Backend phát `SlaUpdated` cho mọi client kèm IncidentId nên phải tự lọc theo
+   * sự vụ đang mở. Mất kết nối chỉ tắt chỉ báo trực tiếp chứ không báo lỗi, vì
+   * số liệu vẫn đúng tới lần tải gần nhất.
    */
   useEffect(() => {
     if (!incidentId || !getSignalRAccessToken()) return undefined;
@@ -260,152 +235,286 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
       const updatedIncidentId = String(payload?.incidentId ?? payload?.IncidentId ?? '');
       if (!updatedIncidentId) return;
       if (updatedIncidentId.toLowerCase() !== String(incidentId).toLowerCase()) return;
-      void load({ background: true });
+      void refreshSlaData();
     });
 
     connection.onreconnected(() => mark(true));
     connection.onreconnecting(() => mark(false));
     connection.onclose(() => mark(false));
-
     connection.start().then(() => mark(true)).catch(() => mark(false));
 
-    return () => {
-      disposed = true;
-      void connection.stop();
-    };
-  }, [incidentId, load]);
+    return () => { disposed = true; void connection.stop(); };
+  }, [incidentId, refreshSlaData]);
 
-  const runAction = useCallback(async (key, action, successMessage) => {
-    setActionLoading(key);
-    setActionError('');
+  const runSlaAction = async (key, action, successText) => {
+    setSlaActionLoading(key);
+    setMessage({ type: '', text: '' });
     try {
       await action();
-      setConfirmAction(null);
-      setNoteDraft('');
-      setPauseForm({ reasonCode: 'WaitingCitizen', reasonNote: '' });
-      await load({ background: true });
-      if (typeof onChanged === 'function') onChanged(successMessage);
+      await refreshSlaData();
+      setMessage({ type: 'success', text: successText });
+      if (typeof onChanged === 'function') onChanged(successText);
     } catch (err) {
-      setActionError(extractApiErrorMessage(err, 'Không thể thực hiện thao tác SLA.'));
+      setMessage({ type: 'error', text: extractApiErrorMessage(err, 'Không thể cập nhật SLA.') });
     } finally {
-      setActionLoading('');
+      setSlaActionLoading('');
     }
-  }, [load, onChanged]);
-
-  const handleConfirm = useCallback(() => {
-    const type = confirmAction?.type;
-    if (!type) return;
-
-    if (type === 'start') {
-      void runAction('start', () => slaApi.startIncidentSla(incidentId), 'Đã khởi động SLA cho sự vụ.');
-      return;
-    }
-    if (type === 'pause') {
-      void runAction('pause', () => slaApi.pauseIncidentSla(incidentId, {
-        reasonCode: pauseForm.reasonCode,
-        reasonNote: pauseForm.reasonNote.trim() || null,
-      }), 'Đã tạm dừng SLA.');
-      return;
-    }
-    if (type === 'resume') {
-      void runAction('resume', () => slaApi.resumeIncidentSla(incidentId, {
-        note: noteDraft.trim() || null,
-      }), 'Đã tiếp tục tính SLA.');
-      return;
-    }
-    if (type === 'complete') {
-      void runAction('complete', () => slaApi.completeIncidentSla(incidentId, {
-        note: noteDraft.trim() || null,
-      }), 'Đã đóng SLA của sự vụ.');
-      return;
-    }
-    if (type === 'recalculate') {
-      void runAction('recalculate', () => slaApi.recalculateIncidentSla(incidentId, {
-        note: noteDraft.trim() || null,
-      }), 'Đã tính lại SLA theo chính sách hiện hành.');
-      return;
-    }
-    if (type === 'cancel') {
-      void runAction('cancel', () => slaApi.cancelIncidentSla(incidentId, noteDraft.trim() || null), 'Đã hủy SLA của sự vụ.');
-    }
-  }, [confirmAction, incidentId, noteDraft, pauseForm, runAction]);
-
-  const openConfirm = (type, title, description) => {
-    setActionError('');
-    setNoteDraft('');
-    setConfirmAction({ type, title, description });
   };
 
-  const pauseHistories = useMemo(() => {
-    const list = Array.isArray(detail?.pauseHistories) ? [...detail.pauseHistories] : [];
-    return list.sort((left, right) => new Date(right?.pausedAt || 0) - new Date(left?.pausedAt || 0));
-  }, [detail]);
+  const openSlaModal = (type) => {
+    setMessage({ type: '', text: '' });
+    setPauseReasonOpen(false);
+    setSlaModalForm({ reasonCode: type === 'pause' ? 'WaitingCitizen' : 'Other', note: '' });
+    setSlaModal(type);
+  };
 
-  const meta = useMemo(() => ([
-    { label: 'Chính sách áp dụng', value: detail?.policyName },
-    { label: 'Mức ưu tiên', value: detail?.priority },
-    { label: 'Bắt đầu lúc', value: formatDateTime(detail?.startedAt ?? status?.startedAt) },
-    { label: 'Phản hồi đầu tiên', value: detail?.respondedAt ? formatDateTime(detail.respondedAt) : 'Chưa ghi nhận' },
-    {
-      label: 'Tổng thời gian tạm dừng',
-      value: `${Number(detail?.totalPausedMinutes ?? 0)} phút · ${pauseHistories.length} lần`,
-    },
-    { label: 'Người khởi động', value: detail?.startedByUserName },
-  ]), [detail, pauseHistories.length, status]);
+  const closeSlaModal = () => {
+    if (slaActionLoading) return;
+    setPauseReasonOpen(false);
+    setSlaModal(null);
+    setSlaModalForm({ reasonCode: 'WaitingCitizen', note: '' });
+  };
 
-  if (loading && !loaded) {
+  const handleSubmitSlaModal = async () => {
+    const noteValue = String(slaModalForm.note || '').trim();
+
+    if (slaModal === 'pause') {
+      if (!ALLOWED_PAUSE_REASONS.has(slaModalForm.reasonCode)) {
+        setMessage({ type: 'error', text: 'Vui lòng chọn lý do tạm dừng hợp lệ.' });
+        return;
+      }
+      await runSlaAction('pause', () => slaApi.pauseIncidentSla(incidentId, {
+        reasonCode: slaModalForm.reasonCode,
+        reasonNote: noteValue || null,
+      }), 'Đã tạm dừng SLA.');
+      setSlaModal(null);
+      return;
+    }
+
+    if (slaModal === 'resume') {
+      await runSlaAction('resume', () => slaApi.resumeIncidentSla(incidentId, {
+        note: noteValue || null,
+      }), 'Đã tiếp tục SLA.');
+      setSlaModal(null);
+      return;
+    }
+
+    if (slaModal === 'complete') {
+      await runSlaAction('complete', () => slaApi.completeIncidentSla(incidentId, {
+        note: noteValue || null,
+      }), 'Đã đóng SLA của sự vụ.');
+      setSlaModal(null);
+      return;
+    }
+
+    if (slaModal === 'recalculate') {
+      await runSlaAction('recalculate', () => slaApi.recalculateIncidentSla(incidentId, {
+        note: noteValue || null,
+      }), 'Đã tính lại SLA theo chính sách hiện hành.');
+      setSlaModal(null);
+      return;
+    }
+
+    if (slaModal === 'cancel') {
+      if (!noteValue) {
+        setMessage({ type: 'error', text: 'Vui lòng nhập lý do hủy SLA.' });
+        return;
+      }
+      await runSlaAction('cancel', () => slaApi.cancelIncidentSla(incidentId, noteValue), 'Đã hủy SLA.');
+      setSlaModal(null);
+    }
+  };
+
+  const handleCheckSlaViolation = async () => {
+    const incidentSlaId = slaDetail?.incidentSlaId;
+    if (!incidentSlaId) {
+      setMessage({ type: 'error', text: 'Không tìm thấy mã SLA của sự vụ.' });
+      return;
+    }
+    await runSlaAction('check', () => slaApi.checkIncidentSlaViolation(incidentSlaId), 'Đã kiểm tra vi phạm SLA.');
+  };
+
+  const handleStartSla = async () => {
+    await runSlaAction('start', () => slaApi.startIncidentSla(incidentId), 'Đã khởi động SLA cho sự vụ.');
+  };
+
+  // Đồng hồ chỉ trôi khi SLA đang chạy; lúc tạm dừng thì giữ nguyên số đã đồng bộ.
+  const elapsedSeconds = isSlaRunning && slaClock.syncedAt
+    ? Math.max(0, Math.floor((clockTick - slaClock.syncedAt) / 1000))
+    : 0;
+
+  const responseCountdownSeconds = String(slaStatus?.responseStatus || '').toLowerCase() === 'pending'
+    ? Math.max(0, slaClock.responseSeconds - elapsedSeconds)
+    : 0;
+
+  const resolutionCountdownSeconds = String(slaStatus?.resolutionStatus || '').toLowerCase() === 'pending'
+    ? Math.max(0, slaClock.resolutionSeconds - elapsedSeconds)
+    : 0;
+
+  const currentStatus = slaStatus?.status || slaDetail?.status || '';
+  const isPaused = String(currentStatus).toLowerCase() === 'paused';
+  const isActive = ['running', 'paused'].includes(String(currentStatus).toLowerCase());
+  const hasSla = Boolean(slaDetail || slaStatus);
+  const pauseHistories = Array.isArray(slaDetail?.pauseHistories) ? slaDetail.pauseHistories : [];
+
+  const slaModalConfig = (() => {
+    if (slaModal === 'pause') {
+      return {
+        title: 'Tạm dừng SLA',
+        description: 'Đồng hồ SLA sẽ ngừng tính trong thời gian tạm dừng.',
+        icon: <Lucide.PauseCircle size={21} />,
+        iconClass: 'bg-amber-50 text-amber-700',
+        confirmLabel: 'Tạm dừng SLA',
+        confirmClass: 'bg-amber-600 hover:bg-amber-700',
+        noteLabel: 'Ghi chú',
+        noteRequired: false,
+      };
+    }
+    if (slaModal === 'resume') {
+      return {
+        title: 'Tiếp tục SLA',
+        description: 'Đồng hồ SLA sẽ chạy trở lại từ thời điểm hiện tại.',
+        icon: <Lucide.PlayCircle size={21} />,
+        iconClass: 'bg-blue-50 text-blue-700',
+        confirmLabel: 'Tiếp tục SLA',
+        confirmClass: 'bg-blue-600 hover:bg-blue-700',
+        noteLabel: 'Ghi chú',
+        noteRequired: false,
+      };
+    }
+    if (slaModal === 'complete') {
+      return {
+        title: 'Hoàn thành SLA',
+        description: 'SLA được ghi nhận là hoàn thành và ngừng theo dõi. Trạng thái của sự vụ không thay đổi.',
+        icon: <Lucide.BadgeCheck size={21} />,
+        iconClass: 'bg-emerald-50 text-emerald-700',
+        confirmLabel: 'Hoàn thành SLA',
+        confirmClass: 'bg-emerald-600 hover:bg-emerald-700',
+        noteLabel: 'Ghi chú',
+        noteRequired: false,
+      };
+    }
+    if (slaModal === 'recalculate') {
+      return {
+        title: 'Tính lại SLA',
+        description: 'Áp lại chính sách SLA hiện hành theo phường, danh mục và mức ưu tiên mới nhất của sự vụ. Các mốc hạn có thể thay đổi.',
+        icon: <Lucide.RefreshCw size={21} />,
+        iconClass: 'bg-blue-50 text-blue-700',
+        confirmLabel: 'Tính lại SLA',
+        confirmClass: 'bg-blue-600 hover:bg-blue-700',
+        noteLabel: 'Ghi chú',
+        noteRequired: false,
+      };
+    }
+    if (slaModal === 'cancel') {
+      return {
+        title: 'Hủy SLA',
+        description: 'SLA sẽ ngừng theo dõi và được đánh dấu là đã hủy.',
+        icon: <Lucide.XCircle size={21} />,
+        iconClass: 'bg-rose-50 text-rose-700',
+        confirmLabel: 'Hủy SLA',
+        confirmClass: 'bg-rose-600 hover:bg-rose-700',
+        noteLabel: 'Lý do hủy',
+        noteRequired: true,
+      };
+    }
+    return null;
+  })();
+
+  if (!loaded) {
     return (
-      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
-        <ManagerSectionHeader id="incident-sla-title" title="SLA sự vụ" description="Đang tải dữ liệu SLA…" icon={Lucide.Timer} />
-        <div className="grid gap-3 px-5 pb-5 sm:grid-cols-2 sm:px-6 sm:pb-6">
-          <div className="h-32 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
-          <div className="h-32 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+      <section className="admin-panel overflow-hidden">
+        <ManagerSectionHeader id="incident-sla-title" title="SLA của sự vụ" description="Đang tải dữ liệu SLA…" icon={Lucide.TimerReset} />
+        <div className="grid gap-4 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-24 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />)}
         </div>
       </section>
     );
   }
 
-  const hasSla = Boolean(detail || status);
-
   return (
-    <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
+    <section className="admin-panel overflow-hidden" aria-labelledby="incident-sla-title">
       <ManagerSectionHeader
         id="incident-sla-title"
-        title="SLA sự vụ"
-        description="Hạn phản hồi, hạn hoàn thành và lịch sử thay đổi SLA của sự vụ này."
-        icon={Lucide.Timer}
-        actions={hasSla ? (
-          <span className="inline-flex items-center gap-2">
+        title="SLA của sự vụ"
+        description="Theo dõi chính sách, thời hạn phản hồi, thời hạn hoàn thành, cảnh báo, vi phạm và lịch sử SLA."
+        icon={Lucide.TimerReset}
+        actions={(
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {realtimeConnected ? (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20"
-                title="Đang nhận cập nhật SLA theo thời gian thực"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                Trực tiếp
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20" title="Đang nhận cập nhật SLA theo thời gian thực">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Trực tiếp
               </span>
             ) : null}
-            <SlaBadge value={detail?.status ?? status?.status} meta={SLA_STATUS_META} />
-          </span>
-        ) : null}
+
+            <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getSlaBadgeClass(currentStatus)}`}>
+              {getSlaStatusLabel(currentStatus || 'Chưa có SLA')}
+            </span>
+
+            {canManage && !hasSla ? (
+              <button type="button" className="btn rounded-xl border-0 bg-blue-600 text-white hover:bg-blue-700" onClick={handleStartSla} disabled={Boolean(slaActionLoading)}>
+                <Lucide.Play size={15} /> {slaActionLoading === 'start' ? 'Đang khởi động...' : 'Khởi động SLA'}
+              </button>
+            ) : null}
+
+            {canManage && isActive ? (
+              <>
+                {isPaused ? (
+                  <button type="button" className="btn admin-secondary-action rounded-xl" onClick={() => openSlaModal('resume')} disabled={Boolean(slaActionLoading)}>
+                    <Lucide.Play size={15} /> {slaActionLoading === 'resume' ? 'Đang tiếp tục...' : 'Tiếp tục SLA'}
+                  </button>
+                ) : (
+                  <button type="button" className="btn admin-secondary-action rounded-xl" onClick={() => openSlaModal('pause')} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                    <Lucide.Pause size={15} /> {slaActionLoading === 'pause' ? 'Đang tạm dừng...' : 'Tạm dừng SLA'}
+                  </button>
+                )}
+
+                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={() => openSlaModal('recalculate')} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                  <Lucide.RefreshCw size={15} /> {slaActionLoading === 'recalculate' ? 'Đang tính lại...' : 'Tính lại SLA'}
+                </button>
+
+                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={() => openSlaModal('complete')} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                  <Lucide.BadgeCheck size={15} /> {slaActionLoading === 'complete' ? 'Đang đóng...' : 'Hoàn thành SLA'}
+                </button>
+              </>
+            ) : null}
+
+            {canManage && hasSla ? (
+              <>
+                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={handleCheckSlaViolation} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                  <Lucide.ShieldCheck size={15} /> {slaActionLoading === 'check' ? 'Đang kiểm tra...' : 'Kiểm tra vi phạm'}
+                </button>
+                {isActive ? (
+                  <button type="button" className="btn rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={() => openSlaModal('cancel')} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                    <Lucide.XCircle size={15} /> {slaActionLoading === 'cancel' ? 'Đang hủy...' : 'Hủy SLA'}
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        )}
       />
 
-      <div className="px-5 pb-5 sm:px-6 sm:pb-6">
-        {error ? (
-          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
-            <Lucide.TriangleAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">Không thể tải dữ liệu SLA</p>
-              <p className="mt-1 leading-6">{error}</p>
-            </div>
-            <button type="button" onClick={() => void load()} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold hover:bg-amber-100 dark:bg-transparent">
-              <Lucide.RefreshCcw size={14} aria-hidden="true" />Thử lại
-            </button>
+      {message.text && !slaModal ? (
+        <div className="px-5 pt-5 sm:px-6">
+          <div
+            className={`rounded-2xl border px-4 py-3 text-sm ${message.type === 'error'
+              ? 'border-rose-200 bg-rose-50 text-rose-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}
+            role="status"
+          >
+            {message.text}
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {!hasSla ? (
-          <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-8 text-center dark:border-slate-800 dark:bg-slate-900/60">
+      {slaError && !slaDetail && !slaStatus ? (
+        <div className="p-5 sm:p-6">
+          <ErrorAlert title="Không có dữ liệu SLA" message={slaError} onClose={() => setSlaError('')} />
+        </div>
+      ) : !hasSla ? (
+        <div className="p-5 sm:p-6">
+          <div className="flex min-h-[180px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-8 text-center dark:border-slate-700">
             <Lucide.TimerOff size={28} className="text-slate-300 dark:text-slate-600" aria-hidden="true" />
             <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Sự vụ chưa được tính SLA</p>
             <p className="mt-1 max-w-md text-xs leading-5 text-slate-400">
@@ -413,228 +522,253 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
                 ? 'Khởi động SLA để bắt đầu đếm hạn phản hồi và hạn hoàn thành theo chính sách của phường và danh mục.'
                 : 'SLA sẽ xuất hiện tại đây sau khi Interaction Manager khởi động theo dõi cho sự vụ.'}
             </p>
-            {canManage ? (
-              <button
-                type="button"
-                onClick={() => openConfirm('start', 'Khởi động SLA cho sự vụ?', 'Hệ thống sẽ chọn chính sách SLA theo phường, danh mục và mức ưu tiên hiện tại của sự vụ, rồi bắt đầu đếm hạn ngay lập tức.')}
-                className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                <Lucide.Play size={15} aria-hidden="true" />Khởi động SLA
-              </button>
-            ) : null}
           </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <SlaCountdownCard
-                title="Hạn phản hồi"
-                icon={Lucide.MessageCircleReply}
-                dueAt={status?.responseDueAt ?? detail?.responseDueAt}
-                targetStatus={status?.responseStatus ?? detail?.responseStatus}
-                isWarning={status?.isResponseWarning}
-                isBreached={status?.isResponseBreached ?? detail?.isResponseBreached}
-                progressPercent={status?.responseProgressPercent}
-                nowMs={nowMs}
-              />
-              <SlaCountdownCard
-                title="Hạn hoàn thành"
-                icon={Lucide.CircleCheckBig}
-                dueAt={status?.resolutionDueAt ?? detail?.resolutionDueAt}
-                targetStatus={status?.resolutionStatus ?? detail?.resolutionStatus}
-                isWarning={status?.isResolutionWarning}
-                isBreached={status?.isResolutionBreached ?? detail?.isResolutionBreached}
-                progressPercent={status?.resolutionProgressPercent}
-                nowMs={nowMs}
-              />
-            </div>
+        </div>
+      ) : (
+        <section className="space-y-6 p-5 sm:p-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Chính sách SLA</p>
+              <h3 className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{slaDetail?.policyName || '—'}</h3>
+              <p className="mt-2 text-xs text-slate-500">{slaDetail?.priority || '—'} · {slaDetail?.categoryName || '—'}</p>
+            </article>
+            <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Mã SLA</p>
+              <h3 className="mt-2 font-mono text-sm font-semibold text-blue-700 dark:text-blue-300">{slaDetail?.incidentSlaId || '—'}</h3>
+              <p className="mt-2 text-xs text-slate-500">{slaDetail?.isCurrent === false ? 'SLA lịch sử' : 'SLA hiện tại'}</p>
+            </article>
+            <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Bắt đầu</p>
+              <h3 className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{formatDateTime(slaDetail?.startedAt || slaStatus?.startedAt)}</h3>
+              <p className="mt-2 text-xs text-slate-500">{slaDetail?.startedByUserName || 'Hệ thống / không xác định'}</p>
+            </article>
+            <article className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tổng thời gian tạm dừng</p>
+              <h3 className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{Number(slaDetail?.totalPausedMinutes || 0)} phút</h3>
+              <p className="mt-2 text-xs text-slate-500">{pauseHistories.length} lần tạm dừng</p>
+            </article>
+          </div>
 
-            {isPaused ? (
-              <p className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                <Lucide.PauseCircle size={14} aria-hidden="true" />
-                SLA đang tạm dừng nên đồng hồ không chạy. Thời gian tạm dừng không bị tính vào hạn xử lý.
-              </p>
-            ) : null}
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {meta.map((item) => <MetaItem key={item.label} label={item.label} value={item.value} />)}
-            </div>
-
-            {canManage ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
-                <p className="mr-auto px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">Thao tác SLA</p>
-
-                {isRunning ? (
-                  <button type="button" onClick={() => openConfirm('pause', 'Tạm dừng SLA?', 'Đồng hồ SLA sẽ ngừng chạy cho tới khi được tiếp tục. Khoảng thời gian tạm dừng không bị tính vào hạn xử lý.')} className="manager-detail-action">
-                    <Lucide.Pause size={15} aria-hidden="true" />Tạm dừng
-                  </button>
-                ) : null}
-
-                {isPaused ? (
-                  <button type="button" onClick={() => openConfirm('resume', 'Tiếp tục tính SLA?', 'Đồng hồ SLA sẽ chạy trở lại từ thời điểm hiện tại.')} className="manager-detail-action">
-                    <Lucide.Play size={15} aria-hidden="true" />Tiếp tục
-                  </button>
-                ) : null}
-
-                {isActive ? (
-                  <>
-                    <button type="button" onClick={() => openConfirm('recalculate', 'Tính lại SLA?', 'Hệ thống sẽ áp lại chính sách SLA hiện hành theo phường, danh mục và mức ưu tiên mới nhất của sự vụ. Các mốc hạn có thể thay đổi.')} className="manager-detail-action">
-                      <Lucide.RefreshCw size={15} aria-hidden="true" />Tính lại
-                    </button>
-                    <button type="button" onClick={() => openConfirm('complete', 'Đóng SLA của sự vụ?', 'SLA sẽ được ghi nhận là hoàn thành và ngừng theo dõi. Thao tác này không đổi trạng thái của sự vụ.')} className="manager-detail-action">
-                      <Lucide.BadgeCheck size={15} aria-hidden="true" />Hoàn thành
-                    </button>
-                    <button type="button" onClick={() => openConfirm('cancel', 'Hủy SLA của sự vụ?', 'SLA sẽ ngừng theo dõi và được đánh dấu là đã hủy. Dùng khi sự vụ không còn thuộc phạm vi cam kết xử lý.')} className="manager-detail-action">
-                      <Lucide.CircleSlash size={15} aria-hidden="true" />Hủy SLA
-                    </button>
-                  </>
-                ) : null}
-
-                {detail?.incidentSlaId ? (
-                  <button
-                    type="button"
-                    disabled={actionLoading === 'check'}
-                    onClick={() => void runAction('check', () => slaApi.checkIncidentSlaViolation(detail.incidentSlaId), 'Đã kiểm tra vi phạm SLA.')}
-                    className="manager-detail-action manager-detail-action--primary disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {actionLoading === 'check' ? <Lucide.LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Lucide.ShieldAlert size={15} aria-hidden="true" />}
-                    Kiểm tra vi phạm
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-
-            {actionError ? <p className="text-sm font-medium text-rose-600">{actionError}</p> : null}
-
-            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setTimelineOpen((open) => !open)}
-                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900"
-                aria-expanded={timelineOpen}
-              >
-                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  <Lucide.History size={16} aria-hidden="true" />
-                  Lịch sử SLA
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:bg-slate-900">{timeline.length}</span>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950/40">
+              <header className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Phản hồi đầu tiên</p>
+                  <h3 className="mt-1 text-base font-semibold">Thời hạn phản hồi</h3>
+                </div>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getSlaBadgeClass(slaStatus?.responseStatus || slaDetail?.responseStatus)}`}>
+                  {getSlaStatusLabel(slaStatus?.responseStatus || slaDetail?.responseStatus || 'Pending')}
                 </span>
-                <Lucide.ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${timelineOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
-              </button>
+              </header>
+              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                <MetaItem label="Hạn xử lý">{formatDateTime(slaDetail?.responseDueAt || slaStatus?.responseDueAt)}</MetaItem>
+                <MetaItem label="Thời điểm phản hồi">{formatDateTime(slaDetail?.respondedAt)}</MetaItem>
+                <MetaItem label="Còn lại">
+                  <span className="font-mono text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                    {formatSlaCountdown(responseCountdownSeconds)}
+                  </span>
+                </MetaItem>
+                <MetaItem label="Vi phạm">{slaStatus?.isResponseBreached || slaDetail?.isResponseBreached ? 'Có' : 'Không'}</MetaItem>
+              </dl>
+            </article>
 
-              {timelineOpen ? (
-                timeline.length === 0 ? (
-                  <p className="border-t border-slate-100 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-800">Chưa có sự kiện SLA nào được ghi nhận.</p>
-                ) : (
-                  <ul className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
-                    {timeline.map((event) => (
-                      <li key={event?.slaEventId} className="px-4 py-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                            {EVENT_LABELS[normalizeKey(event?.eventType)] || 'Cập nhật SLA'}
-                          </p>
-                          <span className="text-xs text-slate-400">{formatDateTime(event?.createdAt)}</span>
+            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950/40">
+              <header className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Hoàn thành xử lý</p>
+                  <h3 className="mt-1 text-base font-semibold">Thời hạn hoàn thành</h3>
+                </div>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getSlaBadgeClass(slaStatus?.resolutionStatus || slaDetail?.resolutionStatus)}`}>
+                  {getSlaStatusLabel(slaStatus?.resolutionStatus || slaDetail?.resolutionStatus || 'Pending')}
+                </span>
+              </header>
+              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                <MetaItem label="Hạn xử lý">{formatDateTime(slaDetail?.resolutionDueAt || slaStatus?.resolutionDueAt)}</MetaItem>
+                <MetaItem label="Thời điểm hoàn thành">{formatDateTime(slaDetail?.resolvedAt)}</MetaItem>
+                <MetaItem label="Còn lại">
+                  <span className="font-mono text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                    {formatSlaCountdown(resolutionCountdownSeconds)}
+                  </span>
+                </MetaItem>
+                <MetaItem label="Vi phạm">{slaStatus?.isResolutionBreached || slaDetail?.isResolutionBreached ? 'Có' : 'Không'}</MetaItem>
+              </dl>
+            </article>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <article>
+              <div className="flex items-center gap-2">
+                <Lucide.History size={17} className="text-blue-600" />
+                <h3 className="text-sm font-semibold">Lịch sử SLA</h3>
+              </div>
+              {slaTimeline.length > 0 ? (
+                <div className="mt-4 max-h-[410px] overflow-y-auto pr-2 [scrollbar-gutter:stable]">
+                  <ol className="space-y-3">
+                    {slaTimeline.map((event, index) => (
+                      <li key={event.slaEventId || `${event.eventType}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="text-sm">{EVENT_LABELS[normalizeKey(event.eventType)] || event.eventType || 'Sự kiện SLA'}</strong>
+                          <time className="text-[11px] text-slate-400">{formatDateTime(event.createdAt)}</time>
                         </div>
-                        {event?.note ? <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600 dark:text-slate-300">{event.note}</p> : null}
+                        {event.note ? <p className="mt-2 text-xs leading-5 text-slate-500">{event.note}</p> : null}
                         <p className="mt-1 text-[11px] text-slate-400">
-                          Nguồn: {TRIGGER_LABELS[normalizeKey(event?.triggerSource)] || 'Không xác định'}
-                          {event?.oldStatus && event?.newStatus ? ` · ${event.oldStatus} → ${event.newStatus}` : ''}
+                          {event.triggeredByUserName || TRIGGER_LABELS[normalizeKey(event.triggerSource)] || 'Hệ thống'}
+                          {event.oldStatus && event.newStatus ? ` · ${getSlaStatusLabel(event.oldStatus)} → ${getSlaStatusLabel(event.newStatus)}` : ''}
                         </p>
                       </li>
                     ))}
-                  </ul>
-                )
-              ) : null}
-            </div>
+                  </ol>
+                </div>
+              ) : <p className="mt-4 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Chưa có sự kiện SLA.</p>}
+            </article>
 
-            {pauseHistories.length > 0 ? (
-              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-                <p className="inline-flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  <Lucide.PauseCircle size={16} aria-hidden="true" />
-                  Lịch sử tạm dừng
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:bg-slate-900">{pauseHistories.length}</span>
-                </p>
-                <ul className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
-                  {pauseHistories.map((pause) => {
-                    const reasonLabel = PAUSE_REASON_OPTIONS
-                      .find((option) => option.value === pause?.reasonCode)?.label
-                      || pause?.reasonCode
-                      || 'Không rõ lý do';
-                    const stillPaused = !pause?.resumedAt;
-
-                    return (
-                      <li key={pause?.slaPauseHistoryId} className="px-4 py-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{reasonLabel}</p>
-                          <span className={`text-xs font-semibold ${stillPaused ? 'text-amber-600' : 'text-slate-400'}`}>
-                            {stillPaused
-                              ? 'Đang tạm dừng'
-                              : `${Number(pause?.pausedMinutes ?? 0)} phút`}
-                          </span>
-                        </div>
-                        {pause?.reasonNote ? (
-                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600 dark:text-slate-300">{pause.reasonNote}</p>
-                        ) : null}
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          {formatDateTime(pause?.pausedAt)}
-                          {pause?.resumedAt ? ` → ${formatDateTime(pause.resumedAt)}` : ''}
-                          {pause?.pausedByUserName ? ` · ${pause.pausedByUserName}` : ''}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ul>
+            <article>
+              <div className="flex items-center gap-2">
+                <Lucide.PauseCircle size={17} className="text-amber-600" />
+                <h3 className="text-sm font-semibold">Lịch sử tạm dừng</h3>
               </div>
-            ) : null}
+              {pauseHistories.length > 0 ? (
+                <div className="mt-4 max-h-[410px] overflow-y-auto pr-2 [scrollbar-gutter:stable]">
+                  <ul className="space-y-3">
+                    {pauseHistories.map((pause, index) => (
+                      <li key={pause.slaPauseHistoryId || index} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <dl className="grid gap-3 sm:grid-cols-2">
+                          <MetaItem label="Thời điểm tạm dừng">{formatDateTime(pause.pausedAt)}</MetaItem>
+                          <MetaItem label="Thời điểm tiếp tục">{formatDateTime(pause.resumedAt)}</MetaItem>
+                          <MetaItem label="Thời gian tạm dừng">{formatPauseDuration(pause)}</MetaItem>
+                          <MetaItem label="Lý do">
+                            {SLA_PAUSE_REASONS.find((reason) => reason.value === pause.reasonCode)?.label
+                              || pause.reasonCode
+                              || 'Không xác định'}
+                          </MetaItem>
+                          {pause.reasonNote ? <MetaItem label="Ghi chú" wide>{pause.reasonNote}</MetaItem> : null}
+                          <MetaItem label="Người tạm dừng">{pause.pausedByUserName}</MetaItem>
+                          <MetaItem label="Người tiếp tục">{pause.resumedByUserName}</MetaItem>
+                        </dl>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : <p className="mt-4 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">SLA chưa từng được tạm dừng.</p>}
+            </article>
           </div>
-        )}
-      </div>
+        </section>
+      )}
 
-      <ManagerConfirmDialog
-        open={Boolean(confirmAction)}
-        title={confirmAction?.title || 'Xác nhận thao tác SLA'}
-        description={confirmAction?.description}
-        confirmLabel="Xác nhận"
-        tone={confirmAction?.type === 'cancel' ? 'danger' : 'warning'}
-        loading={Boolean(actionLoading)}
-        onCancel={() => { setConfirmAction(null); setActionError(''); }}
-        onConfirm={handleConfirm}
-      >
-        {confirmAction?.type === 'pause' ? (
-          <div className="space-y-3">
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-              <span>Lý do tạm dừng</span>
-              <ManagerSelectMenu
-                value={pauseForm.reasonCode}
-                options={PAUSE_REASON_OPTIONS}
-                onChange={(value) => setPauseForm((current) => ({ ...current, reasonCode: value }))}
-                ariaLabel="Chọn lý do tạm dừng SLA"
-                className="mt-2 w-full font-normal"
-              />
-            </label>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-              <span>Ghi chú <span className="font-normal text-slate-400">(không bắt buộc)</span></span>
-              <textarea
-                value={pauseForm.reasonNote}
-                onChange={(event) => setPauseForm((current) => ({ ...current, reasonNote: event.target.value }))}
-                rows={3}
-                placeholder="Ví dụ: đang chờ người dân bổ sung hình ảnh hiện trường."
-                className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900"
-              />
-            </label>
-          </div>
-        ) : confirmAction && confirmAction.type !== 'start' ? (
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
-            <span>Ghi chú <span className="font-normal text-slate-400">(không bắt buộc)</span></span>
-            <textarea
-              value={noteDraft}
-              onChange={(event) => setNoteDraft(event.target.value)}
-              rows={3}
-              placeholder="Ghi chú sẽ được lưu vào lịch sử SLA."
-              className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900"
-            />
-          </label>
-        ) : null}
-        {actionError ? <p className="mt-3 text-sm font-medium text-rose-600">{actionError}</p> : null}
-      </ManagerConfirmDialog>
+      {slaModal && slaModalConfig && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            className="fixed inset-0 z-[11000] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]"
+            role="presentation"
+            onMouseDown={(event) => { if (event.target === event.currentTarget) closeSlaModal(); }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="incident-sla-action-dialog-title"
+              className="w-full max-w-xl overflow-visible rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <header className="flex items-start gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${slaModalConfig.iconClass}`} aria-hidden="true">
+                  {slaModalConfig.icon}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 id="incident-sla-action-dialog-title" className="text-xl font-semibold text-slate-950 dark:text-white">{slaModalConfig.title}</h2>
+                      <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">{slaModalConfig.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeSlaModal}
+                      disabled={Boolean(slaActionLoading)}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
+                      aria-label="Đóng"
+                    >
+                      <Lucide.X size={19} />
+                    </button>
+                  </div>
+                </div>
+              </header>
+
+              <form onSubmit={(event) => { event.preventDefault(); void handleSubmitSlaModal(); }}>
+                <div className="space-y-5 px-6 py-5">
+                  {slaModal === 'pause' ? (
+                    <div className="relative">
+                      <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        Lý do tạm dừng <span className="text-rose-600">*</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPauseReasonOpen((open) => !open)}
+                        className="mt-2 flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3.5 text-left text-sm font-medium text-slate-800 transition hover:border-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        aria-expanded={pauseReasonOpen}
+                      >
+                        <span className="min-w-0 truncate">
+                          {SLA_PAUSE_REASONS.find((reason) => reason.value === slaModalForm.reasonCode)?.label || 'Chọn lý do tạm dừng'}
+                        </span>
+                        <Lucide.ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${pauseReasonOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                      </button>
+
+                      {pauseReasonOpen ? (
+                        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-10 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                          {SLA_PAUSE_REASONS.map((reason) => {
+                            const selected = reason.value === slaModalForm.reasonCode;
+                            return (
+                              <button
+                                key={reason.value}
+                                type="button"
+                                onClick={() => { setSlaModalForm((current) => ({ ...current, reasonCode: reason.value })); setPauseReasonOpen(false); }}
+                                className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition ${selected ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'}`}
+                              >
+                                <span>{reason.label}</span>
+                                {selected ? <Lucide.Check size={15} aria-hidden="true" /> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <label className="block">
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      {slaModalConfig.noteLabel}
+                      {slaModalConfig.noteRequired
+                        ? <span className="text-rose-600"> *</span>
+                        : <span className="font-normal text-slate-400"> (không bắt buộc)</span>}
+                    </span>
+                    <textarea
+                      value={slaModalForm.note}
+                      onChange={(event) => setSlaModalForm((current) => ({ ...current, note: event.target.value }))}
+                      rows={4}
+                      placeholder={slaModal === 'pause'
+                        ? 'Ví dụ: đang chờ người dân bổ sung hình ảnh hiện trường.'
+                        : 'Nội dung này được lưu vào lịch sử SLA.'}
+                      className="mt-2 w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  </label>
+
+                  {message.type === 'error' && message.text ? (
+                    <p className="text-sm font-medium text-rose-600">{message.text}</p>
+                  ) : null}
+                </div>
+
+                <footer className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4 dark:border-slate-800">
+                  <button type="button" onClick={closeSlaModal} disabled={Boolean(slaActionLoading)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200">
+                    Hủy
+                  </button>
+                  <button type="submit" disabled={Boolean(slaActionLoading)} className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold text-white transition disabled:opacity-60 ${slaModalConfig.confirmClass}`}>
+                    {slaActionLoading ? <Lucide.LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : null}
+                    {slaModalConfig.confirmLabel}
+                  </button>
+                </footer>
+              </form>
+            </section>
+          </div>,
+          document.body,
+        )
+        : null}
     </section>
   );
 };
