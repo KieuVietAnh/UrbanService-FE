@@ -545,7 +545,6 @@ export const IncidentDetailPage = () => {
   const [reportMediaLoading, setReportMediaLoading] = useState(false);
   const [reportMediaError, setReportMediaError] = useState('');
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [approvalLightboxIndex, setApprovalLightboxIndex] = useState(null);
   const [detailResolved, setDetailResolved] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -806,6 +805,14 @@ export const IncidentDetailPage = () => {
     subtitle: item.isPrimary ? 'Phản ánh chính' : `Phản ánh ${String(item.feedbackId).slice(0, 8)}`,
   }));
 
+  /*
+   * Ảnh hoàn thành đã nằm trong khối đối chiếu nên khối tài liệu bên dưới chỉ
+   * còn giữ những tệp không phải ảnh, tránh hiện cùng một ảnh hai lần.
+   */
+  const approvalFileDocuments = approvalDocuments.filter(
+    (document) => !(isImageAttachment(document) && getAttachmentUrl(document)),
+  );
+
   const comparisonAfterItems = approvalImageDocuments
     .map((document, index) => ({
       url: getAttachmentUrl(document),
@@ -813,6 +820,12 @@ export const IncidentDetailPage = () => {
       subtitle: document?.uploadedByUserName || document?.providerName || 'Ảnh hoàn thành',
     }))
     .filter((item) => item.url);
+
+  /*
+   * Khối đối chiếu đã bao trọn cả ảnh trước lẫn ảnh sau, nên khi nó hiện thì
+   * khối "Hình ảnh từ các phản ánh" bên dưới là thừa và phải ẩn đi.
+   */
+  const showEvidenceComparison = isApprovalView || comparisonAfterItems.length > 0;
 
   useEffect(() => {
     const ids = activeReports.map(getFeedbackId).filter(Boolean).map(String);
@@ -896,30 +909,6 @@ export const IncidentDetailPage = () => {
       setLightboxIndex(reportGalleryItems.length > 0 ? reportGalleryItems.length - 1 : null);
     }
   }, [lightboxIndex, reportGalleryItems.length]);
-
-  useEffect(() => {
-    if (approvalLightboxIndex === null) return undefined;
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setApprovalLightboxIndex(null);
-        return;
-      }
-      if (approvalImageDocuments.length <= 1) return;
-      if (event.key === 'ArrowLeft') {
-        setApprovalLightboxIndex((current) => (current - 1 + approvalImageDocuments.length) % approvalImageDocuments.length);
-      } else if (event.key === 'ArrowRight') {
-        setApprovalLightboxIndex((current) => (current + 1) % approvalImageDocuments.length);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [approvalImageDocuments.length, approvalLightboxIndex]);
-
-  useEffect(() => {
-    if (approvalLightboxIndex !== null && approvalLightboxIndex >= approvalImageDocuments.length) {
-      setApprovalLightboxIndex(approvalImageDocuments.length > 0 ? approvalImageDocuments.length - 1 : null);
-    }
-  }, [approvalImageDocuments.length, approvalLightboxIndex]);
 
   const incidentStatusKey = normalizeKey(incident?.status);
   const isMergedIncident = incidentStatusKey === 'merged';
@@ -1636,19 +1625,6 @@ export const IncidentDetailPage = () => {
         }}
       />
 
-      {/*
-        * Ở màn duyệt luôn hiện, kể cả khi chưa có ảnh hoàn thành, vì thiếu ảnh
-        * cũng là thông tin người duyệt cần biết. Ở trang chi tiết thì chỉ hiện
-        * khi đã có ảnh sau, tránh bày một khối đối chiếu rỗng trên sự vụ còn
-        * chưa xử lý.
-        */}
-      {isApprovalView || comparisonAfterItems.length > 0 ? (
-        <IncidentEvidenceComparison
-          beforeItems={comparisonBeforeItems}
-          afterItems={comparisonAfterItems}
-        />
-      ) : null}
-
       {isApprovalView ? (
         <section className="overflow-hidden rounded-[24px] border border-indigo-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-indigo-500/20 dark:bg-slate-950">
           <ManagerSectionHeader
@@ -1695,26 +1671,20 @@ export const IncidentDetailPage = () => {
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{approvalResolution.resultNote}</p>
                   </div>
                 ) : null}
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                  <div className="flex items-center justify-between gap-3">
-                    <div><p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Minh chứng hoàn thành</p><p className="mt-1 text-xs text-slate-500">{approvalDocuments.length} tệp được gửi kèm kết quả xử lý.</p></div>
-                  </div>
-                  {approvalDocuments.length > 0 ? (
+                {approvalFileDocuments.length > 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Tài liệu kèm theo</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {approvalFileDocuments.length} tệp không phải ảnh. Ảnh hoàn thành xem ở khối đối chiếu bên dưới.
+                      </p>
+                    </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                      {approvalDocuments.map((document, index) => {
+                      {approvalFileDocuments.map((document, index) => {
                         const url = getAttachmentUrl(document);
-                        const key = document?.completionDocumentId ?? `${url}-${index}`;
-                        const label = document?.description || `Minh chứng ${index + 1}`;
                         if (!url) return null;
-                        if (isImageAttachment(document)) {
-                          const imageIndex = approvalImageDocuments.findIndex((item) => item === document);
-                          return (
-                            <button key={key} type="button" onClick={() => setApprovalLightboxIndex(imageIndex)} className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-left transition hover:border-blue-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                              <img src={url} alt={label} className="aspect-[4/3] w-full object-cover transition duration-200 group-hover:scale-[1.02]" />
-                              <div className="px-3 py-2"><p className="truncate text-xs font-semibold text-slate-700 dark:text-slate-200" title={label}>{label}</p><p className="mt-0.5 truncate text-[11px] text-slate-400">{document?.uploadedByUserName || document?.providerName || 'Ảnh hoàn thành'}</p></div>
-                            </button>
-                          );
-                        }
+                        const key = document?.completionDocumentId ?? `${url}-${index}`;
+                        const label = document?.description || `Tài liệu ${index + 1}`;
                         return (
                           <a key={key} href={url} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition hover:border-blue-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900">
                             <div className="flex aspect-[4/3] items-center justify-center text-slate-400"><Lucide.FileText size={28} /></div>
@@ -1723,8 +1693,8 @@ export const IncidentDetailPage = () => {
                         );
                       })}
                     </div>
-                  ) : <p className="mt-4 rounded-xl bg-slate-50 px-4 py-5 text-center text-sm text-slate-500 dark:bg-slate-900">Chưa có tệp minh chứng hoàn thành.</p>}
-                </div>
+                  </div>
+                ) : null}
                 {approvalResolutionError ? <p className="inline-flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300"><Lucide.TriangleAlert size={14} />Không thể cập nhật phiên bản mới nhất; đang giữ dữ liệu đã tải.</p> : null}
               </div>
             ) : (
@@ -1736,7 +1706,21 @@ export const IncidentDetailPage = () => {
         </section>
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+      {/*
+        * Đặt sau khối kết quả để người duyệt đọc lời khai của nhân viên trước,
+        * rồi mới soi bằng chứng. Ở màn duyệt luôn hiện vì thiếu ảnh hoàn thành
+        * cũng là thông tin cần biết; ở trang chi tiết chỉ hiện khi đã có ảnh
+        * sau, tránh bày khối đối chiếu rỗng trên sự vụ chưa xử lý.
+        */}
+      {showEvidenceComparison ? (
+        <IncidentEvidenceComparison
+          beforeItems={comparisonBeforeItems}
+          afterItems={comparisonAfterItems}
+          beforeLoading={reportMediaLoading}
+        />
+      ) : null}
+
+      <section className={showEvidenceComparison ? 'grid gap-5' : 'grid gap-5 xl:grid-cols-[0.95fr_1.05fr]'}>
         <IncidentLocationMapCard
           incidentId={incidentId}
           latitude={incidentLatitude}
@@ -1747,6 +1731,7 @@ export const IncidentDetailPage = () => {
           onOpenInternalMap={openInternalIncidentMap}
         />
 
+        {showEvidenceComparison ? null : (
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
           <ManagerSectionHeader
             id="incident-evidence-title"
@@ -1794,6 +1779,7 @@ export const IncidentDetailPage = () => {
             ) : null}
           </div>
         </div>
+        )}
       </section>
 
       <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
@@ -2029,44 +2015,6 @@ export const IncidentDetailPage = () => {
           ) : null}
         </div>
       </section>
-
-      {approvalLightboxIndex !== null && approvalImageDocuments[approvalLightboxIndex] && typeof document !== 'undefined' ? createPortal(
-        <div
-          className="fixed inset-0 z-[10020] flex items-center justify-center bg-slate-950/82 p-4 backdrop-blur-md sm:p-8"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Xem minh chứng hoàn thành"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setApprovalLightboxIndex(null);
-          }}
-        >
-          <button type="button" onClick={() => setApprovalLightboxIndex(null)} className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-slate-950/55 text-white backdrop-blur hover:bg-slate-900" aria-label="Đóng ảnh">
-            <Lucide.X size={20} />
-          </button>
-          {approvalImageDocuments.length > 1 ? (
-            <>
-              <button type="button" onClick={() => setApprovalLightboxIndex((current) => (current - 1 + approvalImageDocuments.length) % approvalImageDocuments.length)} className="absolute left-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-950/55 text-white backdrop-blur hover:bg-slate-900 sm:left-6" aria-label="Ảnh trước">
-                <Lucide.ChevronLeft size={24} />
-              </button>
-              <button type="button" onClick={() => setApprovalLightboxIndex((current) => (current + 1) % approvalImageDocuments.length)} className="absolute right-3 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-950/55 text-white backdrop-blur hover:bg-slate-900 sm:right-6" aria-label="Ảnh tiếp theo">
-                <Lucide.ChevronRight size={24} />
-              </button>
-            </>
-          ) : null}
-          <div className="flex max-h-[92vh] max-w-[92vw] flex-col items-center gap-3">
-            <img
-              src={getAttachmentUrl(approvalImageDocuments[approvalLightboxIndex])}
-              alt={approvalImageDocuments[approvalLightboxIndex]?.description || `Minh chứng ${approvalLightboxIndex + 1}`}
-              className="max-h-[82vh] max-w-full rounded-2xl object-contain shadow-2xl"
-            />
-            <div className="max-w-[80vw] rounded-xl bg-slate-950/55 px-3 py-2 text-center text-xs font-medium text-white/90 backdrop-blur">
-              <p className="truncate">{approvalImageDocuments[approvalLightboxIndex]?.description || `Minh chứng ${approvalLightboxIndex + 1}`}</p>
-              <p className="mt-0.5 text-white/60">{approvalLightboxIndex + 1}/{approvalImageDocuments.length}</p>
-            </div>
-          </div>
-        </div>,
-        document.body
-      ) : null}
 
       {lightboxIndex !== null && reportGalleryItems[lightboxIndex] && typeof document !== 'undefined' ? createPortal(
         <div

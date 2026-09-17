@@ -59,7 +59,7 @@ const EvidenceThumb = ({ item, single, onOpen }) => {
  * người dân gửi sang ảnh hoàn thành mà không phải đóng mở lại. Số ảnh hai bên
  * thường lệch nhau nên bố cục không ghép cặp 1-1.
  */
-export const IncidentEvidenceComparison = ({ beforeItems = [], afterItems = [] }) => {
+export const IncidentEvidenceComparison = ({ beforeItems = [], afterItems = [], beforeLoading = false }) => {
   const [viewerIndex, setViewerIndex] = useState(null);
 
   const allItems = useMemo(() => ([
@@ -92,18 +92,18 @@ export const IncidentEvidenceComparison = ({ beforeItems = [], afterItems = [] }
     }
   }, [allItems.length, viewerIndex]);
 
-  if (allItems.length === 0) return null;
+  if (allItems.length === 0 && !beforeLoading) return null;
 
   const activeItem = viewerIndex === null ? null : allItems[viewerIndex];
 
-  const renderSide = (items, { label, dotClass, emptyMessage }) => (
+  const renderSide = (items, { label, dotClass, emptyMessage, loading = false }) => (
     <figure className="flex min-w-0 flex-col">
       <figcaption className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
           <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} aria-hidden="true" />
           {label}
         </span>
-        <span className="text-xs font-medium text-slate-400">{items.length} ảnh</span>
+        <span className="text-xs font-medium text-slate-400">{loading && items.length === 0 ? 'đang tải' : `${items.length} ảnh`}</span>
       </figcaption>
 
       {items.length > 0 ? (
@@ -115,6 +115,13 @@ export const IncidentEvidenceComparison = ({ beforeItems = [], afterItems = [] }
               single={items.length === 1}
               onOpen={() => openViewer(item)}
             />
+          ))}
+        </div>
+      ) : loading ? (
+        /* Chưa tải xong thì không được kết luận là không có ảnh. */
+        <div className="mt-3 grid flex-1 gap-3 sm:grid-cols-2">
+          {Array.from({ length: 2 }, (_, index) => (
+            <div key={index} className="h-56 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
           ))}
         </div>
       ) : (
@@ -134,7 +141,7 @@ export const IncidentEvidenceComparison = ({ beforeItems = [], afterItems = [] }
         icon={Lucide.Images}
         actions={(
           <span className="text-xs font-medium text-slate-400">
-            {beforeItems.length} trước · {afterItems.length} sau
+            {beforeLoading && beforeItems.length === 0 ? 'đang tải' : `${beforeItems.length} trước`} · {afterItems.length} sau
           </span>
         )}
       />
@@ -144,6 +151,7 @@ export const IncidentEvidenceComparison = ({ beforeItems = [], afterItems = [] }
           label: 'Trước xử lý',
           dotClass: 'bg-slate-400',
           emptyMessage: 'Các phản ánh nguồn chưa gửi kèm hình ảnh hiện trường.',
+          loading: beforeLoading,
         })}
         {renderSide(afterItems, {
           label: 'Sau xử lý',
