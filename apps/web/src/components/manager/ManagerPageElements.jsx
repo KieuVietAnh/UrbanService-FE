@@ -373,6 +373,7 @@ export const ManagerConfirmDialog = ({
   loading = false,
   onConfirm,
   onCancel,
+  children,
 }) => {
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
@@ -452,6 +453,9 @@ export const ManagerConfirmDialog = ({
               {description ? <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p> : null}
             </div>
           </div>
+
+          {/* Chỗ cho form bổ sung, ví dụ lý do hoặc ghi chú kèm theo quyết định. */}
+          {children ? <div className="mt-5">{children}</div> : null}
         </div>
 
         <footer className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-900/40">

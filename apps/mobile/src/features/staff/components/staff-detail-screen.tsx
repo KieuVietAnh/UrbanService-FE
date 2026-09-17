@@ -1,16 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Linking, RefreshControl, ScrollView, View, useWindowDimensions } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
-import { useIsFetching, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { APP_ROLES } from '@urbanmind/shared-types';
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth';
-import { canAccessMobileWorkspace } from '@/features/auth/mobile-access';
-import { staffApi, staffError, staffKeys } from '../staff-api';
+import { staffApi, staffKeys } from '../staff-api';
 import { executionApi, executionKeys } from '../staff-execution-api';
-import { canStartIncidentProcessing, sameIncident } from '../staff-execution-models';
+import { buildExecutionSteps, executionDraftKey, parseExecutionDraft, resolveExecutionMode, type ExecutionDraft } from '../staff-execution-flow-models';
+import { sameIncident } from '../staff-execution-models';
 import { asText, formatConfidence, formatDate, linkMethodLabel, linkRoleLabel, normalizeKey, priorityLabel, recordCode, severityLabel, type StaffRecord } from '../staff-models';
 import { BackLink, Button, colors, Label, NavigationRow, Notice, PageHeading, Pagination, panelStyle, QueryState, Section, Segments, Severity, Status } from './staff-ui';
 import { StaffReportSlaSection } from './staff-report-sla-section';
+import { StaffExecutionProgress } from './staff-execution-progress';
 import { StaffScrollView } from './staff-scroll-view';
 
 type DetailTab = 'overview' | 'reports' | 'timeline';
@@ -76,72 +77,41 @@ function Attachments({ item }: { item: StaffRecord }) {
   </Section>;
 }
 
-function StartProcessingAction({ item, userId }: { item: StaffRecord; userId: string }) {
-  const cache = useQueryClient();
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const isCurrentSession = () => {
-    const currentUser = useAuthStore.getState().user;
-    return !!currentUser && sameIncident(currentUser.id, userId)
-      && canAccessMobileWorkspace(currentUser, APP_ROLES.SYSTEM_STAFF);
-  };
-  const refreshExecutionState = async () => {
-    await Promise.all([
-      cache.invalidateQueries({ queryKey: staffKeys.incident(userId, item.id) }),
-      cache.invalidateQueries({ queryKey: ['staff', userId, 'incidents'] }),
-      cache.invalidateQueries({ queryKey: ['staff', userId, 'timeline', item.id] }),
-      cache.invalidateQueries({ queryKey: executionKeys.all(userId, item.id) }),
-    ]);
-  };
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!isCurrentSession()) throw new Error('Phiên đăng nhập đã thay đổi. Vui lòng mở lại sự vụ bằng tài khoản nhân viên phụ trách.');
-      const latest = await staffApi.incident(item.id);
-      if (!isCurrentSession()) throw new Error('Phiên đăng nhập đã thay đổi. Vui lòng mở lại sự vụ bằng tài khoản nhân viên phụ trách.');
-      cache.setQueryData(staffKeys.incident(userId, item.id), latest);
-      if (!canStartIncidentProcessing(latest, userId)) {
-        throw new Error('Sự vụ không còn ở trạng thái Được giao hoặc không còn được phân công cho bạn.');
-      }
-      const assignment = await executionApi.assignment(item.id);
-      if (!assignment) {
-        throw new Error('Sự vụ chưa có đơn vị xử lý. Hãy phân công đơn vị trước khi bắt đầu xử lý.');
-      }
-      if (normalizeKey(assignment.reportStatus) !== 'reported') {
-        throw new Error('Phân công đơn vị không còn ở trạng thái Đã gửi yêu cầu. Vui lòng tải lại sự vụ.');
-      }
-      const updatedAssignment = await executionApi.startProcessing(
-        assignment.providerAssignmentId,
-        { note: 'Staff bắt đầu xử lý sự vụ.' },
-      );
-      if (!isCurrentSession()) throw new Error('Phiên đăng nhập đã thay đổi. Vui lòng mở lại sự vụ bằng tài khoản nhân viên phụ trách.');
-      const updatedIncident = await staffApi.incident(item.id).catch(() => null);
-      return { updatedAssignment, updatedIncident };
+function ExecutionOverview({ item, userId }: { item: StaffRecord; userId: string }) {
+  const [draft, setDraft] = useState<ExecutionDraft | null>(null);
+  const summary = useQuery({
+    queryKey: [...executionKeys.all(userId, item.id), 'summary'],
+    queryFn: async ({ signal }) => {
+      const assignment = await executionApi.assignment(item.id, signal);
+      const [contacts, evidence, resolutions] = await Promise.all([
+        assignment ? executionApi.contacts(assignment.providerAssignmentId, signal) : Promise.resolve([]),
+        assignment ? executionApi.evidence(assignment.providerAssignmentId, signal) : Promise.resolve([]),
+        executionApi.resolutions(item.id, signal),
+      ]);
+      return { assignment, contacts, evidence, resolutions };
     },
-    onSuccess: async ({ updatedAssignment, updatedIncident }) => {
-      if (updatedIncident) cache.setQueryData(staffKeys.incident(userId, item.id), updatedIncident);
-      cache.setQueryData(executionKeys.assignment(userId, item.id), updatedAssignment);
-      setConfirming(false); setError(''); setSuccess('Đã bắt đầu xử lý sự vụ. Bạn có thể cập nhật đơn vị, minh chứng và kết quả.');
-      await refreshExecutionState();
-    },
-    onError: async (value) => {
-      const message = value instanceof Error && !('response' in value) && !('status' in value) ? value.message : staffError(value);
-      setConfirming(false); setSuccess(''); setError(message);
-      await refreshExecutionState();
-    },
+    enabled: !!item.id && !!userId,
+    retry: 1,
   });
-  if (!canStartIncidentProcessing(item, userId) && !error && !success) return null;
-  return <View style={{ gap: 12 }}>
-    {error ? <Notice error>{error}</Notice> : null}
-    {success ? <Notice>{success}</Notice> : null}
-    {canStartIncidentProcessing(item, userId) && (confirming
-      ? <View style={panelStyle}>
-        <Label bold>Bắt đầu xử lý sự vụ?</Label>
-        <Label size={14}>Phân công đơn vị sẽ chuyển từ “Đã gửi yêu cầu” sang “Đang thực hiện”. Backend đồng bộ sự vụ sang “Đang xử lý”.</Label>
-        <Button label="Xác nhận bắt đầu xử lý" busy={mutation.isPending} disabled={mutation.isPending} onPress={() => mutation.mutate()} />
-        <Button secondary label="Quay lại" disabled={mutation.isPending} onPress={() => setConfirming(false)} />
-      </View>
-      : <Button label="Bắt đầu xử lý" disabled={mutation.isPending} onPress={() => { setError(''); setSuccess(''); setConfirming(true); }} />)}
+  const loadDraft = useCallback(() => {
+    void AsyncStorage.getItem(executionDraftKey(userId, item.id)).then((value) => setDraft(parseExecutionDraft(value))).catch(() => setDraft(parseExecutionDraft(null)));
+  }, [item.id, userId]);
+  useFocusEffect(useCallback(() => { loadDraft(); void summary.refetch(); }, [loadDraft, summary.refetch]));
+  const mode = resolveExecutionMode({ hasAssignment: !!summary.data?.assignment, status: item.status, draftMode: draft?.mode });
+  const steps = useMemo(() => mode ? buildExecutionSteps({
+    mode, status: item.status, hasAssignment: !!summary.data?.assignment,
+    contactCount: summary.data?.contacts.length || 0, evidenceCount: summary.data?.evidence.length || 0,
+    resolutionCount: summary.data?.resolutions.length || 0, activeStep: draft?.activeStep,
+    evidenceSkipped: draft?.evidenceSkipped,
+  }) : [], [mode, item.status, summary.data, draft]);
+  const status = normalizeKey(item.status);
+  const editableStatus = ['assigned', 'inprogress', 'needrework'].includes(status);
+  const cta = status === 'needrework' ? 'Xử lý lại' : status === 'assigned' ? 'Bắt đầu xử lý' : status === 'inprogress' ? 'Tiếp tục xử lý' : 'Xem tiến độ xử lý';
+  return <View style={{ gap: 14 }}>
+    <QueryState pending={summary.isPending || draft === null} error={summary.error} retry={() => { loadDraft(); void summary.refetch(); }} />
+    {!!steps.length && <View style={{ ...panelStyle, paddingBottom: 4 }}><StaffExecutionProgress steps={steps} /></View>}
+    {!mode && status === 'assigned' && <Notice>Khi bắt đầu, bạn sẽ chọn “Phối hợp đơn vị” hoặc “Tự xử lý”; ứng dụng sẽ dẫn từng bước trong một flow.</Notice>}
+    {(editableStatus || summary.isSuccess) && <NavigationRow href={(`/(staff)/staff/incidents/${encodeURIComponent(item.id)}/execution`) as Href} label={cta} description={editableStatus ? 'Tiếp tục đúng bước đang dở; dữ liệu đã lưu không bị mất.' : 'Xem các bước và kết quả đã gửi.'} icon="check" primary />}
   </View>;
 }
 
@@ -157,9 +127,7 @@ function IncidentOverview({ item, userId }: { item: StaffRecord; userId: string 
     <Section title="Thông tin xử lý">
       {!sameIncident(item.assignedStaffUserId, userId) && <Notice>Sự vụ này chưa được xác nhận là đang phân công cho bạn.</Notice>}
       {normalizeKey(item.status) === 'needrework' && <Notice>Manager đã yêu cầu xử lý lại. Hãy bổ sung minh chứng cần thiết và gửi một kết quả mới; các lần gửi trước vẫn được giữ trong lịch sử.</Notice>}
-      <StartProcessingAction item={item} userId={userId} />
-      <NavigationRow href={('/(staff)/staff/incidents/' + encodeURIComponent(item.id) + '/provider') as Href} label="Đơn vị xử lý & liên hệ" description="Phân công, tiến độ và lịch sử liên hệ" icon="account" />
-      <NavigationRow href={('/(staff)/staff/incidents/' + encodeURIComponent(item.id) + '/resolution') as Href} label="Minh chứng & kết quả" description="Ảnh hiện trường và kết quả gửi duyệt" icon="check" primary />
+      <ExecutionOverview item={item} userId={userId} />
       <Label muted size={12}>SLA được tính riêng cho từng Report và hiển thị trong tab Reports. Hạn dự kiến của sự vụ không được dùng để tự suy ra cảnh báo hay vi phạm SLA.</Label>
     </Section>
   </>;

@@ -4,6 +4,20 @@ const getTextValue = (value, fallback = '—') => {
   return String(value);
 };
 
+export const resolveDuplicateCandidateId = (params = {}) => {
+  const value = params?.duplicateCandidateId ?? params?.candidateId;
+  return String(value ?? '').trim();
+};
+
+export const getDuplicateCandidateDecisionState = (candidate) => {
+  if (!candidate) return 'unavailable';
+
+  const status = String(candidate.status || '').trim().toLowerCase();
+  if (status === 'pending') return 'pending';
+  if (status === 'confirmed' || status === 'rejected') return 'processed';
+  return 'unsupported';
+};
+
 const getFirstValue = (source, paths, fallback = '—') => {
   for (const path of paths) {
     let current = source;

@@ -504,7 +504,7 @@ export const AppRoutes = () => {
           </RoleGuard>
         </ProtectedRoute>
       } />
-      <Route path="/manager/incident-matches/:candidateId" element={
+      <Route path="/manager/incident-matches/:duplicateCandidateId" element={
         <ProtectedRoute>
           <RoleGuard allowedRoles={[APP_ROLES.INTERACTION_MANAGER]}>
             <DashboardLayout>

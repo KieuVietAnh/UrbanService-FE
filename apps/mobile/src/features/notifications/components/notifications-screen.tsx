@@ -64,16 +64,17 @@ function groupByDay(items: NotificationItem[]) {
 
   const map: Record<string, NotificationItem[]> = {};
   items.forEach((n) => {
-    const d = new Date(n.createdAt).toDateString();
+    const parsed = n.createdAt ? new Date(n.createdAt) : null;
+    const d = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toDateString() : 'unknown';
     if (!map[d]) map[d] = [];
     map[d].push(n);
   });
 
   Object.entries(map).forEach(([dateStr, groupItems]) => {
-    let title = dateStr;
+    let title = dateStr === 'unknown' ? 'Không rõ thời gian' : dateStr;
     if (dateStr === today) title = 'Hôm nay';
     else if (dateStr === yesterday) title = 'Hôm qua';
-    else title = new Date(dateStr).toLocaleDateString('vi-VN');
+    else if (dateStr !== 'unknown') title = new Date(dateStr).toLocaleDateString('vi-VN');
     groups.push({ title, data: groupItems });
   });
 
@@ -168,7 +169,7 @@ export default function NotificationsScreen() {
       message: n.message ?? n.content ?? '',
       type: n.type ?? 'DEFAULT',
       isRead: Boolean(n.isRead),
-      createdAt: n.createdAt ?? new Date().toISOString(),
+      createdAt: n.createdAt ?? '',
       incidentId: n.incidentId,
       targetId,
       targetType,

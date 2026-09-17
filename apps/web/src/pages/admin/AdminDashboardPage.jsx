@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { IncidentMap } from '../../components/maps/IncidentMap';
-import { feedbackDashboardApi, incidentManagementApi, slaApi } from '@urbanmind/shared-api';
+import { incidentDashboardApi, incidentManagementApi, slaApi } from '@urbanmind/shared-api';
 import {
   ManagerMetricCard,
   ManagerPageHeader,
@@ -27,11 +27,11 @@ import {
 } from '../../services/cache/adminDashboardCache';
 
 const PRIORITY_LABELS = {
-  low: 'Thấp',
-  medium: 'Trung bình',
+  low: 'Tháº¥p',
+  medium: 'Trung bÃ¬nh',
   high: 'Cao',
-  urgent: 'Khẩn cấp',
-  critical: 'Khẩn cấp',
+  urgent: 'Kháº©n cáº¥p',
+  critical: 'Kháº©n cáº¥p',
 };
 
 const STATUS_TONES = {
@@ -59,9 +59,9 @@ const normalizeToken = (value) => String(value || '')
   .toLowerCase();
 
 const formatDateTime = (value) => {
-  if (!value) return 'Chưa cập nhật';
+  if (!value) return 'ChÆ°a cáº­p nháº­t';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Chưa cập nhật';
+  if (Number.isNaN(date.getTime())) return 'ChÆ°a cáº­p nháº­t';
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',
     month: '2-digit',
@@ -80,15 +80,15 @@ const formatIncidentCode = (incident) => {
     '',
   ).trim();
 
-  if (!raw) return '—';
+  if (!raw) return 'â€”';
   if (raw.length <= 12) return raw;
-  return `${raw.slice(0, 8)}…`;
+  return `${raw.slice(0, 8)}â€¦`;
 };
 
 const readPriorityLabel = (value) => (
   PRIORITY_LABELS[String(value || '').trim().toLowerCase()] ||
   value ||
-  'Chưa xác định'
+  'ChÆ°a xÃ¡c Ä‘á»‹nh'
 );
 
 const flattenAreaMapIncidents = (areaDistribution = []) => (
@@ -158,11 +158,11 @@ export const AdminDashboardPage = () => {
           recentResult,
           slaResult,
         ] = await Promise.allSettled([
-          feedbackDashboardApi.getOverview(),
-          feedbackDashboardApi.getStatusDistribution(),
-          feedbackDashboardApi.getPriorityDistribution(),
-          feedbackDashboardApi.getCategoryDistribution(),
-          feedbackDashboardApi.getAreaDistribution(5000),
+          incidentDashboardApi.getOverview(),
+          incidentDashboardApi.getStatusDistribution(),
+          incidentDashboardApi.getPriorityDistribution(),
+          incidentDashboardApi.getCategoryDistribution(),
+          incidentDashboardApi.getAreaDistribution(),
           incidentManagementApi.getIncidents({
             pageNumber: 1,
             pageSize: 5,
@@ -175,7 +175,7 @@ export const AdminDashboardPage = () => {
 
         const coreResults = [overviewResult, statusResult, priorityResult, categoryResult, areaResult];
         if (coreResults.every((result) => result.status === 'rejected')) {
-          throw overviewResult.reason || statusResult.reason || areaResult.reason || new Error('Không thể tải dữ liệu dashboard.');
+          throw overviewResult.reason || statusResult.reason || areaResult.reason || new Error('KhÃ´ng thá»ƒ táº£i dá»¯ liá»‡u dashboard.');
         }
 
         const cachePatch = {};
@@ -219,22 +219,22 @@ export const AdminDashboardPage = () => {
         writeAdminDashboardCache(cachePatch);
 
         const issues = [];
-        if (overviewResult.status === 'rejected') issues.push('KPI tổng quan');
-        if (statusResult.status === 'rejected') issues.push('phân bố trạng thái');
-        if (priorityResult.status === 'rejected') issues.push('phân bố ưu tiên');
-        if (categoryResult.status === 'rejected') issues.push('phân bố danh mục');
-        if (areaResult.status === 'rejected') issues.push('dữ liệu theo phường và bản đồ');
-        if (recentResult.status === 'rejected') issues.push('sự vụ gần đây');
-        if (slaResult.status === 'rejected') issues.push('dữ liệu SLA');
+        if (overviewResult.status === 'rejected') issues.push('KPI tá»•ng quan');
+        if (statusResult.status === 'rejected') issues.push('phÃ¢n bá»‘ tráº¡ng thÃ¡i');
+        if (priorityResult.status === 'rejected') issues.push('phÃ¢n bá»‘ Æ°u tiÃªn');
+        if (categoryResult.status === 'rejected') issues.push('phÃ¢n bá»‘ danh má»¥c');
+        if (areaResult.status === 'rejected') issues.push('dá»¯ liá»‡u theo phÆ°á»ng vÃ  báº£n Ä‘á»“');
+        if (recentResult.status === 'rejected') issues.push('sá»± vá»¥ gáº§n Ä‘Ã¢y');
+        if (slaResult.status === 'rejected') issues.push('dá»¯ liá»‡u SLA');
         if (issues.length > 0) {
-          setWarning(`Chưa tải được ${issues.join(', ')}. Các phần còn lại vẫn giữ dữ liệu hợp lệ.`);
+          setWarning(`ChÆ°a táº£i Ä‘Æ°á»£c ${issues.join(', ')}. CÃ¡c pháº§n cÃ²n láº¡i váº«n giá»¯ dá»¯ liá»‡u há»£p lá»‡.`);
         }
       } catch (loadError) {
         if (loadError?.name === 'AbortError' || !mountedRef.current || requestId !== requestIdRef.current) return;
         setError(
           loadError?.response?.data?.message ||
           loadError?.message ||
-          'Không thể tải tổng quan hệ thống.',
+          'KhÃ´ng thá»ƒ táº£i tá»•ng quan há»‡ thá»‘ng.',
         );
       } finally {
         if (mountedRef.current && requestId === requestIdRef.current) {
@@ -291,8 +291,8 @@ export const AdminDashboardPage = () => {
   const slaBreached = Number(slaOverview?.breachedSla ?? slaOverview?.breached ?? 0);
   const slaWarning = Number(slaOverview?.warningSla ?? slaOverview?.warning ?? 0);
   const topAreaValue = summary.topArea
-    ? `${summary.topArea.name} · ${summary.topArea.count}`
-    : 'Chưa có dữ liệu';
+    ? `${summary.topArea.name} Â· ${summary.topArea.count}`
+    : 'ChÆ°a cÃ³ dá»¯ liá»‡u';
   const selectedMapIncidents = useMemo(
     () => filterAdminDashboardMapIncidents(incidents, selectedAreaKey),
     [incidents, selectedAreaKey],
@@ -311,11 +311,11 @@ export const AdminDashboardPage = () => {
   return (
     <div className="admin-page-shell manager-ui-page space-y-4 pb-6">
       <ManagerPageHeader
-        title="Tổng quan hệ thống"
-        description="Theo dõi sự vụ, từng phường và tín hiệu SLA toàn hệ thống."
+        title="Tá»•ng quan há»‡ thá»‘ng"
+        description="Theo dÃµi sá»± vá»¥, tá»«ng phÆ°á»ng vÃ  tÃ­n hiá»‡u SLA toÃ n há»‡ thá»‘ng."
         icon={Lucide.LayoutDashboard}
-        statusLabel={<span className="whitespace-nowrap">Phường có nhiều sự vụ nhất</span>}
-        statusValue={loading ? 'Đang tải…' : (
+        statusLabel={<span className="whitespace-nowrap">PhÆ°á»ng cÃ³ nhiá»u sá»± vá»¥ nháº¥t</span>}
+        statusValue={loading ? 'Äang táº£iâ€¦' : (
           <span className="inline-block max-w-[220px] truncate whitespace-nowrap align-bottom" title={topAreaValue}>
             {topAreaValue}
           </span>
@@ -327,22 +327,22 @@ export const AdminDashboardPage = () => {
               className="admin-secondary-link inline-flex h-10 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold"
             >
               <Lucide.MapPinned size={16} aria-hidden="true" />
-              Bản đồ sự vụ
+              Báº£n Ä‘á»“ sá»± vá»¥
             </Link>
             <Link
               to="/management/incidents"
               className="admin-primary-action btn h-10 rounded-xl px-4 text-sm font-semibold normal-case"
             >
               <Lucide.Siren size={16} aria-hidden="true" />
-              Quản lý sự vụ
+              Quáº£n lÃ½ sá»± vá»¥
             </Link>
             <button
               type="button"
               onClick={() => load({ background: true })}
               disabled={loading || refreshing}
               className="admin-secondary-action btn h-10 rounded-xl px-3 text-sm font-semibold normal-case"
-              aria-label="Làm mới tổng quan hệ thống"
-              title="Làm mới"
+              aria-label="LÃ m má»›i tá»•ng quan há»‡ thá»‘ng"
+              title="LÃ m má»›i"
             >
               <Lucide.RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
             </button>
@@ -352,7 +352,7 @@ export const AdminDashboardPage = () => {
 
       {error && !initialCacheState.hasData && !hasAggregateDashboardData ? (
         <AdminErrorState
-          title="Không thể tải tổng quan sự vụ"
+          title="KhÃ´ng thá»ƒ táº£i tá»•ng quan sá»± vá»¥"
           description={error}
           onRetry={() => load()}
         />
@@ -360,7 +360,7 @@ export const AdminDashboardPage = () => {
         <>
           {(refreshing || warning) ? (
             <div className="flex min-h-7 flex-wrap items-center justify-between gap-3">
-              <AdminRefreshIndicator visible={refreshing} label="Đang đồng bộ dữ liệu sự vụ…" />
+              <AdminRefreshIndicator visible={refreshing} label="Äang Ä‘á»“ng bá»™ dá»¯ liá»‡u sá»± vá»¥â€¦" />
               {warning ? (
                 <p className="ml-auto inline-flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300" role="status">
                   <Lucide.TriangleAlert size={14} aria-hidden="true" />
@@ -370,35 +370,35 @@ export const AdminDashboardPage = () => {
             </div>
           ) : null}
 
-          <section className="manager-kpi-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số tổng quan hệ thống">
+          <section className="manager-kpi-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chá»‰ sá»‘ tá»•ng quan há»‡ thá»‘ng">
             <ManagerMetricCard
-              label="Tổng sự vụ"
-              value={loading ? '—' : summary.total}
-              description="Tổng số sự vụ trong phạm vi quản trị."
+              label="Tá»•ng sá»± vá»¥"
+              value={loading ? 'â€”' : summary.total}
+              description="Tá»•ng sá»‘ sá»± vá»¥ trong pháº¡m vi quáº£n trá»‹."
               icon={Lucide.Layers3}
               toneClass="bg-blue-50 text-blue-700"
               to="/management/incidents"
             />
             <ManagerMetricCard
-              label="Đang mở"
-              value={loading ? '—' : summary.open}
-              description="Sự vụ chưa ở nhóm trạng thái kết thúc."
+              label="Äang má»Ÿ"
+              value={loading ? 'â€”' : summary.open}
+              description="Sá»± vá»¥ chÆ°a á»Ÿ nhÃ³m tráº¡ng thÃ¡i káº¿t thÃºc."
               icon={Lucide.Activity}
               toneClass="bg-cyan-50 text-cyan-700"
               to="/management/incidents"
             />
             <ManagerMetricCard
-              label="Ưu tiên cao / khẩn"
-              value={loading ? '—' : summary.highPriority}
-              description="Sự vụ cần được theo dõi và điều phối sát."
+              label="Æ¯u tiÃªn cao / kháº©n"
+              value={loading ? 'â€”' : summary.highPriority}
+              description="Sá»± vá»¥ cáº§n Ä‘Æ°á»£c theo dÃµi vÃ  Ä‘iá»u phá»‘i sÃ¡t."
               icon={Lucide.TriangleAlert}
               toneClass="bg-rose-50 text-rose-700"
               to="/management/incidents"
             />
             <ManagerMetricCard
-              label="SLA cảnh báo / vi phạm"
-              value={loading || !slaOverview ? '—' : `${slaWarning} / ${slaBreached}`}
-              description="SLA đang gần hạn hoặc đã vượt cam kết."
+              label="SLA cáº£nh bÃ¡o / vi pháº¡m"
+              value={loading || !slaOverview ? 'â€”' : `${slaWarning} / ${slaBreached}`}
+              description="SLA Ä‘ang gáº§n háº¡n hoáº·c Ä‘Ã£ vÆ°á»£t cam káº¿t."
               icon={Lucide.Gauge}
               toneClass="bg-amber-50 text-amber-700"
               to="/management/sla"
@@ -409,8 +409,8 @@ export const AdminDashboardPage = () => {
             <div className="min-w-0 space-y-5">
               <article className="admin-panel overflow-hidden">
                 <ManagerSectionHeader
-                  title="Tình hình theo phường"
-                  description="So sánh tổng sự vụ và số đang mở để nhận biết khu vực cần chú ý."
+                  title="TÃ¬nh hÃ¬nh theo phÆ°á»ng"
+                  description="So sÃ¡nh tá»•ng sá»± vá»¥ vÃ  sá»‘ Ä‘ang má»Ÿ Ä‘á»ƒ nháº­n biáº¿t khu vá»±c cáº§n chÃº Ã½."
                   icon={Lucide.MapPinned}
                   actions={(
                     <button
@@ -418,7 +418,7 @@ export const AdminDashboardPage = () => {
                       onClick={() => focusDashboardMap('all')}
                       className="text-sm font-semibold text-blue-700 transition hover:text-blue-800 dark:text-blue-300"
                     >
-                      Xem trên bản đồ
+                      Xem trÃªn báº£n Ä‘á»“
                     </button>
                   )}
                 />
@@ -445,8 +445,8 @@ export const AdminDashboardPage = () => {
                               {item.name}
                             </strong>
                             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                              <span><b className="font-semibold text-slate-700 dark:text-slate-200">{item.open || 0}</b> đang mở</span>
-                              <span><b className="font-semibold text-emerald-700 dark:text-emerald-300">{item.completed || 0}</b> đã hoàn thành</span>
+                              <span><b className="font-semibold text-slate-700 dark:text-slate-200">{item.open || 0}</b> Ä‘ang má»Ÿ</span>
+                              <span><b className="font-semibold text-emerald-700 dark:text-emerald-300">{item.completed || 0}</b> Ä‘Ã£ hoÃ n thÃ nh</span>
                             </div>
                           </div>
                         </div>
@@ -463,7 +463,7 @@ export const AdminDashboardPage = () => {
                           <strong className="block text-xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">
                             {item.count}
                           </strong>
-                          <span className="text-xs text-slate-500">sự vụ</span>
+                          <span className="text-xs text-slate-500">sá»± vá»¥</span>
                         </div>
                         <Lucide.ChevronRight size={17} className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500" aria-hidden="true" />
                       </div>
@@ -473,8 +473,8 @@ export const AdminDashboardPage = () => {
                   {!loading && summary.areas.length === 0 ? (
                     <div className="px-6 py-12 text-center">
                       <Lucide.MapPinned size={24} className="mx-auto text-slate-300" aria-hidden="true" />
-                      <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Chưa có dữ liệu theo phường</p>
-                      <p className="mt-1 text-xs text-slate-500">Sự vụ cần có thông tin khu vực để xuất hiện tại đây.</p>
+                      <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">ChÆ°a cÃ³ dá»¯ liá»‡u theo phÆ°á»ng</p>
+                      <p className="mt-1 text-xs text-slate-500">Sá»± vá»¥ cáº§n cÃ³ thÃ´ng tin khu vá»±c Ä‘á»ƒ xuáº¥t hiá»‡n táº¡i Ä‘Ã¢y.</p>
                     </div>
                   ) : null}
                 </div>
@@ -482,12 +482,12 @@ export const AdminDashboardPage = () => {
 
               <article className="admin-panel overflow-hidden">
                 <ManagerSectionHeader
-                  title="Sự vụ cập nhật gần đây"
-                  description="Các sự vụ có thay đổi mới nhất trên toàn hệ thống."
+                  title="Sá»± vá»¥ cáº­p nháº­t gáº§n Ä‘Ã¢y"
+                  description="CÃ¡c sá»± vá»¥ cÃ³ thay Ä‘á»•i má»›i nháº¥t trÃªn toÃ n há»‡ thá»‘ng."
                   icon={Lucide.Clock3}
                   actions={(
                     <Link to="/management/incidents" className="text-sm font-semibold text-blue-700 transition hover:text-blue-800 dark:text-blue-300">
-                      Xem tất cả
+                      Xem táº¥t cáº£
                     </Link>
                   )}
                 />
@@ -508,11 +508,11 @@ export const AdminDashboardPage = () => {
                               {formatIncidentCode(incident)}
                             </span>
                             <strong className="min-w-0 truncate text-sm font-semibold text-slate-900 transition group-hover:text-blue-700 dark:text-slate-100 dark:group-hover:text-blue-300">
-                              {incident?.title || incident?.summary || 'Sự vụ đô thị'}
+                              {incident?.title || incident?.summary || 'Sá»± vá»¥ Ä‘Ã´ thá»‹'}
                             </strong>
                           </div>
                           <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                            <span className="min-w-0 truncate">{incident?.categoryName || 'Chưa xác định danh mục'}</span>
+                            <span className="min-w-0 truncate">{incident?.categoryName || 'ChÆ°a xÃ¡c Ä‘á»‹nh danh má»¥c'}</span>
                             <span className="inline-flex items-center gap-1.5">
                               <Lucide.Clock3 size={12} aria-hidden="true" />
                               {formatDateTime(incident?.updatedAt || incident?.createdAt)}
@@ -523,7 +523,7 @@ export const AdminDashboardPage = () => {
                         <div className="min-w-0 text-sm text-slate-600 dark:text-slate-300">
                           <span className="inline-flex max-w-full items-center gap-1.5">
                             <Lucide.MapPin size={14} className="shrink-0 text-slate-400" aria-hidden="true" />
-                            <span className="truncate">{incident?.areaName || 'Chưa xác định phường'}</span>
+                            <span className="truncate">{incident?.areaName || 'ChÆ°a xÃ¡c Ä‘á»‹nh phÆ°á»ng'}</span>
                           </span>
                         </div>
 
@@ -546,7 +546,7 @@ export const AdminDashboardPage = () => {
 
                   {!loading && recentIncidents.length === 0 ? (
                     <div className="px-6 py-12 text-center text-sm text-slate-500">
-                      Chưa có sự vụ để hiển thị.
+                      ChÆ°a cÃ³ sá»± vá»¥ Ä‘á»ƒ hiá»ƒn thá»‹.
                     </div>
                   ) : null}
                 </div>
@@ -556,8 +556,8 @@ export const AdminDashboardPage = () => {
             <div className="min-w-0 space-y-5">
               <article className="admin-panel overflow-hidden">
                 <ManagerSectionHeader
-                  title="Trạng thái vận hành"
-                  description="Phân bố sự vụ theo trạng thái hiện tại."
+                  title="Tráº¡ng thÃ¡i váº­n hÃ nh"
+                  description="PhÃ¢n bá»‘ sá»± vá»¥ theo tráº¡ng thÃ¡i hiá»‡n táº¡i."
                   icon={Lucide.GitBranch}
                 />
                 <div className="space-y-4 border-t border-slate-100 p-5 dark:border-slate-800">
@@ -578,19 +578,19 @@ export const AdminDashboardPage = () => {
                     </div>
                   ))}
                   {!loading && summary.statuses.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-slate-500">Chưa có dữ liệu trạng thái.</p>
+                    <p className="py-8 text-center text-sm text-slate-500">ChÆ°a cÃ³ dá»¯ liá»‡u tráº¡ng thÃ¡i.</p>
                   ) : null}
                 </div>
               </article>
 
               <article className="admin-panel overflow-hidden">
                 <ManagerSectionHeader
-                  title="Nhóm vấn đề nổi bật"
-                  description="Danh mục nhiều sự vụ."
+                  title="NhÃ³m váº¥n Ä‘á» ná»•i báº­t"
+                  description="Danh má»¥c nhiá»u sá»± vá»¥."
                   icon={Lucide.Tags}
                   actions={(
                     <Link to="/management/categories" className="text-sm font-semibold text-blue-700 transition hover:text-blue-800 dark:text-blue-300">
-                      Quản lý danh mục
+                      Quáº£n lÃ½ danh má»¥c
                     </Link>
                   )}
                 />
@@ -616,7 +616,7 @@ export const AdminDashboardPage = () => {
                     </Link>
                   ))}
                   {!loading && summary.categories.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-slate-500">Chưa có dữ liệu danh mục.</p>
+                    <p className="py-8 text-center text-sm text-slate-500">ChÆ°a cÃ³ dá»¯ liá»‡u danh má»¥c.</p>
                   ) : null}
                 </div>
               </article>
@@ -627,8 +627,8 @@ export const AdminDashboardPage = () => {
 
           <article ref={mapSectionRef} data-admin-dashboard-map className="admin-panel scroll-mt-24 overflow-hidden">
             <ManagerSectionHeader
-              title="Bản đồ giám sát theo phường"
-              description={selectedArea ? `Đang xem ${selectedArea.name}.` : 'Tổng quan vị trí sự vụ trên toàn bộ các phường.'}
+              title="Báº£n Ä‘á»“ giÃ¡m sÃ¡t theo phÆ°á»ng"
+              description={selectedArea ? `Äang xem ${selectedArea.name}.` : 'Tá»•ng quan vá»‹ trÃ­ sá»± vá»¥ trÃªn toÃ n bá»™ cÃ¡c phÆ°á»ng.'}
               icon={Lucide.Map}
               actions={(
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -638,14 +638,14 @@ export const AdminDashboardPage = () => {
                       onClick={() => focusDashboardMap('all')}
                       className="text-sm font-semibold text-slate-500 transition hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300"
                     >
-                      Tất cả phường
+                      Táº¥t cáº£ phÆ°á»ng
                     </button>
                   ) : null}
                   <Link
                     to={detailedMapUrl}
                     className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 transition hover:text-blue-800 dark:text-blue-300"
                   >
-                    Mở bản đồ chi tiết
+                    Má»Ÿ báº£n Ä‘á»“ chi tiáº¿t
                     <Lucide.ArrowUpRight size={14} aria-hidden="true" />
                   </Link>
                 </div>
@@ -653,10 +653,10 @@ export const AdminDashboardPage = () => {
             />
             <div className="border-t border-slate-100 p-3 dark:border-slate-800">
               <div className="mb-3 flex items-center justify-between gap-3 px-1 text-xs text-slate-500 dark:text-slate-400">
-                <span>{selectedMapIncidents.length} sự vụ trong phạm vi đang xem</span>
+                <span>{selectedMapIncidents.length} sá»± vá»¥ trong pháº¡m vi Ä‘ang xem</span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />
-                  {selectedArea ? selectedArea.name : 'Tất cả phường'}
+                  {selectedArea ? selectedArea.name : 'Táº¥t cáº£ phÆ°á»ng'}
                 </span>
               </div>
               <div className="relative h-[320px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900">
@@ -672,7 +672,7 @@ export const AdminDashboardPage = () => {
                 {!loading && selectedMapIncidents.length === 0 ? (
                   <div className="pointer-events-none absolute left-1/2 top-4 z-[500] -translate-x-1/2">
                     <div className="rounded-xl border border-slate-200 bg-white/95 px-4 py-2 text-center text-xs font-semibold text-slate-600 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-300">
-                      Chưa có sự vụ trong phạm vi này
+                      ChÆ°a cÃ³ sá»± vá»¥ trong pháº¡m vi nÃ y
                     </div>
                   </div>
                 ) : null}
@@ -693,3 +693,5 @@ export const AdminDashboardPage = () => {
 };
 
 export default AdminDashboardPage;
+
+

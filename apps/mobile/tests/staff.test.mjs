@@ -13,7 +13,7 @@ const { normalizeStaffRecord, normalizePage, normalizeMessage, normalizeStaffNot
 
 // Node test runner resolves the extensionless TS import used by Metro.
 const resolver = registerHooks({ resolve(specifier, context, nextResolve) {
-  if (['./staff-models', './staff-execution-models'].includes(specifier) && context.parentURL?.includes('/features/staff/')) {
+  if (['./staff-models', './staff-execution-models', './staff-execution-flow-models'].includes(specifier) && context.parentURL?.includes('/features/staff/')) {
     return nextResolve(specifier + '.ts', context);
   }
   return nextResolve(specifier, context);
@@ -21,6 +21,7 @@ const resolver = registerHooks({ resolve(specifier, context, nextResolve) {
 const { staffApi, staffKeys } = await import('../src/features/staff/staff-api.ts');
 const { executionApi, executionKeys } = await import('../src/features/staff/staff-execution-api.ts');
 const { buildEvidenceFormData, canEditIncidentExecution, canStartIncidentProcessing, canSubmitIncidentResolution, incidentResolutionSubmissionMode, normalizeIncidentResolution, normalizeCompletionEvidence } = await import('../src/features/staff/staff-execution-models.ts');
+const { buildExecutionSteps, currentExecutionStep, parseExecutionDraft, resolveExecutionMode } = await import('../src/features/staff/staff-execution-flow-models.ts');
 const { profileApi } = await import('../src/features/profile/api/profile-api.ts');
 resolver.deregister();
 
@@ -328,7 +329,16 @@ test('staff messages use internal scope explicitly and preserve public/internal 
   } finally { get.mock.restore(); post.mock.restore(); }
 });
 
-test('confirmed Incident execution capabilities start through Provider assignment and support resubmit', () => {
+test('Staff chat reuses the Resident keyboard composer contract without double Android offsets', () => {
+  const source = readFileSync(new URL('../src/features/staff/components/staff-chat-screen.tsx', import.meta.url), 'utf8');
+  assert.match(source, /KeyboardAwareComposerLayout/);
+  assert.match(source, /avoidContentOverlap/);
+  assert.doesNotMatch(source, /KeyboardAvoidingView|useHeaderHeight|keyboardVerticalOffset|composerMinHeight/);
+  assert.match(source, /width:\s*48,\s*height:\s*48/);
+  assert.match(source, /accessibilityLabel=\{internal \? 'Lưu ghi chú nội bộ' : 'Gửi phản hồi'\}/);
+});
+
+test('confirmed Incident execution capabilities support provider flow, direct status transition and resubmit', () => {
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.scope, 'provider-assignment');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.fromStatus, 'Reported');
@@ -341,6 +351,7 @@ test('confirmed Incident execution capabilities start through Provider assignmen
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.resubmitConfirmed, true);
   assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.submitStatuses, ['InProgress', 'NeedRework']);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.completionEvidence.clearAllAvailable, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.statusTransition.available, true);
 });
 
 const executionAssignment = { providerAssignmentId: 501, incidentId: 'incident/1', coordinatorId: 41, providerName: 'Đội thoát nước', reportStatus: 'Reported', contactLogCount: 0, completionDocumentCount: 0 };
@@ -381,6 +392,36 @@ test('Staff start processing uses the Provider assignment transition and validat
     patch.mock.mockImplementation(async () => ({ ...executionAssignment, providerAssignmentId: 999, reportStatus: 'InProgress' }));
     await assert.rejects(executionApi.startProcessing(501), /không thuộc phân công/);
   } finally { patch.mock.restore(); }
+});
+
+test('Staff direct processing uses the Incident status contract and validates its identity', async () => {
+  const patch = mock.method(axiosClient, 'patch', async () => ({
+    incidentId: 'incident/1', status: 'InProgress', assignedStaffUserId: 'staff-1', reports: [],
+  }));
+  try {
+    const result = await executionApi.startIncidentDirectly('incident/1', { note: '  Staff tự xử lý  ', status: 'Closed' });
+    assert.equal(result.id, 'incident/1');
+    assert.equal(result.status, 'InProgress');
+    assert.deepEqual(patch.mock.calls[0].arguments, ['/api/management/incidents/incident%2F1/status', { status: 'InProgress', note: 'Staff tự xử lý' }]);
+    patch.mock.mockImplementation(async () => ({ incidentId: 'another-incident', status: 'InProgress', reports: [] }));
+    await assert.rejects(executionApi.startIncidentDirectly('incident/1'), /không thuộc sự vụ/);
+  } finally { patch.mock.restore(); }
+});
+
+test('guided execution flow resumes backend progress and preserves an explicit skipped evidence step', () => {
+  assert.equal(resolveExecutionMode({ hasAssignment: true, status: 'Assigned', draftMode: 'direct' }), 'provider');
+  assert.equal(resolveExecutionMode({ hasAssignment: false, status: 'Assigned' }), null);
+  assert.equal(resolveExecutionMode({ hasAssignment: false, status: 'InProgress' }), 'direct');
+  const provider = buildExecutionSteps({ mode: 'provider', status: 'InProgress', hasAssignment: true, contactCount: 1, evidenceCount: 0, resolutionCount: 0 });
+  assert.equal(currentExecutionStep(provider), 'evidence');
+  assert.deepEqual(provider.map((step) => step.state), ['done', 'done', 'current', 'upcoming']);
+  const skipped = buildExecutionSteps({ mode: 'direct', status: 'InProgress', hasAssignment: false, contactCount: 0, evidenceCount: 0, resolutionCount: 0, activeStep: 'resolution', evidenceSkipped: true });
+  assert.deepEqual(skipped.map((step) => step.state), ['done', 'skipped', 'current']);
+  const rework = buildExecutionSteps({ mode: 'provider', status: 'NeedRework', hasAssignment: true, contactCount: 1, evidenceCount: 2, resolutionCount: 1 });
+  assert.equal(currentExecutionStep(rework), 'evidence');
+  const draft = parseExecutionDraft(JSON.stringify({ mode: 'direct', activeStep: 'resolution', evidenceSkipped: true, resolutionSummary: 'Đã xử lý' }));
+  assert.equal(draft.mode, 'direct'); assert.equal(draft.activeStep, 'resolution'); assert.equal(draft.evidenceSkipped, true);
+  assert.equal(parseExecutionDraft('{bad').mode, null);
 });
 
 test('execution read APIs use Incident/assignment routes, encode identity and accept assignment 204 only as no assignment', async () => {
@@ -478,12 +519,12 @@ test('NeedRework evidence clear uses the contract path, validates the assignment
     assert.deepEqual(remove.mock.calls[0].arguments, ['/api/management/provider-assignments/501/completion-documents']);
   } finally { remove.mock.restore(); }
 
-  const source = readFileSync(new URL('../src/features/staff/components/staff-resolution-screen.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/features/staff/components/staff-execution-flow-screen.tsx', import.meta.url), 'utf8');
   assert.match(source, /currentStatus\s*===\s*['"]needrework['"]/i);
   assert.match(source, /normalizeKey\(latest\.status\)\s*!==\s*['"]needrework['"]/i);
   assert.match(source, /Xóa toàn bộ minh chứng cũ/);
-  assert.match(source, /Xác nhận xóa toàn bộ/);
-  assert.match(source, /Tệp đang chọn và nội dung kết quả vẫn được giữ/);
+  assert.match(source, /Xác nhận xóa/);
+  assert.match(source, /Nội dung đang nhập vẫn được giữ/);
   assert.match(source, /DocumentPicker\.getDocumentAsync/);
   assert.match(source, /application\/pdf/);
 });

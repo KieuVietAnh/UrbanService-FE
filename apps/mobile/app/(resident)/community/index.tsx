@@ -16,7 +16,6 @@ import { colors } from '@/constants/theme';
 const FILTERS = [
   { key: 'latest', label: 'Mới nhất' },
   { key: 'resolved', label: 'Đã xử lý' },
-  { key: 'trending', label: 'Phổ biến' },
 ];
 
 export default function CommunityFeedScreen() {
@@ -41,7 +40,6 @@ export default function CommunityFeedScreen() {
   const summary = useMemo(() => ({
     total: data?.totalItems ?? items.length,
     resolved: items.filter((item) => String(item?.status ?? '').toUpperCase() === 'RESOLVED').length,
-    active: Math.max(1, items.length),
   }), [data?.totalItems, items]);
 
   return (
@@ -91,17 +89,14 @@ export default function CommunityFeedScreen() {
               </View>
               <View style={styles.heroStatBox}>
                 <Text className="text-xl font-sans-bold text-text">{summary.resolved}</Text>
-                <Text className="text-2xs text-text-muted">Đã xử lý</Text>
+                <Text className="text-2xs text-text-muted">Đã xử lý ở trang này</Text>
               </View>
             </View>
           </View>
         </AppCard>
 
         <View style={styles.sectionTitleRow}>
-          <Text className="text-base font-sans-semibold text-text">Đang nổi bật</Text>
-          <Pressable onPress={() => setActiveFilter('trending')}>
-            <Text className="text-sm font-sans-semibold text-primary">Xem thêm</Text>
-          </Pressable>
+          <Text className="text-base font-sans-semibold text-text">Phản ánh gần đây</Text>
         </View>
 
         <View style={styles.filterRow}>

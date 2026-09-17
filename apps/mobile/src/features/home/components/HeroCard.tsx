@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
@@ -8,9 +8,6 @@ import type { RouterLike } from '../types';
 import { styles } from '../homeStyles';
 
 type Props = { router: RouterLike };
-
-const CITY_IMAGE =
-  'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=900&q=80';
 
 export function HeroCard({ router }: Props) {
   return (
@@ -37,7 +34,9 @@ export function HeroCard({ router }: Props) {
         </View>
 
         <View style={styles.heroIllustration}>
-          <Image source={{ uri: CITY_IMAGE }} style={styles.heroCityImage} />
+          <View style={[styles.heroCityImage, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#DBEAFE' }]}>
+            <Icon name="map" size={42} color="#2563EB" />
+          </View>
           <View style={styles.heroCloud} />
           <View style={styles.heroPhoneCard}>
             <Icon name="smartphone" size={18} color="#2563EB" />
