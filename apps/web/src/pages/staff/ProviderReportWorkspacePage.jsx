@@ -356,6 +356,19 @@ export const ProviderReportWorkspacePage = () => {
     return currentReport?.feedbackId || currentReport?.feedback?.feedbackId || currentReport?.feedback?.id || feedbackIdFromState || null;
   }, [feedbackIdFromState, report]);
 
+  /*
+   * SLA đã chuyển từ Feedback sang Incident, nên mọi thao tác SLA cần id của
+   * sự vụ. Phản ánh gốc vẫn được giữ cho các phần khác của màn hình.
+   */
+  const extractIncidentId = useCallback((currentReport = report) => {
+    return currentReport?.incidentId
+      || currentReport?.activeIncidentId
+      || currentReport?.incident?.incidentId
+      || currentReport?.incident?.id
+      || currentReport?.feedback?.incidentId
+      || null;
+  }, [report]);
+
   /* ── Navigation helpers ─────────────────────────────────────────────────── */
   const goTo = (idx) => {
     const step = STEPS[idx];
@@ -1052,18 +1065,18 @@ export const ProviderReportWorkspacePage = () => {
      *    thì ghi nhận First Response SLA.
      */
     if (shouldAutoTransition) {
-      const feedbackId =
-        extractFeedbackId(report);
+      const slaIncidentId =
+        extractIncidentId(report);
 
-      if (!feedbackId) {
+      if (!slaIncidentId) {
         throw new Error(
-          'Không xác định được feedbackId để ghi nhận First Response SLA.'
+          'Không xác định được sự vụ để ghi nhận First Response SLA.'
         );
       }
 
       try {
-  await slaApi.markResponded(
-    feedbackId,
+  await slaApi.markIncidentResponded(
+    slaIncidentId,
     'Staff đã liên hệ coordinator thành công.'
   );
 } catch (slaErr) {

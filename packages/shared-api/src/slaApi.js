@@ -57,101 +57,18 @@ export const slaApi = {
     return unwrapApiData(response);
   },
 
-  async startFeedbackSla(feedbackId) {
-  const response = await axiosClient.post(
-    `/api/slas/feedback/${feedbackId}/start`
-  );
-  return unwrapApiData(response);
-},
+  // ---------------------------------------------------------------------------
+  // Vòng đời SLA của sự vụ.
+  //
+  // SLA đã chuyển hẳn từ Feedback sang Incident ở backend, nên mọi thao tác dưới
+  // đây nhận incidentId. Các hàm *FeedbackSla cũ đã bị gỡ vì route
+  // /api/slas/feedback/... không còn tồn tại và chỉ trả về 404.
+  // ---------------------------------------------------------------------------
 
-async getCurrentFeedbackSla(feedbackId) {
-  const response = await axiosClient.get(
-    `/api/slas/feedback/${feedbackId}`
-  );
-  return unwrapApiData(response);
-},
-
-async markResponded(
-  feedbackId,
-  note = null
-) {
-  const response =
-    await axiosClient.patch(
-      `/api/slas/feedback/${feedbackId}/responded`,
-      JSON.stringify(note),
-      {
-        headers: {
-          'Content-Type':
-            'application/json'
-        }
-      }
-    );
-
-  return unwrapApiData(response);
-},
-
-async pauseFeedbackSla(feedbackId, payload) {
-  const response = await axiosClient.post(
-    `/api/slas/feedback/${feedbackId}/pause`,
-    payload
-  );
-  return unwrapApiData(response);
-},
-
-async resumeFeedbackSla(feedbackId, payload) {
-  const response = await axiosClient.post(
-    `/api/slas/feedback/${feedbackId}/resume`,
-    payload
-  );
-  return unwrapApiData(response);
-},
-
-async completeFeedbackSla(feedbackId, payload) {
-  const response = await axiosClient.post(
-    `/api/slas/feedback/${feedbackId}/complete`,
-    payload
-  );
-  return unwrapApiData(response);
-},
-
-async recalculateFeedbackSla(feedbackId, payload) {
-  const response = await axiosClient.post(
-    `/api/slas/feedback/${feedbackId}/recalculate`,
-    payload
-  );
-  return unwrapApiData(response);
-},
-
-async cancelFeedbackSla(feedbackId, note = null) {
-  const response = await axiosClient.post(
-    `/api/slas/feedback/${feedbackId}/cancel`,
-    note
-  );
-  return unwrapApiData(response);
-},
-
-async checkSlaViolation(feedbackSlaId) {
-  const response = await axiosClient.post(
-    `/api/slas/${feedbackSlaId}/check`
-  );
-  return unwrapApiData(response);
-},
-
-async getFeedbackSlaStatus(feedbackId, requestConfig = {}) {
-  const response = await axiosClient.get(
-    `/api/slas/feedback/${feedbackId}/status`,
-    requestConfig,
-  );
-  return unwrapApiData(response);
-},
-
-async getFeedbackSlaTimeline(feedbackId) {
-  const response = await axiosClient.get(
-    `/api/slas/feedback/${feedbackId}/timeline`
-  );
-  return unwrapApiData(response);
-},
-
+  async startIncidentSla(incidentId) {
+    const response = await axiosClient.post(`/api/slas/incident/${incidentId}/start`);
+    return unwrapApiData(response);
+  },
 
   async getCurrentIncidentSla(incidentId, requestConfig = {}) {
     const response = await axiosClient.get(`/api/slas/incident/${incidentId}`, requestConfig);
@@ -168,6 +85,42 @@ async getFeedbackSlaTimeline(feedbackId) {
     return unwrapApiData(response);
   },
 
+  // Backend nhận ghi chú dưới dạng một chuỗi JSON trần, không bọc trong object.
+  async markIncidentResponded(incidentId, note = null) {
+    const response = await axiosClient.patch(
+      `/api/slas/incident/${incidentId}/responded`,
+      JSON.stringify(note),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+    return unwrapApiData(response);
+  },
+
+  async pauseIncidentSla(incidentId, payload) {
+    const response = await axiosClient.post(`/api/slas/incident/${incidentId}/pause`, payload);
+    return unwrapApiData(response);
+  },
+
+  async resumeIncidentSla(incidentId, payload) {
+    const response = await axiosClient.post(`/api/slas/incident/${incidentId}/resume`, payload);
+    return unwrapApiData(response);
+  },
+
+  async completeIncidentSla(incidentId, payload) {
+    const response = await axiosClient.post(`/api/slas/incident/${incidentId}/complete`, payload);
+    return unwrapApiData(response);
+  },
+
+  async recalculateIncidentSla(incidentId, payload) {
+    const response = await axiosClient.post(`/api/slas/incident/${incidentId}/recalculate`, payload);
+    return unwrapApiData(response);
+  },
+
+  async cancelIncidentSla(incidentId, note = null) {
+    const response = await axiosClient.post(`/api/slas/incident/${incidentId}/cancel`, note);
+    return unwrapApiData(response);
+  },
+
+  // Nhận id của bản ghi SLA, không phải id của sự vụ.
   async checkIncidentSlaViolation(incidentSlaId) {
     const response = await axiosClient.post(`/api/slas/${incidentSlaId}/check`);
     return unwrapApiData(response);

@@ -5,6 +5,7 @@ const arrayOrFallback = (value, fallback) => (
 export const buildManagerDashboardStats = (baseStats = {}, managerDashboard = {}, previousStats = {}) => {
   const managerOverview = managerDashboard?.overview ?? previousStats?.managerOverview ?? null;
   const slaOverview = managerDashboard?.slaOverview ?? previousStats?.slaOverview ?? null;
+  const todaySummary = managerDashboard?.todaySummary ?? previousStats?.todaySummary ?? null;
 
   return {
     ...baseStats,
@@ -27,6 +28,7 @@ export const buildManagerDashboardStats = (baseStats = {}, managerDashboard = {}
       : (Number(previousStats?.processingRate) || Number(baseStats?.processingRate) || 0),
     managerOverview,
     managerOverviewAvailable: Boolean(managerOverview),
+    todaySummary,
     slaOverview,
     managerDataIssues: Array.isArray(managerDashboard?.dataIssues) ? managerDashboard.dataIssues : [],
   };

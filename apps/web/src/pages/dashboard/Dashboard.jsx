@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
 import { analyticsApi } from '../../services/api/analyticsApi';
 import { slaApi } from '../../services/api/slaApi';
-import { axiosClient, toolsApi, managementFeedbackApi, feedbackDashboardApi } from '@urbanmind/shared-api';
+import { axiosClient, toolsApi, managementFeedbackApi, incidentDashboardApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
 import { normalizeRole } from '../../utils/roleMap';
 import { APP_ROLES, getStatusLabel, managementTypes, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
@@ -19,6 +19,7 @@ import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
 import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
 import { buildManagerDashboardStats, managerMetricValue } from './managerDashboardUtils.mjs';
+import { IncidentDistributionPanel } from '../../components/manager/IncidentDistributionPanel';
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-area-filter-v2';
@@ -782,9 +783,9 @@ export const Dashboard = () => {
 
   const fetchAdminDashboardContent = useCallback(async () => {
     const [overviewResult, categoryResult, recentResult, mapResult, slaOverviewResult] = await Promise.allSettled([
-      feedbackDashboardApi.getOverview(),
-      feedbackDashboardApi.getCategoryDistribution(),
-      feedbackDashboardApi.getRecent(10),
+      incidentDashboardApi.getOverview(),
+      incidentDashboardApi.getCategoryDistribution(),
+      incidentDashboardApi.getRecent(10),
       managementFeedbackApi.getFeedbacks({
         pageIndex: 0,
         pageSize: 1000,
@@ -812,14 +813,16 @@ export const Dashboard = () => {
       trendResult,
       urgentResult,
       slaOverviewResult,
+      todayResult,
     ] = await Promise.allSettled([
-      feedbackDashboardApi.getOverview(),
-      feedbackDashboardApi.getStatusDistribution(),
-      feedbackDashboardApi.getCategoryDistribution(),
-      feedbackDashboardApi.getAreaDistribution(),
-      feedbackDashboardApi.getMonthlyTrend(6),
-      feedbackDashboardApi.getUrgentOpen(3),
+      incidentDashboardApi.getOverview(),
+      incidentDashboardApi.getStatusDistribution(),
+      incidentDashboardApi.getCategoryDistribution(),
+      incidentDashboardApi.getAreaDistribution(),
+      incidentDashboardApi.getMonthlyTrend(6),
+      incidentDashboardApi.getUrgentOpen(3),
       slaApi.getDashboardOverview(),
+      incidentDashboardApi.getTodaySummary(),
     ]);
 
     const categoryDistribution = categoryResult.status === 'fulfilled' && Array.isArray(categoryResult.value)
@@ -836,6 +839,7 @@ export const Dashboard = () => {
       [trendResult, 'xu hướng'],
       [urgentResult, 'sự vụ khẩn cấp'],
       [slaOverviewResult, 'SLA'],
+      [todayResult, 'số liệu trong ngày'],
     ]
       .filter(([result]) => result.status === 'rejected')
       .map(([, label]) => label);
@@ -854,6 +858,7 @@ export const Dashboard = () => {
         ? urgentResult.value
         : null,
       slaOverview: slaOverviewResult.status === 'fulfilled' ? slaOverviewResult.value : null,
+      todaySummary: todayResult.status === 'fulfilled' ? todayResult.value : null,
       dataIssues,
     };
   }, []);
@@ -2535,6 +2540,12 @@ export const Dashboard = () => {
     const slaSummary = stats?.slaOverview || {};
     const urgentOpenItems = Array.isArray(stats?.urgentOpen) ? stats.urgentOpen.slice(0, 3) : [];
     const areaDistribution = Array.isArray(stats?.areaDistribution) ? stats.areaDistribution : [];
+    /*
+     * Ranh giới "hôm nay" do backend tính theo giờ Việt Nam, không suy ra từ
+     * đồng hồ trình duyệt để tránh lệch ngày với người dùng ở múi giờ khác.
+     */
+    const todaySummary = stats?.todaySummary ?? null;
+    const todayTopArea = Array.isArray(todaySummary?.byArea) ? todaySummary.byArea[0] : null;
     const categoryDistribution = Array.isArray(stats?.categoryDistribution) ? stats.categoryDistribution : [];
     const monthlyTrend = Array.isArray(stats?.monthlyTrend) ? stats.monthlyTrend.slice(-6) : [];
 
@@ -2690,6 +2701,36 @@ export const Dashboard = () => {
           </div>
         )}
 
+        {todaySummary ? (
+          <section
+            className="flex flex-wrap items-center gap-x-7 gap-y-2 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            aria-label="Số liệu tiếp nhận trong ngày"
+          >
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+              <Lucide.CalendarClock size={16} aria-hidden="true" />
+              Hôm nay
+              {todaySummary.date ? (
+                <span className="text-xs font-normal text-slate-400">{todaySummary.date}</span>
+              ) : null}
+            </span>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              Phản ánh nhận <strong className="ml-1 text-slate-900 dark:text-slate-100">{toDashboardCount(todaySummary.reportCount)}</strong>
+            </span>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              Sự vụ mới <strong className="ml-1 text-slate-900 dark:text-slate-100">{toDashboardCount(todaySummary.incidentCount)}</strong>
+            </span>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              Xử lý xong <strong className="ml-1 text-slate-900 dark:text-slate-100">{toDashboardCount(todaySummary.resolvedCount)}</strong>
+            </span>
+            {todayTopArea ? (
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                Nhiều nhất <strong className="ml-1 text-slate-900 dark:text-slate-100">{todayTopArea.areaName}</strong>
+                <span className="ml-1 text-slate-400">({toDashboardCount(todayTopArea.count)})</span>
+              </span>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="manager-kpi-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số tổng quan">
           {kpis.map((item) => <ManagerMetricCard key={item.label} {...item} />)}
         </section>
@@ -2803,6 +2844,8 @@ export const Dashboard = () => {
           </article>
         </section>
 
+        <IncidentDistributionPanel />
+
         <section className="admin-panel overflow-hidden">
           <ManagerSectionHeader
             title="Xu hướng tiếp nhận"
@@ -2849,7 +2892,7 @@ export const Dashboard = () => {
             <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
               {areaDistribution.length > 0 ? areaDistribution.map((area, index) => {
                 const openCount = toDashboardCount(area?.openCount);
-                const totalCount = toDashboardCount(area?.totalCount);
+                const totalCount = toDashboardCount(area?.count ?? area?.totalCount);
                 const completedCount = toDashboardCount(area?.completedCount);
                 const width = Math.max(4, (openCount / areaMax) * 100);
                 return (
