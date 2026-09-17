@@ -19,6 +19,7 @@ import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
 import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
 import { buildManagerDashboardStats, managerMetricValue } from './managerDashboardUtils.mjs';
+import { IncidentDistributionPanel } from '../../components/manager/IncidentDistributionPanel';
 
 const DASHBOARD_AREA_STORAGE_KEY =
   'urbanmind-dashboard-area-filter-v2';
@@ -2842,6 +2843,8 @@ export const Dashboard = () => {
             <p className="border-t border-slate-100 px-5 py-3 text-xs leading-5 text-slate-400 dark:border-slate-800">Đơn vị: bản ghi SLA. Không quy đổi trực tiếp thành số sự vụ duy nhất.</p>
           </article>
         </section>
+
+        <IncidentDistributionPanel />
 
         <section className="admin-panel overflow-hidden">
           <ManagerSectionHeader
