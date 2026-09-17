@@ -64,6 +64,7 @@ export const getStatusStep = (status) => {
 const COMMON_BADGE_CLASS = 'inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm whitespace-nowrap';
 
 export const PRIORITY_BADGE_CLASSES = {
+  Urgent: COMMON_BADGE_CLASS,
   Critical: COMMON_BADGE_CLASS,
   High: COMMON_BADGE_CLASS,
   Medium: COMMON_BADGE_CLASS,

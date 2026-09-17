@@ -36,7 +36,7 @@ const statusOptions = [
 
 const priorityOptions = [
   { value: 'all', label: 'Tất cả ưu tiên' },
-  { value: 'Critical', label: 'Khẩn cấp' },
+  { value: 'Urgent', label: 'Khẩn cấp' },
   { value: 'High', label: 'Cao' },
   { value: 'Medium', label: 'Trung bình' },
   { value: 'Low', label: 'Thấp' },
@@ -217,6 +217,11 @@ const STATUS_META = {
   rejected: { label: 'Đã từ chối', className: 'bg-rose-50 text-rose-700 ring-rose-100' },
   closed: { label: 'Đã đóng', className: 'bg-slate-100 text-slate-700 ring-slate-200' },
   cancelled: { label: 'Đã hủy', className: 'bg-slate-100 text-slate-600 ring-slate-200' },
+};
+
+const normalizePriorityValue = (value) => {
+  const normalized = String(value || '').trim();
+  return normalized === 'Critical' ? 'Urgent' : normalized;
 };
 
 const PRIORITY_META = {
@@ -624,8 +629,8 @@ export const InteractionHistoryMonitoring = () => {
         ? areaFiltered
         : areaFiltered.filter(
             (ticket) =>
-              String(ticket.priority || '').toLowerCase() ===
-              priorityFilter.toLowerCase()
+              normalizePriorityValue(ticket.priority).toLowerCase() ===
+              normalizePriorityValue(priorityFilter).toLowerCase()
           );
 
     if (metricFilter === 'all') return priorityFiltered;

@@ -61,6 +61,7 @@ const STATUS_META = {
 };
 
 const PRIORITY_META = {
+  Urgent: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/20' },
   Critical: { label: 'Khẩn cấp', className: 'bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/20' },
   High: { label: 'Cao', className: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/20' },
   Medium: { label: 'Trung bình', className: 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/20' },

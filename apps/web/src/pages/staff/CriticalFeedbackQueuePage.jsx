@@ -7,11 +7,11 @@ import { toolsApi } from '@urbanmind/shared-api';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 
-const URGENCY_OPTIONS = ['High', 'Critical'];
+const URGENCY_OPTIONS = ['High', 'Urgent'];
 
 const getUrgencyIntent = (urgency = '') => {
   const normalized = `${urgency || ''}`.trim().toLowerCase();
-  if (normalized === 'critical') return 'danger';
+  if (normalized === 'urgent' || normalized === 'critical') return 'danger';
   if (normalized === 'high') return 'warning';
   return 'neutral';
 };
@@ -61,7 +61,7 @@ export const CriticalFeedbackQueuePage = () => {
         const normalizedQueue = Array.isArray(queueResponse) ? queueResponse : [];
         const criticalOnly = normalizedQueue.filter((item) => {
           const urgency = `${item?.urgencyLevel || item?.analysisResult?.urgencyLevel || item?.urgency || ''}`.trim();
-          return urgency === 'High' || urgency === 'Critical';
+          return urgency === 'High' || urgency === 'Urgent' || urgency === 'Critical';
         });
 
         setFeedbacks(criticalOnly);
@@ -87,7 +87,8 @@ export const CriticalFeedbackQueuePage = () => {
 
       const matchesSearch = !search || [title, area, category].some((value) => value.includes(search.toLowerCase()));
       const matchesCategory = !categoryFilter || category.includes(categoryFilter.toLowerCase());
-      const matchesUrgency = !urgencyFilter || urgency === urgencyFilter;
+      const normalizedUrgency = urgency === 'Critical' ? 'Urgent' : urgency;
+      const matchesUrgency = !urgencyFilter || normalizedUrgency === urgencyFilter;
 
       return matchesSearch && matchesCategory && matchesUrgency;
     });
@@ -110,7 +111,7 @@ export const CriticalFeedbackQueuePage = () => {
             </Badge>
             <h1 className="admin-hero-title mt-3">Theo dõi phản ánh có mức độ ưu tiên cao</h1>
             <p className="admin-hero-description mt-2 max-w-2xl">
-              Chỉ hiển thị các phản ánh đã được AI đánh dấu là High hoặc Critical để nhân viên xử lý nhanh hơn.
+              Chỉ hiển thị các phản ánh đã được AI đánh dấu là High hoặc Urgent để nhân viên xử lý nhanh hơn.
             </p>
           </div>
           <div className="admin-inset-panel px-4 py-3 text-sm text-slate-600">

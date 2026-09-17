@@ -32,6 +32,7 @@ const STATUS_META = {
 };
 
 const PRIORITY_META = {
+  Urgent: { label: 'Rất khẩn cấp', className: 'badge-error' },
   Critical: { label: 'Rất khẩn cấp', className: 'badge-error' },
   High: { label: 'Cao', className: 'badge-error' },
   Medium: { label: 'Trung bình', className: 'badge-warning' },

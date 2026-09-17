@@ -115,7 +115,7 @@ const STATUS_OPTIONS = [
 ];
 
 const PRIORITY_OPTIONS = [
-  ['Critical', 'Khẩn cấp'],
+  ['Urgent', 'Khẩn cấp'],
   ['High', 'Cao'],
   ['Medium', 'Trung bình'],
   ['Low', 'Thấp'],
@@ -536,7 +536,8 @@ export const IncidentManagement = () => {
   const categoryGroup = searchParams.get('categoryGroup') || '';
   const status = searchParams.get('status') || '';
   const statusGroup = searchParams.get('statusGroup') || '';
-  const priority = searchParams.get('priority') || '';
+  const rawPriority = searchParams.get('priority') || '';
+  const priority = rawPriority === 'Critical' ? 'Urgent' : rawPriority;
   const severity = searchParams.get('severity') || '';
   const coordinateFilter = searchParams.get('coordinates') || '';
   const isAdminIncidentList = location.pathname.startsWith('/management/incidents');

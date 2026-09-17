@@ -1330,6 +1330,7 @@ const RoleDashboard = () => {
   // Convert ticket priority string to Figma priority badge
   const renderPriorityBadge = (p) => {
     switch (p) {
+      case 'Urgent':
       case 'Critical':
         return <span className="badge-priority-critical">KHẨN CẤP</span>;
       case 'High':
@@ -1419,7 +1420,7 @@ const RoleDashboard = () => {
     }
 
     if (staffFilter === 'high-priority') {
-      return ['Critical', 'High'].includes(ticket.priority);
+      return ['Urgent', 'Critical', 'High'].includes(ticket.priority);
     }
 
     return true;

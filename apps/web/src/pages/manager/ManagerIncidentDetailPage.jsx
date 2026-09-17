@@ -161,7 +161,7 @@ const INCIDENT_STATUS_ACTION_OPTIONS = [
 ];
 
 const PRIORITY_OPTIONS = [
-  ['Low', 'Thấp'], ['Medium', 'Trung bình'], ['High', 'Cao'], ['Critical', 'Khẩn cấp'],
+  ['Low', 'Thấp'], ['Medium', 'Trung bình'], ['High', 'Cao'], ['Urgent', 'Khẩn cấp'],
 ];
 
 const SEVERITY_OPTIONS = [
@@ -1047,7 +1047,7 @@ export const IncidentDetailPage = () => {
     setEditForm({
       title: incident?.title ?? incident?.summary ?? '',
       description: incident?.description ?? '',
-      priority: incident?.priority || 'Medium',
+      priority: incident?.priority === 'Critical' ? 'Urgent' : (incident?.priority || 'Medium'),
       severity: incident?.severity ?? incident?.severityLevel ?? 'Medium',
     });
     setEditModalOpen(true);
@@ -1061,7 +1061,7 @@ export const IncidentDetailPage = () => {
       await incidentManagementApi.updateIncident(incidentId, {
         title: editForm.title.trim(),
         description: editForm.description.trim(),
-        priority: editForm.priority,
+        priority: editForm.priority === 'Critical' ? 'Urgent' : editForm.priority,
         severity: editForm.severity,
       });
       setEditModalOpen(false);

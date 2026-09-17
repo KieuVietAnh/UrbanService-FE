@@ -91,7 +91,7 @@ const defaultOperators = [
 ];
 
 const defaultSlaConfig = {
-  Critical: { code: 'Critical', hours: 4, name: 'Khẩn cấp' },
+  Urgent: { code: 'Urgent', hours: 4, name: 'Khẩn cấp' },
   High: { code: 'High', hours: 12, name: 'Cao' },
   Medium: { code: 'Medium', hours: 24, name: 'Trung bình' },
   Low: { code: 'Low', hours: 72, name: 'Thấp' }
@@ -174,7 +174,7 @@ const defaultTickets = [
     locationText: 'Võ Văn Kiệt giao Nguyễn Thái Học, Quận 1, TP. HCM',
     latitude: 10.7681,
     longitude: 106.6995,
-    priority: 'Critical',
+    priority: 'Urgent',
     status: managementTypes.feedbackStatus.RESOLVED,
     dueDate: '2026-06-03T20:00:00Z',
     isMasterTicket: false,
@@ -191,7 +191,7 @@ const defaultTickets = [
       note: 'Thay thế nắp đúc gang mới ngay lập tức.'
     },
     sentiment: 'Negative',
-    urgencyLevel: 'Critical',
+    urgencyLevel: 'Urgent',
     confidenceScore: 0.98,
     resolution: {
       resolutionId: 1,
@@ -371,7 +371,7 @@ export const mockDb = {
       categoryId = 2;
     } else if (text.includes('nước') || text.includes('hố ga') || text.includes('ngập') || text.includes('vỡ ống')) {
       categoryId = 3;
-      urgencyLevel = text.includes('nguy hiểm') || text.includes('mất') ? 'Critical' : 'High';
+      urgencyLevel = text.includes('nguy hiểm') || text.includes('mất') ? 'Urgent' : 'High';
     } else if (text.includes('đường') || text.includes('ổ gà') || text.includes('sụt lún') || text.includes('vỉa hè')) {
       categoryId = 4;
       urgencyLevel = 'High';
@@ -380,7 +380,7 @@ export const mockDb = {
     }
 
     if (text.includes('gấp') || text.includes('nguy hiểm') || text.includes('tai nạn') || text.includes('chết người')) {
-      urgencyLevel = 'Critical';
+      urgencyLevel = 'Urgent';
       confidenceScore = 0.95;
     }
 
