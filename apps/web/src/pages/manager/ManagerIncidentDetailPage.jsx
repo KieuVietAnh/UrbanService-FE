@@ -650,8 +650,13 @@ export const IncidentDetailPage = () => {
     return () => { requestIdRef.current += 1; };
   }, [loadIncident, location.state?.incident]);
 
+  /*
+   * Kết quả xử lý được nạp ở cả trang chi tiết sự vụ lẫn màn duyệt. Sau khi
+   * duyệt xong, sự vụ rời hàng đợi duyệt nên chỉ còn mở được từ danh sách sự
+   * vụ; nếu chỉ nạp ở màn duyệt thì từ đó về sau không xem lại được ảnh hoàn
+   * thành nữa.
+   */
   const loadApprovalResolution = useCallback(async () => {
-    if (!isApprovalView) return;
     const requestId = ++resolutionRequestIdRef.current;
     setApprovalResolutionLoading(true);
     setApprovalResolutionError('');
@@ -665,13 +670,12 @@ export const IncidentDetailPage = () => {
     } finally {
       if (requestId === resolutionRequestIdRef.current) setApprovalResolutionLoading(false);
     }
-  }, [incidentId, isApprovalView]);
+  }, [incidentId]);
 
   useEffect(() => {
-    if (!isApprovalView) return undefined;
     void loadApprovalResolution();
     return () => { resolutionRequestIdRef.current += 1; };
-  }, [isApprovalView, loadApprovalResolution]);
+  }, [loadApprovalResolution]);
 
   const goBack = useCallback(() => {
     const returnPath = location.state?.from;
@@ -1632,7 +1636,13 @@ export const IncidentDetailPage = () => {
         }}
       />
 
-      {isApprovalView ? (
+      {/*
+        * Ở màn duyệt luôn hiện, kể cả khi chưa có ảnh hoàn thành, vì thiếu ảnh
+        * cũng là thông tin người duyệt cần biết. Ở trang chi tiết thì chỉ hiện
+        * khi đã có ảnh sau, tránh bày một khối đối chiếu rỗng trên sự vụ còn
+        * chưa xử lý.
+        */}
+      {isApprovalView || comparisonAfterItems.length > 0 ? (
         <IncidentEvidenceComparison
           beforeItems={comparisonBeforeItems}
           afterItems={comparisonAfterItems}
