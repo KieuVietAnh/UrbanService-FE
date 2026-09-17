@@ -7,6 +7,7 @@ import * as Lucide from 'lucide-react';
 import { ManagerConfirmDialog, ManagerListRefreshIndicator, ManagerSectionHeader, ManagerSelectMenu, ManagerToast } from '../../components/manager/ManagerPageElements';
 import IncidentLocationMapCard from '../../components/maps/IncidentLocationMapCard';
 import { IncidentSlaSection } from '../../components/manager/IncidentSlaSection';
+import { IncidentEvidenceComparison } from '../../components/manager/IncidentEvidenceComparison';
 import {
   extractApiErrorMessage,
   managementFeedbackApi,
@@ -789,6 +790,25 @@ export const IncidentDetailPage = () => {
 
   const approvalDocuments = Array.isArray(approvalResolution?.completionDocuments) ? approvalResolution.completionDocuments : [];
   const approvalImageDocuments = approvalDocuments.filter((document) => isImageAttachment(document) && getAttachmentUrl(document));
+
+  /*
+   * Hai phía của khối đối chiếu lấy từ hai nguồn khác nhau: ảnh "trước" là do
+   * người dân gửi kèm phản ánh, ảnh "sau" nằm trong minh chứng hoàn thành của
+   * nhân viên. Số lượng hai bên thường lệch nhau nên không ghép cặp 1-1.
+   */
+  const comparisonBeforeItems = reportGalleryItems.map((item) => ({
+    url: item.url,
+    title: item.title,
+    subtitle: item.isPrimary ? 'Phản ánh chính' : `Phản ánh ${String(item.feedbackId).slice(0, 8)}`,
+  }));
+
+  const comparisonAfterItems = approvalImageDocuments
+    .map((document, index) => ({
+      url: getAttachmentUrl(document),
+      title: document?.description || `Minh chứng ${index + 1}`,
+      subtitle: document?.uploadedByUserName || document?.providerName || 'Ảnh hoàn thành',
+    }))
+    .filter((item) => item.url);
 
   useEffect(() => {
     const ids = activeReports.map(getFeedbackId).filter(Boolean).map(String);
@@ -1605,12 +1625,19 @@ export const IncidentDetailPage = () => {
       <IncidentSlaSection
         incidentId={incidentId}
         incidentStatus={incident?.status}
-        canManage={currentRole === 'interaction-manager' && !isMergedIncident}
+        canManage={currentRole === 'interaction-manager' && !isMergedIncident && !isApprovalView}
         onChanged={(message) => {
           if (message) setNotice(message);
           if (timelineLoaded) void loadTimeline();
         }}
       />
+
+      {isApprovalView ? (
+        <IncidentEvidenceComparison
+          beforeItems={comparisonBeforeItems}
+          afterItems={comparisonAfterItems}
+        />
+      ) : null}
 
       {isApprovalView ? (
         <section className="overflow-hidden rounded-[24px] border border-indigo-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)] dark:border-indigo-500/20 dark:bg-slate-950">
