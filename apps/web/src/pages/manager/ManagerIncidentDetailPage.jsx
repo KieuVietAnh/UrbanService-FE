@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { normalizeRole } from '../../utils/roleMap';
+import {
+  getTimelinePresentation,
+  isAdminIncidentReadOnly,
+  localizeIncidentSystemText,
+} from './adminIncidentReadOnly.mjs';
 import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
 import { ManagerConfirmDialog, ManagerListRefreshIndicator, ManagerSectionHeader, ManagerSelectMenu, ManagerToast } from '../../components/manager/ManagerPageElements';
@@ -196,41 +201,6 @@ const getReportLinkMethodLabel = (report) => {
   return getLinkMethodLabel(value);
 };
 
-const isTechnicalLinkReason = (value) => {
-  const text = String(value ?? '').trim().toLowerCase();
-  if (!text) return false;
-  return [
-    'addincidentaggregateschema',
-    'migration from the legacy feedback cluster',
-    'legacy feedback cluster',
-    'schema migration',
-    'backfill migration',
-    'created by migration',
-    'created by backfill',
-  ].some((marker) => text.includes(marker));
-};
-
-const SYSTEM_TEXT_TRANSLATIONS = new Map([
-  ['incident created from a new report', 'Sự vụ được tạo từ phản ánh mới.'],
-  ['feedback created', 'Đã tạo phản ánh.'],
-  ['report linked to incident', 'Phản ánh đã được liên kết vào sự vụ.'],
-  ['report unlinked from incident', 'Phản ánh đã được gỡ khỏi sự vụ.'],
-  ['incident created', 'Đã tạo sự vụ.'],
-  ['incident updated', 'Đã cập nhật sự vụ.'],
-  ['incident assigned', 'Đã phân công xử lý sự vụ.'],
-  ['incident merged by management', 'Sự vụ được gộp theo quyết định của quản lý.'],
-]);
-
-const localizeSystemText = (value) => {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  if (isTechnicalLinkReason(raw)) return '';
-
-  const normalized = raw.toLowerCase().replace(/[.!?]+$/g, '').trim();
-  return SYSTEM_TEXT_TRANSLATIONS.get(normalized) || raw;
-};
-
-
 const INCIDENT_API_ERROR_TRANSLATIONS = [
   {
     match: 'incident can only be merged before staff assignment and provider processing',
@@ -332,7 +302,7 @@ const getEventDetails = (event) => {
         value: oldStatus === newStatus ? newStatus : `${oldStatus} → ${newStatus}`,
       });
     }
-    const note = localizeSystemText(payload.note);
+    const note = localizeIncidentSystemText(payload.note);
     if (note) details.push({ label: 'Ghi chú', value: note });
   } else if (eventType === 'reportlinked' || eventType === 'reportunlinked') {
     if (payload.role) details.push({ label: 'Vai trò', value: getLinkRoleLabel(payload.role) });
@@ -362,7 +332,7 @@ const getEventDetails = (event) => {
     if (staffName) details.push({ label: 'Người phụ trách', value: String(staffName) });
     else if (staffId) details.push({ label: 'Người phụ trách', value: String(staffId) });
 
-    const note = localizeSystemText(payload.note);
+    const note = localizeIncidentSystemText(payload.note);
     if (note) details.push({ label: 'Ghi chú', value: note });
   } else if (eventType === 'incidentcreated' && (payload.feedbackId || event?.feedbackId)) {
     details.push({ label: 'Nguồn', value: 'Tạo từ phản ánh liên quan' });
@@ -531,6 +501,7 @@ export const IncidentDetailPage = () => {
   const location = useLocation();
   const { user } = useAuth();
   const currentRole = normalizeRole(user?.role ?? user?.roleName ?? user?.roles?.[0]);
+  const adminReadOnly = isAdminIncidentReadOnly(currentRole);
   const requestIdRef = useRef(0);
   const resolutionRequestIdRef = useRef(0);
   const timelineRequestIdRef = useRef(0);
@@ -555,6 +526,7 @@ export const IncidentDetailPage = () => {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineLoaded, setTimelineLoaded] = useState(false);
   const [timelineError, setTimelineError] = useState('');
+  const [timelineVisibleCount, setTimelineVisibleCount] = useState(6);
 
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [feedbackSearch, setFeedbackSearch] = useState('');
@@ -682,6 +654,7 @@ export const IncidentDetailPage = () => {
       || returnPath.startsWith('/staff/duplicates/')
       || returnPath.startsWith('/analytics/sla')
       || returnPath.startsWith('/analytics/sentiment')
+      || returnPath === '/dashboard'
     );
 
     if (canReturnInApp) {
@@ -700,11 +673,13 @@ export const IncidentDetailPage = () => {
     });
   }, [incident, incidentId, isApprovalView, location.pathname, location.state?.from, navigate]);
 
-  const backLabel = typeof location.state?.from === 'string' && location.state.from.startsWith('/analytics/sla')
-    ? 'Quay lại Phân tích SLA'
-    : typeof location.state?.from === 'string' && location.state.from.startsWith('/analytics/sentiment')
-      ? 'Quay lại Cảm xúc người dân'
-      : 'Quay lại danh sách';
+  const backLabel = location.state?.from === '/dashboard'
+    ? 'Quay lại Tổng quan hệ thống'
+    : typeof location.state?.from === 'string' && location.state.from.startsWith('/analytics/sla')
+      ? 'Quay lại Phân tích SLA'
+      : typeof location.state?.from === 'string' && location.state.from.startsWith('/analytics/sentiment')
+        ? 'Quay lại Cảm xúc người dân'
+        : 'Quay lại danh sách';
 
   const reports = useMemo(() => {
     if (Array.isArray(incident?.reports)) return incident.reports;
@@ -918,6 +893,7 @@ export const IncidentDetailPage = () => {
       });
       if (requestId !== timelineRequestIdRef.current) return;
       setTimeline(normalizeCollection(response));
+      setTimelineVisibleCount(6);
       setTimelineLoaded(true);
     } catch (timelineLoadError) {
       if (requestId !== timelineRequestIdRef.current) return;
@@ -927,6 +903,11 @@ export const IncidentDetailPage = () => {
       if (requestId === timelineRequestIdRef.current) setTimelineLoading(false);
     }
   }, [incidentId]);
+
+  const timelinePresentation = useMemo(
+    () => getTimelinePresentation(timeline, timelineVisibleCount),
+    [timeline, timelineVisibleCount],
+  );
 
   useEffect(() => {
     if (activeTab === 'events' && !timelineLoaded && !timelineLoading) {
@@ -1511,7 +1492,17 @@ export const IncidentDetailPage = () => {
         </div>
       ) : null}
 
-      {isApprovalView ? (
+      {adminReadOnly ? (
+        <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 p-4 shadow-sm dark:border-blue-500/20 dark:bg-blue-500/10">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+            <Lucide.Eye size={18} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Chế độ giám sát chỉ đọc</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Quản trị viên theo dõi toàn hệ thống nhưng không thực hiện phân công, gộp, đổi trạng thái hay thay đổi liên kết phản ánh thay Manager.</p>
+          </div>
+        </section>
+      ) : isApprovalView ? (
         <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
           <div className="mr-auto min-w-[240px]">
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Quyết định duyệt kết quả xử lý</p>
@@ -1755,7 +1746,7 @@ export const IncidentDetailPage = () => {
             title="Quản lý sự vụ"
             description="Theo dõi phản ánh, người theo dõi và lịch sử thay đổi của sự vụ."
             icon={Lucide.Layers3}
-            actions={activeTab === 'reports' ? (
+            actions={activeTab === 'reports' && !adminReadOnly ? (
               <button
                 type="button"
                 onClick={() => !structureActionsLocked && setLinkModalOpen(true)}
@@ -1790,7 +1781,7 @@ export const IncidentDetailPage = () => {
         <div className="min-h-[360px]">
           {activeTab === 'reports' ? (
             !detailResolved ? <PanelSkeleton /> : activeReports.length === 0 ? (
-              <EmptyState icon={Lucide.Inbox} title="Chưa có phản ánh liên quan" description={reportCount > 0 ? 'Dữ liệu chi tiết chưa trả danh sách phản ánh dù tổng số phản ánh lớn hơn 0.' : 'Bấm “Liên kết phản ánh” để thêm phản ánh của người dân vào sự vụ này.'} />
+              <EmptyState icon={Lucide.Inbox} title="Chưa có phản ánh liên quan" description={reportCount > 0 ? 'Dữ liệu chi tiết chưa trả danh sách phản ánh dù tổng số phản ánh lớn hơn 0.' : adminReadOnly ? 'Sự vụ này hiện chưa có phản ánh liên quan để quản trị viên theo dõi.' : 'Bấm “Liên kết phản ánh” để thêm phản ánh của người dân vào sự vụ này.'} />
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {activeReports.map((report, index) => {
@@ -1808,7 +1799,7 @@ export const IncidentDetailPage = () => {
                     !primaryReport && hasConfidence ? { label: 'Độ tin cậy', value: formatConfidence(confidence) } : null,
                   ].filter(Boolean);
                   const rawLinkReason = typeof report?.reason === 'string' ? report.reason.trim() : '';
-                  const linkReason = !primaryReport && rawLinkReason ? localizeSystemText(rawLinkReason) : '';
+                  const linkReason = !primaryReport && rawLinkReason ? localizeIncidentSystemText(rawLinkReason) : '';
                   const busy = String(unlinkingFeedbackId) === String(feedbackId);
                   return (
                     <div key={feedbackId} className="px-5 py-5 sm:px-6">
@@ -1865,6 +1856,11 @@ export const IncidentDetailPage = () => {
                           >
                             <Lucide.LockKeyhole size={14} />
                             Phản ánh chính
+                          </span>
+                        ) : adminReadOnly ? (
+                          <span className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-100 px-3 text-xs font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+                            <Lucide.Eye size={14} />
+                            Chỉ xem
                           </span>
                         ) : (
                           <button
@@ -1938,7 +1934,7 @@ export const IncidentDetailPage = () => {
                   </div>
                 ) : null}
                 <div className="relative space-y-5 before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-px before:bg-slate-200 dark:before:bg-slate-800">
-                  {timeline.map((event, index) => {
+                  {timelinePresentation.visibleEvents.map((event, index) => {
                     const rawTitle = event?.title ?? event?.eventName ?? event?.eventType ?? event?.type ?? event?.action;
                     const payload = parseEventPayload(event?.payloadJson ?? event?.payload);
                     const isNoopStatusChange = normalizeKey(rawTitle) === 'statuschanged'
@@ -1947,7 +1943,7 @@ export const IncidentDetailPage = () => {
                       && normalizeKey(payload.oldStatus) === normalizeKey(payload.newStatus);
                     const titleText = isNoopStatusChange ? 'Đã cập nhật trạng thái' : getEventLabel(rawTitle);
                     const rawDescription = event?.description ?? event?.message ?? event?.note ?? event?.details ?? '';
-                    const description = localizeSystemText(rawDescription);
+                    const description = localizeIncidentSystemText(rawDescription);
                     const actor = event?.actorUserName ?? event?.actorName ?? event?.userName ?? event?.createdByName ?? event?.performedBy ?? '';
                     const eventTime = event?.createdAt ?? event?.occurredAt ?? event?.timestamp ?? event?.eventAt;
                     const eventDetails = getEventDetails(event);
@@ -1976,6 +1972,29 @@ export const IncidentDetailPage = () => {
                     );
                   })}
                 </div>
+                {timelinePresentation.remainingCount > 0 || timelinePresentation.canCollapse ? (
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                    {timelinePresentation.remainingCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setTimelineVisibleCount((current) => current + 6)}
+                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-800 dark:hover:bg-blue-950/30"
+                      >
+                        <Lucide.ChevronDown size={15} />
+                        Xem thêm {Math.min(6, timelinePresentation.remainingCount)} sự kiện
+                      </button>
+                    ) : null}
+                    {timelinePresentation.canCollapse ? (
+                      <button
+                        type="button"
+                        onClick={() => setTimelineVisibleCount(6)}
+                        className="inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      >
+                        <Lucide.ChevronUp size={15} />Thu gọn
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             )
           ) : null}
@@ -2053,7 +2072,7 @@ export const IncidentDetailPage = () => {
         document.body
       ) : null}
 
-      {editModalOpen ? createPortal(
+      {!adminReadOnly && editModalOpen ? createPortal(
         <div className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="edit-incident-title">
           <div className="flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
@@ -2100,7 +2119,7 @@ export const IncidentDetailPage = () => {
         </div>
       , document.body) : null}
 
-      {statusModalOpen ? createPortal(
+      {!adminReadOnly && statusModalOpen ? createPortal(
         <div className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="status-incident-title">
           <div className="flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
@@ -2125,7 +2144,7 @@ export const IncidentDetailPage = () => {
         </div>
       , document.body) : null}
 
-      {assignModalOpen ? createPortal(
+      {!adminReadOnly && assignModalOpen ? createPortal(
         <div className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="assign-incident-title">
           <div className="flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
@@ -2241,7 +2260,7 @@ export const IncidentDetailPage = () => {
       ) : null}
 
       <ManagerConfirmDialog
-        open={Boolean(confirmAction)}
+        open={!adminReadOnly && Boolean(confirmAction)}
         title={confirmAction?.title || 'Xác nhận thao tác'}
         description={confirmAction?.description}
         confirmLabel={confirmAction?.type === 'merge' ? 'Gộp sự vụ' : confirmAction?.type === 'link-report' ? 'Xác nhận liên kết' : 'Gỡ liên kết'}
@@ -2251,7 +2270,7 @@ export const IncidentDetailPage = () => {
         onConfirm={confirmAction?.type === 'merge' ? confirmMergeIncident : confirmAction?.type === 'link-report' ? confirmLinkReport : confirmUnlinkReport}
       />
 
-      {mergeModalOpen ? createPortal(
+      {!adminReadOnly && mergeModalOpen ? createPortal(
         <div className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="merge-incident-title">
           <div className="flex max-h-[min(680px,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
@@ -2342,7 +2361,7 @@ export const IncidentDetailPage = () => {
         </div>
       , document.body) : null}
 
-      {linkModalOpen ? createPortal(
+      {!adminReadOnly && linkModalOpen ? createPortal(
         <div className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="link-report-title">
           <div className="flex max-h-[min(720px,calc(100dvh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
