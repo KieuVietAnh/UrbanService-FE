@@ -105,7 +105,14 @@ export const IncidentDistributionPanel = () => {
     })).filter((option) => option.value),
   ]), [areas]);
 
-  const categoriesData = Array.isArray(report?.categories) ? report.categories : [];
+  /*
+   * Phải ổn định giữa các lần render vì mapIncidents lấy nó làm dependency;
+   * nếu tạo mảng mới mỗi lần thì useMemo bên dưới không bao giờ dùng lại được.
+   */
+  const categoriesData = useMemo(
+    () => (Array.isArray(report?.categories) ? report.categories : []),
+    [report],
+  );
   const maxCategoryCount = Math.max(1, ...categoriesData.map((item) => toCount(item?.count)));
 
   /*
