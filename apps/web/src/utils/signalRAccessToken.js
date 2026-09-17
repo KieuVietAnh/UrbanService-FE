@@ -19,7 +19,7 @@ export const getSignalRAccessToken = () => {
     if (!storage) continue;
 
     for (const key of directKeys) {
-      let value = null;
+      let value;
       try {
         value = storage.getItem(key);
       } catch {
