@@ -125,7 +125,7 @@ const MetaItem = ({ label, children, wide = false }) => (
  * thao tác. Khác biệt là mọi lời gọi đều theo incidentId, và có thêm những thao
  * tác mà vòng đời SLA của sự vụ hỗ trợ nhưng bản cũ không có.
  */
-export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged }) => {
+export const IncidentSlaSection = ({ incidentId, incidentStatus, canManage = false, onChanged }) => {
   const requestIdRef = useRef(0);
 
   const [slaDetail, setSlaDetail] = useState(null);
@@ -352,10 +352,26 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
     : 0;
 
   const currentStatus = slaStatus?.status || slaDetail?.status || '';
+  const isRunning = String(currentStatus).toLowerCase() === 'running';
   const isPaused = String(currentStatus).toLowerCase() === 'paused';
-  const isActive = ['running', 'paused'].includes(String(currentStatus).toLowerCase());
+  const isActive = isRunning || isPaused;
   const hasSla = Boolean(slaDetail || slaStatus);
   const pauseHistories = Array.isArray(slaDetail?.pauseHistories) ? slaDetail.pauseHistories : [];
+
+  /*
+   * Backend còn ràng buộc ở cấp sự vụ chứ không chỉ ở trạng thái SLA: chỉ đóng
+   * SLA sau khi kết quả đã được duyệt, và chỉ hủy SLA sau khi sự vụ bị hủy.
+   * Nút vẫn hiện nhưng bị khóa kèm lý do, để người dùng biết còn thiếu điều
+   * kiện gì thay vì bấm rồi nhận lỗi 400.
+   */
+  const incidentStatusKey = normalizeKey(incidentStatus);
+  const canCompleteSla = isRunning && incidentStatusKey === 'approved';
+  const canCancelSla = isActive && incidentStatusKey === 'cancelled';
+
+  const completeBlockedReason = !isRunning
+    ? 'Chỉ đóng được SLA đang chạy.'
+    : 'Chỉ hoàn thành SLA sau khi Manager đã duyệt kết quả sự vụ.';
+  const cancelBlockedReason = 'Chỉ hủy SLA sau khi sự vụ đã được hủy.';
 
   const slaModalConfig = (() => {
     if (slaModal === 'pause') {
@@ -469,11 +485,23 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
                   </button>
                 )}
 
-                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={() => openSlaModal('recalculate')} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                <button
+                  type="button"
+                  className="btn admin-secondary-action rounded-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => openSlaModal('recalculate')}
+                  disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId || isPaused}
+                  title={isPaused ? 'Hãy tiếp tục SLA trước khi tính lại.' : undefined}
+                >
                   <Lucide.RefreshCw size={15} /> {slaActionLoading === 'recalculate' ? 'Đang tính lại...' : 'Tính lại SLA'}
                 </button>
 
-                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={() => openSlaModal('complete')} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                <button
+                  type="button"
+                  className="btn admin-secondary-action rounded-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => openSlaModal('complete')}
+                  disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId || !canCompleteSla}
+                  title={canCompleteSla ? undefined : completeBlockedReason}
+                >
                   <Lucide.BadgeCheck size={15} /> {slaActionLoading === 'complete' ? 'Đang đóng...' : 'Hoàn thành SLA'}
                 </button>
               </>
@@ -481,11 +509,23 @@ export const IncidentSlaSection = ({ incidentId, canManage = false, onChanged })
 
             {canManage && hasSla ? (
               <>
-                <button type="button" className="btn admin-secondary-action rounded-xl" onClick={handleCheckSlaViolation} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                <button
+                  type="button"
+                  className="btn admin-secondary-action rounded-xl disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={handleCheckSlaViolation}
+                  disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId || !isRunning}
+                  title={isRunning ? undefined : 'Chỉ rà được vi phạm khi SLA đang chạy.'}
+                >
                   <Lucide.ShieldCheck size={15} /> {slaActionLoading === 'check' ? 'Đang kiểm tra...' : 'Kiểm tra vi phạm'}
                 </button>
                 {isActive ? (
-                  <button type="button" className="btn rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100" onClick={() => openSlaModal('cancel')} disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId}>
+                  <button
+                    type="button"
+                    className="btn rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => openSlaModal('cancel')}
+                    disabled={Boolean(slaActionLoading) || !slaDetail?.incidentSlaId || !canCancelSla}
+                    title={canCancelSla ? undefined : cancelBlockedReason}
+                  >
                     <Lucide.XCircle size={15} /> {slaActionLoading === 'cancel' ? 'Đang hủy...' : 'Hủy SLA'}
                   </button>
                 ) : null}

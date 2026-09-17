@@ -1604,6 +1604,7 @@ export const IncidentDetailPage = () => {
 
       <IncidentSlaSection
         incidentId={incidentId}
+        incidentStatus={incident?.status}
         canManage={currentRole === 'interaction-manager' && !isMergedIncident}
         onChanged={(message) => {
           if (message) setNotice(message);
