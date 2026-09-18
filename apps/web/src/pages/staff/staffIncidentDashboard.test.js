@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   calculateStaffIncidentKpis,
+  calculateStaffIncidentSlaKpis,
   fetchAllAssignedStaffIncidents,
+  fetchAssignedIncidentSlaStatuses,
   getStaffIncidentPriorityLabel,
   getStaffIncidentSeverityLabel,
   getStaffIncidentStatusLabel,
@@ -48,6 +50,52 @@ test('orders attention work by rework, severity, priority, then latest update', 
     'priority',
   ]);
   assert.equal(incidents[0].incidentId, 'resolved');
+});
+
+test('counts Incident SLA warnings and breaches once per assigned Incident', () => {
+  const metrics = calculateStaffIncidentSlaKpis({
+    healthy: {
+      incidentId: 'healthy',
+      isResponseWarning: false,
+      isResolutionWarning: false,
+    },
+    warning: {
+      incidentId: 'warning',
+      isResponseWarning: true,
+      isResolutionWarning: true,
+    },
+    breached: {
+      incidentId: 'breached',
+      isResponseWarning: true,
+      isResolutionBreached: true,
+    },
+  });
+
+  assert.deepEqual(metrics, {
+    tracked: 3,
+    nearingBreach: 1,
+    breached: 1,
+    healthy: 1,
+  });
+});
+
+test('prioritizes overdue and nearing-breach Incidents in the attention list', () => {
+  const incidents = [
+    { incidentId: 'normal-rework', status: 'NeedRework', severity: 'Critical' },
+    { incidentId: 'warning', status: 'Assigned', severity: 'Low' },
+    { incidentId: 'breached', status: 'Assigned', severity: 'Low' },
+  ];
+
+  const sorted = sortStaffIncidentsForAttention(incidents, {
+    warning: { incidentId: 'warning', isResolutionWarning: true },
+    breached: { incidentId: 'breached', isResponseBreached: true },
+  });
+
+  assert.deepEqual(sorted.map((incident) => incident.incidentId), [
+    'breached',
+    'warning',
+    'normal-rework',
+  ]);
 });
 
 test('maps only known workflow, priority and severity values to Vietnamese', () => {
@@ -112,4 +160,32 @@ test('fails closed instead of calculating KPI from incomplete pagination', async
     }),
     /INCOMPLETE_STAFF_INCIDENT_DATA/,
   );
+});
+
+test('loads SLA status only for active assigned Incidents and tolerates missing SLA records', async () => {
+  const calls = [];
+  const result = await fetchAssignedIncidentSlaStatuses({
+    incidents: [
+      { incidentId: 'assigned', status: 'Assigned' },
+      { incidentId: 'missing', status: 'InProgress' },
+      { incidentId: 'failed', status: 'NeedRework' },
+      { incidentId: 'closed', status: 'Closed' },
+    ],
+    batchSize: 2,
+    getIncidentSlaStatus: async (incidentId) => {
+      calls.push(incidentId);
+      if (incidentId === 'missing') {
+        const error = new Error('Not found');
+        error.response = { status: 404 };
+        throw error;
+      }
+      if (incidentId === 'failed') throw new Error('Network error');
+      return { incidentId, isResolutionWarning: true };
+    },
+  });
+
+  assert.deepEqual(calls, ['assigned', 'missing', 'failed']);
+  assert.deepEqual(Object.keys(result.slaByIncidentId), ['assigned']);
+  assert.equal(result.requestedCount, 3);
+  assert.equal(result.failedCount, 1);
 });

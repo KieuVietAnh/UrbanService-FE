@@ -6,8 +6,6 @@ import {
   getSeverityIntent,
   getStatusIntent,
 } from '@urbanmind/shared-types';
-import { INCIDENT_MANAGEMENT_CAPABILITIES } from '@urbanmind/shared-api';
-
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
 import EmptyState from '../../components/design-system/EmptyState';
@@ -23,6 +21,8 @@ import {
 } from './incidentDetailPresentation';
 import {
   calculateStaffIncidentKpis,
+  calculateStaffIncidentSlaKpis,
+  getStaffIncidentSlaState,
   getStaffIncidentPriorityLabel,
   getStaffIncidentSeverityLabel,
   getStaffIncidentStatusLabel,
@@ -57,6 +57,37 @@ const KPI_ITEMS = Object.freeze([
     description: 'Kết quả đã được gửi',
     icon: Lucide.Clock3,
     iconClassName: 'bg-amber-50 text-amber-700 dark:bg-amber-950/45 dark:text-amber-300',
+  }),
+]);
+
+const SLA_KPI_ITEMS = Object.freeze([
+  Object.freeze({
+    key: 'tracked',
+    label: 'Đang theo dõi SLA',
+    description: 'Sự vụ đang hoạt động đã có SLA',
+    icon: Lucide.Activity,
+    iconClassName: 'bg-blue-50 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300',
+  }),
+  Object.freeze({
+    key: 'healthy',
+    label: 'Trong hạn',
+    description: 'Chưa chạm ngưỡng cảnh báo',
+    icon: Lucide.ShieldCheck,
+    iconClassName: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-300',
+  }),
+  Object.freeze({
+    key: 'nearingBreach',
+    label: 'Sắp quá hạn',
+    description: 'Cần ưu tiên xử lý sớm',
+    icon: Lucide.ClockAlert,
+    iconClassName: 'bg-amber-50 text-amber-700 dark:bg-amber-950/45 dark:text-amber-300',
+  }),
+  Object.freeze({
+    key: 'breached',
+    label: 'Đã quá hạn',
+    description: 'Đã vi phạm Response hoặc Resolution SLA',
+    icon: Lucide.Siren,
+    iconClassName: 'bg-rose-50 text-rose-700 dark:bg-rose-950/45 dark:text-rose-300',
   }),
 ]);
 
@@ -185,7 +216,62 @@ function KpiStrip({ metrics }) {
   );
 }
 
-function IncidentBadges({ incident }) {
+function SlaKpiStrip({ failedCount, metrics, requestedCount }) {
+  const withoutSla = Math.max(0, requestedCount - metrics.tracked - failedCount);
+
+  return (
+    <section className="admin-panel overflow-hidden" aria-labelledby="staff-dashboard-sla-title">
+      <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/55 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
+        <div className="flex items-start gap-3">
+          <span className="admin-mini-icon" aria-hidden="true">
+            <Lucide.TimerReset size={17} />
+          </span>
+          <div>
+            <h2 id="staff-dashboard-sla-title" className="admin-section-title">SLA theo sự vụ</h2>
+            <p className="admin-section-description mt-1">Tính từ trạng thái SLA backend của các sự vụ đang được giao cho bạn.</p>
+          </div>
+        </div>
+        <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200">
+          <Lucide.Radar size={14} aria-hidden="true" />
+          {formatCount(metrics.tracked)}/{formatCount(requestedCount)} sự vụ có SLA
+        </span>
+      </header>
+
+      <dl className="grid sm:grid-cols-2 xl:grid-cols-4">
+        {SLA_KPI_ITEMS.map((item, index) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.key}
+              className={`flex min-h-32 items-start justify-between gap-4 p-5 sm:p-6 ${index < SLA_KPI_ITEMS.length - 1 ? 'border-b border-slate-100 sm:border-r xl:border-b-0 dark:border-slate-800' : ''}`}
+            >
+              <div className="min-w-0">
+                <dt className="text-xs font-bold text-slate-500 dark:text-slate-400">{item.label}</dt>
+                <dd className="mt-2 text-3xl font-black tabular-nums tracking-tight text-slate-950 dark:text-slate-50">
+                  {formatCount(metrics[item.key])}
+                </dd>
+                <dd className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{item.description}</dd>
+              </div>
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${item.iconClassName}`} aria-hidden="true">
+                <Icon size={20} />
+              </span>
+            </div>
+          );
+        })}
+      </dl>
+
+      {failedCount > 0 || withoutSla > 0 ? (
+        <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 px-5 py-3 text-xs font-semibold text-slate-500 sm:px-6 dark:border-slate-800 dark:text-slate-400" role={failedCount > 0 ? 'alert' : 'note'}>
+          {withoutSla > 0 ? <span>{formatCount(withoutSla)} sự vụ chưa có bản ghi SLA.</span> : null}
+          {failedCount > 0 ? <span>Không thể tải SLA của {formatCount(failedCount)} sự vụ; bấm “Làm mới” để thử lại.</span> : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function IncidentBadges({ incident, sla }) {
+  const slaState = getStaffIncidentSlaState(sla);
   return (
     <div className="flex flex-wrap gap-1.5">
       <Badge intent={getStatusIntent(incident?.status)} className="whitespace-nowrap">
@@ -197,11 +283,13 @@ function IncidentBadges({ incident }) {
       <Badge intent={getSeverityIntent(incident?.severity)} className="whitespace-nowrap">
         Mức độ: {getStaffIncidentSeverityLabel(incident?.severity)}
       </Badge>
+      {slaState === 'breached' ? <Badge intent="danger" className="whitespace-nowrap">SLA quá hạn</Badge> : null}
+      {slaState === 'warning' ? <Badge intent="warning" className="whitespace-nowrap">SLA sắp quá hạn</Badge> : null}
     </div>
   );
 }
 
-function AttentionList({ incidents }) {
+function AttentionList({ incidents, slaByIncidentId }) {
   return (
     <section className="admin-panel overflow-hidden" aria-labelledby="staff-dashboard-attention-title">
       <header className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between dark:border-slate-800">
@@ -252,7 +340,7 @@ function AttentionList({ incidents }) {
                     ) : null}
                   </div>
 
-                  <div><IncidentBadges incident={incident} /></div>
+                  <div><IncidentBadges incident={incident} sla={slaByIncidentId[incidentId]} /></div>
 
                   <dl className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-1">
                     <div className="min-w-0">
@@ -295,19 +383,25 @@ export default function StaffIncidentDashboardPage() {
   const {
     incidents,
     retry,
+    slaByIncidentId,
+    slaFailedCount,
+    slaRequestedCount,
     state,
     totalItems,
   } = useStaffIncidentDashboard(assignedStaffUserId);
 
   const metrics = useMemo(() => calculateStaffIncidentKpis(incidents), [incidents]);
+  const slaMetrics = useMemo(
+    () => calculateStaffIncidentSlaKpis(slaByIncidentId),
+    [slaByIncidentId],
+  );
   const attentionIncidents = useMemo(
-    () => sortStaffIncidentsForAttention(incidents).slice(0, 6),
-    [incidents],
+    () => sortStaffIncidentsForAttention(incidents, slaByIncidentId).slice(0, 6),
+    [incidents, slaByIncidentId],
   );
   const loading = state === STAFF_INCIDENT_DASHBOARD_STATE.LOADING;
   const ready = state === STAFF_INCIDENT_DASHBOARD_STATE.READY;
   const displayName = String(user?.fullName ?? '').trim();
-  const incidentSlaAvailable = INCIDENT_MANAGEMENT_CAPABILITIES.detail.incidentLevelSla;
 
   return (
     <article className="admin-page-shell space-y-6" aria-busy={loading}>
@@ -355,13 +449,12 @@ export default function StaffIncidentDashboardPage() {
       {ready ? (
         <>
           <KpiStrip metrics={metrics} />
-          {!incidentSlaAvailable ? (
-            <aside className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/55 dark:text-slate-300" role="note">
-              <Lucide.ClockAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
-              <p><strong className="font-bold text-slate-800 dark:text-slate-100">Chưa có API SLA theo sự vụ.</strong> Dashboard chưa hiển thị số liệu sắp quá hạn hoặc quá hạn.</p>
-            </aside>
-          ) : null}
-          <AttentionList incidents={attentionIncidents} />
+          <SlaKpiStrip
+            failedCount={slaFailedCount}
+            metrics={slaMetrics}
+            requestedCount={slaRequestedCount}
+          />
+          <AttentionList incidents={attentionIncidents} slaByIncidentId={slaByIncidentId} />
         </>
       ) : null}
       {!loading && !ready ? <DashboardState state={state} onRetry={retry} /> : null}
