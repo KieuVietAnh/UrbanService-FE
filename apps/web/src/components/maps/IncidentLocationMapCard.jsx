@@ -97,7 +97,7 @@ export function IncidentLocationMapCard({
 
   return (
     <section
-      className={`admin-panel flex h-full flex-col overflow-hidden border-t-[3px] ${
+      className={`admin-panel flex flex-col overflow-hidden border-t-[3px] ${compact ? 'h-auto' : 'h-full'} ${
         blueTone
           ? 'border-t-blue-500 shadow-[0_18px_44px_rgba(37,99,235,0.07)]'
           : 'border-t-cyan-500 shadow-[0_18px_44px_rgba(6,182,212,0.07)]'
