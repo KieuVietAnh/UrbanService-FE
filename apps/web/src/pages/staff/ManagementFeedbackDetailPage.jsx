@@ -725,6 +725,15 @@ export const ManagementFeedbackDetailPage = () => {
           onClose={() => setPageMessage({ type: '', text: '' })}
         />
       )}
+      <button
+        type="button"
+        onClick={returnToFeedbackList}
+        className="inline-flex min-h-9 w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white/80 px-3 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 sm:hidden"
+        aria-label={`Quay lại ${detailParentLabel.toLowerCase()}`}
+      >
+        <Lucide.ArrowLeft size={15} aria-hidden="true" />
+        {detailParentLabel}
+      </button>
       <div className="admin-panel p-2">
         <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Nội dung chi tiết phản ánh">
           {[
@@ -749,20 +758,6 @@ export const ManagementFeedbackDetailPage = () => {
             );
           })}
         </div>
-      </div>
-
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 px-1 text-sm font-medium text-slate-500">
-        <button
-          type="button"
-          onClick={returnToFeedbackList}
-          className="inline-flex items-center gap-1 text-slate-500 transition hover:text-blue-600"
-          aria-label={`Quay lại ${detailParentLabel.toLowerCase()}`}
-        >
-          {detailParentLabel}
-        </button>
-        <Lucide.ChevronRight size={12} />
-        <span className="min-w-0 truncate font-semibold text-slate-800">{feedback.title}</span>
       </div>
 
       {activeViewTab === 'detail' ? (
