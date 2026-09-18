@@ -244,14 +244,19 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
       {isLogoutModalOpen && (
         <div className="modal modal-open">
-          <div className="modal-box w-full max-w-[420px] rounded-[28px] border border-slate-200/90 bg-white p-0 shadow-[0_30px_90px_rgba(15,23,42,0.28)]">
+          <div
+            className="modal-box w-full max-w-[420px] rounded-[28px] border border-slate-200/90 bg-white p-0 shadow-[0_30px_90px_rgba(15,23,42,0.28)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-dialog-title"
+          >
             <div className="p-6 sm:p-7">
               <div className="flex items-start gap-4">
                 <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
                   <Lucide.LogOut size={22} />
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
-                  <h3 className="text-xl font-bold tracking-[-0.02em] text-slate-950">Xác nhận đăng xuất</h3>
+                  <h3 id="logout-dialog-title" className="text-xl font-bold tracking-[-0.02em] text-slate-950">Xác nhận đăng xuất</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
                     Bạn sẽ kết thúc phiên làm việc hiện tại và cần đăng nhập lại để tiếp tục sử dụng UrbanMind.
                   </p>

@@ -149,7 +149,7 @@ test.describe.serial('System Administrator smoke tests', () => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(page, slaRoute, page.getByRole('heading', { name: /Cấu hình thời hạn SLA|Chính sách SLA/i }), 'SLA Configuration');
+    await verifyRouteAndPage(page, slaRoute, page.getByRole('heading', { name: 'Chính sách SLA', exact: true }), 'SLA Configuration');
     await assertNoErrors(
       monitor,
       'SLA Configuration',
@@ -158,29 +158,23 @@ test.describe.serial('System Administrator smoke tests', () => {
     );
   });
 
-  test('Audit Log loads', async ({ page }) => {
+  test('Retired Audit Log route redirects to the admin dashboard', async ({ page }) => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(
-      page,
-      auditRoute,
-      page.getByRole('heading', { name: /Nhật ký hệ thống|Audit Log|System Audit Log/i }),
-      'Audit Log'
-    );
-    await assertNoErrors(monitor, 'Audit Log');
+    await page.goto(auditRoute);
+    await expect(page).toHaveURL(/\/dashboard\/?$/, { timeout: 30000 });
+    await expect(page.getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible();
+    await assertNoErrors(monitor, 'Retired Audit Log redirect');
   });
 
-  test('Performance Dashboard loads', async ({ page }) => {
+  test('Retired Performance route redirects to the admin dashboard', async ({ page }) => {
     const monitor = attachPageMonitoring(page);
     await loginAsSystemAdmin(page);
 
-    await verifyRouteAndPage(page, performanceRoute, page.getByRole('heading', { name: /Hiệu năng & trạng thái hệ thống/i }), 'Performance Dashboard');
-    await assertNoErrors(
-      monitor,
-      'Performance Dashboard',
-      [/Failed to load resource: the server responded with a status of 403 \(Forbidden\)/],
-      [/403 .*\/api\/user\/feedbacks/]
-    );
+    await page.goto(performanceRoute);
+    await expect(page).toHaveURL(/\/dashboard\/?$/, { timeout: 30000 });
+    await expect(page.getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible();
+    await assertNoErrors(monitor, 'Retired Performance redirect');
   });
 });

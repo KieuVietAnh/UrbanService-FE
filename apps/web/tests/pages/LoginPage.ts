@@ -13,7 +13,7 @@ export class LoginPage extends BasePage {
     this.emailInput = page.getByRole('textbox', { name: /email/i });
     this.passwordInput = page.getByPlaceholder('••••••••');
     this.submitButton = page.getByRole('button', { name: /Đăng nhập/i }).first();
-    this.errorMessage = page.locator('.alert.alert-error, .text-red-600');
+    this.errorMessage = page.getByRole('alert');
     this.quickLoginButtons = page.locator('button', { hasText: /Administrator|System Staff|Interaction Manager|Service Operator/ });
   }
 

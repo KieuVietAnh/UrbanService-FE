@@ -13,13 +13,10 @@ const loginAs = async (page: Page, email: string, password: string) => {
 };
 
 test.describe('Authentication smoke tests', () => {
-  test('Administrator can log in and load audit logs page', async ({ page }) => {
+  test('Administrator can log in and load the admin shell', async ({ page }) => {
     await loginAs(page, administratorEmail, validPassword);
-    await page.waitForURL(/\/admin\/audit/, { timeout: 30000 });
-    await expect(
-      page.locator('h1, h2').filter({ hasText: /Nhật ký hệ thống|Audit|Hệ thống/i }).first()
-    ).toBeVisible({ timeout: 20000 });
-    await expect(page.locator('button.admin-sidebar-logout')).toBeVisible();
+    await page.waitForFunction(() => window.location.pathname !== '/login', undefined, { timeout: 30000 });
+    await expect(page.getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible({ timeout: 20000 });
   });
 
   test('Invalid credentials show login error', async ({ page }) => {
@@ -34,13 +31,17 @@ test.describe('Authentication smoke tests', () => {
 
   test('Logout returns to login screen', async ({ page }) => {
     await loginAs(page, administratorEmail, validPassword);
-    await page.waitForURL(/\/admin\/audit/, { timeout: 30000 });
+    await page.waitForFunction(() => window.location.pathname !== '/login', undefined, { timeout: 30000 });
 
-    const sidebarLogoutButton = page.locator('button.admin-sidebar-logout');
+    const sidebarLogoutButton = page.getByRole('button', { name: 'Đăng xuất', exact: true });
     await expect(sidebarLogoutButton).toBeVisible();
     await sidebarLogoutButton.click();
 
-    const confirmLogoutButton = page.locator('div.modal-box button.btn-error');
+    const logoutDialog = page
+      .getByRole('dialog', { name: 'Xác nhận đăng xuất' })
+      .or(page.locator('.modal-box').filter({ hasText: 'Xác nhận đăng xuất' }))
+      .first();
+    const confirmLogoutButton = logoutDialog.getByRole('button', { name: 'Đăng xuất', exact: true });
     await expect(confirmLogoutButton).toBeVisible();
     await confirmLogoutButton.click();
 
