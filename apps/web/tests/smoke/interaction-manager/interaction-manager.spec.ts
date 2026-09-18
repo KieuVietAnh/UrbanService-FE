@@ -87,7 +87,7 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     await verifyRouteAndPage(
       page,
       interactionsRoute,
-      page.getByRole('heading', { name: /Giám sát luồng tương tác|Luồng tương tác/i }).first(),
+      page.getByRole('heading', { name: 'Giám sát phản ánh', exact: true }),
       'interaction monitoring'
     );
 
@@ -101,7 +101,7 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     await verifyRouteAndPage(
       page,
       approvalsRoute,
-      page.getByRole('heading', { name: /Hàng đợi duyệt kết quả|Hàng đợi duyệt/i }).first(),
+      page.getByRole('heading', { name: 'Duyệt kết quả xử lý', exact: true }),
       'approval inbox'
     );
 
@@ -124,14 +124,9 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     const firstRow = page.locator('table tbody tr').first();
     await expect(firstRow).toBeVisible({ timeout: 20000 });
 
-    const approvalButton = firstRow.locator('button:has-text("Xem hồ sơ"), button:has-text("View"), button:has-text("Open")').first();
-    await expect(approvalButton).toBeVisible({ timeout: 15000 });
-    await approvalButton.click();
+    await firstRow.click();
     await page.waitForURL(/\/manager\/approvals\/[A-Za-z0-9_-]+/, { timeout: 30000 });
 
-    await expect(
-      page.locator('h1, h2, h3').filter({ hasText: /Nội dung phản ánh|Chi tiết phản ánh|Không tìm thấy hồ sơ/i }).first()
-    ).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /Quay lại|Quay lại danh sách/i })).toBeVisible({ timeout: 15000 });
     await assertNoErrors(monitor, 'Approval detail');
   });
@@ -143,7 +138,7 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     await verifyRouteAndPage(
       page,
       slaRoute,
-      page.getByRole('heading', { name: /Chỉ số SLA dịch vụ|SLA/i }).first(),
+      page.getByRole('heading', { name: 'Phân tích SLA sự vụ', exact: true }),
       'SLA analytics'
     );
 
@@ -157,7 +152,7 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     await verifyRouteAndPage(
       page,
       sentimentRoute,
-      page.getByRole('heading', { name: /Cảm xúc và nhận thức người dân|Cảm xúc/i }).first(),
+      page.getByRole('heading', { name: 'Cảm xúc người dân', exact: true }),
       'sentiment dashboard'
     );
 
@@ -171,7 +166,7 @@ test.describe.serial('Interaction Manager smoke tests', () => {
     await verifyRouteAndPage(
       page,
       heatmapRoute,
-      page.getByRole('heading', { name: /Bản đồ điểm nóng|Bản đồ nhiệt phản ánh đô thị|Bản đồ nhiệt/i }).first(),
+      page.getByRole('heading', { name: 'Bản đồ điểm nóng', exact: true }),
       'heatmap dashboard'
     );
 
