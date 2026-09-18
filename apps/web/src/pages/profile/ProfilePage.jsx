@@ -7,6 +7,7 @@ import { getRoleLabel } from '../../utils/roleMap';
 import { managementTypes } from '@urbanmind/shared-types';
 import { userApi } from '@urbanmind/shared-api';
 import { ticketApi } from '../../services/api/ticketApi';
+import { canUseResidentProfileApi, getSessionProfile } from './profileAccess';
 
 const ROLE_LABELS = {
   administrator: 'Quản trị viên',
@@ -128,6 +129,7 @@ export const ProfilePage = () => {
   const [loadingTickets, setLoadingTickets] = useState(false);
 
   const normalizedRole = useMemo(() => normalizeRole(user?.role), [user?.role]);
+  const canManageProfile = canUseResidentProfileApi(normalizedRole);
   const displayName = fullName || profile?.fullName || user?.fullName || user?.email || 'Người dùng';
   const userInitials = useMemo(() => getUserInitials(displayName), [displayName]);
   const roleLabel = ROLE_LABELS[normalizedRole] || getRoleLabel(user?.role) || 'Người dùng';
@@ -143,6 +145,18 @@ export const ProfilePage = () => {
 
     const loadProfile = async () => {
       setLoadingProfile(true);
+
+      const sessionProfile = getSessionProfile(user);
+      if (!canManageProfile) {
+        setProfile(sessionProfile);
+        setFullName(sessionProfile.fullName);
+        setPhone(sessionProfile.phoneNumber);
+        setPhoneError('');
+        setAddress(sessionProfile.address);
+        setLoadingProfile(false);
+        return;
+      }
+
       try {
         const data = await userApi.getProfile();
         if (cancelled) return;
@@ -154,7 +168,14 @@ export const ProfilePage = () => {
         setAddress(data?.address || '');
       } catch (error) {
         console.error('ProfilePage profile load failed', error);
-        if (!cancelled) setToastMessage('Không thể tải thông tin hồ sơ');
+        if (!cancelled) {
+          setProfile(sessionProfile);
+          setFullName(sessionProfile.fullName);
+          setPhone(sessionProfile.phoneNumber);
+          setPhoneError('');
+          setAddress(sessionProfile.address);
+          setToastMessage('Không thể tải thông tin hồ sơ');
+        }
       } finally {
         if (!cancelled) setLoadingProfile(false);
       }
@@ -164,7 +185,7 @@ export const ProfilePage = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canManageProfile, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -215,7 +236,7 @@ export const ProfilePage = () => {
 
   const handleUpdate = async event => {
     event.preventDefault();
-    if (savingProfile) return;
+    if (!canManageProfile || savingProfile) return;
 
     const nextPhoneError = validatePhoneNumber(phone);
     setPhoneError(nextPhoneError);
@@ -369,7 +390,9 @@ export const ProfilePage = () => {
               {displayName}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
-              Quản lý thông tin cá nhân và theo dõi các phản ánh bạn đã gửi tới UrbanMind.
+              {canManageProfile
+                ? 'Quản lý thông tin cá nhân và theo dõi các phản ánh bạn đã gửi tới UrbanMind.'
+                : 'Xem thông tin tài khoản và hoạt động trong phạm vi công việc của bạn.'}
             </p>
           </div>
 
@@ -558,7 +581,11 @@ export const ProfilePage = () => {
                 </span>
                 <div>
                   <h2 className="text-lg font-semibold tracking-[-0.02em] text-[var(--public-title)]">Thông tin cá nhân</h2>
-                  <p className="mt-1 text-sm leading-6 text-[var(--public-copy)]">Cập nhật các trường được hỗ trợ bởi hồ sơ tài khoản.</p>
+                  <p className="mt-1 text-sm leading-6 text-[var(--public-copy)]">
+                    {canManageProfile
+                      ? 'Cập nhật các trường được hỗ trợ bởi hồ sơ tài khoản.'
+                      : 'Thông tin tài khoản nhân sự được hiển thị từ phiên đăng nhập.'}
+                  </p>
                 </div>
               </div>
             </header>
@@ -587,8 +614,9 @@ export const ProfilePage = () => {
                       id="profile-name"
                       type="text"
                       value={fullName}
+                      disabled={!canManageProfile}
                       onChange={event => setFullName(event.target.value)}
-                      className="h-12 w-full rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none transition placeholder:text-[var(--public-muted)] focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10"
+                      className="h-12 w-full rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none transition placeholder:text-[var(--public-muted)] focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-[var(--public-surface-soft)] disabled:text-[var(--public-muted)]"
                       placeholder="Nhập họ và tên"
                     />
                   </div>
@@ -605,6 +633,7 @@ export const ProfilePage = () => {
                       autoComplete="tel"
                       maxLength={11}
                       value={phone}
+                      disabled={!canManageProfile}
                       onChange={event => {
                         const digitsOnly = event.target.value.replace(/\D/g, '').slice(0, 11);
                         setPhone(digitsOnly);
@@ -613,7 +642,7 @@ export const ProfilePage = () => {
                       onBlur={() => setPhoneError(validatePhoneNumber(phone))}
                       aria-invalid={Boolean(phoneError)}
                       aria-describedby={phoneError ? 'profile-phone-error' : undefined}
-                      className={`h-12 w-full rounded-xl border bg-[var(--public-surface-strong)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none transition placeholder:text-[var(--public-muted)] focus:ring-4 ${
+                      className={`h-12 w-full rounded-xl border bg-[var(--public-surface-strong)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none transition placeholder:text-[var(--public-muted)] focus:ring-4 disabled:cursor-not-allowed disabled:bg-[var(--public-surface-soft)] disabled:text-[var(--public-muted)] ${
                         phoneError
                           ? 'border-rose-400 focus:border-rose-400 focus:ring-rose-500/10'
                           : 'border-[var(--public-border)] focus:border-blue-400 focus:ring-blue-500/10'
@@ -637,8 +666,9 @@ export const ProfilePage = () => {
                       id="profile-address"
                       type="text"
                       value={address}
+                      disabled={!canManageProfile}
                       onChange={event => setAddress(event.target.value)}
-                      className="h-12 w-full rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none transition placeholder:text-[var(--public-muted)] focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10"
+                      className="h-12 w-full rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none transition placeholder:text-[var(--public-muted)] focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-[var(--public-surface-soft)] disabled:text-[var(--public-muted)]"
                       placeholder="Nhập địa chỉ liên hệ"
                     />
                   </div>
@@ -648,16 +678,20 @@ export const ProfilePage = () => {
               <div className="mt-6 flex flex-col gap-4 border-t border-[var(--public-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <p className="flex items-center gap-2 text-xs leading-5 text-[var(--public-muted)]">
                   <Lucide.Info size={14} aria-hidden="true" />
-                  Họ tên, số điện thoại và địa chỉ sẽ được đồng bộ với hồ sơ tài khoản sau khi lưu.
+                  {canManageProfile
+                    ? 'Họ tên, số điện thoại và địa chỉ sẽ được đồng bộ với hồ sơ tài khoản sau khi lưu.'
+                    : 'Liên hệ quản trị viên nếu thông tin tài khoản nhân sự chưa chính xác.'}
                 </p>
-                <button
-                  type="submit"
-                  disabled={savingProfile || loadingProfile}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:pointer-events-none disabled:opacity-60"
-                >
-                  {savingProfile ? <Lucide.LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : <Lucide.Save size={16} aria-hidden="true" />}
-                  {savingProfile ? 'Đang lưu...' : 'Lưu thay đổi'}
-                </button>
+                {canManageProfile ? (
+                  <button
+                    type="submit"
+                    disabled={savingProfile || loadingProfile}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:pointer-events-none disabled:opacity-60"
+                  >
+                    {savingProfile ? <Lucide.LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : <Lucide.Save size={16} aria-hidden="true" />}
+                    {savingProfile ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  </button>
+                ) : null}
               </div>
             </form>
           </section>
