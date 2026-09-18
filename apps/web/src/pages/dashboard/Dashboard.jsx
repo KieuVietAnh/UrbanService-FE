@@ -2659,6 +2659,8 @@ const RoleDashboard = () => {
     const urgentOpenCount = toDashboardCount(managerOverview?.urgentOpen || urgentOpenItems.length);
     const breachedSla = toDashboardCount(slaSummary?.breachedSla ?? stats?.slaBreaches);
     const warningSla = toDashboardCount(slaSummary?.warningSla);
+    const runningSla = toDashboardCount(slaSummary?.runningSla);
+    const completedSla = toDashboardCount(slaSummary?.completedSla);
     const managerDataIssues = Array.isArray(stats?.managerDataIssues) ? stats.managerDataIssues : [];
     const managerOverviewAvailable = stats?.managerOverviewAvailable ?? Boolean(stats?.managerOverview);
     const activeWorkCount = assignedCount + inProgressCount;
@@ -2932,6 +2934,51 @@ const RoleDashboard = () => {
           </article>
         </section>
 
+        <section
+          className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/85"
+          aria-label="Tóm tắt SLA vận hành"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-stretch">
+            <div className="flex min-w-[250px] items-center gap-3 px-4 py-3.5 sm:px-5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                <Lucide.Gauge size={17} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <strong className="block text-sm font-semibold text-slate-900 dark:text-slate-100">SLA vận hành</strong>
+                <span className="mt-0.5 block text-xs text-slate-500">Theo dõi mức độ cần can thiệp ở cấp sự vụ.</span>
+              </div>
+            </div>
+
+            <div className="grid min-w-0 flex-1 grid-cols-2 border-t border-slate-100 sm:grid-cols-4 lg:border-l lg:border-t-0 dark:border-slate-800">
+              {[
+                { label: 'Đang chạy', value: runningSla, dot: 'bg-slate-400', valueClass: 'text-slate-900 dark:text-slate-100' },
+                { label: 'Cảnh báo', value: warningSla, dot: 'bg-amber-400', valueClass: 'text-amber-700 dark:text-amber-300' },
+                { label: 'Vi phạm', value: breachedSla, dot: 'bg-rose-500', valueClass: 'text-rose-700 dark:text-rose-300' },
+                { label: 'Hoàn thành', value: completedSla, dot: 'bg-emerald-500', valueClass: 'text-emerald-700 dark:text-emerald-300' },
+              ].map((item, index) => (
+                <div
+                  key={item.label}
+                  className={`flex items-center justify-between gap-3 px-4 py-3.5 ${index % 2 === 0 ? 'border-r border-slate-100 dark:border-slate-800' : ''} ${index < 2 ? 'border-b border-slate-100 sm:border-b-0 dark:border-slate-800' : ''} ${index === 1 ? 'sm:border-r sm:border-slate-100 sm:dark:border-slate-800' : ''} ${index === 2 ? 'sm:border-r sm:border-slate-100 sm:dark:border-slate-800' : ''}`}
+                >
+                  <span className="inline-flex min-w-0 items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    <i className={`h-2.5 w-2.5 shrink-0 rounded-full ${item.dot}`} aria-hidden="true" />
+                    <span className="truncate">{item.label}</span>
+                  </span>
+                  <strong className={`shrink-0 text-lg font-semibold tabular-nums ${item.valueClass}`}>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <Link
+              to="/analytics/sla"
+              className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-100 px-4 py-3.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50/60 hover:text-blue-800 sm:px-5 lg:border-l lg:border-t-0 dark:border-slate-800 dark:text-blue-300 dark:hover:bg-blue-500/10 dark:hover:text-blue-200"
+            >
+              <span>Phân tích SLA</span>
+              <Lucide.ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          </div>
+        </section>
+
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)] xl:items-start">
           <article className="admin-panel overflow-hidden">
             <ManagerSectionHeader
@@ -3000,38 +3047,6 @@ const RoleDashboard = () => {
               ) : <p className="py-6 text-center text-sm text-slate-500">Chưa có dữ liệu mức ưu tiên.</p>}
             </div>
           </article>
-        </section>
-
-        <section
-          className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5 dark:border-slate-800 dark:bg-slate-950/80"
-          aria-label="Tóm tắt SLA vận hành"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
-              <Lucide.Gauge size={17} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <strong className="block text-sm font-semibold text-slate-900 dark:text-slate-100">SLA vận hành</strong>
-              <span className="mt-0.5 block text-xs text-slate-500">Theo dõi các SLA cần can thiệp trước khi vượt cam kết.</span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 sm:justify-end">
-            <span className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-              <i className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
-              <span>Cảnh báo</span>
-              <strong className="font-semibold tabular-nums text-amber-700 dark:text-amber-300">{warningSla}</strong>
-            </span>
-            <span className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-              <i className="h-2.5 w-2.5 rounded-full bg-rose-500" aria-hidden="true" />
-              <span>Vi phạm</span>
-              <strong className="font-semibold tabular-nums text-rose-700 dark:text-rose-300">{breachedSla}</strong>
-            </span>
-            <Link to="/analytics/sla" className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200">
-              Phân tích SLA
-              <Lucide.ArrowRight size={14} aria-hidden="true" />
-            </Link>
-          </div>
         </section>
 
         <section className="admin-panel overflow-hidden">
