@@ -1,5 +1,5 @@
 const menuItems = [
-  { name: 'Dashboard', label: 'Dashboard', path: '/dashboard', icon: 'LayoutDashboard', activePatterns: ['/dashboard'] },
+  { name: 'Dashboard', label: 'Tổng quan', path: '/dashboard', icon: 'LayoutDashboard', activePatterns: ['/dashboard'] },
   { name: 'Sự Vụ Của Tôi', label: 'Sự vụ của tôi', path: '/staff/incidents', icon: 'ClipboardList', activePatterns: ['/staff/incidents'] },
   {
     name: 'Phản Ánh',
