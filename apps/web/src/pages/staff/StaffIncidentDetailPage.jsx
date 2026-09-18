@@ -23,6 +23,7 @@ import StaffIncidentReportsPanel from './StaffIncidentReportsPanel';
 import StaffIncidentTimelinePanel from './StaffIncidentTimelinePanel';
 import StaffIncidentProcessingPanel from './StaffIncidentProcessingPanel';
 import StaffIncidentResolutionPanel from './StaffIncidentResolutionPanel';
+import { getIncidentLifecycleMilestones } from './incidentDetailPresentation';
 import {
   formatStaffIncidentSlaRemaining,
   getStaffIncidentSlaMetric,
@@ -471,6 +472,9 @@ function OverviewPanel({ incident, onRetrySla, sla, slaState }) {
   const assignedStaffName = String(incident?.assignedStaffName ?? '').trim();
   const latitude = incident?.latitude ?? incident?.lat;
   const longitude = incident?.longitude ?? incident?.lng;
+  const milestones = getIncidentLifecycleMilestones(incident, sla, {
+    slaLoading: slaState === STAFF_INCIDENT_SLA_STATE.LOADING,
+  });
 
   return (
     <div
@@ -585,9 +589,23 @@ function OverviewPanel({ incident, onRetrySla, sla, slaState }) {
             <MetadataRow label="Người theo dõi" icon={Lucide.UsersRound} value={formatCount(incident?.subscriberCount)} />
             <MetadataRow label="Thời gian tạo" icon={Lucide.CalendarPlus} value={formatDateTime(incident?.createdAt)} />
             <MetadataRow label="Cập nhật gần nhất" icon={Lucide.RefreshCw} value={formatDateTime(incident?.updatedAt)} />
-            <MetadataRow label="Hạn dự kiến" icon={Lucide.CalendarClock} value={formatDateTime(incident?.dueDate)} />
-            <MetadataRow label="Đã giải quyết lúc" icon={Lucide.CircleCheckBig} value={formatDateTime(incident?.resolvedAt)} />
-            <MetadataRow label="Đã đóng lúc" icon={Lucide.Archive} value={formatDateTime(incident?.closedAt)} />
+            <MetadataRow
+              label="Hạn dự kiến"
+              icon={Lucide.CalendarClock}
+              value={milestones.dueAt ? formatDateTime(milestones.dueAt) : milestones.duePlaceholder}
+            />
+            <MetadataRow
+              label="Đã giải quyết lúc"
+              icon={Lucide.CircleCheckBig}
+              value={milestones.resolvedAt ? formatDateTime(milestones.resolvedAt) : milestones.resolvedPlaceholder}
+              valueClassName={milestones.resolvedAt ? '' : 'text-slate-500 dark:text-slate-400'}
+            />
+            <MetadataRow
+              label="Đã đóng lúc"
+              icon={Lucide.Archive}
+              value={milestones.closedAt ? formatDateTime(milestones.closedAt) : milestones.closedPlaceholder}
+              valueClassName={milestones.closedAt ? '' : 'text-slate-500 dark:text-slate-400'}
+            />
           </dl>
         </section>
 

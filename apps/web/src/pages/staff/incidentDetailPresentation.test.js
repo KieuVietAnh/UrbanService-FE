@@ -4,11 +4,39 @@ import assert from 'node:assert/strict';
 import {
   formatConfidence,
   formatReportCode,
+  getIncidentLifecycleMilestones,
   getIncidentEventMetadata,
   getIncidentEventTitle,
   getReportLinkMethodLabel,
   parseIncidentEventPayload,
 } from './incidentDetailPresentation.js';
+
+test('incident milestones use the SLA resolution deadline when Incident dueDate is absent', () => {
+  const milestones = getIncidentLifecycleMilestones(
+    { status: 'InProgress', dueDate: null, resolvedAt: null, closedAt: null },
+    { resolutionDueAt: '2026-09-20T03:00:00Z' },
+  );
+
+  assert.equal(milestones.dueAt, '2026-09-20T03:00:00Z');
+  assert.equal(milestones.resolvedPlaceholder, 'Chưa giải quyết');
+  assert.equal(milestones.closedPlaceholder, 'Chưa đóng');
+});
+
+test('incident milestones keep Incident dates authoritative and expose missing terminal timestamps', () => {
+  const milestones = getIncidentLifecycleMilestones(
+    {
+      status: 'Closed',
+      dueDate: '2026-09-19T03:00:00Z',
+      resolvedAt: '2026-09-18T04:00:00Z',
+      closedAt: null,
+    },
+    { resolutionDueAt: '2026-09-20T03:00:00Z' },
+  );
+
+  assert.equal(milestones.dueAt, '2026-09-19T03:00:00Z');
+  assert.equal(milestones.resolvedAt, '2026-09-18T04:00:00Z');
+  assert.equal(milestones.closedPlaceholder, 'Backend chưa ghi nhận thời điểm');
+});
 
 test('Report presentation keeps the real identifier and confidence readable', () => {
   assert.equal(formatReportCode('12345678-abcd-0000-0000-000000000000'), 'UM-12345678');

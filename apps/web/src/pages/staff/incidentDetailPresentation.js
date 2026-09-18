@@ -73,6 +73,31 @@ export const getIncidentStatusLabel = (value) => (
   value ? INCIDENT_STATUS_LABELS[normalizeKey(value)] || 'Chưa xác định' : EMPTY_VALUE
 );
 
+const firstPresentValue = (...values) => values.find((value) => (
+  value !== null
+  && value !== undefined
+  && String(value).trim() !== ''
+)) ?? null;
+
+export const getIncidentLifecycleMilestones = (
+  incident = {},
+  sla = null,
+  { slaLoading = false } = {},
+) => {
+  const status = normalizeKey(incident?.status);
+  const isResolved = ['resolved', 'closed'].includes(status);
+  const isClosed = status === 'closed';
+
+  return {
+    dueAt: firstPresentValue(incident?.dueDate, sla?.resolutionDueAt),
+    duePlaceholder: slaLoading ? 'Đang tải hạn SLA…' : 'Chưa thiết lập hạn xử lý',
+    resolvedAt: firstPresentValue(incident?.resolvedAt),
+    resolvedPlaceholder: isResolved ? 'Backend chưa ghi nhận thời điểm' : 'Chưa giải quyết',
+    closedAt: firstPresentValue(incident?.closedAt),
+    closedPlaceholder: isClosed ? 'Backend chưa ghi nhận thời điểm' : 'Chưa đóng',
+  };
+};
+
 export const getSubmissionChannelLabel = (value) => {
   const key = normalizeKey(value);
   if (!key) return EMPTY_VALUE;
