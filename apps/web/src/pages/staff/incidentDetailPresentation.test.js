@@ -38,6 +38,16 @@ test('incident milestones keep Incident dates authoritative and expose missing t
   assert.equal(milestones.closedPlaceholder, 'Backend chưa ghi nhận thời điểm');
 });
 
+test('incident milestones treat Approved as a resolved state', () => {
+  const milestones = getIncidentLifecycleMilestones(
+    { status: 'Approved', dueDate: null, resolvedAt: null, closedAt: null },
+    null,
+  );
+
+  assert.equal(milestones.resolvedPlaceholder, 'Backend chưa ghi nhận thời điểm');
+  assert.equal(milestones.closedPlaceholder, 'Chưa đóng');
+});
+
 test('Report presentation keeps the real identifier and confidence readable', () => {
   assert.equal(formatReportCode('12345678-abcd-0000-0000-000000000000'), 'UM-12345678');
   assert.equal(formatConfidence(0.923), '92,3%');
