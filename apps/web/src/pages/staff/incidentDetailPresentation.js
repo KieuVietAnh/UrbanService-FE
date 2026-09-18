@@ -85,7 +85,7 @@ export const getIncidentLifecycleMilestones = (
   { slaLoading = false } = {},
 ) => {
   const status = normalizeKey(incident?.status);
-  const isResolved = ['resolved', 'closed'].includes(status);
+  const isResolved = ['approved', 'resolved', 'closed'].includes(status);
   const isClosed = status === 'closed';
 
   return {
