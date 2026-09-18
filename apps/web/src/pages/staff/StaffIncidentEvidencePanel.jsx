@@ -11,6 +11,10 @@ import {
   formatOperationalDateTime,
 } from './incidentDetailPresentation';
 import { canManageIncidentExecution } from './staffIncidentProcessing';
+import {
+  STAFF_INCIDENT_FLOW_TARGETS,
+  scrollToStaffIncidentFlowTarget,
+} from './staffIncidentFlowNavigation';
 
 const STAFF_INCIDENT_EVIDENCE_STATE = Object.freeze({
   LOADING: 'loading',
@@ -336,6 +340,7 @@ export default function StaffIncidentEvidencePanel({
       } catch {
         setMessage({ type: 'success', text: 'Đã tải minh chứng lên. Danh sách mới nhất sẽ được cập nhật khi bạn thử lại.' });
       }
+      scrollToStaffIncidentFlowTarget(STAFF_INCIDENT_FLOW_TARGETS.RESOLUTION_FORM);
     } catch (error) {
       if (uploadCompleted) {
         setDescription('');
@@ -412,7 +417,7 @@ export default function StaffIncidentEvidencePanel({
 
   return (
     <>
-      <section className="admin-panel overflow-hidden" aria-labelledby="incident-evidence-title">
+      <section id="incident-evidence" className="admin-panel scroll-mt-4 overflow-hidden" aria-labelledby="incident-evidence-title">
         <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-950/55 dark:text-violet-300" aria-hidden="true">

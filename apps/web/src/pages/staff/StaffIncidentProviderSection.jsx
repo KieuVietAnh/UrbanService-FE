@@ -16,6 +16,10 @@ import {
   getProviderStatusIntent,
   getProviderStatusLabel,
 } from './staffIncidentProcessing';
+import {
+  STAFF_INCIDENT_FLOW_TARGETS,
+  scrollToStaffIncidentFlowTarget,
+} from './staffIncidentFlowNavigation';
 
 const PROVIDER_STATE = Object.freeze({
   LOADING: 'loading',
@@ -459,6 +463,7 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
       if (refreshedIncident && sameIdentifier(refreshedIncident?.incidentId, incidentId)) {
         onIncidentUpdated?.(refreshedIncident);
       }
+      scrollToStaffIncidentFlowTarget(STAFF_INCIDENT_FLOW_TARGETS.CONTACT);
     } catch (error) {
       setDialogOpen(false);
       setMessage({
@@ -499,6 +504,7 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
       setState(PROVIDER_STATE.DIRECT);
       setMessage({ type: 'success', text: 'Đã bắt đầu tự xử lý. Tiếp theo, hãy bổ sung minh chứng (nếu có) và gửi kết quả.' });
       onIncidentUpdated?.(updatedIncident);
+      scrollToStaffIncidentFlowTarget(STAFF_INCIDENT_FLOW_TARGETS.RESOLUTION);
     } catch (error) {
       setDirectDialogOpen(false);
       setMessage({ type: 'error', text: getActionErrorMessage(error, 'Không thể bắt đầu tự xử lý sự vụ.') });

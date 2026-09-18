@@ -653,7 +653,7 @@ export default function StaffIncidentResolutionPanel({
       role={embedded ? undefined : 'tabpanel'}
       aria-labelledby={embedded ? undefined : 'incident-tab-resolution'}
       tabIndex={embedded ? undefined : 0}
-      className="space-y-5 focus-visible:outline-none"
+      className="scroll-mt-4 space-y-5 focus-visible:outline-none"
     >
       {!readOnly ? (
       <section className="admin-panel overflow-hidden" aria-labelledby="incident-resolution-workspace-title">
@@ -704,7 +704,7 @@ export default function StaffIncidentResolutionPanel({
       /> : null}
 
       {!readOnly ? (
-      <section className="admin-panel overflow-hidden" aria-labelledby="incident-resolution-submit-title">
+      <section id="incident-resolution-submit" className="admin-panel scroll-mt-4 overflow-hidden" aria-labelledby="incident-resolution-submit-title">
         <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-5 sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
             {submissionMode === 'resubmit' ? <Lucide.RotateCcw size={20} /> : <Lucide.Send size={20} />}
