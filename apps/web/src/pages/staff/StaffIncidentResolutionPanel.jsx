@@ -170,7 +170,7 @@ const validateEvidenceDocuments = (documents, assignmentId, incidentId) => {
 const readDraft = (storageKey) => {
   if (!storageKey || typeof window === 'undefined') return { ...EMPTY_DRAFT };
   try {
-    const value = JSON.parse(window.sessionStorage.getItem(storageKey) || 'null');
+    const value = JSON.parse(window.localStorage.getItem(storageKey) || 'null');
     if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...EMPTY_DRAFT };
     return {
       actionTaken: typeof value.actionTaken === 'string' ? value.actionTaken : '',
@@ -314,7 +314,12 @@ function ResolutionHistoryItem({ resolution }) {
   );
 }
 
-export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdated }) {
+export default function StaffIncidentResolutionPanel({
+  embedded = false,
+  incident,
+  onIncidentUpdated,
+  readOnly = false,
+}) {
   const { user } = useAuth();
   const capability = incidentManagementApi.capabilities.resolutions;
   const incidentId = String(incident?.incidentId ?? '').trim();
@@ -434,9 +439,9 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
     if (!draftStorageKey || typeof window === 'undefined') return;
     try {
       if (draft.resolutionSummary || draft.actionTaken || draft.resultNote) {
-        window.sessionStorage.setItem(draftStorageKey, JSON.stringify(draft));
+        window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
       } else {
-        window.sessionStorage.removeItem(draftStorageKey);
+        window.localStorage.removeItem(draftStorageKey);
       }
     } catch {
       // Draft persistence is a convenience; the visible form remains usable without it.
@@ -562,7 +567,7 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
       setDialogOpen(false);
       setDraft({ ...EMPTY_DRAFT });
       try {
-        window.sessionStorage.removeItem(draftStorageKey);
+        window.localStorage.removeItem(draftStorageKey);
       } catch {
         // The successful request is authoritative even when browser storage is unavailable.
       }
@@ -644,12 +649,13 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
 
   return (
     <div
-      id="incident-panel-resolution"
-      role="tabpanel"
-      aria-labelledby="incident-tab-resolution"
-      tabIndex={0}
+      id={embedded ? 'incident-execution-resolution' : 'incident-panel-resolution'}
+      role={embedded ? undefined : 'tabpanel'}
+      aria-labelledby={embedded ? undefined : 'incident-tab-resolution'}
+      tabIndex={embedded ? undefined : 0}
       className="space-y-5 focus-visible:outline-none"
     >
+      {!readOnly ? (
       <section className="admin-panel overflow-hidden" aria-labelledby="incident-resolution-workspace-title">
         <header className="border-b border-blue-100 bg-blue-50/65 px-5 py-5 sm:px-6 dark:border-blue-950 dark:bg-blue-950/20">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -659,8 +665,8 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-[0.07em] text-blue-700 dark:text-blue-300">{formatIncidentCode(incidentId)}</p>
-                <h2 id="incident-resolution-workspace-title" className="mt-1 text-lg font-black text-slate-950 dark:text-white">Kết quả xử lý sự vụ</h2>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Chuẩn bị minh chứng, ghi nhận công việc đã thực hiện và gửi kết quả để Manager xem xét.</p>
+                <h2 id="incident-resolution-workspace-title" className="mt-1 text-lg font-black text-slate-950 dark:text-white">Hoàn tất xử lý</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Tải minh chứng trước, sau đó ghi nhận công việc đã thực hiện và gửi kết quả cho Manager trong cùng một flow.</p>
               </div>
             </div>
             <Badge intent={currentStatus === 'needrework' ? 'danger' : 'info'}>{getIncidentStatusLabel(incident?.status)}</Badge>
@@ -672,8 +678,9 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
           <SummaryFact icon={Lucide.History} label="Kết quả đã gửi" value={state === RESOLUTION_STATE.READY ? resolutions.length.toLocaleString('vi-VN') : 'Đang kiểm tra'} tone="amber" />
         </div>
       </section>
+      ) : null}
 
-      {currentStatus === 'needrework' ? (
+      {!readOnly && currentStatus === 'needrework' ? (
         <section className="overflow-hidden rounded-[1.35rem] border border-amber-300 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/25" aria-labelledby="manager-rework-request-title">
           <div className="flex items-start gap-3 p-5 sm:p-6">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white" aria-hidden="true"><Lucide.RotateCcw size={19} /></span>
@@ -687,13 +694,23 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
         </section>
       ) : null}
 
+      {!readOnly ? <StaffIncidentEvidencePanel
+        key={`${incidentId}:${evidenceRefreshVersion}`}
+        incident={incident}
+        onEvidenceSnapshotChange={handleEvidenceSnapshot}
+        onIncidentUpdated={onIncidentUpdated}
+        readOnly={evidenceReadOnly}
+        readOnlyMessage="Kết quả đã được gửi. Minh chứng tạm thời ở chế độ chỉ xem trong khi chờ Manager duyệt hoặc yêu cầu xử lý lại."
+      /> : null}
+
+      {!readOnly ? (
       <section className="admin-panel overflow-hidden" aria-labelledby="incident-resolution-submit-title">
         <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-5 sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
             {submissionMode === 'resubmit' ? <Lucide.RotateCcw size={20} /> : <Lucide.Send size={20} />}
           </span>
           <div className="min-w-0">
-            <h2 id="incident-resolution-submit-title" className="admin-section-title">{submissionMode === 'resubmit' ? 'Gửi lại kết quả' : 'Gửi kết quả'}</h2>
+            <h2 id="incident-resolution-submit-title" className="admin-section-title">{submissionMode === 'resubmit' ? 'Cuối cùng · Gửi lại kết quả' : 'Cuối cùng · Gửi kết quả'}</h2>
             <p className="admin-section-description mt-1">Nhân viên gửi nội dung thực hiện cho Manager duyệt; thao tác này không tự phê duyệt hoặc đóng sự vụ.</p>
           </div>
         </header>
@@ -785,22 +802,14 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
           </div>
         ) : null}
       </section>
-
-      <StaffIncidentEvidencePanel
-        key={`${incidentId}:${evidenceRefreshVersion}`}
-        incident={incident}
-        onEvidenceSnapshotChange={handleEvidenceSnapshot}
-        onIncidentUpdated={onIncidentUpdated}
-        readOnly={evidenceReadOnly}
-        readOnlyMessage="Kết quả đã được gửi. Minh chứng tạm thời ở chế độ chỉ xem trong khi chờ Manager duyệt hoặc yêu cầu xử lý lại."
-      />
+      ) : null}
 
       <section className="admin-panel overflow-hidden" aria-labelledby="incident-resolution-history-title">
         <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-5 sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950/55 dark:text-amber-300" aria-hidden="true"><Lucide.History size={20} /></span>
           <div className="min-w-0 flex-1">
-            <h2 id="incident-resolution-history-title" className="admin-section-title">{currentStatus === 'needrework' ? 'Kết quả đã gửi trước đó' : 'Lịch sử gửi kết quả'}</h2>
-            <p className="admin-section-description mt-1">Các lần gửi được backend lưu ở cấp Incident và luôn được giữ lại để đối chiếu.</p>
+            <h2 id="incident-resolution-history-title" className="admin-section-title">{readOnly ? 'Kết quả đã nhận' : currentStatus === 'needrework' ? 'Kết quả đã gửi trước đó' : 'Lịch sử gửi kết quả'}</h2>
+            <p className="admin-section-description mt-1">{readOnly ? 'Khu vực này chỉ dùng để xem các kết quả đã gửi và minh chứng đi kèm. Mọi thao tác xử lý được thực hiện trong tab Xử lý.' : 'Các lần gửi được backend lưu ở cấp Incident và luôn được giữ lại để đối chiếu.'}</p>
           </div>
           {state === RESOLUTION_STATE.READY ? <Badge intent="neutral">{resolutions.length.toLocaleString('vi-VN')} kết quả</Badge> : null}
         </header>
@@ -824,7 +833,7 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
         ) : null}
       </section>
 
-      <StaffIncidentActionDialog
+      {!readOnly ? <StaffIncidentActionDialog
         open={dialogOpen}
         busy={submitting}
         title={submissionMode === 'resubmit' ? 'Gửi lại kết quả cho Manager?' : 'Gửi kết quả xử lý cho Manager?'}
@@ -841,7 +850,7 @@ export default function StaffIncidentResolutionPanel({ incident, onIncidentUpdat
           <div className="grid gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3"><dt className="font-semibold text-slate-500 dark:text-slate-400">Đơn vị xử lý</dt><dd className="break-words font-bold text-slate-900 dark:text-slate-100">{providerSummary}</dd></div>
           <div className="grid gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3"><dt className="font-semibold text-slate-500 dark:text-slate-400">Minh chứng</dt><dd className="font-bold text-slate-900 dark:text-slate-100">{evidenceSummary}</dd></div>
         </dl>
-      </StaffIncidentActionDialog>
+      </StaffIncidentActionDialog> : null}
     </div>
   );
 }

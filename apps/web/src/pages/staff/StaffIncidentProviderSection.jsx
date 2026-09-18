@@ -19,6 +19,8 @@ import {
 
 const PROVIDER_STATE = Object.freeze({
   LOADING: 'loading',
+  CHOICE: 'choice',
+  DIRECT: 'direct',
   CANDIDATES: 'candidates',
   ASSIGNED: 'assigned',
   EMPTY: 'empty',
@@ -31,6 +33,35 @@ const sameIdentifier = (left, right) => (
   Boolean(String(left ?? '').trim() && String(right ?? '').trim())
   && String(left).trim().toLowerCase() === String(right).trim().toLowerCase()
 );
+
+const normalizeStatus = (value) => String(value ?? '')
+  .trim()
+  .replace(/[-_\s]+/g, '')
+  .toLowerCase();
+
+const readExecutionMode = (storageKey) => {
+  if (!storageKey || typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(storageKey);
+    return value === 'provider' || value === 'direct' ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const readProviderDraft = (storageKey) => {
+  if (!storageKey || typeof window === 'undefined') return { coordinatorId: null, note: '' };
+  try {
+    const value = JSON.parse(window.localStorage.getItem(storageKey) || 'null');
+    const coordinatorId = Number(value?.coordinatorId);
+    return {
+      coordinatorId: Number.isSafeInteger(coordinatorId) && coordinatorId > 0 ? coordinatorId : null,
+      note: typeof value?.note === 'string' ? value.note : '',
+    };
+  } catch {
+    return { coordinatorId: null, note: '' };
+  }
+};
 
 const getCoordinatorId = (candidate) => {
   const value = Number(candidate?.coordinatorId);
@@ -171,17 +202,54 @@ function CurrentProvider({ assignment }) {
   );
 }
 
+function ExecutionModeCard({ description, details, icon: Icon, onSelect, selected, title }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={`min-h-40 rounded-2xl border p-5 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:focus-visible:ring-blue-950 ${selected ? 'border-blue-500 bg-blue-50 shadow-[0_14px_30px_rgba(37,99,235,0.1)] dark:border-blue-700 dark:bg-blue-950/30' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-800'}`}
+    >
+      <span className="flex items-start gap-4">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${selected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`} aria-hidden="true">
+          <Icon size={20} />
+        </span>
+        <span className="min-w-0">
+          <strong className="block text-base font-black text-slate-950 dark:text-white">{title}</strong>
+          <span className="mt-1.5 block text-sm leading-6 text-slate-600 dark:text-slate-300">{description}</span>
+          <span className="mt-2 block text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">{details}</span>
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export default function StaffIncidentProviderSection({ incident, onIncidentUpdated, user }) {
   const incidentId = String(incident?.incidentId ?? '').trim();
+  const currentUserId = String(user?.userId ?? user?.id ?? '').trim().toLowerCase();
+  const modeStorageKey = incidentId && currentUserId
+    ? `urbanmind:staff-execution-mode:${currentUserId}:${incidentId.toLowerCase()}`
+    : '';
+  const providerDraftKey = incidentId && currentUserId
+    ? `urbanmind:staff-provider-draft:${currentUserId}:${incidentId.toLowerCase()}`
+    : '';
   const capability = incidentManagementApi.capabilities.providerAssignment;
   const canManage = canManageIncidentExecution(incident, user);
+  const [executionMode, setExecutionMode] = useState(() => readExecutionMode(modeStorageKey));
+  const [flowOpen, setFlowOpen] = useState(() => Boolean(readExecutionMode(modeStorageKey)));
   const [state, setState] = useState(capability.available ? PROVIDER_STATE.LOADING : PROVIDER_STATE.API_UNAVAILABLE);
   const [assignment, setAssignment] = useState(null);
   const [candidates, setCandidates] = useState([]);
-  const [selectedCoordinatorId, setSelectedCoordinatorId] = useState(null);
-  const [assignmentNote, setAssignmentNote] = useState('');
+  const [selectedCoordinatorId, setSelectedCoordinatorId] = useState(
+    () => readProviderDraft(providerDraftKey).coordinatorId,
+  );
+  const [assignmentNote, setAssignmentNote] = useState(
+    () => readProviderDraft(providerDraftKey).note,
+  );
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [directDialogOpen, setDirectDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -193,6 +261,63 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
     () => sortedCandidates.find((candidate) => getCoordinatorId(candidate) === selectedCoordinatorId) || null,
     [selectedCoordinatorId, sortedCandidates],
   );
+
+  useEffect(() => {
+    const savedMode = readExecutionMode(modeStorageKey);
+    setExecutionMode(savedMode);
+    setFlowOpen(Boolean(savedMode) || normalizeStatus(incident?.status) !== 'assigned');
+  }, [incident?.status, incidentId, modeStorageKey]);
+
+  useEffect(() => {
+    const savedDraft = readProviderDraft(providerDraftKey);
+    setSelectedCoordinatorId(savedDraft.coordinatorId);
+    setAssignmentNote(savedDraft.note);
+  }, [providerDraftKey]);
+
+  useEffect(() => {
+    if (!providerDraftKey || typeof window === 'undefined') return;
+    try {
+      if (selectedCoordinatorId || assignmentNote.trim()) {
+        window.localStorage.setItem(providerDraftKey, JSON.stringify({
+          coordinatorId: selectedCoordinatorId,
+          note: assignmentNote,
+        }));
+      } else {
+        window.localStorage.removeItem(providerDraftKey);
+      }
+    } catch {
+      // Draft persistence is optional; the selection remains available in memory.
+    }
+  }, [assignmentNote, providerDraftKey, selectedCoordinatorId]);
+
+  const chooseExecutionMode = useCallback((mode) => {
+    setExecutionMode(mode);
+    setFlowOpen(true);
+    setMessage({ type: '', text: '' });
+    try {
+      if (modeStorageKey && typeof window !== 'undefined') {
+        window.localStorage.setItem(modeStorageKey, mode);
+      }
+    } catch {
+      // The flow still works when browser storage is unavailable.
+    }
+  }, [modeStorageKey]);
+
+  const resetExecutionMode = useCallback(() => {
+    setExecutionMode(null);
+    setFlowOpen(true);
+    setAssignment(null);
+    setCandidates([]);
+    setState(PROVIDER_STATE.CHOICE);
+    setMessage({ type: '', text: '' });
+    try {
+      if (modeStorageKey && typeof window !== 'undefined') {
+        window.localStorage.removeItem(modeStorageKey);
+      }
+    } catch {
+      // The visible choice remains available when browser storage is unavailable.
+    }
+  }, [modeStorageKey]);
 
   useEffect(() => {
     if (!capability.available || !incidentId) {
@@ -222,9 +347,27 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         }
 
         setAssignment(null);
+        const incidentStatus = normalizeStatus(incident?.status);
+        if (!canManage && ['submittedforapproval', 'approved', 'resolved', 'closed'].includes(incidentStatus)) {
+          setCandidates([]);
+          setState(PROVIDER_STATE.DIRECT);
+          return;
+        }
         if (!canManage) {
           setCandidates([]);
           setState(PROVIDER_STATE.RESTRICTED);
+          return;
+        }
+
+        const resolvedMode = executionMode || (incidentStatus === 'assigned' ? null : 'direct');
+        if (!resolvedMode) {
+          setCandidates([]);
+          setState(PROVIDER_STATE.CHOICE);
+          return;
+        }
+        if (resolvedMode === 'direct') {
+          setCandidates([]);
+          setState(PROVIDER_STATE.DIRECT);
           return;
         }
 
@@ -234,7 +377,9 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         );
         if (controller.signal.aborted) return;
         setCandidates(result);
-        setSelectedCoordinatorId(null);
+        setSelectedCoordinatorId((current) => (
+          result.some((candidate) => getCoordinatorId(candidate) === current) ? current : null
+        ));
         setState(result.length > 0 ? PROVIDER_STATE.CANDIDATES : PROVIDER_STATE.EMPTY);
       } catch (error) {
         if (controller.signal.aborted || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return;
@@ -251,7 +396,7 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
 
     void load();
     return () => controller.abort();
-  }, [canManage, capability.available, incidentId, refreshVersion]);
+  }, [canManage, capability.available, executionMode, incident?.status, incidentId, refreshVersion]);
 
   const retry = useCallback(() => setRefreshVersion((current) => current + 1), []);
   const closeDialog = useCallback(() => {
@@ -285,20 +430,78 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         throw new Error('Backend trả về dữ liệu phân công không thuộc sự vụ đang mở.');
       }
 
-      setAssignment(createdAssignment);
+      let activeAssignment = createdAssignment;
+      if (normalizeStatus(latestIncident?.status) === 'assigned') {
+        activeAssignment = await incidentManagementApi.updateProviderAssignmentStatus(
+          createdAssignment.providerAssignmentId,
+          { status: 'InProgress', note: 'Staff bắt đầu xử lý theo flow hướng dẫn.' },
+        );
+      }
+      if (!activeAssignment || !sameIdentifier(activeAssignment?.incidentId, incidentId)) {
+        throw new Error('Backend chưa xác nhận trạng thái bắt đầu xử lý của đơn vị.');
+      }
+
+      setAssignment(activeAssignment);
       setCandidates([]);
       setSelectedCoordinatorId(null);
       setAssignmentNote('');
+      try {
+        if (providerDraftKey && typeof window !== 'undefined') {
+          window.localStorage.removeItem(providerDraftKey);
+        }
+      } catch {
+        // The successful backend mutation is authoritative even if local cleanup fails.
+      }
       setState(PROVIDER_STATE.ASSIGNED);
       setDialogOpen(false);
-      setMessage({ type: 'success', text: 'Đã phân công đơn vị xử lý cho sự vụ.' });
-      onIncidentUpdated?.(latestIncident);
+      setMessage({ type: 'success', text: 'Đã phân công và bắt đầu xử lý. Tiếp theo, hãy ghi lại lần liên hệ với đơn vị.' });
+      const refreshedIncident = await incidentManagementApi.getIncidentById(incidentId);
+      if (refreshedIncident && sameIdentifier(refreshedIncident?.incidentId, incidentId)) {
+        onIncidentUpdated?.(refreshedIncident);
+      }
     } catch (error) {
       setDialogOpen(false);
       setMessage({
         type: 'error',
         text: getActionErrorMessage(error, 'Không thể phân công đơn vị xử lý.'),
       });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const startDirectProcessing = async () => {
+    if (submitting || executionMode !== 'direct') return;
+    setSubmitting(true);
+    setMessage({ type: '', text: '' });
+    try {
+      const [latestIncident, existingAssignment] = await Promise.all([
+        incidentManagementApi.getIncidentById(incidentId),
+        incidentManagementApi.getIncidentProviderAssignment(incidentId),
+      ]);
+      if (existingAssignment) {
+        chooseExecutionMode('provider');
+        setAssignment(existingAssignment);
+        setState(PROVIDER_STATE.ASSIGNED);
+        throw new Error('Sự vụ đã có đơn vị xử lý. Flow đã chuyển sang phối hợp đơn vị.');
+      }
+      if (!latestIncident || !canManageIncidentExecution(latestIncident, user)
+        || normalizeStatus(latestIncident?.status) !== 'assigned') {
+        throw new Error('Sự vụ không còn ở trạng thái cho phép bắt đầu tự xử lý.');
+      }
+      const updatedIncident = await incidentManagementApi.startIncidentProcessing(incidentId, {
+        note: 'Staff xác nhận tự xử lý sự vụ.',
+      });
+      if (!updatedIncident || !sameIdentifier(updatedIncident?.incidentId, incidentId)) {
+        throw new Error('Backend chưa xác nhận trạng thái bắt đầu xử lý.');
+      }
+      setDirectDialogOpen(false);
+      setState(PROVIDER_STATE.DIRECT);
+      setMessage({ type: 'success', text: 'Đã bắt đầu tự xử lý. Tiếp theo, hãy bổ sung minh chứng (nếu có) và gửi kết quả.' });
+      onIncidentUpdated?.(updatedIncident);
+    } catch (error) {
+      setDirectDialogOpen(false);
+      setMessage({ type: 'error', text: getActionErrorMessage(error, 'Không thể bắt đầu tự xử lý sự vụ.') });
     } finally {
       setSubmitting(false);
     }
@@ -342,8 +545,8 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
             <Lucide.Building2 size={18} />
           </span>
           <div className="min-w-0">
-            <h2 id="incident-provider-title" className="admin-section-title">Đơn vị xử lý</h2>
-            <p className="admin-section-description mt-1">Chọn đơn vị phù hợp để phối hợp xử lý sự vụ theo khu vực và danh mục.</p>
+            <h2 id="incident-provider-title" className="admin-section-title">Bắt đầu · Chọn cách xử lý</h2>
+            <p className="admin-section-description mt-1">Chọn cách xử lý một lần; hệ thống sẽ dẫn tiếp qua liên hệ, minh chứng và gửi kết quả.</p>
           </div>
         </div>
         <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -363,6 +566,80 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
       {state === PROVIDER_STATE.ASSIGNED ? <CurrentProvider assignment={assignment} /> : null}
       {stateContent ? <div className="p-5 sm:p-6"><EmptyState {...stateContent} /></div> : null}
 
+      {state === PROVIDER_STATE.CHOICE && !flowOpen ? (
+        <div className="p-5 sm:p-6">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/65 p-5 dark:border-blue-900 dark:bg-blue-950/25 sm:flex sm:items-center sm:justify-between sm:gap-5">
+            <div className="flex min-w-0 items-start gap-3">
+              <Lucide.Route className="mt-0.5 shrink-0 text-blue-700 dark:text-blue-300" size={20} aria-hidden="true" />
+              <div>
+                <h3 className="text-base font-black text-slate-950 dark:text-white">Sẵn sàng xử lý sự vụ?</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">Bạn sẽ chọn phối hợp đơn vị hoặc tự xử lý, rồi tiếp tục trong một flow duy nhất.</p>
+              </div>
+            </div>
+            <Button type="button" className="mt-4 w-full justify-center sm:mt-0 sm:w-auto" onClick={() => setFlowOpen(true)}>
+              <Lucide.Play size={16} aria-hidden="true" />
+              Bắt đầu xử lý
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {state === PROVIDER_STATE.CHOICE && flowOpen ? (
+        <div className="p-5 sm:p-6">
+          <div className="mb-4">
+            <h3 className="text-base font-black text-slate-950 dark:text-white">Bạn sẽ xử lý theo cách nào?</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Lựa chọn này được lưu để khi rời trang, bạn có thể quay lại đúng flow đang làm dở.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2" role="radiogroup" aria-label="Chọn cách xử lý sự vụ">
+            <ExecutionModeCard
+              title="Phối hợp đơn vị"
+              description="Phân công đơn vị phù hợp, bắt đầu xử lý và ghi lại lần liên hệ."
+              details="Phù hợp khi cần nhà cung cấp, đội kỹ thuật hoặc đầu mối bên ngoài."
+              icon={Lucide.Building2}
+              selected={executionMode === 'provider'}
+              onSelect={() => chooseExecutionMode('provider')}
+            />
+            <ExecutionModeCard
+              title="Tự xử lý"
+              description="Staff trực tiếp tiếp nhận và xử lý mà không cần phân công đơn vị."
+              details="Phù hợp với tác vụ nghiệp vụ, xác minh hoặc khắc phục trong phạm vi của Staff."
+              icon={Lucide.UserRoundCheck}
+              selected={executionMode === 'direct'}
+              onSelect={() => chooseExecutionMode('direct')}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {state === PROVIDER_STATE.DIRECT ? (
+        <div className="p-5 sm:p-6">
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/65 p-5 dark:border-violet-900 dark:bg-violet-950/25">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white" aria-hidden="true"><Lucide.UserRoundCheck size={20} /></span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-black text-slate-950 dark:text-white">Staff tự xử lý trực tiếp</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">{normalizeStatus(incident?.status) === 'assigned' ? 'Không tạo phân công đơn vị. Sau khi bắt đầu, bạn tiếp tục ngay tới minh chứng và gửi kết quả.' : 'Sự vụ được Staff xử lý trực tiếp, không thông qua phân công đơn vị.'}</p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              {normalizeStatus(incident?.status) === 'assigned' ? (
+                <Button type="button" variant="outline" disabled={submitting} onClick={resetExecutionMode}>Đổi cách xử lý</Button>
+              ) : null}
+              {normalizeStatus(incident?.status) === 'assigned' ? (
+                <Button type="button" disabled={submitting} onClick={() => setDirectDialogOpen(true)}>
+                  <Lucide.Play size={16} aria-hidden="true" />
+                  Xác nhận tự xử lý
+                </Button>
+              ) : (
+                <span className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-100 px-3.5 py-2 text-sm font-bold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-200">
+                  <Lucide.CircleCheckBig size={16} aria-hidden="true" /> Đã bắt đầu tự xử lý
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {state === PROVIDER_STATE.CANDIDATES ? (
         <div className="p-5 sm:p-6">
           <div className="mb-4 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/55 p-4 dark:border-blue-900/60 dark:bg-blue-950/20">
@@ -373,6 +650,13 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
                 Các đơn vị dưới đây phù hợp với {incident?.areaName || EMPTY_VALUE} · {incident?.categoryName || EMPTY_VALUE}.
               </p>
             </div>
+          </div>
+
+          <div className="mb-4 flex justify-end">
+            <Button type="button" variant="ghost" size="sm" disabled={submitting} onClick={resetExecutionMode}>
+              <Lucide.ArrowLeftRight size={16} aria-hidden="true" />
+              Đổi cách xử lý
+            </Button>
           </div>
 
           <fieldset className="grid gap-3 lg:grid-cols-2" disabled={submitting}>
@@ -409,8 +693,8 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
               disabled={!selectedCandidate || submitting}
               onClick={() => setDialogOpen(true)}
             >
-              <Lucide.Send size={16} aria-hidden="true" />
-              Chọn đơn vị xử lý
+              <Lucide.Play size={16} aria-hidden="true" />
+              Phân công &amp; bắt đầu
             </Button>
           </div>
         </div>
@@ -419,10 +703,10 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         <StaffIncidentActionDialog
           open={dialogOpen}
           busy={submitting}
-          title="Xác nhận phân công đơn vị xử lý?"
-          description="Kiểm tra sự vụ và đơn vị trước khi xác nhận. Backend không hỗ trợ thay đổi đơn vị sau khi phân công."
+          title="Phân công và bắt đầu xử lý?"
+          description="Hệ thống sẽ phân công đơn vị đã chọn và chuyển ngay sự vụ sang Đang xử lý. Sau đó bạn tiếp tục ghi nhận liên hệ trong cùng flow."
           icon={Lucide.Building2}
-          confirmLabel="Xác nhận phân công"
+          confirmLabel="Phân công & bắt đầu"
           onClose={closeDialog}
           onConfirm={assignProvider}
         >
@@ -439,6 +723,22 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
               </div>
             ))}
           </dl>
+        </StaffIncidentActionDialog>
+
+        <StaffIncidentActionDialog
+          open={directDialogOpen}
+          busy={submitting}
+          title="Xác nhận tự xử lý sự vụ?"
+          description="Sự vụ sẽ chuyển sang Đang xử lý mà không tạo phân công đơn vị. Bạn sẽ tiếp tục tới minh chứng và gửi kết quả."
+          icon={Lucide.UserRoundCheck}
+          confirmLabel="Bắt đầu tự xử lý"
+          onClose={() => { if (!submitting) setDirectDialogOpen(false); }}
+          onConfirm={startDirectProcessing}
+        >
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/65 p-4 text-sm leading-6 text-slate-700 dark:border-violet-900 dark:bg-violet-950/25 dark:text-slate-200">
+            <strong className="block text-slate-950 dark:text-white">{incident?.title || incidentId}</strong>
+            Staff hiện tại chịu trách nhiệm xử lý và gửi kết quả trực tiếp cho Manager.
+          </div>
         </StaffIncidentActionDialog>
       </section>
 

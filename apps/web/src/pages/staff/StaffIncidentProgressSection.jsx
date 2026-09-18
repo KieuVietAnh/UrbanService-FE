@@ -46,6 +46,27 @@ const getActionErrorMessage = (error, fallback) => {
   return extractApiErrorMessage(error, fallback);
 };
 
+const EMPTY_CONTACT_DRAFT = Object.freeze({
+  contactMethod: '',
+  contactResult: '',
+  contactNote: '',
+  contactedAt: '',
+});
+
+const readContactDraft = (storageKey) => {
+  if (!storageKey || typeof window === 'undefined') return { ...EMPTY_CONTACT_DRAFT };
+  try {
+    const value = JSON.parse(window.localStorage.getItem(storageKey) || 'null');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...EMPTY_CONTACT_DRAFT };
+    return Object.fromEntries(Object.keys(EMPTY_CONTACT_DRAFT).map((key) => [
+      key,
+      typeof value[key] === 'string' ? value[key] : '',
+    ]));
+  } catch {
+    return { ...EMPTY_CONTACT_DRAFT };
+  }
+};
+
 const CONTACT_METHOD_LABELS = Object.freeze({
   phone: 'Điện thoại',
   call: 'Điện thoại',
@@ -231,6 +252,10 @@ export default function StaffIncidentProgressSection({
   const statusCapability = incidentManagementApi.capabilities.staffStartProcessing;
   const incidentId = String(incident?.incidentId ?? '').trim();
   const assignmentId = positiveIdentifier(assignment?.providerAssignmentId);
+  const currentUserId = String(user?.userId ?? user?.id ?? '').trim().toLowerCase();
+  const contactDraftKey = assignmentId && currentUserId
+    ? `urbanmind:staff-contact-draft:${currentUserId}:${incidentId.toLowerCase()}:${assignmentId}`
+    : '';
   const relationshipValid = Boolean(
     assignmentId
     && sameIdentifier(assignment?.incidentId, incidentId),
@@ -246,12 +271,7 @@ export default function StaffIncidentProgressSection({
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [form, setForm] = useState({
-    contactMethod: '',
-    contactResult: '',
-    contactNote: '',
-    contactedAt: '',
-  });
+  const [form, setForm] = useState(() => readContactDraft(contactDraftKey));
   const mutationBusy = submitting || statusSubmitting;
 
   const sortedLogs = useMemo(
@@ -290,6 +310,32 @@ export default function StaffIncidentProgressSection({
     loadLogs(controller.signal);
     return () => controller.abort();
   }, [loadLogs]);
+
+  useEffect(() => {
+    const savedDraft = readContactDraft(contactDraftKey);
+    setForm(savedDraft);
+    if (Object.values(savedDraft).some((value) => value.trim())) setFormOpen(true);
+  }, [contactDraftKey]);
+
+  useEffect(() => {
+    if (!contactDraftKey || typeof window === 'undefined') return;
+    try {
+      if (Object.values(form).some((value) => value.trim())) {
+        window.localStorage.setItem(contactDraftKey, JSON.stringify(form));
+      } else {
+        window.localStorage.removeItem(contactDraftKey);
+      }
+    } catch {
+      // Draft persistence is optional; the form remains usable without storage.
+    }
+  }, [contactDraftKey, form]);
+
+  useEffect(() => {
+    if (!loading && !loadError && logs.length === 0 && canWrite
+      && normalizeKey(assignment?.reportStatus) === 'inprogress') {
+      setFormOpen(true);
+    }
+  }, [assignment?.reportStatus, canWrite, loadError, loading, logs.length]);
 
   const retry = () => loadLogs();
 
@@ -395,9 +441,9 @@ export default function StaffIncidentProgressSection({
         created,
         ...current.filter((log) => positiveIdentifier(log?.contactLogId) !== positiveIdentifier(created?.contactLogId)),
       ]);
-      setForm({ contactMethod: '', contactResult: '', contactNote: '', contactedAt: '' });
+      setForm({ ...EMPTY_CONTACT_DRAFT });
       setFormOpen(false);
-      setMessage({ type: 'success', text: 'Đã thêm nhật ký liên hệ.' });
+      setMessage({ type: 'success', text: 'Đã lưu liên hệ. Tiếp theo, hãy bổ sung minh chứng và hoàn tất kết quả ở bước bên dưới.' });
 
       try {
         const [refreshedAssignment, refreshedIncident] = await Promise.all([
@@ -452,8 +498,8 @@ export default function StaffIncidentProgressSection({
             <Lucide.Activity size={18} />
           </span>
           <div className="min-w-0">
-            <h2 id="incident-provider-progress-title" className="admin-section-title">Tiến độ xử lý</h2>
-            <p className="admin-section-description mt-1">Theo dõi trạng thái đơn vị và các lần Staff liên hệ trong quá trình thực hiện.</p>
+            <h2 id="incident-provider-progress-title" className="admin-section-title">Tiếp theo · Liên hệ đơn vị</h2>
+            <p className="admin-section-description mt-1">Ghi lại phương thức và kết quả trao đổi; sau khi lưu, tiếp tục xuống bước minh chứng và gửi kết quả.</p>
           </div>
         </div>
         <Button

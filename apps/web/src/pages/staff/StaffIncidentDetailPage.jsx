@@ -615,6 +615,7 @@ export default function StaffIncidentDetailPage() {
         <StaffIncidentResolutionPanel
           incident={incident}
           onIncidentUpdated={updateIncident}
+          readOnly
         />
       ) : null}
     </article>
