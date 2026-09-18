@@ -29,6 +29,45 @@ const toCount = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeAreaBoundaryGeoJson = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') {
+    return ['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(value?.type) ? value : null;
+  }
+
+  const trimmed = String(value).trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
+
+  const withoutWrappingQuotes = (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) ? trimmed.slice(1, -1) : trimmed;
+
+  const candidates = [
+    trimmed,
+    withoutWrappingQuotes,
+    trimmed.replace(/""/g, '"'),
+    withoutWrappingQuotes.replace(/""/g, '"'),
+    trimmed.replace(/\\"/g, '"'),
+    withoutWrappingQuotes.replace(/\\"/g, '"'),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed === 'string' && parsed !== candidate) return normalizeAreaBoundaryGeoJson(parsed);
+      return parsed && ['Polygon', 'MultiPolygon', 'Feature', 'FeatureCollection'].includes(parsed.type)
+        ? parsed
+        : null;
+    } catch {
+      // Thử tiếp biến thể serialized khác từ backend.
+    }
+  }
+
+  return null;
+};
+
 const SummaryStat = ({ label, value, toneClass }) => (
   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
     <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-400">{label}</p>
@@ -105,6 +144,16 @@ export const IncidentDistributionPanel = () => {
     })).filter((option) => option.value),
   ]), [areas]);
 
+  const selectedArea = useMemo(() => {
+    if (!filters.areaId) return null;
+    return areas.find((item) => String(item?.areaId ?? item?.id ?? '') === String(filters.areaId)) ?? null;
+  }, [areas, filters.areaId]);
+
+  const selectedAreaBoundary = useMemo(
+    () => normalizeAreaBoundaryGeoJson(selectedArea?.boundaryGeoJson),
+    [selectedArea?.boundaryGeoJson],
+  );
+
   /*
    * Phải ổn định giữa các lần render vì mapIncidents lấy nó làm dependency;
    * nếu tạo mảng mới mỗi lần thì useMemo bên dưới không bao giờ dùng lại được.
@@ -139,6 +188,52 @@ export const IncidentDistributionPanel = () => {
   const hasActiveFilter = Boolean(filters.categoryId || filters.areaId)
     || filters.range !== INCIDENT_DASHBOARD_RANGES.ALL;
 
+  const expandedCategory = useMemo(() => {
+    if (!expandedCategoryId) return null;
+    return categoriesData.find((category) => (
+      String(category?.categoryId ?? category?.categoryName) === String(expandedCategoryId)
+    )) ?? null;
+  }, [categoriesData, expandedCategoryId]);
+
+  const expandedAreaRows = Array.isArray(expandedCategory?.areas) ? expandedCategory.areas : [];
+
+  const topAreaRows = useMemo(() => {
+    const grouped = new Map();
+
+    categoriesData.forEach((category) => {
+      const categoryAreas = Array.isArray(category?.areas) ? category.areas : [];
+      categoryAreas.forEach((area) => {
+        const areaName = String(area?.areaName ?? '').trim() || 'Chưa xác định phường';
+        const key = String(area?.areaId ?? areaName);
+        const current = grouped.get(key) ?? { areaName, count: 0 };
+        current.count += toCount(area?.count);
+        grouped.set(key, current);
+      });
+    });
+
+    const totalCount = Math.max(1, toCount(report?.totalCount));
+    return [...grouped.values()]
+      .sort((left, right) => right.count - left.count || left.areaName.localeCompare(right.areaName, 'vi'))
+      .slice(0, 3)
+      .map((area) => ({
+        ...area,
+        percentage: Number(((area.count / totalCount) * 100).toFixed(2)),
+      }));
+  }, [categoriesData, report?.totalCount]);
+
+  const areaInsightRows = expandedCategory
+    ? expandedAreaRows
+      .map((area) => ({
+        areaName: area?.areaName || 'Chưa xác định phường',
+        count: toCount(area?.count),
+        percentage: Number(area?.percentageInCategory ?? 0),
+      }))
+      .sort((left, right) => right.count - left.count || left.areaName.localeCompare(right.areaName, 'vi'))
+      .slice(0, 3)
+    : topAreaRows;
+
+  const areaInsightMax = Math.max(1, ...areaInsightRows.map((area) => area.count));
+
   return (
     <section className="admin-panel overflow-hidden" aria-labelledby="incident-distribution-title">
       <ManagerSectionHeader
@@ -159,7 +254,7 @@ export const IncidentDistributionPanel = () => {
       />
 
       <div className="space-y-4 px-5 pb-5 sm:px-6 sm:pb-6">
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
           <ManagerSelectMenu
             value={filters.categoryId}
             options={categoryOptions}
@@ -181,17 +276,22 @@ export const IncidentDistributionPanel = () => {
             ariaLabel="Lọc theo khoảng thời gian"
             className="w-full"
           />
+          {hasActiveFilter ? (
+            <button
+              type="button"
+              onClick={() => { setFilters({ categoryId: ALL_VALUE, areaId: ALL_VALUE, range: INCIDENT_DASHBOARD_RANGES.ALL }); setExpandedCategoryId(null); }}
+              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 transition hover:border-blue-200 hover:bg-blue-50/60 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+            >
+              <Lucide.RotateCcw size={14} aria-hidden="true" />
+              Xóa lọc
+            </button>
+          ) : (
+            <div className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-3 text-xs font-semibold text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+              <Lucide.Layers3 size={15} aria-hidden="true" />
+              <span className="whitespace-nowrap">Đang xem toàn bộ dữ liệu</span>
+            </div>
+          )}
         </div>
-
-        {hasActiveFilter ? (
-          <button
-            type="button"
-            onClick={() => { setFilters({ categoryId: ALL_VALUE, areaId: ALL_VALUE, range: INCIDENT_DASHBOARD_RANGES.ALL }); setExpandedCategoryId(null); }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900"
-          >
-            <Lucide.RotateCcw size={13} aria-hidden="true" />Xóa bộ lọc
-          </button>
-        ) : null}
 
         {error ? (
           <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
@@ -217,70 +317,113 @@ export const IncidentDistributionPanel = () => {
             Không có sự vụ nào khớp với bộ lọc hiện tại.
           </p>
         ) : (
-          <div className={`grid gap-4 ${showMap ? 'xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : ''}`}>
-            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-              <p className="border-b border-slate-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.05em] text-slate-400 dark:border-slate-800">
-                Theo danh mục · bấm để xem phường
-              </p>
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {categoriesData.map((category) => {
-                  const key = String(category?.categoryId ?? category?.categoryName);
-                  const expanded = expandedCategoryId === key;
-                  const count = toCount(category?.count);
-                  const width = Math.max(4, (count / maxCategoryCount) * 100);
-                  const areaRows = Array.isArray(category?.areas) ? category.areas : [];
+          <div className={`grid gap-4 ${showMap ? 'xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:items-start' : ''}`}>
+            <div className={`overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${showMap ? 'xl:h-[470px]' : ''}`}>
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-400">Danh mục sự vụ</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">Bấm một danh mục để xem phân bố theo phường</p>
+                </div>
+                {expandedCategory ? (
+                  <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 sm:inline-flex dark:bg-blue-500/10 dark:text-blue-300">
+                    {expandedAreaRows.length} phường
+                  </span>
+                ) : null}
+              </div>
 
-                  return (
-                    <li key={key}>
+              <div className="p-3">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {categoriesData.map((category) => {
+                    const key = String(category?.categoryId ?? category?.categoryName);
+                    const expanded = expandedCategoryId === key;
+                    const count = toCount(category?.count);
+                    const width = Math.max(4, (count / maxCategoryCount) * 100);
+                    const areaRows = Array.isArray(category?.areas) ? category.areas : [];
+
+                    return (
                       <button
+                        key={key}
                         type="button"
                         onClick={() => setExpandedCategoryId(expanded ? null : key)}
-                        className="w-full px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900"
+                        className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${
+                          expanded
+                            ? 'border-blue-200 bg-blue-50/70 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10'
+                            : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-500/30 dark:hover:bg-slate-900'
+                        }`}
                         aria-expanded={expanded}
                       >
-                        <div className="flex items-center gap-3">
-                          <Lucide.ChevronRight size={15} className={`shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                        <div className="flex items-start gap-2.5">
+                          <Lucide.ChevronRight
+                            size={14}
+                            className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-90 text-blue-600' : ''}`}
+                            aria-hidden="true"
+                          />
                           <span className="min-w-0 flex-1">
-                            <strong className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{category?.categoryName}</strong>
-                            <span className="mt-0.5 block text-xs text-slate-400">
-                              {toCount(category?.openCount)} đang mở · {toCount(category?.completedCount)} hoàn thành · {areaRows.length} phường
+                            <strong className="block line-clamp-2 text-sm font-semibold leading-5 text-slate-900 dark:text-slate-100">
+                              {category?.categoryName}
+                            </strong>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-slate-400">
+                              {toCount(category?.openCount)} mở · {toCount(category?.completedCount)} hoàn thành · {areaRows.length} phường
                             </span>
                           </span>
                           <span className="shrink-0 text-right">
                             <strong className="block text-sm font-semibold text-blue-700 dark:text-blue-300">{count}</strong>
-                            <span className="block text-[11px] text-slate-400">{Number(category?.percentage ?? 0)}%</span>
+                            <span className="block text-[10px] text-slate-400">{Number(category?.percentage ?? 0)}%</span>
                           </span>
                         </div>
-                        <div className="ml-[26px] mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div className="ml-6 mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                           <span className="block h-full rounded-full bg-blue-500" style={{ width: `${width}%` }} />
                         </div>
                       </button>
+                    );
+                  })}
+                </div>
 
-                      {expanded ? (
-                        <ul className="border-t border-slate-100 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/40">
-                          {areaRows.map((area) => (
-                            <li key={area?.areaId} className="flex items-center gap-3 px-4 py-2.5 pl-[42px]">
-                              <span className="min-w-0 flex-1">
-                                <strong className="block truncate text-xs font-semibold text-slate-700 dark:text-slate-200">{area?.areaName}</strong>
-                                {area?.districtName ? <span className="block text-[11px] text-slate-400">{area.districtName}</span> : null}
-                              </span>
-                              <span className="shrink-0 text-xs text-slate-500">
-                                {toCount(area?.count)} · <span className="text-slate-400">{Number(area?.percentageInCategory ?? 0)}%</span>
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/40">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-slate-400">
+                        {expandedCategory ? 'Phường trong danh mục' : 'Phường có nhiều sự vụ'}
+                      </p>
+                      {expandedCategory ? (
+                        <p className="mt-0.5 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {expandedCategory?.categoryName}
+                        </p>
                       ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-slate-400">{areaInsightRows.length} phường</span>
+                  </div>
+
+                  {areaInsightRows.length > 0 ? (
+                    <div className="space-y-2">
+                      {areaInsightRows.map((area, index) => {
+                        const width = Math.max(6, (area.count / areaInsightMax) * 100);
+                        return (
+                          <div key={`${area.areaName}-${index}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
+                            <strong className="min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              {area.areaName}
+                            </strong>
+                            <span className="text-[11px] font-semibold tabular-nums text-slate-500 dark:text-slate-300">
+                              {area.count} sự vụ · {area.percentage}%
+                            </span>
+                            <div className="col-span-2 h-1.5 overflow-hidden rounded-full bg-white dark:bg-slate-800">
+                              <span className="block h-full rounded-full bg-blue-500" style={{ width: `${width}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400">Chưa có dữ liệu phân bố theo phường.</p>
+                  )}
+                </div>
+              </div>
             </div>
 
             {showMap ? (
-              <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
+              <div className="h-[430px] self-start overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 xl:h-[470px] [&_.incident-map-shell]:!h-full">
                 {mapIncidents.length === 0 ? (
-                  <div className="flex h-full min-h-[320px] items-center justify-center px-6 text-center">
+                  <div className="flex h-full items-center justify-center px-6 text-center">
                     <div>
                       <Lucide.MapPinOff size={26} className="mx-auto text-slate-300 dark:text-slate-600" aria-hidden="true" />
                       <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Chưa có sự vụ nào có tọa độ</p>
@@ -288,16 +431,18 @@ export const IncidentDistributionPanel = () => {
                     </div>
                   </div>
                 ) : (
-                  <Suspense fallback={<div className="h-[360px] animate-pulse bg-slate-100 dark:bg-slate-900" />}>
-                    <div className="h-[360px]">
-                      <IncidentMap
-                        incidents={mapIncidents}
-                        autoFitIncidents
-                        fitRequestKey={mapIncidents.length}
-                        returnPath="/dashboard"
-                        detailPathBuilder={(ticket) => `/manager/incidents/${ticket?.incidentId ?? ticket?.feedbackId}`}
-                      />
-                    </div>
+                  <Suspense fallback={<div className="h-full animate-pulse bg-slate-100 dark:bg-slate-900" />}>
+                    <IncidentMap
+                      incidents={mapIncidents}
+                      autoFitIncidents
+                      fitRequestKey={`${filters.categoryId}:${filters.areaId}:${filters.range}:${mapIncidents.length}`}
+                      areaBoundaryGeoJson={selectedAreaBoundary}
+                      areaBoundaryKey={filters.areaId || null}
+                      areaCenterLatitude={selectedArea?.centerLatitude ?? null}
+                      areaCenterLongitude={selectedArea?.centerLongitude ?? null}
+                      returnPath="/dashboard"
+                      detailPathBuilder={(ticket) => `/manager/incidents/${ticket?.incidentId ?? ticket?.feedbackId}`}
+                    />
                   </Suspense>
                 )}
               </div>

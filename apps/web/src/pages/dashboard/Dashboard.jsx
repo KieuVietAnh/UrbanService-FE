@@ -29,7 +29,7 @@ const DASHBOARD_SNAPSHOT_STORAGE_KEY =
 const STAFF_DASHBOARD_SNAPSHOT_STORAGE_KEY =
   'urbanmind-staff-dashboard-snapshot-v1';
 const MANAGER_DASHBOARD_SNAPSHOT_STORAGE_KEY =
-  'urbanmind-manager-dashboard-snapshot-v2';
+  'urbanmind-manager-dashboard-snapshot-v3';
 const MANAGER_DASHBOARD_CACHE_TTL_MS = 60 * 1000;
 
 const readDashboardSnapshot = () => {
@@ -218,6 +218,22 @@ const toDashboardCount = (value) => {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 };
 
+const formatManagerSummaryDate = (value) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '—';
+
+  const isoDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
+
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
 const mapFeedbackDashboardOverview = (overview, fallbackSummary) => {
   if (!overview || typeof overview !== 'object') return fallbackSummary;
 
@@ -265,6 +281,83 @@ const normalizeDashboardStats = (rawStats) => ({
     ? rawStats.categoryDistribution
     : SAFE_DASHBOARD_STATS.categoryDistribution,
 });
+
+const buildManagerTrendChartModel = (items) => {
+  const series = Array.isArray(items) ? items : [];
+  const width = 1180;
+  const height = 260;
+  const padding = { top: 24, right: 24, bottom: 42, left: 52 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const rawMaxValue = Math.max(
+    1,
+    ...series.flatMap((item) => [
+      toDashboardCount(item?.createdCount),
+      toDashboardCount(item?.completedCount),
+    ])
+  );
+  const tickSegments = 4;
+  const tickStep = Math.max(1, Math.ceil(rawMaxValue / tickSegments));
+  const maxValue = tickStep * tickSegments;
+  const groupWidth = series.length > 0 ? plotWidth / series.length : plotWidth;
+  const barWidth = Math.min(46, Math.max(20, groupWidth * 0.24));
+  const barGap = Math.min(10, Math.max(6, groupWidth * 0.07));
+  const baselineY = padding.top + plotHeight;
+  const valueToY = (value) => padding.top + plotHeight - ((value / maxValue) * plotHeight);
+
+  const groups = series.map((item, index) => {
+    const created = toDashboardCount(item?.createdCount);
+    const completed = toDashboardCount(item?.completedCount);
+    const centerX = padding.left + groupWidth * index + groupWidth / 2;
+    const createdY = valueToY(created);
+    const completedY = valueToY(completed);
+
+    return {
+      ...item,
+      created,
+      completed,
+      centerX,
+      createdX: centerX - barGap / 2 - barWidth,
+      completedX: centerX + barGap / 2,
+      createdY,
+      completedY,
+      createdHeight: baselineY - createdY,
+      completedHeight: baselineY - completedY,
+    };
+  });
+
+  const ticks = Array.from({ length: tickSegments + 1 }, (_, index) => {
+    const value = maxValue - tickStep * index;
+    const y = padding.top + (plotHeight * index) / tickSegments;
+    return { value, y };
+  });
+
+  return {
+    width,
+    height,
+    padding,
+    plotWidth,
+    plotHeight,
+    baselineY,
+    barWidth,
+    groupWidth,
+    groups,
+    ticks,
+    maxValue,
+  };
+};
+
+const getManagerTrendSearchValue = (item, fallbackLabel) => {
+  const monthNumber = Number(item?.month);
+  const yearNumber = Number(item?.year);
+  if (Number.isInteger(monthNumber) && monthNumber >= 1 && monthNumber <= 12 && Number.isInteger(yearNumber) && yearNumber > 0) {
+    return `${String(monthNumber).padStart(2, '0')}/${yearNumber}`;
+  }
+
+  const label = String(fallbackLabel || item?.monthLabel || item?.label || '');
+  const match = label.match(/(\d{1,2})[/-](\d{4})/);
+  return match ? `${match[1].padStart(2, '0')}/${match[2]}` : label;
+};
 
 const TrackedAreaSelector = ({
   areas,
@@ -809,6 +902,7 @@ const RoleDashboard = () => {
     const [
       overviewResult,
       statusResult,
+      priorityResult,
       categoryResult,
       areaResult,
       trendResult,
@@ -818,6 +912,7 @@ const RoleDashboard = () => {
     ] = await Promise.allSettled([
       incidentDashboardApi.getOverview(),
       incidentDashboardApi.getStatusDistribution(),
+      incidentDashboardApi.getPriorityDistribution(),
       incidentDashboardApi.getCategoryDistribution(),
       incidentDashboardApi.getAreaDistribution(),
       incidentDashboardApi.getMonthlyTrend(6),
@@ -835,6 +930,7 @@ const RoleDashboard = () => {
     const dataIssues = [
       [overviewResult, 'KPI sự vụ'],
       [statusResult, 'trạng thái sự vụ'],
+      [priorityResult, 'mức ưu tiên'],
       [categoryResult, 'nhóm dịch vụ'],
       [areaResult, 'khu vực'],
       [trendResult, 'xu hướng'],
@@ -849,6 +945,9 @@ const RoleDashboard = () => {
       overview: overviewResult.status === 'fulfilled' ? overviewResult.value : null,
       statusDistribution: statusResult.status === 'fulfilled' && Array.isArray(statusResult.value)
         ? statusResult.value
+        : null,
+      priorityDistribution: priorityResult.status === 'fulfilled' && Array.isArray(priorityResult.value)
+        ? priorityResult.value
         : null,
       categoryDistribution,
       areaDistribution,
@@ -2534,6 +2633,7 @@ const RoleDashboard = () => {
   if (currentRole === 'interaction-manager') {
     const normalizeStatusKey = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
     const managerStatusDistribution = Array.isArray(stats?.statusDistribution) ? stats.statusDistribution : [];
+    const managerPriorityDistribution = Array.isArray(stats?.priorityDistribution) ? stats.priorityDistribution : [];
     const statusCounts = new Map(
       managerStatusDistribution.map((item) => [normalizeStatusKey(item?.status), toDashboardCount(item?.count)])
     );
@@ -2541,14 +2641,12 @@ const RoleDashboard = () => {
     const managerOverview = stats?.managerOverview || {};
     const slaSummary = stats?.slaOverview || {};
     const urgentOpenItems = Array.isArray(stats?.urgentOpen) ? stats.urgentOpen.slice(0, 3) : [];
-    const areaDistribution = Array.isArray(stats?.areaDistribution) ? stats.areaDistribution : [];
     /*
      * Ranh giới "hôm nay" do backend tính theo giờ Việt Nam, không suy ra từ
      * đồng hồ trình duyệt để tránh lệch ngày với người dùng ở múi giờ khác.
      */
     const todaySummary = stats?.todaySummary ?? null;
     const todayTopArea = Array.isArray(todaySummary?.byArea) ? todaySummary.byArea[0] : null;
-    const categoryDistribution = Array.isArray(stats?.categoryDistribution) ? stats.categoryDistribution : [];
     const monthlyTrend = Array.isArray(stats?.monthlyTrend) ? stats.monthlyTrend.slice(-6) : [];
 
     const totalIncidents = toDashboardCount(managerOverview?.totalIncident);
@@ -2561,22 +2659,51 @@ const RoleDashboard = () => {
     const urgentOpenCount = toDashboardCount(managerOverview?.urgentOpen || urgentOpenItems.length);
     const breachedSla = toDashboardCount(slaSummary?.breachedSla ?? stats?.slaBreaches);
     const warningSla = toDashboardCount(slaSummary?.warningSla);
-    const runningSla = toDashboardCount(slaSummary?.runningSla);
-    const completedSla = toDashboardCount(slaSummary?.completedSla);
     const managerDataIssues = Array.isArray(stats?.managerDataIssues) ? stats.managerDataIssues : [];
     const managerOverviewAvailable = stats?.managerOverviewAvailable ?? Boolean(stats?.managerOverview);
     const activeWorkCount = assignedCount + inProgressCount;
 
-    const trendMax = Math.max(
-      1,
-      ...monthlyTrend.flatMap((item) => [
-        toDashboardCount(item?.createdCount),
-        toDashboardCount(item?.completedCount),
-      ])
-    );
-    const categoryMax = Math.max(1, ...categoryDistribution.map((item) => toDashboardCount(item?.count)));
-    const areaMax = Math.max(1, ...areaDistribution.map((item) => toDashboardCount(item?.openCount)));
     const statusMax = Math.max(1, ...managerStatusDistribution.map((item) => toDashboardCount(item?.count)));
+    const priorityMeta = {
+      urgent: { key: 'urgent', label: 'Khẩn cấp', barClass: 'bg-rose-500', dotClass: 'bg-rose-500', order: 0 },
+      high: { key: 'high', label: 'Cao', barClass: 'bg-orange-500', dotClass: 'bg-orange-500', order: 1 },
+      medium: { key: 'medium', label: 'Trung bình', barClass: 'bg-amber-400', dotClass: 'bg-amber-400', order: 2 },
+      low: { key: 'low', label: 'Thấp', barClass: 'bg-sky-500', dotClass: 'bg-sky-500', order: 3 },
+    };
+    const priorityBuckets = new Map();
+    managerPriorityDistribution.forEach((item) => {
+      const rawKey = String(item?.priority || item?.name || item?.label || '').trim().toLowerCase();
+      const normalizedKey = rawKey === 'critical' ? 'urgent' : rawKey;
+      const meta = priorityMeta[normalizedKey] || {
+        key: normalizedKey || 'unknown',
+        label: item?.priority || item?.name || item?.label || 'Chưa xác định',
+        barClass: 'bg-slate-400',
+        dotClass: 'bg-slate-400',
+        order: 99,
+      };
+      const existing = priorityBuckets.get(meta.key);
+      priorityBuckets.set(meta.key, {
+        ...meta,
+        value: toDashboardCount(existing?.value) + toDashboardCount(item?.count),
+      });
+    });
+    const priorityDistributionRows = [...priorityBuckets.values()]
+      .filter((item) => item.value > 0)
+      .sort((left, right) => left.order - right.order);
+    const priorityTotal = priorityDistributionRows.reduce((sum, item) => sum + item.value, 0);
+    const trendChart = buildManagerTrendChartModel(monthlyTrend);
+    const totalCreatedTrend = monthlyTrend.reduce((sum, item) => sum + toDashboardCount(item?.createdCount), 0);
+    const totalCompletedTrend = monthlyTrend.reduce((sum, item) => sum + toDashboardCount(item?.completedCount), 0);
+    const peakTrendMonth = monthlyTrend.reduce((peak, item) => {
+      const created = toDashboardCount(item?.createdCount);
+      if (!peak || created > peak.created) {
+        return {
+          label: item?.monthLabel || item?.label || `${String(item?.month || '').padStart(2, '0')}/${item?.year || ''}`,
+          created,
+        };
+      }
+      return peak;
+    }, null);
 
     const kpis = [
       {
@@ -2611,7 +2738,7 @@ const RoleDashboard = () => {
       {
         label: 'Đã hoàn thành',
         value: managerMetricValue(managerOverviewAvailable, completedIncidentCount),
-        description: managerOverviewAvailable ? `${urgentOpenCount} sự vụ khẩn cấp vẫn đang mở` : 'Chưa tải được KPI sự vụ',
+        description: managerOverviewAvailable ? 'Các sự vụ đã kết thúc quy trình xử lý hoặc nghiệm thu' : 'Chưa tải được KPI sự vụ',
         icon: Lucide.CircleCheck,
         toneClass: 'bg-cyan-50 text-cyan-700',
         to: '/manager/incidents?statusGroup=completed',
@@ -2652,13 +2779,6 @@ const RoleDashboard = () => {
         icon: Lucide.TimerOff,
         tone: 'bg-rose-50 text-rose-700',
       },
-    ];
-
-    const slaRows = [
-      { label: 'Đang chạy', value: runningSla, dotClass: 'bg-slate-400' },
-      { label: 'Cảnh báo', value: warningSla, dotClass: 'bg-amber-400' },
-      { label: 'Vi phạm', value: breachedSla, dotClass: 'bg-rose-500' },
-      { label: 'Hoàn thành', value: completedSla, dotClass: 'bg-emerald-500' },
     ];
 
     const visibleStatuses = managerStatusDistribution
@@ -2705,31 +2825,47 @@ const RoleDashboard = () => {
 
         {todaySummary ? (
           <section
-            className="flex flex-wrap items-center gap-x-7 gap-y-2 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            className="relative overflow-hidden rounded-2xl border border-blue-100/80 bg-[linear-gradient(100deg,rgba(239,246,255,0.96),rgba(255,255,255,0.96)_42%,rgba(240,253,250,0.9))] px-4 py-3.5 shadow-sm dark:border-slate-800 dark:bg-slate-950/90 sm:px-5"
             aria-label="Số liệu tiếp nhận trong ngày"
           >
-            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-              <Lucide.CalendarClock size={16} aria-hidden="true" />
-              Hôm nay
-              {todaySummary.date ? (
-                <span className="text-xs font-normal text-slate-400">{todaySummary.date}</span>
-              ) : null}
-            </span>
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              Phản ánh nhận <strong className="ml-1 text-slate-900 dark:text-slate-100">{toDashboardCount(todaySummary.reportCount)}</strong>
-            </span>
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              Sự vụ mới <strong className="ml-1 text-slate-900 dark:text-slate-100">{toDashboardCount(todaySummary.incidentCount)}</strong>
-            </span>
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              Xử lý xong <strong className="ml-1 text-slate-900 dark:text-slate-100">{toDashboardCount(todaySummary.resolvedCount)}</strong>
-            </span>
-            {todayTopArea ? (
-              <span className="text-sm text-slate-500 dark:text-slate-400">
-                Nhiều nhất <strong className="ml-1 text-slate-900 dark:text-slate-100">{todayTopArea.areaName}</strong>
-                <span className="ml-1 text-slate-400">({toDashboardCount(todayTopArea.count)})</span>
-              </span>
-            ) : null}
+            <div className="pointer-events-none absolute -left-10 top-1/2 h-24 w-24 -translate-y-1/2 rounded-full bg-blue-200/20 blur-3xl" aria-hidden="true" />
+            <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-600/15">
+                  <Lucide.CalendarDays size={18} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">Hôm nay</span>
+                    <span className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400">{formatManagerSummaryDate(todaySummary.date)}</span>
+                  </div>
+                  {todayTopArea ? (
+                    <p className="mt-0.5 truncate text-[11px] text-slate-400" title={todayTopArea.areaName}>
+                      Khu vực nổi bật: {todayTopArea.areaName} · {toDashboardCount(todayTopArea.count)}
+                    </p>
+                  ) : <p className="mt-0.5 text-[11px] text-slate-400">Tình hình tiếp nhận trong ngày hiện tại</p>}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 lg:justify-end xl:gap-x-7">
+                {[
+                  { label: 'Phản ánh nhận', value: todaySummary.reportCount, icon: Lucide.MessageSquareText, iconClass: 'text-violet-500', valueClass: 'text-slate-950 dark:text-white' },
+                  { label: 'Sự vụ mới', value: todaySummary.incidentCount, icon: Lucide.CirclePlus, iconClass: 'text-blue-500', valueClass: 'text-slate-950 dark:text-white' },
+                  { label: 'Xử lý xong', value: todaySummary.resolvedCount, icon: Lucide.CircleCheck, iconClass: 'text-emerald-500', valueClass: 'text-emerald-700 dark:text-emerald-300' },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.label} className="flex min-w-[145px] items-center gap-2.5">
+                      <Icon size={18} className={`shrink-0 ${item.iconClass}`} aria-hidden="true" />
+                      <div className="min-w-0">
+                        <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">{item.label}</span>
+                        <strong className={`mt-0.5 block text-lg font-semibold tabular-nums leading-none ${item.valueClass}`}>{toDashboardCount(item.value)}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </section>
         ) : null}
 
@@ -2796,57 +2932,107 @@ const RoleDashboard = () => {
           </article>
         </section>
 
-        <section className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.75fr)]">
-          <article className="admin-panel flex h-full flex-col overflow-hidden">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)] xl:items-start">
+          <article className="admin-panel overflow-hidden">
             <ManagerSectionHeader
               title="Tiến độ xử lý sự vụ"
               description="Phân bố sự vụ theo các trạng thái đang phát sinh trong quy trình."
               icon={Lucide.GitBranch}
               actions={<Link to="/manager/incidents" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Mở danh sách</Link>}
             />
-            <div className="flex flex-1 border-t border-slate-100 px-5 py-3 sm:px-6 dark:border-slate-800">
+            <div className="border-t border-slate-100 px-5 py-4 sm:px-6 dark:border-slate-800">
               {visibleStatuses.length > 0 ? (
-                <div className="grid min-h-[210px] w-full flex-1 grid-cols-1 sm:grid-cols-2 sm:grid-rows-3 sm:gap-x-8">
+                <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
                   {visibleStatuses.map((item, index) => {
                     const count = toDashboardCount(item?.count);
                     const width = Math.max(4, (count / statusMax) * 100);
                     return (
-                      <div key={`${item?.status || 'status'}-${index}`} className="flex flex-col justify-center border-b border-slate-100 py-3 last:border-b-0 sm:border-b-0 dark:border-slate-800">
-                        <div className="mb-1.5 flex items-center justify-between gap-4">
+                      <div key={`${item?.status || 'status'}-${index}`} className="rounded-2xl bg-slate-50/65 px-4 py-3 dark:bg-slate-900/35">
+                        <div className="flex items-center justify-between gap-4">
                           <span className="text-[14px] font-medium text-slate-700 dark:text-slate-200">{getStatusLabel(item?.status) || item?.status || 'Chưa xác định'}</span>
                           <strong className="text-[15px] font-semibold tabular-nums text-slate-900 dark:text-white">{count}</strong>
                         </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200/75 dark:bg-slate-800">
                           <span className="block h-full rounded-full bg-blue-500" style={{ width: `${width}%` }} />
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              ) : <p className="py-8 text-center text-sm text-slate-500">Chưa có dữ liệu trạng thái sự vụ.</p>}
+              ) : <p className="py-6 text-center text-sm text-slate-500">Chưa có dữ liệu trạng thái sự vụ.</p>}
             </div>
           </article>
 
-          <article className="admin-panel flex h-full flex-col overflow-hidden">
+          <article className="admin-panel overflow-hidden">
             <ManagerSectionHeader
-              title="SLA vận hành"
-              description="Theo dõi tín hiệu SLA ở cấp sự vụ."
-              icon={Lucide.Gauge}
-              actions={<Link to="/analytics/sla" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Phân tích SLA</Link>}
+              title="Cơ cấu ưu tiên"
+              description="Tỷ trọng sự vụ theo mức ưu tiên hiện tại."
+              icon={Lucide.SignalHigh}
+              actions={<Link to="/manager/incidents" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Xem sự vụ</Link>}
             />
-            <div className="grid flex-1 grid-cols-2 content-center gap-3 border-t border-slate-100 p-5 dark:border-slate-800">
-              {slaRows.map((row) => (
-                <div key={row.label} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-900/40">
-                  <span className="inline-flex items-center gap-2 text-[13px] font-medium text-slate-600 dark:text-slate-300"><i className={`h-2.5 w-2.5 rounded-full ${row.dotClass}`} />{row.label}</span>
-                  <strong className="mt-2 block text-[1.6rem] font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{row.value}</strong>
-                </div>
-              ))}
+            <div className="border-t border-slate-100 p-5 dark:border-slate-800">
+              {priorityDistributionRows.length > 0 ? (
+                <>
+                  <div className="flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800" aria-label={`Tổng ${priorityTotal} sự vụ theo mức ưu tiên`}>
+                    {priorityDistributionRows.map((row) => (
+                      <span
+                        key={row.key}
+                        className={row.barClass}
+                        style={{ width: `${priorityTotal > 0 ? (row.value / priorityTotal) * 100 : 0}%` }}
+                        title={`${row.label}: ${row.value}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-4 space-y-2.5">
+                    {priorityDistributionRows.map((row) => {
+                      const percent = priorityTotal > 0 ? Math.round((row.value / priorityTotal) * 100) : 0;
+                      return (
+                        <div key={row.key} className="flex items-center gap-3 rounded-xl px-2 py-1.5">
+                          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${row.dotClass}`} aria-hidden="true" />
+                          <span className="min-w-0 flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">{row.label}</span>
+                          <span className="text-xs font-medium text-slate-400">{percent}%</span>
+                          <strong className="w-8 text-right text-sm font-semibold tabular-nums text-slate-950 dark:text-white">{row.value}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : <p className="py-6 text-center text-sm text-slate-500">Chưa có dữ liệu mức ưu tiên.</p>}
             </div>
-            <p className="border-t border-slate-100 px-5 py-3 text-xs leading-5 text-slate-400 dark:border-slate-800">Đơn vị: bản ghi SLA. Không quy đổi trực tiếp thành số sự vụ duy nhất.</p>
           </article>
         </section>
 
-        <IncidentDistributionPanel />
+        <section
+          className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5 dark:border-slate-800 dark:bg-slate-950/80"
+          aria-label="Tóm tắt SLA vận hành"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+              <Lucide.Gauge size={17} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <strong className="block text-sm font-semibold text-slate-900 dark:text-slate-100">SLA vận hành</strong>
+              <span className="mt-0.5 block text-xs text-slate-500">Theo dõi các SLA cần can thiệp trước khi vượt cam kết.</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 sm:justify-end">
+            <span className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+              <i className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+              <span>Cảnh báo</span>
+              <strong className="font-semibold tabular-nums text-amber-700 dark:text-amber-300">{warningSla}</strong>
+            </span>
+            <span className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+              <i className="h-2.5 w-2.5 rounded-full bg-rose-500" aria-hidden="true" />
+              <span>Vi phạm</span>
+              <strong className="font-semibold tabular-nums text-rose-700 dark:text-rose-300">{breachedSla}</strong>
+            </span>
+            <Link to="/analytics/sla" className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200">
+              Phân tích SLA
+              <Lucide.ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          </div>
+        </section>
 
         <section className="admin-panel overflow-hidden">
           <ManagerSectionHeader
@@ -2856,95 +3042,91 @@ const RoleDashboard = () => {
           />
           <div className="border-t border-slate-100 px-5 py-5 sm:px-6 dark:border-slate-800">
             {monthlyTrend.length > 0 ? (
-              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,.45)_transparent]">
-                {monthlyTrend.map((item, index) => {
-                  const created = toDashboardCount(item?.createdCount);
-                  const completed = toDashboardCount(item?.completedCount);
-                  const createdHeight = Math.max(created > 0 ? 5 : 2, (created / trendMax) * 64);
-                  const completedHeight = Math.max(completed > 0 ? 5 : 2, (completed / trendMax) * 64);
-                  const monthLabel = item?.monthLabel || item?.label || `${String(item?.month || index + 1).padStart(2, '0')}/${item?.year || ''}`;
-                  return (
-                    <div key={`${monthLabel}-${index}`} className="min-w-[155px] flex-1 snap-start rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/30">
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{monthLabel}</p>
-                          <p className="mt-1 text-xs text-slate-400">{created} mới · {completed} hoàn thành</p>
-                        </div>
-                        <div className="flex h-[68px] shrink-0 items-end gap-1.5" aria-hidden="true">
-                          <span className="w-2.5 rounded-t bg-blue-500" style={{ height: `${createdHeight}px` }} />
-                          <span className="w-2.5 rounded-t bg-emerald-500" style={{ height: `${completedHeight}px` }} />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    <span className="inline-flex items-center gap-2"><span className="h-3 w-2.5 rounded-sm bg-blue-500" aria-hidden="true" />Sự vụ mới</span>
+                    <span className="inline-flex items-center gap-2"><span className="h-3 w-2.5 rounded-sm bg-emerald-500" aria-hidden="true" />Đã hoàn thành</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-full bg-blue-50 px-3 py-1.5 font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">{totalCreatedTrend} tạo mới</span>
+                    <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{totalCompletedTrend} hoàn thành</span>
+                    {peakTrendMonth ? <span className="rounded-full bg-slate-100 px-3 py-1.5 font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-300">Đỉnh {peakTrendMonth.label}</span> : null}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 pb-2 pt-3 shadow-sm dark:border-slate-800 dark:bg-slate-900/30 sm:px-4">
+                  <svg viewBox={`0 0 ${trendChart.width} ${trendChart.height}`} className="h-[260px] w-full" role="img" aria-label="Biểu đồ cột so sánh sự vụ mới và hoàn thành trong 6 tháng gần nhất">
+                    {trendChart.ticks.map((tick) => (
+                      <g key={`tick-${tick.y}`}>
+                        <line
+                          x1={trendChart.padding.left}
+                          x2={trendChart.width - trendChart.padding.right}
+                          y1={tick.y}
+                          y2={tick.y}
+                          stroke={tick.value === 0 ? 'rgba(148,163,184,0.38)' : 'rgba(148,163,184,0.2)'}
+                          strokeDasharray={tick.value === 0 ? '0' : '4 7'}
+                        />
+                        <text x={trendChart.padding.left - 9} y={tick.y + 4} textAnchor="end" fontSize="11" fill="rgba(100,116,139,0.82)">{tick.value}</text>
+                      </g>
+                    ))}
+
+                    {trendChart.groups.map((group, index) => {
+                      const monthLabel = group?.monthLabel || group?.label || `${String(group?.month || index + 1).padStart(2, '0')}/${group?.year || ''}`;
+                      return (
+                        <g key={`trend-group-${monthLabel}-${index}`}>
+                          {group.created > 0 ? (
+                            <>
+                              <rect x={group.createdX} y={group.createdY} width={trendChart.barWidth} height={group.createdHeight} rx="7" fill="#3b82f6" />
+                              <text x={group.createdX + trendChart.barWidth / 2} y={group.createdY - 9} textAnchor="middle" fontSize="11" fontWeight="700" fill="#2563eb">{group.created}</text>
+                            </>
+                          ) : (
+                            <circle cx={group.createdX + trendChart.barWidth / 2} cy={trendChart.baselineY} r="2.5" fill="rgba(59,130,246,0.35)" />
+                          )}
+                          {group.completed > 0 ? (
+                            <>
+                              <rect x={group.completedX} y={group.completedY} width={trendChart.barWidth} height={group.completedHeight} rx="7" fill="#10b981" />
+                              <text x={group.completedX + trendChart.barWidth / 2} y={group.completedY - 9} textAnchor="middle" fontSize="11" fontWeight="700" fill="#059669">{group.completed}</text>
+                            </>
+                          ) : (
+                            <circle cx={group.completedX + trendChart.barWidth / 2} cy={trendChart.baselineY} r="2.5" fill="rgba(16,185,129,0.35)" />
+                          )}
+                          <text x={group.centerX} y={trendChart.baselineY + 24} textAnchor="middle" fontSize="11" fill="rgba(100,116,139,0.84)">{monthLabel}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                  {monthlyTrend.map((item, index) => {
+                    const monthLabel = item?.monthLabel || item?.label || `${String(item?.month || index + 1).padStart(2, '0')}/${item?.year || ''}`;
+                    const created = toDashboardCount(item?.createdCount);
+                    const completed = toDashboardCount(item?.completedCount);
+                    const monthSearch = getManagerTrendSearchValue(item, monthLabel);
+                    return (
+                      <button
+                        key={`${monthLabel}-${index}`}
+                        type="button"
+                        onClick={() => navigate(`/manager/incidents?search=${encodeURIComponent(monthSearch)}`)}
+                        className="group flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:border-blue-200 hover:bg-blue-50/50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/10"
+                        aria-label={`Xem sự vụ tháng ${monthLabel}`}
+                      >
+                        <span>
+                          <strong className="block text-xs font-semibold text-slate-800 group-hover:text-blue-700 dark:text-slate-100 dark:group-hover:text-blue-300">{monthLabel}</strong>
+                          <span className="mt-0.5 block text-[11px] text-slate-400">{created} mới · {completed} hoàn thành</span>
+                        </span>
+                        <Lucide.ArrowUpRight size={13} className="shrink-0 text-slate-300 transition group-hover:text-blue-500" aria-hidden="true" />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ) : <p className="py-8 text-center text-sm text-slate-500">Chưa có dữ liệu xu hướng.</p>}
           </div>
         </section>
 
-        <section className="grid items-stretch gap-5 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
-          <article className="admin-panel h-full overflow-hidden">
-            <ManagerSectionHeader
-              title="Khu vực cần chú ý"
-              description="Xếp theo số sự vụ hiện đang mở."
-              icon={Lucide.MapPinned}
-              actions={<Link to="/analytics/heatmap" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Bản đồ</Link>}
-            />
-            <div className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
-              {areaDistribution.length > 0 ? areaDistribution.map((area, index) => {
-                const openCount = toDashboardCount(area?.openCount);
-                const totalCount = toDashboardCount(area?.count ?? area?.totalCount);
-                const completedCount = toDashboardCount(area?.completedCount);
-                const width = Math.max(4, (openCount / areaMax) * 100);
-                return (
-                  <Link key={area?.areaId ?? area?.areaName ?? index} to={`/manager/incidents?areaId=${area?.areaId ?? ''}`} className="group block px-5 py-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">{index + 1}</span>
-                      <span className="min-w-0 flex-1">
-                        <strong className="block truncate text-[14px] font-semibold text-slate-900 group-hover:text-blue-700 dark:text-slate-100">{area?.areaName || 'Chưa xác định khu vực'}</strong>
-                        <span className="mt-0.5 block text-xs text-slate-400">{totalCount} tổng · {completedCount} hoàn thành</span>
-                      </span>
-                      <strong className="shrink-0 text-[14px] font-semibold text-blue-700">{openCount} mở</strong>
-                    </div>
-                    <div className="ml-11 mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><span className="block h-full rounded-full bg-blue-500" style={{ width: `${width}%` }} /></div>
-                  </Link>
-                );
-              }) : <p className="px-6 py-8 text-center text-sm text-slate-500">Chưa có dữ liệu khu vực.</p>}
-            </div>
-          </article>
-
-          <article className="admin-panel flex h-full flex-col overflow-hidden">
-            <ManagerSectionHeader
-              title="Phân bố theo nhóm dịch vụ"
-              description="Toàn bộ nhóm dịch vụ hiện có trong dữ liệu sự vụ."
-              icon={Lucide.Tags}
-              actions={<Link to="/manager/incidents" className="text-sm font-semibold text-blue-700 hover:text-blue-800">Xem sự vụ</Link>}
-            />
-            {categoryDistribution.length > 0 ? (
-              <div className="grid flex-1 auto-rows-fr border-t border-slate-100 md:grid-cols-2 dark:border-slate-800">
-                {categoryDistribution.map((category, index) => {
-                  const categoryId = category?.categoryId;
-                  const count = toDashboardCount(category?.count);
-                  const width = Math.max(4, (count / categoryMax) * 100);
-                  return (
-                    <Link
-                      key={categoryId ?? category?.categoryName ?? index}
-                      to={categoryId != null ? `/manager/incidents?categoryId=${categoryId}` : '/manager/incidents?categoryGroup=unclassified'}
-                      className={`group flex min-h-[92px] flex-col justify-center px-5 py-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50 ${index % 2 === 0 ? 'md:border-r md:border-slate-100 md:dark:border-slate-800' : ''} ${index >= 2 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <strong className="min-w-0 truncate text-[14px] font-semibold text-slate-900 group-hover:text-blue-700 dark:text-slate-100">{getCategoryLabel(category?.categoryName, 'Chưa phân loại')}</strong>
-                        <span className="shrink-0 text-[14px] font-semibold tabular-nums text-slate-900 dark:text-white">{count} sự vụ</span>
-                      </div>
-                      <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><span className="block h-full rounded-full bg-cyan-500" style={{ width: `${width}%` }} /></div>
-                    </Link>
-                  );
-                })}
-              </div>
-            ) : <p className="px-6 py-8 text-center text-sm text-slate-500">Chưa có dữ liệu nhóm dịch vụ.</p>}
-          </article>
-        </section>
+        <IncidentDistributionPanel />
       </div>
     );
   }
