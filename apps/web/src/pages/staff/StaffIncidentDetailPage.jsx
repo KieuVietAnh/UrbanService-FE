@@ -15,10 +15,20 @@ import {
   STAFF_INCIDENT_DETAIL_STATE,
   useStaffIncidentDetail,
 } from '../../hooks/useStaffIncidentDetail';
+import {
+  STAFF_INCIDENT_SLA_STATE,
+  useStaffIncidentSlaStatus,
+} from '../../hooks/useStaffIncidentSlaStatus';
 import StaffIncidentReportsPanel from './StaffIncidentReportsPanel';
 import StaffIncidentTimelinePanel from './StaffIncidentTimelinePanel';
 import StaffIncidentProcessingPanel from './StaffIncidentProcessingPanel';
 import StaffIncidentResolutionPanel from './StaffIncidentResolutionPanel';
+import {
+  formatStaffIncidentSlaRemaining,
+  getStaffIncidentSlaMetric,
+  getStaffIncidentSlaState,
+  getStaffIncidentSlaStatusLabel,
+} from './staffIncidentSla';
 
 const STATUS_LABELS = Object.freeze({
   new: 'Mới',
@@ -166,6 +176,127 @@ function HeaderFact({ icon: Icon, label, value }) {
         <dt className="text-[11px] font-bold uppercase tracking-[0.055em] text-slate-500 dark:text-slate-400">{label}</dt>
         <dd className="mt-0.5 truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={value}>{value}</dd>
       </dl>
+    </div>
+  );
+}
+
+function SlaMetricCard({ label, metric }) {
+  const tone = metric.breached
+    ? {
+        badge: 'danger',
+        bar: 'bg-rose-500',
+        border: 'border-rose-200 bg-rose-50/65 dark:border-rose-900 dark:bg-rose-950/25',
+        icon: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300',
+      }
+    : metric.warning
+      ? {
+          badge: 'warning',
+          bar: 'bg-amber-500',
+          border: 'border-amber-200 bg-amber-50/65 dark:border-amber-900 dark:bg-amber-950/25',
+          icon: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
+        }
+      : {
+          badge: 'success',
+          bar: 'bg-emerald-500',
+          border: 'border-emerald-200 bg-emerald-50/55 dark:border-emerald-900 dark:bg-emerald-950/20',
+          icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+        };
+  const progress = metric.progressPercent;
+
+  return (
+    <article className={`rounded-2xl border p-3.5 ${tone.border}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tone.icon}`} aria-hidden="true">
+            {metric.breached ? <Lucide.Siren size={16} /> : metric.warning ? <Lucide.ClockAlert size={16} /> : <Lucide.ShieldCheck size={16} />}
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">{label}</h3>
+            <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">{formatStaffIncidentSlaRemaining(metric)}</p>
+          </div>
+        </div>
+        <Badge intent={tone.badge} className="shrink-0 whitespace-nowrap">
+          {getStaffIncidentSlaStatusLabel(metric.status)}
+        </Badge>
+      </div>
+
+      {progress !== null ? (
+        <div className="mt-3" aria-label={`Tiến độ ${label}: ${Math.round(progress)}%`}>
+          <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            <span>Tiến độ thời gian</span>
+            <span className="tabular-nums">{Math.round(progress)}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-white/80 ring-1 ring-black/5 dark:bg-slate-900/80 dark:ring-white/10">
+            <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      ) : null}
+
+      <dl className="mt-3 flex items-center justify-between gap-3 border-t border-black/5 pt-2.5 text-xs dark:border-white/10">
+        <dt className="font-semibold text-slate-500 dark:text-slate-400">Hạn SLA</dt>
+        <dd className="text-right font-bold text-slate-800 dark:text-slate-100">{formatDateTime(metric.dueAt)}</dd>
+      </dl>
+    </article>
+  );
+}
+
+function IncidentSlaContent({ onRetry, sla, state }) {
+  if (state === STAFF_INCIDENT_SLA_STATE.LOADING) {
+    return (
+      <div className="space-y-3" role="status" aria-label="Đang tải SLA sự vụ">
+        {[0, 1].map((item) => <div key={item} className="h-28 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/70" />)}
+        <span className="sr-only">Đang tải SLA sự vụ</span>
+      </div>
+    );
+  }
+
+  if (state === STAFF_INCIDENT_SLA_STATE.NOT_FOUND) {
+    return (
+      <div className="flex items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/50" role="note">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700" aria-hidden="true">
+          <Lucide.TimerOff size={17} />
+        </span>
+        <div>
+          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">SLA chưa được khởi tạo</p>
+          <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">Backend chưa có bản ghi SLA cho riêng sự vụ này.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === STAFF_INCIDENT_SLA_STATE.ERROR || !sla) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-900 dark:bg-rose-950/25" role="alert">
+        <div className="flex items-start gap-3">
+          <Lucide.CircleAlert className="mt-0.5 shrink-0 text-rose-700 dark:text-rose-300" size={18} aria-hidden="true" />
+          <div>
+            <p className="text-sm font-bold text-rose-950 dark:text-rose-100">Không thể tải SLA sự vụ</p>
+            <p className="mt-1 text-sm leading-6 text-rose-800/80 dark:text-rose-200/80">Đã xảy ra lỗi khi đọc trạng thái SLA từ backend.</p>
+          </div>
+        </div>
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
+          <Lucide.RefreshCw size={15} aria-hidden="true" />
+          Thử lại
+        </Button>
+      </div>
+    );
+  }
+
+  const overallState = getStaffIncidentSlaState(sla);
+  const overallIntent = overallState === 'breached' ? 'danger' : overallState === 'warning' ? 'warning' : 'success';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-900/55">
+        <div>
+          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Trạng thái tổng thể</p>
+          <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">Bắt đầu: {formatDateTime(sla.startedAt)}</p>
+        </div>
+        <Badge intent={overallIntent}>{getStaffIncidentSlaStatusLabel(sla.status)}</Badge>
+      </div>
+      <SlaMetricCard label="Phản hồi đầu tiên" metric={getStaffIncidentSlaMetric(sla, 'response')} />
+      <SlaMetricCard label="Hoàn thành xử lý" metric={getStaffIncidentSlaMetric(sla, 'resolution')} />
+      <p className="text-right text-[11px] font-medium text-slate-400 dark:text-slate-500">Đồng bộ lúc {formatDateTime(sla.serverTime)}</p>
     </div>
   );
 }
@@ -330,7 +461,7 @@ function IncidentTabs({ activeTab, onTabChange, reportCount }) {
   );
 }
 
-function OverviewPanel({ incident, capability }) {
+function OverviewPanel({ incident, onRetrySla, sla, slaState }) {
   const incidentCode = formatIncidentCode(incident?.incidentId);
   const title = String(incident?.title ?? '').trim() || EMPTY_VALUE;
   const description = String(incident?.description ?? '').trim() || EMPTY_VALUE;
@@ -468,17 +599,7 @@ function OverviewPanel({ incident, capability }) {
             description="Cam kết thời gian xử lý ở cấp sự vụ."
           />
           <div className="px-4 py-4 sm:px-5">
-            {!capability.incidentLevelSla ? (
-              <div className="flex items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/50" role="note">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700" aria-hidden="true">
-                  <Lucide.TimerOff size={17} />
-                </span>
-                <div>
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Chưa có API SLA theo sự vụ</p>
-                  <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">SLA hiện chưa được backend cung cấp ở cấp Incident.</p>
-                </div>
-              </div>
-            ) : null}
+            <IncidentSlaContent onRetry={onRetrySla} sla={sla} state={slaState} />
           </div>
         </section>
       </aside>
@@ -496,6 +617,11 @@ export default function StaffIncidentDetailPage() {
     state,
     updateIncident,
   } = useStaffIncidentDetail(incidentId);
+  const {
+    retry: retrySla,
+    sla,
+    state: slaState,
+  } = useStaffIncidentSlaStatus(incidentId);
   const requestedTab = searchParams.get('tab');
   const activeTab = useMemo(
     () => TAB_ITEMS.some((tab) => tab.id === requestedTab) ? requestedTab : 'overview',
@@ -507,6 +633,12 @@ export default function StaffIncidentDetailPage() {
     if (tabId === 'overview') nextSearchParams.delete('tab');
     else nextSearchParams.set('tab', tabId);
     setSearchParams(nextSearchParams, { replace: true });
+  };
+
+  const handleIncidentUpdated = (nextIncident) => {
+    const updated = updateIncident(nextIncident);
+    if (updated) retrySla();
+    return updated;
   };
 
   if (state === STAFF_INCIDENT_DETAIL_STATE.LOADING) {
@@ -583,7 +715,12 @@ export default function StaffIncidentDetailPage() {
       />
 
       {activeTab === 'overview' ? (
-        <OverviewPanel incident={incident} capability={capability} />
+        <OverviewPanel
+          incident={incident}
+          onRetrySla={retrySla}
+          sla={sla}
+          slaState={slaState}
+        />
       ) : null}
       {activeTab === 'reports' ? (
         <StaffIncidentReportsPanel incident={incident} capability={capability} />
@@ -594,13 +731,13 @@ export default function StaffIncidentDetailPage() {
       {activeTab === 'processing' ? (
         <StaffIncidentProcessingPanel
           incident={incident}
-          onIncidentUpdated={updateIncident}
+          onIncidentUpdated={handleIncidentUpdated}
         />
       ) : null}
       {activeTab === 'resolution' ? (
         <StaffIncidentResolutionPanel
           incident={incident}
-          onIncidentUpdated={updateIncident}
+          onIncidentUpdated={handleIncidentUpdated}
           readOnly
         />
       ) : null}
