@@ -78,6 +78,7 @@ export function IncidentLocationMapCard({
   areaName,
   tone = 'cyan',
   onOpenInternalMap,
+  compact = false,
 }) {
   const [tileLoadFailed, setTileLoadFailed] = useState(false);
   const [mapReady, setMapReady] = useState(false);
@@ -137,7 +138,9 @@ export function IncidentLocationMapCard({
 
       {hasCoordinates ? (
         <div
-          className="relative min-h-72 flex-1 w-full overflow-hidden bg-slate-100 sm:min-h-80 dark:bg-slate-900"
+          className={`relative w-full overflow-hidden bg-slate-100 dark:bg-slate-900 ${
+            compact ? 'h-56 shrink-0 sm:h-64' : 'min-h-72 flex-1 sm:min-h-80'
+          }`}
           role="region"
           aria-label={`Bản đồ sự vụ tại tọa độ ${lat.toFixed(5)}, ${lng.toFixed(5)}`}
         >
@@ -208,7 +211,9 @@ export function IncidentLocationMapCard({
           ) : null}
         </div>
       ) : (
-        <div className="flex min-h-[300px] flex-1 items-center justify-center bg-slate-50 px-6 py-10 text-center dark:bg-slate-900/60">
+        <div className={`flex flex-1 items-center justify-center bg-slate-50 px-6 text-center dark:bg-slate-900/60 ${
+          compact ? 'min-h-48 py-7 sm:min-h-56' : 'min-h-[300px] py-10'
+        }`}>
           <div className="max-w-sm">
             <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-300 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-600 dark:ring-slate-800">
               <Lucide.MapPinOff size={24} aria-hidden="true" />
