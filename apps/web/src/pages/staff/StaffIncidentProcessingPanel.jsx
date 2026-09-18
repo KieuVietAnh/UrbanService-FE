@@ -10,6 +10,7 @@ import {
   getIncidentStatusLabel,
 } from './incidentDetailPresentation';
 import StaffIncidentProviderSection from './StaffIncidentProviderSection';
+import StaffIncidentResolutionPanel from './StaffIncidentResolutionPanel';
 import {
   getIncidentNextActionCopy,
   getIncidentProcessingSteps,
@@ -70,6 +71,8 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
   const assignedToAnotherStaff = isAssignedToAnotherStaff(incident, user);
   const isAssigned = String(incident?.status ?? '').replace(/[-_\s]+/g, '').toLowerCase() === 'assigned';
   const incidentId = String(incident?.incidentId ?? '').trim();
+  const normalizedStatus = String(incident?.status ?? '').replace(/[-_\s]+/g, '').toLowerCase();
+  const canWorkOnResult = ['inprogress', 'needrework'].includes(normalizedStatus);
 
   return (
     <div
@@ -86,8 +89,8 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
               <Lucide.Wrench size={20} />
             </span>
             <div className="min-w-0">
-              <h2 id="incident-processing-status-title" className="admin-section-title">Trạng thái xử lý</h2>
-              <p className="admin-section-description mt-1">Theo dõi trạng thái hiện tại và bước xử lý hợp lệ tiếp theo của sự vụ.</p>
+              <h2 id="incident-processing-status-title" className="admin-section-title">Flow xử lý sự vụ</h2>
+              <p className="admin-section-description mt-1">Mọi thao tác từ bắt đầu đến gửi kết quả nằm trong một workspace và được sắp theo đúng thứ tự.</p>
             </div>
           </div>
           <Badge intent={getStatusIntent(incident?.status)} className="w-fit px-3 py-1.5 text-xs">
@@ -133,7 +136,7 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
                 <div className="min-w-0">
                   <h3 className="text-sm font-black text-amber-950 dark:text-amber-100">Sự vụ đang chờ bắt đầu xử lý</h3>
                   <p className="mt-1 text-sm leading-6 text-amber-900/80 dark:text-amber-100/75">
-                    Chọn đơn vị xử lý trước. Khi phân công đơn vị ở trạng thái Đã gửi yêu cầu, dùng thao tác Bắt đầu xử lý trong phần tiến độ đơn vị.
+                    Bấm “Bắt đầu xử lý” ở bước bên dưới, sau đó chọn phối hợp đơn vị hoặc tự xử lý. Hệ thống sẽ dẫn tiếp theo từng bước.
                   </p>
                 </div>
               </div>
@@ -148,8 +151,8 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
             <Lucide.ListChecks size={18} />
           </span>
           <div className="min-w-0">
-            <h2 id="incident-processing-progress-title" className="admin-section-title">Tiến trình xử lý</h2>
-            <p className="admin-section-description mt-1">Các mốc được xác định trực tiếp từ trạng thái sự vụ hiện tại.</p>
+            <h2 id="incident-processing-progress-title" className="admin-section-title">Bạn đang ở đâu trong flow?</h2>
+            <p className="admin-section-description mt-1">Các mốc tổng quát được xác định từ trạng thái backend; từng bước chi tiết nằm ngay bên dưới.</p>
           </div>
         </header>
         <div className="p-5 sm:p-6">
@@ -158,11 +161,11 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
               <ProgressStep key={step.id} step={step} index={index} isLast={index === steps.length - 1} />
             ))}
           </ol>
-          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-950/30">
-            <Lucide.Gauge className="mt-0.5 shrink-0 text-slate-500 dark:text-slate-400" size={18} aria-hidden="true" />
+          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900/60 dark:bg-blue-950/20">
+            <Lucide.Route className="mt-0.5 shrink-0 text-blue-700 dark:text-blue-300" size={18} aria-hidden="true" />
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Chưa có dữ liệu tiến độ xử lý</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">Backend chưa cung cấp khối lượng công việc hoặc tiến độ chi tiết ở cấp sự vụ.</p>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Một đường đi duy nhất</h3>
+              <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">Bắt đầu → liên hệ nếu có đơn vị → thêm minh chứng → gửi kết quả. Rời trang giữa chừng vẫn giữ cách xử lý và nội dung kết quả đang nhập.</p>
             </div>
           </div>
         </div>
@@ -173,6 +176,14 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
         onIncidentUpdated={onIncidentUpdated}
         user={user}
       />
+
+      {canWorkOnResult ? (
+        <StaffIncidentResolutionPanel
+          embedded
+          incident={incident}
+          onIncidentUpdated={onIncidentUpdated}
+        />
+      ) : null}
 
       <p className="sr-only">Mã sự vụ {formatIncidentCode(incidentId)}</p>
     </div>

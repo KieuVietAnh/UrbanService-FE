@@ -4,10 +4,10 @@ const normalizeStatus = (value) => String(value ?? '')
   .toLowerCase();
 
 const STAGES = Object.freeze([
-  Object.freeze({ id: 'assigned', label: 'Đã phân công' }),
-  Object.freeze({ id: 'in-progress', label: 'Đang xử lý' }),
-  Object.freeze({ id: 'submitted', label: 'Chờ Manager duyệt' }),
-  Object.freeze({ id: 'approved', label: 'Đã duyệt' }),
+  Object.freeze({ id: 'assigned', label: 'Bắt đầu xử lý' }),
+  Object.freeze({ id: 'in-progress', label: 'Thực hiện công việc' }),
+  Object.freeze({ id: 'submitted', label: 'Gửi kết quả' }),
+  Object.freeze({ id: 'approved', label: 'Hoàn tất' }),
 ]);
 
 const STATUS_STAGE_INDEX = Object.freeze({
@@ -41,16 +41,16 @@ export const getIncidentNextActionCopy = (status) => {
   const normalizedStatus = normalizeStatus(status);
 
   if (normalizedStatus === 'assigned') {
-    return 'Sự vụ đã được phân công. Hãy chọn đơn vị xử lý, sau đó bắt đầu tiến độ từ phân công đơn vị.';
+    return 'Bắt đầu flow, sau đó chọn phối hợp đơn vị hoặc tự xử lý trực tiếp.';
   }
   if (normalizedStatus === 'inprogress') {
-    return 'Sự vụ đang trong quá trình xử lý.';
+    return 'Tiếp tục đúng bước đang dở: liên hệ (nếu có đơn vị), minh chứng rồi gửi kết quả.';
   }
   if (normalizedStatus === 'submittedforapproval') {
     return 'Kết quả xử lý đang chờ Manager xem xét.';
   }
   if (normalizedStatus === 'needrework') {
-    return 'Manager đã yêu cầu xử lý lại sự vụ.';
+    return 'Manager đã yêu cầu xử lý lại. Bổ sung minh chứng nếu cần và gửi lại kết quả trong flow bên dưới.';
   }
   if (['approved', 'resolved', 'closed'].includes(normalizedStatus)) {
     return 'Sự vụ đã hoàn tất bước xử lý hiện tại.';

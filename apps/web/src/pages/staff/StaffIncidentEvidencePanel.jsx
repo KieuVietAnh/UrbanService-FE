@@ -419,7 +419,7 @@ export default function StaffIncidentEvidencePanel({
               <Lucide.Files size={20} />
             </span>
             <div className="min-w-0">
-              <h2 id="incident-evidence-title" className="admin-section-title">Minh chứng xử lý</h2>
+              <h2 id="incident-evidence-title" className="admin-section-title">Tiếp theo · Minh chứng xử lý</h2>
               <p className="admin-section-description mt-1">Ảnh và tài liệu do Staff bổ sung cho kết quả thực hiện của sự vụ.</p>
             </div>
           </div>

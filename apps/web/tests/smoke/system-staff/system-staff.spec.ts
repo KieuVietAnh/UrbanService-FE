@@ -93,8 +93,8 @@ test.describe.serial('SYSTEMSTAFF — luồng Incident', () => {
     const tabChecks = [
       { tab: /Các phản ánh/, heading: 'Danh sách phản ánh' },
       { tab: 'Dòng thời gian', heading: 'Dòng thời gian sự vụ' },
-      { tab: 'Xử lý', heading: 'Trạng thái xử lý' },
-      { tab: 'Kết quả xử lý', heading: 'Kết quả xử lý sự vụ' },
+      { tab: 'Xử lý', heading: 'Flow xử lý sự vụ' },
+      { tab: 'Kết quả xử lý', heading: 'Kết quả đã nhận' },
     ];
 
     for (const { tab, heading } of tabChecks) {
@@ -103,6 +103,9 @@ test.describe.serial('SYSTEMSTAFF — luồng Incident', () => {
       await expect(page.getByRole('heading', { name: heading }).first()).toBeVisible();
       await expectNoManagerActions(page);
     }
+
+    await tablist.getByRole('tab', { name: 'Kết quả xử lý', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Gửi (lại )?kết quả|Tải minh chứng/i })).toHaveCount(0);
 
     const overviewTab = tablist.getByRole('tab', { name: 'Tổng quan', exact: true });
     await overviewTab.click();
