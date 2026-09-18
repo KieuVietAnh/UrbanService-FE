@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { incidentManagementApi } from '@urbanmind/shared-api';
+import { incidentManagementApi, slaApi } from '@urbanmind/shared-api';
 
-import { fetchAllAssignedStaffIncidents } from '../pages/staff/staffIncidentDashboard';
+import {
+  fetchAllAssignedStaffIncidents,
+  fetchAssignedIncidentSlaStatuses,
+} from '../pages/staff/staffIncidentDashboard';
 
 export const STAFF_INCIDENT_DASHBOARD_STATE = Object.freeze({
   API_UNAVAILABLE: 'api-unavailable',
@@ -32,6 +35,9 @@ export function useStaffIncidentDashboard(assignedStaffUserId) {
   const [snapshot, setSnapshot] = useState(() => ({
     error: null,
     incidents: [],
+    slaByIncidentId: {},
+    slaFailedCount: 0,
+    slaRequestedCount: 0,
     totalItems: 0,
     state: capability.available
       ? STAFF_INCIDENT_DASHBOARD_STATE.LOADING
@@ -46,6 +52,9 @@ export function useStaffIncidentDashboard(assignedStaffUserId) {
       setSnapshot({
         error: null,
         incidents: [],
+        slaByIncidentId: {},
+        slaFailedCount: 0,
+        slaRequestedCount: 0,
         totalItems: 0,
         state: STAFF_INCIDENT_DASHBOARD_STATE.API_UNAVAILABLE,
       });
@@ -56,6 +65,9 @@ export function useStaffIncidentDashboard(assignedStaffUserId) {
       setSnapshot({
         error: null,
         incidents: [],
+        slaByIncidentId: {},
+        slaFailedCount: 0,
+        slaRequestedCount: 0,
         totalItems: 0,
         state: STAFF_INCIDENT_DASHBOARD_STATE.SCOPE_UNAVAILABLE,
       });
@@ -77,10 +89,19 @@ export function useStaffIncidentDashboard(assignedStaffUserId) {
         signal: controller.signal,
       });
 
+      const slaResult = await fetchAssignedIncidentSlaStatuses({
+        incidents: result.incidents,
+        getIncidentSlaStatus: slaApi.getIncidentSlaStatus,
+        signal: controller.signal,
+      });
+
       if (controller.signal.aborted) return;
       setSnapshot({
         error: null,
         incidents: result.incidents,
+        slaByIncidentId: slaResult.slaByIncidentId,
+        slaFailedCount: slaResult.failedCount,
+        slaRequestedCount: slaResult.requestedCount,
         totalItems: result.totalItems,
         state: result.incidents.length > 0
           ? STAFF_INCIDENT_DASHBOARD_STATE.READY
@@ -91,6 +112,9 @@ export function useStaffIncidentDashboard(assignedStaffUserId) {
       setSnapshot({
         error,
         incidents: [],
+        slaByIncidentId: {},
+        slaFailedCount: 0,
+        slaRequestedCount: 0,
         totalItems: 0,
         state: STAFF_INCIDENT_DASHBOARD_STATE.ERROR,
       });

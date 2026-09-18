@@ -17,6 +17,10 @@ import {
   getProviderStatusIntent,
   getProviderStatusLabel,
 } from './staffIncidentProcessing';
+import {
+  STAFF_INCIDENT_FLOW_TARGETS,
+  scrollToStaffIncidentFlowTarget,
+} from './staffIncidentFlowNavigation';
 
 const normalizeKey = (value) => String(value ?? '')
   .trim()
@@ -385,6 +389,7 @@ export default function StaffIncidentProgressSection({
       } catch {
         setMessage({ type: 'success', text: 'Đã bắt đầu xử lý. Trạng thái sự vụ mới nhất sẽ được cập nhật khi bạn tải lại.' });
       }
+      scrollToStaffIncidentFlowTarget(STAFF_INCIDENT_FLOW_TARGETS.CONTACT);
     } catch (error) {
       setStatusDialogOpen(false);
       setMessage({
@@ -462,6 +467,7 @@ export default function StaffIncidentProgressSection({
       } catch {
         setMessage({ type: 'success', text: 'Đã thêm nhật ký liên hệ. Dữ liệu mới nhất sẽ được cập nhật khi bạn thử lại.' });
       }
+      scrollToStaffIncidentFlowTarget(STAFF_INCIDENT_FLOW_TARGETS.EVIDENCE);
     } catch (error) {
       setMessage({ type: 'error', text: getActionErrorMessage(error, 'Không thể thêm nhật ký liên hệ.') });
     } finally {
@@ -559,7 +565,7 @@ export default function StaffIncidentProgressSection({
         ) : null}
 
         {formOpen && canWrite ? (
-          <form id="provider-contact-log-form" className="mb-6 rounded-2xl border border-blue-200 bg-blue-50/45 p-4 sm:p-5 dark:border-blue-900/70 dark:bg-blue-950/20" onSubmit={submitContactLog}>
+          <form id="provider-contact-log-form" className="mb-6 scroll-mt-4 rounded-2xl border border-blue-200 bg-blue-50/45 p-4 sm:p-5 dark:border-blue-900/70 dark:bg-blue-950/20" onSubmit={submitContactLog}>
             <div className="mb-4 flex items-start gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white" aria-hidden="true"><Lucide.NotebookPen size={16} /></span>
               <div>

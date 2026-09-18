@@ -70,6 +70,26 @@ const parseTimestamp = (value) => {
 
 const getIncidentId = (incident) => String(incident?.incidentId ?? '').trim();
 
+const hasSlaBreach = (sla) => Boolean(
+  sla?.isResponseBreached
+  || sla?.isResolutionBreached
+  || Number(sla?.responseRemainingSeconds) < 0
+  || Number(sla?.resolutionRemainingSeconds) < 0
+);
+
+const hasSlaWarning = (sla) => Boolean(
+  !hasSlaBreach(sla)
+  && (sla?.isResponseWarning || sla?.isResolutionWarning)
+);
+
+const isNotFoundError = (error) => Number(error?.response?.status ?? error?.status) === 404;
+
+const isCanceledRequest = (error) => (
+  error?.code === 'ERR_CANCELED'
+  || error?.name === 'AbortError'
+  || error?.name === 'CanceledError'
+);
+
 export const getStaffIncidentStatusLabel = (value) => (
   STATUS_LABELS[normalizeEnumKey(value)] || 'Chưa xác định'
 );
@@ -112,11 +132,39 @@ export const calculateStaffIncidentKpis = (incidents = []) => {
   return counts;
 };
 
-export const sortStaffIncidentsForAttention = (incidents = []) => (
+export const calculateStaffIncidentSlaKpis = (slaByIncidentId = {}) => {
+  const statuses = Object.values(slaByIncidentId).filter(Boolean);
+  const breached = statuses.filter(hasSlaBreach).length;
+  const nearingBreach = statuses.filter(hasSlaWarning).length;
+
+  return {
+    tracked: statuses.length,
+    nearingBreach,
+    breached,
+    healthy: Math.max(0, statuses.length - nearingBreach - breached),
+  };
+};
+
+export const getStaffIncidentSlaState = (sla) => {
+  if (hasSlaBreach(sla)) return 'breached';
+  if (hasSlaWarning(sla)) return 'warning';
+  return sla ? 'healthy' : 'unavailable';
+};
+
+export const sortStaffIncidentsForAttention = (incidents = [], slaByIncidentId = {}) => (
   incidents
     .filter(isActiveStaffIncident)
     .slice()
     .sort((left, right) => {
+      const slaRank = (incident) => {
+        const state = getStaffIncidentSlaState(slaByIncidentId[getIncidentId(incident)]);
+        if (state === 'breached') return 2;
+        if (state === 'warning') return 1;
+        return 0;
+      };
+      const slaDifference = slaRank(right) - slaRank(left);
+      if (slaDifference !== 0) return slaDifference;
+
       const leftNeedsRework = normalizeEnumKey(left?.status) === 'needrework' ? 1 : 0;
       const rightNeedsRework = normalizeEnumKey(right?.status) === 'needrework' ? 1 : 0;
       if (leftNeedsRework !== rightNeedsRework) return rightNeedsRework - leftNeedsRework;
@@ -203,6 +251,55 @@ export const fetchAllAssignedStaffIncidents = async ({
   }
 
   return { incidents, totalItems };
+};
+
+export const fetchAssignedIncidentSlaStatuses = async ({
+  incidents,
+  getIncidentSlaStatus,
+  signal,
+  batchSize = 4,
+}) => {
+  if (!Array.isArray(incidents)) throw new TypeError('incidents is required');
+  if (typeof getIncidentSlaStatus !== 'function') throw new TypeError('getIncidentSlaStatus is required');
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new TypeError('batchSize must be a positive integer');
+
+  const targets = incidents.filter(isActiveStaffIncident);
+  const slaByIncidentId = {};
+  let failedCount = 0;
+
+  for (let index = 0; index < targets.length; index += batchSize) {
+    if (signal?.aborted) throw new DOMException('Request aborted', 'AbortError');
+    const batch = targets.slice(index, index + batchSize);
+    const results = await Promise.allSettled(batch.map((incident) => {
+      const incidentId = getIncidentId(incident);
+      if (!incidentId) throw new TypeError('Incident list item is missing incidentId');
+      return getIncidentSlaStatus(incidentId, { signal });
+    }));
+
+    results.forEach((result, resultIndex) => {
+      const incidentId = getIncidentId(batch[resultIndex]);
+      if (result.status === 'rejected') {
+        if (isCanceledRequest(result.reason)) throw result.reason;
+        if (!isNotFoundError(result.reason)) failedCount += 1;
+        return;
+      }
+
+      const sla = result.value;
+      if (!sla) return;
+      const returnedIncidentId = String(sla?.incidentId ?? '').trim();
+      if (!returnedIncidentId || returnedIncidentId.toLowerCase() !== incidentId.toLowerCase()) {
+        failedCount += 1;
+        return;
+      }
+      slaByIncidentId[incidentId] = sla;
+    });
+  }
+
+  return {
+    slaByIncidentId,
+    failedCount,
+    requestedCount: targets.length,
+  };
 };
 
 export { normalizeEnumKey as normalizeStaffIncidentDashboardKey };

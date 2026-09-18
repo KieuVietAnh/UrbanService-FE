@@ -275,8 +275,45 @@ export const ProfilePage = () => {
   };
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="profile-page space-y-5 sm:space-y-6">
       <style>{`
+        .profile-page {
+          --public-surface: rgba(255, 255, 255, 0.94);
+          --public-surface-soft: rgba(248, 251, 255, 0.94);
+          --public-surface-strong: #ffffff;
+          --public-border: rgba(203, 213, 225, 0.82);
+          --public-title: #0f172a;
+          --public-copy: #5b6b82;
+          --public-muted: #8796aa;
+          --public-shadow: 0 20px 54px rgba(30, 64, 175, 0.08);
+          color: var(--public-title);
+        }
+
+        html[data-theme="dark"] .profile-page {
+          --public-surface: rgba(12, 27, 50, 0.94);
+          --public-surface-soft: rgba(10, 24, 46, 0.9);
+          --public-surface-strong: #0b1830;
+          --public-border: rgba(96, 165, 250, 0.18);
+          --public-title: #f8fafc;
+          --public-copy: #afbdd0;
+          --public-muted: #7f90a8;
+          --public-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+        }
+
+        .profile-page .public-overview-panel,
+        .profile-page .public-recent-shell {
+          border-color: var(--public-border) !important;
+          background: var(--public-surface) !important;
+          box-shadow: var(--public-shadow) !important;
+        }
+
+        html[data-theme="dark"] .profile-page .public-overview-panel,
+        html[data-theme="dark"] .profile-page .public-recent-shell {
+          background:
+            radial-gradient(circle at 92% 2%, rgba(37, 99, 235, 0.08), transparent 24%),
+            linear-gradient(145deg, rgba(13, 29, 54, 0.98), rgba(8, 20, 40, 0.98)) !important;
+        }
+
         .profile-hero-metric {
           color: #0f172a;
         }
