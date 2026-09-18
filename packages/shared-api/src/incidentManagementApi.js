@@ -279,7 +279,7 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
     available: true,
     endpoint: INCIDENT_DETAIL_ENDPOINT,
     assignedStaff: true,
-    incidentLevelSla: false,
+    incidentLevelSla: true,
     reportsEmbedded: true,
   }),
   timeline: Object.freeze({

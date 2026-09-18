@@ -36,7 +36,7 @@ test('incident list capability follows the checked-in ManagementIncidents contra
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.detail.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.detail.endpoint, '/api/management/incidents/{incidentId}');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.detail.assignedStaff, true);
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.detail.incidentLevelSla, false);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.detail.incidentLevelSla, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.detail.reportsEmbedded, true);
   assert.equal(typeof incidentManagementApi.getIncidentById, 'function');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.timeline.available, true);
