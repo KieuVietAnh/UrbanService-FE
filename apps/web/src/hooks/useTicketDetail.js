@@ -54,7 +54,12 @@ const getRequestStatus = (error) => {
   return null;
 };
 
-export function useTicketDetail(feedbackId, user, detailFetcher) {
+export function useTicketDetail(feedbackId, user, detailFetcher, options = {}) {
+  const interactionFeedbackId = Object.prototype.hasOwnProperty.call(options || {}, 'interactionFeedbackId')
+    ? options.interactionFeedbackId
+    : feedbackId;
+  const skipResolutions = Boolean(options?.skipResolutions);
+  const disableInteractions = Boolean(options?.disableInteractions);
   const [ticket, setTicket] = useState(null);
   const [comments, setComments] = useState([]);
   const [history, setHistory] = useState([]);
@@ -86,8 +91,8 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
         const resTicket = detailFetcher
           ? await detailFetcher(feedbackId)
           : await ticketApi.getTicketById(feedbackId, { role });
-        const resolutions = role === 'service-user'
-          ? await ticketApi.getResolutions(feedbackId, { role })
+        const resolutions = role === 'service-user' && !skipResolutions && interactionFeedbackId
+          ? await ticketApi.getResolutions(interactionFeedbackId, { role })
           : [];
         const ticketData = attachLatestResolution(resTicket, resolutions);
         if (!ticketData) throw new Error('Empty ticket data received');
@@ -116,13 +121,13 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
 
     signalrService.start();
     const handleReceiveMessage = (incomingFeedbackId, comment) => {
-      if (incomingFeedbackId === feedbackId) setComments((prev) => [...prev, comment]);
+      if (String(incomingFeedbackId) === String(interactionFeedbackId)) setComments((prev) => [...prev, comment]);
     };
     signalrService.on('ReceiveChatMessage', handleReceiveMessage);
     signalrService.on('CommentAdded', handleReceiveMessage);
 
     const handleStatusChange = async (incomingFeedbackId) => {
-      if (incomingFeedbackId === feedbackId) {
+      if (String(incomingFeedbackId) === String(interactionFeedbackId)) {
         // refresh details to pick up status, history and related changes
         await fetchDetails();
       }
@@ -131,7 +136,7 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
     signalrService.on('FeedbackStatusChangedNotificationReceived', handleStatusChange);
 
     const handleAssignment = async (incomingFeedbackId) => {
-      if (incomingFeedbackId === feedbackId) {
+      if (String(incomingFeedbackId) === String(interactionFeedbackId)) {
         await fetchDetails();
       }
     };
@@ -139,14 +144,14 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
     signalrService.on('AssignmentCreated', handleAssignment);
 
     const handleSupport = (incomingFeedbackId, payload) => {
-      if (incomingFeedbackId === feedbackId) {
+      if (String(incomingFeedbackId) === String(interactionFeedbackId)) {
         setTicket((prev) => ({ ...(prev || {}), supportCount: payload?.supportCount ?? (prev?.supportCount || 0) }));
       }
     };
     signalrService.on('SupportAdded', handleSupport);
 
     const handleResolutionEvents = async (incomingFeedbackId) => {
-      if (incomingFeedbackId === feedbackId) {
+      if (String(incomingFeedbackId) === String(interactionFeedbackId)) {
         await fetchDetails();
       }
     };
@@ -168,7 +173,7 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
       signalrService.off('ResolutionRejected', handleResolutionEvents);
       signalrService.stop();
     };
-  }, [detailFetcher, feedbackId, user?.id, user?.role, user?.userId]);
+  }, [detailFetcher, feedbackId, interactionFeedbackId, skipResolutions, user?.id, user?.role, user?.userId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -176,12 +181,12 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
 
   const handleSendChat = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!chatInput || !chatInput.trim()) return;
+    if (disableInteractions || !interactionFeedbackId || !chatInput || !chatInput.trim()) return;
     const text = chatInput;
     setChatInput('');
-    await signalrService.sendChatMessage(feedbackId, user, text);
+    await signalrService.sendChatMessage(interactionFeedbackId, user, text);
     const role = (user && (String(user.role || '').toLowerCase().includes('staff') || String(user.role || '').toLowerCase().includes('service-provider'))) ? String(user.role) : undefined;
-    const resHist = await ticketApi.getHistory(feedbackId, { role });
+    const resHist = await ticketApi.getHistory(interactionFeedbackId, { role });
     setHistory(Array.isArray(resHist) ? resHist : []);
   };
 
@@ -190,7 +195,8 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
     setRatingLoading(true);
     try {
       const role = user?.role || 'service-user';
-      await ticketApi.submitReview(feedbackId, user.userId, rating, satisfied, reviewComment, { role });
+      if (disableInteractions || !interactionFeedbackId) return;
+      await ticketApi.submitReview(interactionFeedbackId, user.userId, rating, satisfied, reviewComment, { role });
       const refresh = async () => {
         setError('');
         setErrorStatus(null);
@@ -201,8 +207,8 @@ export function useTicketDetail(feedbackId, user, detailFetcher) {
           const resTicket = detailFetcher
             ? await detailFetcher(feedbackId)
             : await ticketApi.getTicketById(feedbackId, { role });
-          const resolutions = role === 'service-user'
-            ? await ticketApi.getResolutions(feedbackId, { role })
+          const resolutions = role === 'service-user' && !skipResolutions && interactionFeedbackId
+            ? await ticketApi.getResolutions(interactionFeedbackId, { role })
             : [];
           const ticketData = attachLatestResolution(resTicket, resolutions);
           if (!ticketData) throw new Error('Empty ticket data received');

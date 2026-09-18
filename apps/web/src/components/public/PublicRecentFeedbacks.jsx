@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
-import {
-  getStatusLabel,
-  STATUS_BADGE_CLASSES,
-} from '@urbanmind/shared-types';
+import { STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
 import { getAttachmentUrl } from '@urbanmind/shared-utils';
+import {
+  getCommunityIncidentId,
+  getCommunityItemDescription,
+  getCommunityItemTitle,
+  getCommunityReportCount,
+  getResidentStatusMeta,
+} from '../community/communityPresentation.js';
 const CATEGORY_LABELS = {
   'garbage collection': 'Thu gom rác',
   'waste management': 'Môi trường',
@@ -16,12 +20,8 @@ const CATEGORY_LABELS = {
   'public safety': 'An toàn công cộng',
 };
 
-const getFeedbackId = (item) => (
-  item?.feedbackId || item?.id || item?.ticketId || ''
-);
-
 const getCategoryName = (item) => {
-  const rawCategory = item?.categoryName || item?.category?.name || 'Phản ánh đô thị';
+  const rawCategory = item?.categoryName || item?.category?.name || 'Sự vụ đô thị';
   const normalizedCategory = String(rawCategory)
     .trim()
     .toLocaleLowerCase('en-US');
@@ -177,7 +177,7 @@ const FeedbackMedia = ({ item }) => {
   return (
     <img
       src={mediaUrl}
-      alt={item?.title || 'Hình ảnh phản ánh đô thị'}
+      alt={getCommunityItemTitle(item) || 'Hình ảnh sự vụ đô thị'}
       className="h-full min-h-44 w-full object-cover transition duration-500 group-hover:scale-[1.025]"
       loading="lazy"
       onError={() => setMediaFailed(true)}
@@ -186,18 +186,20 @@ const FeedbackMedia = ({ item }) => {
 };
 
 const FeedbackCard = ({ item }) => {
-  const feedbackId = getFeedbackId(item);
+  const incidentId = getCommunityIncidentId(item);
   const categoryName = getCategoryName(item);
-  const statusClasses = STATUS_BADGE_CLASSES[item?.status] || STATUS_BADGE_CLASSES.default;
-  const supportCount = Number(item?.supportCount || item?.supports || 0);
-  const commentCount = Number(item?.commentCount || 0);
+  const statusValue = item?.incidentStatus || item?.status;
+  const statusClasses = STATUS_BADGE_CLASSES[statusValue] || STATUS_BADGE_CLASSES.default;
+  const statusMeta = getResidentStatusMeta(statusValue);
+  const subscriberCount = Number(item?.subscriberCount || 0);
+  const reportCount = getCommunityReportCount(item);
 
   return (
     <article className="public-feedback-card group flex min-h-full flex-col overflow-hidden rounded-[22px] border border-slate-200/90 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.055)] transition duration-300 hover:-translate-y-1 hover:border-blue-200">
       <div className="relative aspect-[16/9] overflow-hidden bg-slate-100 dark:bg-slate-800">
         <FeedbackMedia item={item} />
         <span className={`absolute left-3 top-3 inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur ${statusClasses}`}>
-          {getStatusLabel(item?.status, 'Đang cập nhật')}
+          {statusMeta.label}
         </span>
       </div>
 
@@ -212,11 +214,11 @@ const FeedbackCard = ({ item }) => {
         </div>
 
         <h3 className="public-feedback-title mt-3 line-clamp-2 text-[17px] font-semibold leading-6 tracking-[-0.015em] text-slate-900">
-          {item?.title || 'Phản ánh đô thị'}
+          {getCommunityItemTitle(item)}
         </h3>
 
         <p className="public-feedback-copy mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
-          {item?.description || 'Thông tin chi tiết đang được cập nhật trong bảng tin cộng đồng.'}
+          {getCommunityItemDescription(item) || 'Thông tin chi tiết đang được cập nhật trong bảng tin cộng đồng.'}
         </p>
 
         <div className="mt-auto flex items-end justify-between gap-3 pt-5">
@@ -227,21 +229,21 @@ const FeedbackCard = ({ item }) => {
 
           <span className="public-feedback-meta flex shrink-0 items-center gap-3 text-xs text-slate-400">
             <span className="inline-flex items-center gap-1">
-              <Lucide.Heart size={13} aria-hidden="true" />
-              {supportCount}
+              <Lucide.Bell size={13} aria-hidden="true" />
+              {subscriberCount}
             </span>
             <span className="inline-flex items-center gap-1">
-              <Lucide.MessageCircle size={13} aria-hidden="true" />
-              {commentCount}
+              <Lucide.MessagesSquare size={13} aria-hidden="true" />
+              {reportCount}
             </span>
           </span>
         </div>
 
         <Link
-          to={feedbackId ? `/community/feed/${feedbackId}` : '/community/feed'}
+          to={incidentId ? `/community/feed/${incidentId}` : '/community/feed'}
           className="public-feedback-title mt-4 inline-flex items-center justify-between border-t border-slate-100 pt-4 text-sm font-semibold text-slate-700 transition group-hover:text-blue-700"
         >
-          Xem chi tiết phản ánh
+          Xem chi tiết sự vụ
           <Lucide.ArrowUpRight size={16} aria-hidden="true" />
         </Link>
       </div>
@@ -288,7 +290,7 @@ export const PublicRecentFeedbacks = ({
           Chưa tải được dữ liệu công khai
         </h3>
         <p className="public-feedback-copy mt-2 max-w-md text-sm leading-6 text-slate-500">
-          Hệ thống phản ánh đang tạm thời chưa phản hồi. Bạn vẫn có thể mở bảng tin để thử lại.
+          Bảng tin cộng đồng đang tạm thời chưa phản hồi. Bạn vẫn có thể mở bảng tin để thử lại.
         </p>
         <button
           type="button"
@@ -307,10 +309,10 @@ export const PublicRecentFeedbacks = ({
       <div className="public-feedback-card flex min-h-56 flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-white px-6 text-center">
         <Lucide.Inbox size={24} className="text-slate-400" aria-hidden="true" />
         <h3 className="public-feedback-title mt-3 text-base font-semibold text-slate-900">
-          Chưa có phản ánh công khai gần đây
+          Chưa có sự vụ công khai gần đây
         </h3>
         <p className="public-feedback-copy mt-2 text-sm text-slate-500">
-          Các phản ánh đủ điều kiện công khai sẽ xuất hiện tại đây.
+          Các sự vụ đủ điều kiện công khai sẽ xuất hiện tại đây.
         </p>
       </div>
     );
@@ -325,7 +327,7 @@ export const PublicRecentFeedbacks = ({
   return (
     <div className={`mx-auto grid w-full gap-5 sm:grid-cols-2 ${responsiveGridClass}`}>
       {items.map((item) => (
-        <FeedbackCard key={getFeedbackId(item)} item={item} />
+        <FeedbackCard key={getCommunityIncidentId(item)} item={item} />
       ))}
     </div>
   );

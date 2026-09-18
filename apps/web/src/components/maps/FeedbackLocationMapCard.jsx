@@ -70,6 +70,8 @@ const ResizeMap = () => {
 
 export const FeedbackLocationMapCard = ({
   feedbackId,
+  focusIncidentId = '',
+  entityLabel = 'phản ánh',
   latitude,
   longitude,
   locationText,
@@ -110,7 +112,9 @@ export const FeedbackLocationMapCard = ({
 
     navigate('/community/map', {
       state: {
-        focusFeedbackId: feedbackId,
+        ...(focusIncidentId
+          ? { focusIncidentId }
+          : { focusFeedbackId: feedbackId }),
         focusLatitude: lat,
         focusLongitude: lng,
       },
@@ -125,7 +129,7 @@ export const FeedbackLocationMapCard = ({
             <Lucide.MapPinned size={iconSize} />
           </span>
           <div className="min-w-0">
-            <h2 id={`feedback-location-${feedbackId}`} className={isAdmin ? 'admin-section-title' : 'text-base font-bold'}>Vị trí phản ánh</h2>
+            <h2 id={`feedback-location-${feedbackId}`} className={isAdmin ? 'admin-section-title' : 'text-base font-bold'}>{`Vị trí ${entityLabel}`}</h2>
             <p className={isAdmin ? 'mt-1 break-words text-sm font-medium text-slate-700 dark:text-slate-300' : 'mt-1 break-words text-sm font-medium text-base-content/70'}>
               {locationText || areaName || 'Chưa xác định vị trí'}
             </p>
@@ -139,7 +143,7 @@ export const FeedbackLocationMapCard = ({
       </header>
 
       {hasCoordinates ? (
-        <button type="button" onClick={openFullMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label="Xem vị trí phản ánh trên bản đồ">
+        <button type="button" onClick={openFullMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label={`Xem vị trí ${entityLabel} trên bản đồ`}>
           <MapContainer center={position} zoom={16} dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false} boxZoom={false} keyboard={false} zoomControl={false} attributionControl={false} className="pointer-events-none h-full w-full">
             <ConfiguredMapTileLayer />
             <SyncView position={position} />
@@ -155,7 +159,7 @@ export const FeedbackLocationMapCard = ({
         <div className={`flex h-44 items-center justify-center border-y border-dashed px-5 text-center ${isAdmin ? 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50' : 'border-[var(--public-border)] bg-[var(--public-surface-soft)]'}`}>
           <div>
             <Lucide.MapPin size={24} className={`mx-auto ${isAdmin ? 'text-slate-300 dark:text-slate-600' : 'text-base-content/30'}`} aria-hidden="true" />
-            <p className={`mt-2 text-sm ${isAdmin ? 'text-slate-500 dark:text-slate-400' : 'text-base-content/50'}`}>Phản ánh chưa có tọa độ để hiển thị trên bản đồ.</p>
+            <p className={`mt-2 text-sm ${isAdmin ? 'text-slate-500 dark:text-slate-400' : 'text-base-content/50'}`}>{`${entityLabel.charAt(0).toUpperCase()}${entityLabel.slice(1)} chưa có tọa độ để hiển thị trên bản đồ.`}</p>
           </div>
         </div>
       )}

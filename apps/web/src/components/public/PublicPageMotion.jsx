@@ -1,14 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export const PublicPageMotion = ({ children, className = '' }) => {
   const rootRef = useRef(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return undefined;
 
     const frame = window.requestAnimationFrame(() => {
-      root.classList.add('is-ready');
+      setIsReady(true);
     });
 
     const revealItems = Array.from(
@@ -56,7 +57,7 @@ export const PublicPageMotion = ({ children, className = '' }) => {
   return (
     <div
       ref={rootRef}
-      className={`public-page-motion ${className}`.trim()}
+      className={`public-page-motion ${isReady ? 'is-ready' : ''} ${className}`.trim()}
     >
       {children}
     </div>

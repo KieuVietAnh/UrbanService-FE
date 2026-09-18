@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { ticketApi } from '../services/api/ticketApi';
 import { getCommunityFeed } from '../services/api/feedApi';
 import { signalrService } from '../services/socket/signalrService';
 
@@ -14,17 +12,19 @@ const parseCoordinatesFromLocationText = (locationText) => {
   return { latitude: Number(match[1]), longitude: Number(match[2]) };
 };
 
+
 const normalizeIncident = (ticket) => {
   const parsedLocation = parseCoordinatesFromLocationText(ticket?.locationText);
   const latitude = Number(ticket?.latitude ?? ticket?.lat ?? ticket?.location?.latitude ?? ticket?.location?.lat ?? parsedLocation.latitude);
   const longitude = Number(ticket?.longitude ?? ticket?.lng ?? ticket?.lon ?? ticket?.location?.longitude ?? ticket?.location?.lng ?? ticket?.location?.lon ?? parsedLocation.longitude);
+  const incidentId = ticket?.incidentId || ticket?.id || '';
 
   return {
     ...ticket,
-    feedbackId: ticket?.feedbackId || ticket?.id || ticket?._id || '',
-    title: ticket?.title || ticket?.summary || ticket?.description || ticket?.categoryName || 'Phản ánh đô thị',
-    categoryName: ticket?.categoryName || ticket?.category || 'Chưa xác định',
-    status: ticket?.status || 'Chưa xác định',
+    incidentId,
+    title: ticket?.title || ticket?.summary || ticket?.description || ticket?.categoryName || 'Sự vụ đô thị',
+    categoryName: ticket?.categoryName || ticket?.category?.name || ticket?.category || 'Chưa xác định',
+    status: ticket?.incidentStatus || ticket?.status || 'Chưa xác định',
     priority: ticket?.priority || 'Trung bình',
     reporterUserId: ticket?.reporterUserId ?? ticket?.reporterId ?? ticket?.userId ?? ticket?.createdByUserId ?? ticket?.createdBy ?? ticket?.reporter?.userId ?? ticket?.reporter?.id ?? null,
     latitude,
@@ -40,19 +40,17 @@ const unwrapItems = (response) => {
   return [];
 };
 
-const mergeByFeedbackId = (...collections) => {
+const mergeByIncidentId = (...collections) => {
   const merged = new Map();
   collections.flat().forEach((item) => {
     const normalized = normalizeIncident(item);
-    if (!normalized.feedbackId || !isValidLocation(normalized.latitude, normalized.longitude)) return;
-    merged.set(String(normalized.feedbackId), { ...merged.get(String(normalized.feedbackId)), ...normalized });
+    if (!normalized.incidentId || !isValidLocation(normalized.latitude, normalized.longitude)) return;
+    merged.set(String(normalized.incidentId), { ...merged.get(String(normalized.incidentId)), ...normalized });
   });
   return [...merged.values()];
 };
 
 export function useIncidentMapData() {
-  const { user } = useAuth();
-  const role = user?.role;
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -62,19 +60,18 @@ export function useIncidentMapData() {
     setError('');
 
     try {
-      const publicRequest = getCommunityFeed({ PageNumber: 1, PageSize: 100 }, { force: true });
-      const ownRequest = role
-        ? ticketApi.getTickets({ pageNumber: 1, pageSize: 100 }, { role }).catch(() => [])
-        : Promise.resolve([]);
-      const [publicResponse, ownResponse] = await Promise.all([publicRequest, ownRequest]);
-      setIncidents(mergeByFeedbackId(unwrapItems(publicResponse), unwrapItems(ownResponse)));
+      const publicResponse = await getCommunityFeed(
+        { PageNumber: 1, PageSize: 100 },
+        { force: true },
+      );
+      setIncidents(mergeByIncidentId(unwrapItems(publicResponse)));
     } catch (err) {
       setError(err?.message || 'Không thể tải dữ liệu bản đồ sự cố.');
       if (!silent) setIncidents([]);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [role]);
+  }, []);
 
   useEffect(() => {
     loadIncidents();
@@ -99,6 +96,12 @@ export function useIncidentMapData() {
       'ResolutionSubmitted',
       'ResolutionApproved',
       'ResolutionRejected',
+      'IncidentCreated',
+      'IncidentUpdated',
+      'IncidentStatusChanged',
+      'IncidentMerged',
+      'ReportLinked',
+      'ReportUnlinked',
     ];
     events.forEach((eventName) => signalrService.on(eventName, refresh));
 

@@ -6,8 +6,8 @@ const normalizeOwnerKey = (ownerKey) => (
   String(ownerKey || 'anonymous')
 );
 
-const getFeedbackId = (item) => (
-  item?.feedbackId || item?.id || item?.ticketId
+const getCommunityId = (item) => (
+  item?.incidentId || item?.id || item?.feedbackId || item?.ticketId
 );
 
 export const readCommunityFeedCache = (
@@ -54,10 +54,10 @@ export const writeCommunityFeedCache = (ownerKey, snapshotOrItems) => {
 
 export const patchCommunityFeedCacheItem = (
   ownerKey,
-  feedbackId,
+  communityId,
   patchOrUpdater
 ) => {
-  if (!feedbackId) return null;
+  if (!communityId) return null;
 
   const normalizedOwnerKey = normalizeOwnerKey(ownerKey);
   const currentSnapshot = snapshotsByOwner.get(normalizedOwnerKey);
@@ -68,7 +68,7 @@ export const patchCommunityFeedCacheItem = (
 
   let changed = false;
   const nextItems = currentSnapshot.items.map((item) => {
-    if (String(getFeedbackId(item)) !== String(feedbackId)) {
+    if (String(getCommunityId(item)) !== String(communityId)) {
       return item;
     }
 

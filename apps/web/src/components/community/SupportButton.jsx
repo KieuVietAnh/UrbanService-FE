@@ -11,6 +11,7 @@ export default function SupportButton({
   onChange,
   isAuthenticated,
   onRequireAuth,
+  entityLabel = 'phản ánh',
 }) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -135,7 +136,7 @@ export default function SupportButton({
           : 'border-base-300 bg-base-100 text-base-content/60 hover:border-error/20 hover:bg-error/5 hover:text-error'
       } ${className}`}
       aria-pressed={isSupported}
-      aria-label={isSupported ? 'Bỏ quan tâm phản ánh' : 'Quan tâm phản ánh'}
+      aria-label={isSupported ? `Bỏ quan tâm ${entityLabel}` : `Quan tâm ${entityLabel}`}
     >
       <Lucide.Heart
         size={16}

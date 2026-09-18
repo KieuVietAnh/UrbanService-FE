@@ -141,6 +141,10 @@ const getNotificationKind = (notification) => {
     return 'resolution';
   }
 
+  if (text.includes('community') || text.includes('comment') || text.includes('support') || text.includes('cộng đồng') || text.includes('bình luận') || text.includes('tương tác')) {
+    return 'community';
+  }
+
   return 'detail';
 };
 
@@ -159,20 +163,48 @@ const buildStaffIncidentRoute = (notification, incidentId) => {
 };
 
 export const getServiceUserNotificationRoute = (notification) => {
+  const target = parseInternalTarget(notification?.targetUrl);
   const feedbackId = getNotificationFeedbackId(notification);
+  const incidentId = getNotificationIncidentId(notification);
+  const kind = getNotificationKind(notification);
+
+  if (target?.pathname.startsWith('/community/feed/')) {
+    if (incidentId) {
+      const encodedIncidentId = encodeURIComponent(incidentId);
+      return `/community/feed/${encodedIncidentId}${target.search}${target.hash}`;
+    }
+
+    // /community/feed/:id is Incident-first. A legacy targetUrl that only carries
+    // a Feedback ID is ambiguous and must not be reinterpreted as an Incident.
+    return NOTIFICATION_FALLBACK_ROUTE;
+  }
+
+  if (kind === 'community' && incidentId) {
+    return `/community/feed/${encodeURIComponent(incidentId)}`;
+  }
+
+  // NotificationDto now exposes incidentId explicitly. For ServiceUser, an
+  // Incident-only notification belongs to the public/community Incident detail,
+  // even when its title/type is a generic status update rather than "community".
+  if (incidentId && !feedbackId) {
+    return `/community/feed/${encodeURIComponent(incidentId)}`;
+  }
 
   if (feedbackId) {
     const encodedId = encodeURIComponent(feedbackId);
-    const kind = getNotificationKind(notification);
 
     if (kind === 'rework') return `${SERVICE_USER_TICKET_ROUTE}/${encodedId}/rework`;
     if (kind === 'resolution') return `${SERVICE_USER_TICKET_ROUTE}/${encodedId}/result`;
+    if (kind === 'community') return NOTIFICATION_FALLBACK_ROUTE;
     return `${SERVICE_USER_TICKET_ROUTE}/${encodedId}`;
   }
 
-  const target = parseInternalTarget(notification?.targetUrl);
   if (target?.pathname.startsWith('/tickets/')) {
     return `${target.pathname}${target.search}${target.hash}`;
+  }
+
+  if (incidentId) {
+    return NOTIFICATION_FALLBACK_ROUTE;
   }
 
   return SERVICE_USER_TICKET_ROUTE;
@@ -234,7 +266,11 @@ export const getNotificationDestinationEntity = (notification, currentRole) => {
     return 'fallback';
   }
 
-  return 'feedback';
+  const serviceUserRoute = getServiceUserNotificationRoute(notification);
+  if (serviceUserRoute.startsWith('/community/feed/')) return 'incident';
+  if (getNotificationFeedbackId(notification)) return 'feedback';
+  if (getNotificationIncidentId(notification)) return 'incident';
+  return 'fallback';
 };
 
 export const resolveNotificationDestination = (notification, currentRole) => {

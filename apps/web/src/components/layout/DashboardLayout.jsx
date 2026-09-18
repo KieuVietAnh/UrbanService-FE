@@ -21,6 +21,12 @@ export const DashboardLayout = ({ children }) => {
   const isCitizen =
     normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
 
+  const isCommunityFeedListRoute =
+    isCitizen && location.pathname === '/community/feed';
+
+  const isCommunityFeedDetailRoute =
+    isCitizen && /^\/community\/feed\/[^/]+\/?$/.test(location.pathname);
+
   const citizenTicketPathSegments = location.pathname.split('/').filter(Boolean);
   const isCitizenTicketDetailRoute =
     isCitizen &&
@@ -155,6 +161,12 @@ export const DashboardLayout = ({ children }) => {
       ref={mainScrollRef}
       data-dashboard-scroll-container
       className={`min-h-0 flex-1 overflow-y-scroll overflow-x-hidden ${
+        isCommunityFeedListRoute
+          ? 'community-feed-main-surface'
+          : isCommunityFeedDetailRoute
+            ? 'community-detail-main-surface'
+            : ''
+      } ${
         isCitizen
           ? 'bg-transparent'
           : isStaffAssignmentRoute
@@ -183,7 +195,13 @@ export const DashboardLayout = ({ children }) => {
     <div
       className={`flex h-screen w-full flex-col overflow-hidden font-sans ${
         isCitizen
-          ? 'public-page text-[var(--public-title)]'
+          ? `public-page citizen-dashboard-shell ${
+              isCommunityFeedListRoute
+                ? 'community-feed-app-shell'
+                : isCommunityFeedDetailRoute
+                  ? 'community-detail-app-shell'
+                  : ''
+            } text-[var(--public-title)]`
           : 'bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100'
       }`}
     >

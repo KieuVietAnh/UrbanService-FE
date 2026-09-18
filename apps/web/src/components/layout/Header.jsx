@@ -331,7 +331,7 @@ export const Header = ({ onMenuToggle }) => {
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
       feed: 'Bảng tin',
-      map: 'Bản đồ phản ánh',
+      map: 'Bản đồ sự vụ',
       profile: 'Hồ sơ',
       settings: 'Cài đặt',
       new: 'Thêm điều phối viên',

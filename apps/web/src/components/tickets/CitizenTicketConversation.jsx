@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
 import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
+import {
+  getCitizenMessageParticipantLabel,
+  getCitizenMessageSide,
+} from './citizenConversationUtils.js';
 
 const formatMessageTime = (value) => {
   if (!value) return '';
@@ -18,21 +22,10 @@ const formatMessageTime = (value) => {
   }).format(date);
 };
 
-const isSameUser = (message, currentUserId) => {
-  if (!currentUserId || !message?.userId) return false;
-  return String(message.userId) === String(currentUserId);
-};
+const isSameUser = (message, currentUserId) => (
+  getCitizenMessageSide(message, currentUserId) === 'outgoing'
+);
 
-const getSenderLabel = (message, ownMessage) => {
-  if (ownMessage) return 'Bạn';
-
-  return (
-    message?.userFullName ||
-    message?.userName ||
-    message?.senderName ||
-    'Bộ phận xử lý'
-  );
-};
 
 
 const getMessageIdentity = (message, index = 0) =>
@@ -282,18 +275,18 @@ export default function CitizenTicketConversation({ currentUserId }) {
         onClick={() => setIsOpen(false)}
       />
 
-      <aside className="absolute inset-y-0 right-0 flex w-full max-w-[400px] flex-col border-l border-[var(--public-border)] bg-base-100 shadow-[-24px_0_64px_rgba(15,23,42,0.24)]">
-        <header className="flex items-start justify-between gap-4 border-b border-base-300 bg-base-100 px-4 py-4 sm:px-5">
+      <aside className="absolute inset-y-3 right-3 flex w-[calc(100%-1.5rem)] max-w-[460px] flex-col overflow-hidden rounded-[28px] border border-[var(--public-border)] bg-base-100 shadow-[-18px_20px_70px_rgba(15,23,42,0.26)] sm:inset-y-4 sm:right-4 sm:w-full">
+        <header className="flex items-start justify-between gap-4 border-b border-[var(--public-border)] bg-[linear-gradient(135deg,rgba(37,99,235,0.08),rgba(14,165,233,0.04),transparent)] px-5 py-5 sm:px-6">
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">
               <Lucide.MessagesSquare size={18} />
             </span>
             <div className="min-w-0">
               <h2 id="ticket-conversation-title" className="text-base font-bold sm:text-lg">
-                Trao đổi với bộ phận xử lý
+                Trao đổi về phản ánh
               </h2>
               <p className="mt-1 text-xs leading-5 text-base-content/55 sm:text-sm">
-                Trao đổi riêng trong ticket này với nhân viên xử lý.
+                Hỏi thêm, bổ sung thông tin và nhận phản hồi trực tiếp từ bộ phận xử lý.
               </p>
             </div>
           </div>
@@ -311,7 +304,7 @@ export default function CitizenTicketConversation({ currentUserId }) {
         <div className="flex items-center justify-between gap-3 border-b border-base-300 bg-base-100 px-4 py-2.5 sm:px-5">
           <div className="flex items-center gap-2 text-xs text-base-content/50">
             <Lucide.LockKeyhole size={13} aria-hidden="true" />
-            Không hiển thị trong trao đổi cộng đồng
+            Cuộc trò chuyện riêng tư
           </div>
           <button
             type="button"
@@ -324,7 +317,7 @@ export default function CitizenTicketConversation({ currentUserId }) {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-base-200 px-4 py-4 sm:px-5">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(148,163,184,0.09),transparent_32%)] px-4 py-5 sm:px-6">
           {messagesLoading && publicMessages.length === 0 ? (
             <div className="flex h-full min-h-[240px] items-center justify-center gap-2 text-sm text-base-content/55">
               <span className="loading loading-spinner loading-sm" />
@@ -352,19 +345,20 @@ export default function CitizenTicketConversation({ currentUserId }) {
             <div className="space-y-3">
               {publicMessages.map((message, index) => {
                 const ownMessage = isSameUser(message, currentUserId);
+                const participantLabel = getCitizenMessageParticipantLabel(message, ownMessage);
                 const messageKey = message.interactionMessageId || message.id || `${message.createdAt || 'message'}-${index}`;
 
                 return (
                   <div key={messageKey} className={`flex ${ownMessage ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`max-w-[82%] rounded-2xl border px-3.5 py-3 shadow-sm ${
+                      className={`max-w-[86%] rounded-[20px] border px-4 py-3 ${
                         ownMessage
-                          ? 'border-primary/20 bg-primary text-primary-content'
-                          : 'border-base-300 bg-base-100 text-base-content'
+                          ? 'border-blue-600 bg-blue-600 text-white shadow-[0_8px_24px_rgba(37,99,235,0.18)]'
+                          : 'border-[var(--public-border)] bg-base-100 text-base-content shadow-[0_8px_22px_rgba(15,23,42,0.06)]'
                       }`}
                     >
                       <div className={`text-xs font-semibold ${ownMessage ? 'text-primary-content' : 'text-base-content/75'}`}>
-                        {getSenderLabel(message, ownMessage)}
+                        {participantLabel}
                       </div>
                       <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6">
                         {message.messageText || ''}
@@ -408,13 +402,13 @@ export default function CitizenTicketConversation({ currentUserId }) {
               }}
               rows={2}
               disabled={messageSubmitting}
-              placeholder="Nhập nội dung cần trao đổi..."
-              className="textarea textarea-bordered min-h-[52px] flex-1 resize-none rounded-xl bg-base-100"
+              placeholder="Nhập câu hỏi hoặc thông tin bổ sung..."
+              className="textarea min-h-[54px] flex-1 resize-none rounded-2xl border border-[var(--public-border)] bg-base-100 px-4 py-3 shadow-inner focus:border-primary/40 focus:outline-none"
             />
             <button
               type="submit"
               disabled={!draft.trim() || messageSubmitting}
-              className="btn btn-primary btn-square shrink-0 rounded-xl"
+              className="btn btn-primary btn-square h-12 w-12 shrink-0 rounded-2xl shadow-[0_8px_20px_rgba(37,99,235,0.2)]"
               aria-label="Gửi tin nhắn"
             >
               {messageSubmitting ? (
@@ -446,7 +440,7 @@ export default function CitizenTicketConversation({ currentUserId }) {
         className="pointer-events-none absolute bottom-full right-0 mb-2 whitespace-nowrap rounded-lg bg-neutral px-3 py-1.5 text-xs font-medium text-neutral-content opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
         role="tooltip"
       >
-        Trao đổi với bộ phận xử lý
+        Trao đổi về phản ánh
       </div>
 
       <button
@@ -456,7 +450,7 @@ export default function CitizenTicketConversation({ currentUserId }) {
         onPointerMove={handleBubblePointerMove}
         onPointerUp={handleBubblePointerUp}
         onPointerCancel={handleBubblePointerUp}
-        className="relative flex h-14 w-14 cursor-grab items-center justify-center rounded-full bg-primary active:cursor-grabbing text-primary-content shadow-[0_12px_30px_rgba(37,99,235,0.32)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(37,99,235,0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100"
+        className="relative flex h-14 w-14 cursor-grab items-center justify-center rounded-2xl border border-white/30 bg-gradient-to-br from-blue-600 to-sky-500 active:cursor-grabbing text-white shadow-[0_14px_34px_rgba(37,99,235,0.32)] transition duration-150 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(37,99,235,0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100"
         aria-label="Mở trao đổi với bộ phận xử lý"
       >
         <Lucide.MessageCircleMore size={24} strokeWidth={2} aria-hidden="true" />

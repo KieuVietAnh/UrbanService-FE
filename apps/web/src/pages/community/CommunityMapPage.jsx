@@ -14,15 +14,19 @@ const MAP_FILTERS = {
 };
 
 const PROCESSING_STATUSES = new Set([
+  'new',
+  'open',
   'verified',
+  'pending',
   'assigned',
   'inprogress',
+  'needrework',
   'resolved',
   'submittedforapproval',
-  'approved',
 ]);
 
 const ENDED_STATUSES = new Set([
+  'approved',
   'closed',
 ]);
 
@@ -248,11 +252,11 @@ export const CommunityMapPage = () => {
   const endedCount = endedIncidents.length;
 
   useEffect(() => {
-    const focusFeedbackId = focusState?.focusFeedbackId;
-    if (!focusFeedbackId || loading || !mapSectionRef.current) return undefined;
+    const focusIncidentId = focusState?.focusIncidentId || focusState?.focusFeedbackId;
+    if (!focusIncidentId || loading || !mapSectionRef.current) return undefined;
 
     const focusRequestKey = [
-      focusFeedbackId,
+      focusIncidentId,
       focusState?.focusLatitude,
       focusState?.focusLongitude,
     ].join(':');
@@ -296,6 +300,7 @@ export const CommunityMapPage = () => {
 
     return () => window.clearTimeout(timer);
   }, [
+    focusState?.focusIncidentId,
     focusState?.focusFeedbackId,
     focusState?.focusLatitude,
     focusState?.focusLongitude,
@@ -308,7 +313,7 @@ export const CommunityMapPage = () => {
   };
 
   const activeFilterLabel = {
-    [MAP_FILTERS.ALL]: 'Tất cả phản ánh',
+    [MAP_FILTERS.ALL]: 'Tất cả sự vụ',
     [MAP_FILTERS.PROCESSING]: 'Đang xử lý',
     [MAP_FILTERS.ENDED]: 'Đã kết thúc',
     [MAP_FILTERS.COORDINATES]: 'Có tọa độ',
@@ -394,7 +399,7 @@ export const CommunityMapPage = () => {
                   Bản đồ sự cố đô thị
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-base-content/60">
-                  Theo dõi phản ánh công khai trên bản đồ và tình hình sự cố theo từng khu vực.
+                  Theo dõi sự vụ công khai trên bản đồ và tình hình xử lý theo từng khu vực.
                 </p>
               </div>
             </div>
@@ -430,7 +435,7 @@ export const CommunityMapPage = () => {
               }`}
             >
               <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
-                Tổng phản ánh
+                Tổng sự vụ
                 <Lucide.Files
                   size={14}
                   className="text-primary"
@@ -551,7 +556,7 @@ export const CommunityMapPage = () => {
               id="incident-map-panel-title"
               className="text-base font-bold"
             >
-              Phân bố phản ánh trên bản đồ
+              Phân bố sự vụ trên bản đồ
             </h2>
             <p className="mt-1 text-xs text-base-content/48">
               Phóng to, thu nhỏ hoặc chọn marker để xem thông tin sự cố.
@@ -577,9 +582,12 @@ export const CommunityMapPage = () => {
                 <IncidentMap
                   incidents={visibleIncidents}
                   fitRequestKey={fitRequestKey}
+                  focusIncidentId={focusState?.focusIncidentId}
                   focusFeedbackId={focusState?.focusFeedbackId}
                   focusLatitude={focusState?.focusLatitude}
                   focusLongitude={focusState?.focusLongitude}
+                  entityLabel="sự vụ"
+                  detailPathBuilder={(incident) => `/community/feed/${incident?.incidentId}`}
                 />
               </div>
             ) : (
@@ -591,7 +599,7 @@ export const CommunityMapPage = () => {
                   Không có điểm phù hợp với bộ lọc
                 </h2>
                 <p className="mt-2 max-w-md text-sm leading-6 text-base-content/50">
-                  Nhóm “{activeFilterLabel}” hiện chưa có phản ánh nào có tọa độ hợp lệ để hiển thị.
+                  Nhóm “{activeFilterLabel}” hiện chưa có sự vụ nào có tọa độ hợp lệ để hiển thị.
                 </p>
                 {activeFilter !== MAP_FILTERS.ALL ? (
                   <button
@@ -600,7 +608,7 @@ export const CommunityMapPage = () => {
                     className="btn btn-outline btn-sm mt-5 rounded-xl"
                   >
                     <Lucide.RotateCcw size={14} aria-hidden="true" />
-                    Hiện tất cả phản ánh
+                    Hiện tất cả sự vụ
                   </button>
                 ) : null}
               </div>
@@ -653,7 +661,7 @@ export const CommunityMapPage = () => {
                 Chọn marker
               </p>
               <p className="mt-1 text-xs leading-5">
-                Xem nhanh thông tin phản ánh tại vị trí đã chọn.
+                Xem nhanh thông tin sự vụ tại vị trí đã chọn.
               </p>
             </li>
             <li className="community-map-guide-item rounded-2xl bg-base-200/45 px-4 py-3">
@@ -672,7 +680,7 @@ export const CommunityMapPage = () => {
                 <Lucide.ExternalLink size={15} aria-hidden="true" />
               </span>
               <p className="mt-3 font-semibold text-base-content">
-                Mở phản ánh
+                Mở sự vụ
               </p>
               <p className="mt-1 text-xs leading-5">
                 Truy cập trang chi tiết khi popup marker cung cấp liên kết.
@@ -687,7 +695,7 @@ export const CommunityMapPage = () => {
           </span>
           <h2 className="mt-4 font-bold">Dữ liệu hiển thị</h2>
           <p className="mt-2 text-sm leading-6 text-base-content/55">
-            Bản đồ chỉ hiển thị các phản ánh công khai có tọa độ hợp lệ. Số lượng điểm có thể thấp hơn tổng số phản ánh.
+            Bản đồ chỉ hiển thị các sự vụ công khai có tọa độ hợp lệ. Số lượng điểm có thể thấp hơn tổng số sự vụ.
           </p>
         </aside>
       </section>

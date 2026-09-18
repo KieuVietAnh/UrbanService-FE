@@ -28,7 +28,7 @@ const getQuickAccessItems = ({ createFeedbackUrl, myFeedbacksUrl, areaAlertsUrl 
   },
   {
     title: 'Xem bản đồ công khai',
-    description: 'Khám phá phản ánh theo vị trí và khu vực quan tâm.',
+    description: 'Khám phá sự vụ theo vị trí và khu vực quan tâm.',
     to: '/community/map',
     icon: Lucide.Map,
     iconClassName: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
@@ -221,17 +221,17 @@ export const LandingPage = () => {
                   Cập nhật từ cộng đồng
                 </p>
                 <h2 id="recent-feedbacks-title" className="public-heading mt-2 text-3xl font-semibold tracking-[-0.035em] sm:text-[38px]">
-                  Phản ánh mới được cập nhật
+                  Sự vụ mới được cập nhật
                 </h2>
                 <p className="public-copy mt-3 max-w-2xl text-sm leading-6 sm:text-base">
-                  Theo dõi những vấn đề đô thị mới được cộng đồng ghi nhận và cập nhật.
+                  Theo dõi những sự vụ đô thị mới được cộng đồng ghi nhận và cập nhật.
                 </p>
               </div>
               <Link
                 to="/community/feed"
                 className="public-section-button inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700"
               >
-                Xem tất cả phản ánh
+                Xem tất cả sự vụ
                 <Lucide.ArrowRight size={16} aria-hidden="true" />
               </Link>
             </header>

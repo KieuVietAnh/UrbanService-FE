@@ -143,10 +143,18 @@ export const NotificationCenterPage = () => {
     }
   };
 
-  const openNotification = async (notification) => {
+  const openNotification = (notification) => {
     const destination = resolveNotificationDestination(notification, user?.role);
-    await markAsRead(notification?.notificationId);
-    if (destination !== NOTIFICATION_FALLBACK_ROUTE) navigate(destination);
+
+    if (notification?.isRead === false && notification?.notificationId) {
+      markAsRead(notification.notificationId).catch(() => {});
+    }
+
+    if (destination !== NOTIFICATION_FALLBACK_ROUTE) {
+      navigate(destination, {
+        state: { from: '/notifications' },
+      });
+    }
   };
 
   return (
@@ -171,7 +179,7 @@ export const NotificationCenterPage = () => {
                   ? 'Theo dõi sự vụ được phân công, yêu cầu xử lý lại và các cập nhật liên quan.'
                   : isInteractionManager
                     ? 'Theo dõi cảnh báo SLA, sự vụ cần chú ý và cập nhật quan trọng.'
-                    : 'Theo dõi thay đổi trạng thái, yêu cầu bổ sung và kết quả xử lý của các phản ánh bạn đã gửi.'}
+                    : 'Theo dõi phản ánh bạn đã gửi và các sự vụ cộng đồng bạn đang quan tâm.'}
                 </p>
               </div>
             </div>
@@ -239,7 +247,7 @@ export const NotificationCenterPage = () => {
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 {isSystemStaff || isInteractionManager
                   ? 'Mở thông báo để đi tới đúng sự vụ hoặc phản ánh liên quan.'
-                  : 'Mở thông báo để đi thẳng tới phản ánh liên quan.'}
+                  : 'Mở thông báo để đi thẳng tới phản ánh hoặc sự vụ liên quan.'}
               </p>
             </div>
             <Lucide.BellRing size={20} className="text-blue-600 dark:text-blue-300" />
@@ -247,7 +255,19 @@ export const NotificationCenterPage = () => {
 
           <div className="min-h-[260px]">
             {loading && notifications.length === 0 ? (
-              <div className="p-12 text-center text-sm text-slate-500">Đang tải thông báo...</div>
+              <div className="divide-y divide-slate-100 dark:divide-white/10" aria-busy="true" aria-label="Đang tải thông báo">
+                {[0, 1, 2, 3, 4].map((item) => (
+                  <div key={item} className="flex gap-4 px-5 py-4">
+                    <div className="h-11 w-11 shrink-0 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+                    <div className="min-w-0 flex-1">
+                      <div className="h-4 w-2/5 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+                      <div className="mt-2 h-3.5 w-4/5 animate-pulse rounded bg-slate-100 dark:bg-slate-800/70" />
+                      <div className="mt-2 h-3 w-28 animate-pulse rounded bg-slate-100 dark:bg-slate-800/70" />
+                    </div>
+                    <div className="hidden h-9 w-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800 sm:block" />
+                  </div>
+                ))}
+              </div>
             ) : error && notifications.length === 0 ? (
               <div className="m-5 rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center text-sm text-rose-700">{error}</div>
             ) : groups.length === 0 ? (
@@ -268,11 +288,14 @@ export const NotificationCenterPage = () => {
                   const Icon = config.icon;
                   const unread = notification?.isRead === false;
                   const destinationEntity = getNotificationDestinationEntity(notification, user?.role);
-                  const destinationLabel = {
-                    incident: 'Mở sự vụ',
-                    feedback: 'Mở phản ánh',
-                    'provider-report': 'Mở tiến độ xử lý',
-                  }[destinationEntity];
+                  const destination = resolveNotificationDestination(notification, user?.role);
+                  const destinationLabel = destination !== NOTIFICATION_FALLBACK_ROUTE
+                    ? {
+                        incident: 'Mở sự vụ',
+                        feedback: 'Mở phản ánh',
+                        'provider-report': 'Mở tiến độ xử lý',
+                      }[destinationEntity]
+                    : null;
                   return (
                     <article key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`} className={`notification-row relative px-5 py-4 transition ${index > 0 ? 'border-t border-slate-100 dark:border-white/10' : ''} ${unread ? 'notification-row-unread' : ''}`}>
                       {unread && <span className="absolute inset-y-3 left-0 w-1 rounded-r-full bg-blue-600" />}
@@ -295,7 +318,9 @@ export const NotificationCenterPage = () => {
                         <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
                           {destinationLabel ? (
                             <button type="button" onClick={() => openNotification(notification)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 dark:focus-visible:ring-blue-900"><Lucide.ArrowUpRight size={14} />{destinationLabel}</button>
-                          ) : null}
+                          ) : (
+                            <span className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-medium text-slate-500 dark:bg-white/5 dark:text-slate-400"><Lucide.Link2Off size={13} />Chưa có liên kết trực tiếp</span>
+                          )}
                           {unread && <button type="button" onClick={() => markAsRead(notification?.notificationId)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"><Lucide.MailCheck size={14} />Đánh dấu đã đọc</button>}
                         </div>
                       </div>

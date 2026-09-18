@@ -600,7 +600,8 @@ export const TicketDetailPage = () => {
     const abortController = new AbortController();
 
     const loadRelatedFeedbacks = async () => {
-      if (!relatedParentFeedbackId) {
+      const linkedIncidentId = ticket?.incidentId;
+      if (!linkedIncidentId) {
         setRelatedFeedbacks([]);
         setRelatedFeedbacksError('');
         setRelatedFeedbacksLoading(false);
@@ -612,23 +613,23 @@ export const TicketDetailPage = () => {
 
       try {
         const parentFeedback = await getCommunityFeedDetail(
-          relatedParentFeedbackId,
+          linkedIncidentId,
           { signal: abortController.signal },
         );
         if (active) {
           setRelatedFeedbacks(parentFeedback ? [{
             ...parentFeedback,
-            feedbackId: parentFeedback.feedbackId || parentFeedback.id || relatedParentFeedbackId,
-            relationType: 'master',
+            incidentId: parentFeedback.incidentId || linkedIncidentId,
+            relationType: 'incident',
           }] : []);
         }
       } catch (relatedError) {
         if (abortController.signal.aborted) return;
-        console.error('Không thể tải phản ánh liên quan', relatedError);
+        console.error('Không thể tải sự vụ cộng đồng liên quan', relatedError);
         if (active) {
           setRelatedFeedbacks([]);
           setRelatedFeedbacksError(
-            relatedError?.message || 'Không thể tải danh sách phản ánh liên quan.'
+            relatedError?.message || 'Không thể tải sự vụ cộng đồng liên quan.'
           );
         }
       } finally {
@@ -642,7 +643,7 @@ export const TicketDetailPage = () => {
       active = false;
       abortController.abort();
     };
-  }, [relatedParentFeedbackId]);
+  }, [ticket?.incidentId]);
 
   const attachments = Array.isArray(ticket?.attachments)
     ? ticket.attachments
@@ -1920,9 +1921,10 @@ export const TicketDetailPage = () => {
                     </p>
                   </div>
                 </div>
+                {ticket?.incidentId ? (
                 <button
                   type="button"
-                  onClick={() => navigate(`/community/feed/${parentTicketId}`, {
+                  onClick={() => navigate(`/community/feed/${ticket.incidentId}`, {
                     state: {
                       from: location.pathname,
                       returnLabel: 'Quay lại phản ánh của tôi',
@@ -1931,8 +1933,9 @@ export const TicketDetailPage = () => {
                   className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 dark:bg-violet-500 dark:hover:bg-violet-400"
                 >
                   <Lucide.ExternalLink size={15} aria-hidden="true" />
-                  Xem phản ánh đã có
+                  Xem sự vụ cộng đồng
                 </button>
+                ) : null}
               </div>
             </section>
           ) : isPotentialDuplicate ? (
@@ -2149,11 +2152,9 @@ export const TicketDetailPage = () => {
             <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold">{isConfirmedDuplicate ? 'Phản ánh đã có' : 'Phản ánh liên quan'}</h2>
+                  <h2 className="text-lg font-bold">Sự vụ cộng đồng liên quan</h2>
                   <p className="mt-1 text-sm text-base-content/55">
-                    {isConfirmedDuplicate
-                      ? 'Phản ánh này đã được ghi nhận trước và là phản ánh chính đang được xử lý.'
-                      : 'Các phản ánh có thể thuộc cùng một vấn đề hoặc khu vực.'}
+                    Phản ánh này đang được xử lý trong sự vụ cộng đồng dưới đây.
                   </p>
                 </div>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-base-300 bg-base-200/45 px-3 py-1.5 text-xs font-semibold text-base-content/55">
@@ -2164,7 +2165,7 @@ export const TicketDetailPage = () => {
               {relatedFeedbacksLoading ? (
                 <div className="mt-4 flex items-center justify-center rounded-2xl border border-dashed border-base-300 bg-base-200/35 px-4 py-6 text-sm text-base-content/55">
                   <Lucide.LoaderCircle size={16} className="mr-2 animate-spin" aria-hidden="true" />
-                  Đang tải phản ánh liên quan...
+                  Đang tải sự vụ cộng đồng...
                 </div>
               ) : relatedFeedbacksError ? (
                 <div className="mt-4 rounded-2xl border border-error/20 bg-error/8 px-4 py-4 text-sm text-error">
@@ -2172,25 +2173,25 @@ export const TicketDetailPage = () => {
                 </div>
               ) : relatedFeedbacks.length === 0 ? (
                 <div className="mt-4 rounded-2xl border border-dashed border-base-300 bg-base-200/35 px-4 py-6 text-center text-sm text-base-content/50">
-                  Chưa có phản ánh liên quan nào.
+                  Chưa xác định được sự vụ cộng đồng liên quan.
                 </div>
               ) : (
                 <div className="mt-4 space-y-3">
                   {relatedFeedbacks.map((item, index) => {
-                    const relatedId = item?.feedbackId || item?.id;
+                    const relatedIncidentId = item?.incidentId || item?.id;
 
                     return (
                       <div
-                        key={relatedId || index}
+                        key={relatedIncidentId || index}
                         className="rounded-2xl border border-base-300 bg-base-200/35 p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
-                              {item?.relationType === 'master' ? 'Phản ánh chính đã có' : 'Mã phản ánh'}
+                              Sự vụ cộng đồng
                             </div>
                             <div className="mt-1 break-all text-sm font-semibold text-base-content">
-                              {relatedId || '—'}
+                              {relatedIncidentId || '—'}
                             </div>
                           </div>
                           <div>
@@ -2220,11 +2221,11 @@ export const TicketDetailPage = () => {
                             </div>
                           </div>
                         </div>
-                        {relatedId ? (
+                        {relatedIncidentId ? (
                           <div className="mt-3">
                             <button
                               type="button"
-                              onClick={() => navigate(`/community/feed/${relatedId}`, {
+                              onClick={() => navigate(`/community/feed/${relatedIncidentId}`, {
                                 state: {
                                   from: location.pathname,
                                   returnLabel: 'Quay lại phản ánh của tôi',

@@ -17,6 +17,12 @@ import { getCommunityFeed } from '../../services/api/feedApi';
 import usePublicLandingFeed from '../../hooks/usePublicLandingFeed';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
+import {
+  getCommunityIncidentId,
+  getCommunityInteractionFeedbackId,
+  getCommunityItemTitle,
+  getResidentStatusMeta,
+} from '../../components/community/communityPresentation.js';
 import { readAdminDashboardCache, writeAdminDashboardCache } from '../../services/cache/adminDashboardCache';
 import { buildManagerDashboardStats, managerMetricValue } from './managerDashboardUtils.mjs';
 import AdminDashboardPage from '../admin/AdminDashboardPage';
@@ -602,10 +608,6 @@ const CitizenDashboardThemeStyles = () => (
   `}</style>
 );
 
-const getCommunityFeedbackId = (item) => (
-  item?.feedbackId || item?.id || item?.ticketId || ''
-);
-
 const getCommunityAreaName = (item) => (
   item?.areaName ||
   item?.wardName ||
@@ -652,7 +654,7 @@ const CitizenCommunityPreview = () => {
             Cập nhật đô thị mới nhất
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
-            Những phản ánh công khai mới nhất và vị trí đang được cộng đồng quan tâm.
+            Những sự vụ công khai mới nhất và vị trí đang được cộng đồng quan tâm.
           </p>
         </div>
 
@@ -709,19 +711,26 @@ const CitizenCommunityPreview = () => {
                 Chưa có cập nhật công khai mới
               </h3>
               <p className="mt-2 text-sm text-[var(--public-copy)]">
-                Các phản ánh đủ điều kiện công khai sẽ xuất hiện tại đây.
+                Các sự vụ đủ điều kiện công khai sẽ xuất hiện tại đây.
               </p>
             </div>
           ) : (
             <ol className="space-y-3">
               {previewItems.map((item) => {
-                const feedbackId = getCommunityFeedbackId(item);
-                const badgeClass = STATUS_BADGE_CLASSES[item?.status] || STATUS_BADGE_CLASSES.default;
+                const incidentId = getCommunityIncidentId(item);
+                const interactionFeedbackId = getCommunityInteractionFeedbackId(item);
+                const statusValue = item?.incidentStatus || item?.status;
+                const badgeClass = STATUS_BADGE_CLASSES[statusValue] || STATUS_BADGE_CLASSES.default;
+                const statusMeta = getResidentStatusMeta(statusValue);
 
                 return (
-                  <li key={feedbackId}>
+                  <li key={incidentId}>
                     <Link
-                      to={feedbackId ? `/community/feed/${feedbackId}` : '/community/feed'}
+                      to={incidentId ? `/community/feed/${incidentId}` : '/community/feed'}
+                      state={incidentId ? {
+                        interactionFeedbackId: interactionFeedbackId || undefined,
+                        fallbackFeedbackId: interactionFeedbackId || undefined,
+                      } : undefined}
                       className="group grid gap-3 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] p-4 transition hover:border-blue-300 hover:bg-[var(--public-surface-strong)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200/70 bg-blue-500/[0.07] text-primary" aria-hidden="true">
@@ -730,7 +739,7 @@ const CitizenCommunityPreview = () => {
 
                       <span className="min-w-0">
                         <strong className="block truncate text-sm font-semibold text-[var(--public-title)] transition group-hover:text-primary ">
-                          {item?.title || 'Phản ánh đô thị'}
+                          {getCommunityItemTitle(item)}
                         </strong>
                         <span className="mt-1.5 flex items-center gap-2 text-xs text-[var(--public-muted)]">
                           <span className="truncate">{getCommunityAreaName(item)}</span>
@@ -743,7 +752,7 @@ const CitizenCommunityPreview = () => {
 
                       <span className="flex items-center justify-between gap-3 pl-[52px] sm:justify-end sm:pl-0">
                         <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${badgeClass}`}>
-                          {getStatusLabel(item?.status, 'Đang cập nhật')}
+                          {statusMeta.label}
                         </span>
                         <Lucide.ChevronRight size={15} className="text-[var(--public-muted)] transition group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
                       </span>
@@ -760,6 +769,13 @@ const CitizenCommunityPreview = () => {
             items={previewItems}
             loading={loading}
             error={error}
+            detailStateBuilder={(incident) => {
+              const interactionFeedbackId = getCommunityInteractionFeedbackId(incident);
+              return {
+                interactionFeedbackId: interactionFeedbackId || undefined,
+                fallbackFeedbackId: interactionFeedbackId || undefined,
+              };
+            }}
           />
         </aside>
       </div>
@@ -1336,7 +1352,7 @@ const RoleDashboard = () => {
         }
       } catch (error) {
         console.warn(
-          'Không thể tải số phản ánh công khai theo khu vực',
+          'Không thể tải số sự vụ công khai theo khu vực',
           error
         );
 
@@ -2075,8 +2091,8 @@ const RoleDashboard = () => {
 
               <p className="mt-4 text-xs leading-5 text-[var(--public-muted)]">
                 {selectedArea
-                  ? `Số liệu phản ánh của bạn và cộng đồng tại ${selectedAreaName}.`
-                  : 'Số liệu tổng hợp phản ánh của bạn và cộng đồng trên toàn hệ thống.'}
+                  ? `Số liệu phản ánh của bạn và sự vụ cộng đồng tại ${selectedAreaName}.`
+                  : 'Số liệu tổng hợp phản ánh của bạn và sự vụ cộng đồng trên toàn hệ thống.'}
               </p>
 
               <div className="mt-4 grid grid-cols-2 gap-3">
@@ -2104,11 +2120,11 @@ const RoleDashboard = () => {
                   }}
                   className="group rounded-2xl border border-info/25 bg-[var(--public-surface-soft)] p-4 transition hover:border-info/40 hover:bg-[var(--public-surface-strong)]"
                   aria-label={selectedArea
-                    ? `Xem phản ánh công khai tại ${selectedAreaName}`
-                    : 'Xem phản ánh công khai trên bảng tin'}
+                    ? `Xem sự vụ công khai tại ${selectedAreaName}`
+                    : 'Xem sự vụ công khai trên bảng tin'}
                 >
                   <span className="text-[11px] font-medium text-[var(--public-muted)]">
-                    Phản ánh trong khu vực
+                    Sự vụ trong khu vực
                   </span>
                   <strong className="mt-1 block text-2xl font-bold text-info">
                     {communityAreaCountLoading ? (
