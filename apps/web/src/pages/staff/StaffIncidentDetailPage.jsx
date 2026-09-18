@@ -106,27 +106,10 @@ const formatCoordinates = (latitude, longitude) => {
   return `${parsedLatitude.toFixed(6)}, ${parsedLongitude.toFixed(6)}`;
 };
 
-function Breadcrumbs() {
-  return (
-    <nav aria-label="Đường dẫn trang" className="flex min-w-0 items-center gap-2 text-sm">
-      <Link
-        to="/staff/incidents"
-        className="rounded-md font-semibold text-slate-600 transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:text-slate-300 dark:hover:text-blue-300 dark:focus-visible:ring-blue-950"
-      >
-        Sự vụ của tôi
-      </Link>
-      <Lucide.ChevronRight size={15} className="shrink-0 text-slate-400" aria-hidden="true" />
-      <span className="truncate text-slate-500 dark:text-slate-400" aria-current="page">
-        Chi tiết sự vụ
-      </span>
-    </nav>
-  );
-}
-
 function SectionHeading({ id, icon: Icon, title, description }) {
   return (
-    <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
+    <header className="flex items-start gap-3 border-b border-slate-200 bg-slate-50/65 px-4 py-3.5 sm:px-5 dark:border-slate-800 dark:bg-slate-950/25">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
         <Icon size={18} />
       </span>
       <div className="min-w-0">
@@ -139,7 +122,7 @@ function SectionHeading({ id, icon: Icon, title, description }) {
 
 function MetadataRow({ label, value, icon: Icon, valueClassName = '' }) {
   return (
-    <div className="grid gap-2 py-4 sm:grid-cols-[minmax(10rem,0.72fr)_minmax(0,1.28fr)] sm:items-start sm:gap-5">
+    <div className="grid gap-1.5 py-3 sm:grid-cols-[minmax(9rem,0.68fr)_minmax(0,1.32fr)] sm:items-start sm:gap-4">
       <dt className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
         {Icon ? (
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-blue-600 dark:bg-slate-800 dark:text-blue-300" aria-hidden="true">
@@ -157,7 +140,7 @@ function MetadataRow({ label, value, icon: Icon, valueClassName = '' }) {
 
 function ClassificationItem({ label, icon: Icon, children }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30">
+    <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-950/30">
       <div className="flex items-start gap-3">
         {Icon ? (
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:text-blue-300 dark:ring-slate-700" aria-hidden="true">
@@ -175,7 +158,7 @@ function ClassificationItem({ label, icon: Icon, children }) {
 
 function HeaderFact({ icon: Icon, label, value }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 px-4 py-3.5 sm:px-5">
+    <div className="flex min-w-0 items-center gap-3 px-4 py-3">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/55 dark:text-blue-300" aria-hidden="true">
         <Icon size={16} />
       </span>
@@ -189,10 +172,8 @@ function HeaderFact({ icon: Icon, label, value }) {
 
 function IncidentDetailSkeleton() {
   return (
-    <article className="admin-page-shell space-y-5" aria-busy="true" aria-label="Đang tải chi tiết sự vụ">
-      <Breadcrumbs />
-
-      <header className="border-b border-slate-200 pb-6 dark:border-slate-800">
+    <article className="admin-page-shell space-y-4" aria-busy="true" aria-label="Đang tải chi tiết sự vụ">
+      <header className="border-b border-slate-200 pb-5 dark:border-slate-800">
         <div className="h-4 w-28 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
         <div className="mt-4 h-9 w-3/5 max-w-full animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
         <div className="mt-3 h-4 w-72 max-w-full animate-pulse rounded-md bg-slate-100 dark:bg-slate-800/70" />
@@ -204,8 +185,8 @@ function IncidentDetailSkeleton() {
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.75fr)]">
-        <div className="space-y-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.75fr)]">
+        <div className="space-y-4">
           {[7, 6].map((rows) => (
             <section key={rows} className="admin-panel overflow-hidden p-5 sm:p-6">
               <div className="h-5 w-40 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
@@ -217,7 +198,7 @@ function IncidentDetailSkeleton() {
             </section>
           ))}
         </div>
-        <div className="space-y-5">
+        <div className="space-y-4">
           {[6, 3].map((rows) => (
             <section key={rows} className="admin-panel overflow-hidden p-5 sm:p-6">
               <div className="h-5 w-36 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
@@ -263,8 +244,7 @@ function IncidentDetailState({ state, onRetry }) {
   if (!content) return null;
 
   return (
-    <article className="admin-page-shell space-y-5">
-      <Breadcrumbs />
+    <article className="admin-page-shell space-y-4">
       <EmptyState {...content} />
       <div className="flex justify-center">
         <Link
@@ -313,8 +293,8 @@ function IncidentTabs({ activeTab, onTabChange, reportCount }) {
   };
 
   return (
-    <nav ref={navigationRef} className="admin-panel overflow-x-auto p-1.5" aria-label="Điều hướng nội dung sự vụ">
-      <div className="grid min-w-[52rem] grid-cols-5 gap-1.5" role="tablist" aria-label="Nội dung chi tiết sự vụ">
+    <nav ref={navigationRef} className="admin-panel overflow-x-auto p-1" aria-label="Điều hướng nội dung sự vụ">
+      <div className="grid min-w-[48rem] grid-cols-5 gap-1" role="tablist" aria-label="Nội dung chi tiết sự vụ">
         {TAB_ITEMS.map((tab, index) => {
           const Icon = tab.icon;
           const selected = activeTab === tab.id;
@@ -334,7 +314,7 @@ function IncidentTabs({ activeTab, onTabChange, reportCount }) {
               tabIndex={selected ? 0 : -1}
               onClick={() => onTabChange(tab.id)}
               onKeyDown={(event) => handleKeyDown(event, index)}
-              className={`group/tab relative inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:focus-visible:ring-blue-950 ${
+              className={`group/tab relative inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 dark:focus-visible:ring-blue-950 ${
                 selected
                   ? 'bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.2)]'
                   : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700 dark:text-slate-400 dark:hover:bg-blue-950/35 dark:hover:text-blue-200'
@@ -367,9 +347,9 @@ function OverviewPanel({ incident, capability }) {
       role="tabpanel"
       aria-labelledby="incident-tab-overview"
       tabIndex={0}
-      className="grid gap-5 focus-visible:outline-none xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.78fr)]"
+      className="grid gap-4 focus-visible:outline-none xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.78fr)]"
     >
-      <div className="min-w-0 space-y-5">
+      <div className="min-w-0 space-y-4">
         <section className="admin-panel overflow-hidden" aria-labelledby="incident-identity-title">
           <SectionHeading
             id="incident-identity-title"
@@ -377,7 +357,7 @@ function OverviewPanel({ incident, capability }) {
             title="Nhận diện sự vụ"
             description="Thông tin cốt lõi để nhận biết và xác định vị trí sự vụ."
           />
-          <dl className="divide-y divide-slate-100 px-5 sm:px-6 dark:divide-slate-800/80">
+          <dl className="divide-y divide-slate-100 px-4 sm:px-5 dark:divide-slate-800/80">
             <MetadataRow label="Mã sự vụ" icon={Lucide.Hash} value={incidentCode} valueClassName="font-mono break-all" />
             <MetadataRow label="Tiêu đề" icon={Lucide.Type} value={title} />
             <MetadataRow
@@ -402,6 +382,7 @@ function OverviewPanel({ incident, capability }) {
           locationText={incident?.locationText}
           areaName={incident?.areaName}
           tone="blue"
+          compact
         />
 
         <section className="admin-panel overflow-hidden" aria-labelledby="incident-classification-title">
@@ -411,7 +392,7 @@ function OverviewPanel({ incident, capability }) {
             title="Phân loại"
             description="Phạm vi, danh mục và mức độ cần ưu tiên theo dữ liệu sự vụ."
           />
-          <dl className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+          <dl className="grid gap-2.5 p-3.5 sm:grid-cols-2 sm:p-4">
             <ClassificationItem label="Phường / Khu vực" icon={Lucide.MapPinned}>{areaName}</ClassificationItem>
             <ClassificationItem label="Danh mục" icon={Lucide.Tags}>{categoryName}</ClassificationItem>
             <ClassificationItem label="Trạng thái" icon={Lucide.Activity}>
@@ -443,7 +424,7 @@ function OverviewPanel({ incident, capability }) {
         </section>
       </div>
 
-      <aside className="min-w-0 space-y-5" aria-label="Thông tin xử lý sự vụ">
+      <aside className="min-w-0 space-y-4" aria-label="Thông tin xử lý sự vụ">
         <section className="admin-panel overflow-hidden" aria-labelledby="incident-handling-title">
           <SectionHeading
             id="incident-handling-title"
@@ -452,8 +433,8 @@ function OverviewPanel({ incident, capability }) {
             description="Phân công, số lượng phản ánh và các mốc thời gian của sự vụ."
           />
 
-          <div className="border-b border-slate-100 p-4 sm:p-5 dark:border-slate-800/80">
-            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50/75 p-4 dark:border-blue-900/70 dark:bg-blue-950/30">
+          <div className="border-b border-slate-100 p-3.5 sm:p-4 dark:border-slate-800/80">
+            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50/75 p-3.5 dark:border-blue-900/70 dark:bg-blue-950/30">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.2)]" aria-hidden="true">
                 <Lucide.UserRoundCheck size={19} />
               </span>
@@ -468,7 +449,7 @@ function OverviewPanel({ incident, capability }) {
             </div>
           </div>
 
-          <dl className="divide-y divide-slate-100 px-5 sm:px-6 dark:divide-slate-800/80">
+          <dl className="divide-y divide-slate-100 px-4 sm:px-5 dark:divide-slate-800/80">
             <MetadataRow label="Số phản ánh" icon={Lucide.MessagesSquare} value={formatCount(incident?.reportCount)} />
             <MetadataRow label="Người theo dõi" icon={Lucide.UsersRound} value={formatCount(incident?.subscriberCount)} />
             <MetadataRow label="Thời gian tạo" icon={Lucide.CalendarPlus} value={formatDateTime(incident?.createdAt)} />
@@ -486,7 +467,7 @@ function OverviewPanel({ incident, capability }) {
             title="SLA sự vụ"
             description="Cam kết thời gian xử lý ở cấp sự vụ."
           />
-          <div className="px-5 py-5 sm:px-6">
+          <div className="px-4 py-4 sm:px-5">
             {!capability.incidentLevelSla ? (
               <div className="flex items-start gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-4 dark:border-slate-700 dark:bg-slate-900/50" role="note">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700" aria-hidden="true">
@@ -542,12 +523,17 @@ export default function StaffIncidentDetailPage() {
   const assignedStaffName = String(incident?.assignedStaffName ?? '').trim() || 'Chưa có Staff phụ trách';
 
   return (
-    <article className="admin-page-shell space-y-5 pb-6">
-      <Breadcrumbs />
-
+    <article className="admin-page-shell space-y-4 pb-5">
       <header className="admin-page-hero p-0">
-        <div className="px-5 py-6 sm:px-7 sm:py-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="px-5 py-5 sm:px-6 sm:py-5">
+          <Link
+            to="/staff/incidents"
+            className="mb-3 inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white/75 px-3 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 sm:hidden dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300"
+          >
+            <Lucide.ArrowLeft size={15} aria-hidden="true" />
+            Danh sách sự vụ
+          </Link>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 items-start gap-4">
               <span className="admin-hero-icon" aria-hidden="true">
                 <Lucide.BriefcaseBusiness size={23} />
@@ -559,7 +545,7 @@ export default function StaffIncidentDetailPage() {
                   </span>
                   {incident?.mergedIntoIncidentId ? <Badge intent="neutral">Đã gộp</Badge> : null}
                 </div>
-                <h1 className="mt-3 max-w-4xl text-2xl font-black tracking-[-0.03em] text-slate-950 sm:text-3xl dark:text-white">
+                <h1 className="mt-2.5 max-w-4xl text-2xl font-black tracking-[-0.03em] text-slate-950 sm:text-[1.75rem] dark:text-white">
                   {incidentTitle}
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
