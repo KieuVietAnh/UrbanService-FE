@@ -26,6 +26,62 @@ const communityDetailRequests = new Map();
 
 const getCommunityCacheKey = (incidentId) => String(incidentId || '').trim();
 
+const COMMUNITY_ENGAGEMENT_STORAGE_PREFIX = 'urbanmind:community-incident-engagement:';
+const COMMUNITY_ENGAGEMENT_EVENT = 'urbanmind:community-incident-engagement';
+const communityIncidentEngagementState = new Map();
+
+const readStoredCommunityIncidentEngagement = (incidentId) => {
+  const key = getCommunityCacheKey(incidentId);
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(`${COMMUNITY_ENGAGEMENT_STORAGE_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+export const getCommunityIncidentEngagementState = (incidentId) => {
+  const key = getCommunityCacheKey(incidentId);
+  if (!key) return null;
+  const memoryState = communityIncidentEngagementState.get(key);
+  if (memoryState) return memoryState;
+  const storedState = readStoredCommunityIncidentEngagement(key);
+  if (storedState) communityIncidentEngagementState.set(key, storedState);
+  return storedState;
+};
+
+export const recordCommunityIncidentEngagement = (incidentId, patch = {}) => {
+  const key = getCommunityCacheKey(incidentId);
+  if (!key) return null;
+  const current = getCommunityIncidentEngagementState(key) || {};
+  const next = { ...current, ...patch, incidentId: key };
+  communityIncidentEngagementState.set(key, next);
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.setItem(
+        `${COMMUNITY_ENGAGEMENT_STORAGE_PREFIX}${key}`,
+        JSON.stringify(next),
+      );
+    } catch {
+      // Session storage is an optimization only.
+    }
+    window.dispatchEvent(new CustomEvent(COMMUNITY_ENGAGEMENT_EVENT, { detail: next }));
+  }
+
+  return next;
+};
+
+export const subscribeCommunityIncidentEngagement = (listener) => {
+  if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
+  const handler = (event) => listener(event?.detail || null);
+  window.addEventListener(COMMUNITY_ENGAGEMENT_EVENT, handler);
+  return () => window.removeEventListener(COMMUNITY_ENGAGEMENT_EVENT, handler);
+};
+
 const getRequestHeaders = () => {
   const token = getAuthToken();
   return {
@@ -57,15 +113,16 @@ const buildRequestError = (response, payload, fallbackMessage) => {
 };
 
 const normalizeCommunityPreview = (detail = {}) => ({
-  // PublicIncidentDetailDto intentionally has no representative media.
-  // Do not synthesize a representative Report or pick reports[0].
-  attachments: [],
+  // Incident media is provided by the Incident contract. Preserve only media
+  // explicitly returned for this Incident; never infer a cover from reports[0].
+  attachments: Array.isArray(detail?.attachments) ? detail.attachments : [],
   description: detail?.description || '',
-  imageUrl: '',
-  coverImageUrl: '',
-  thumbnailUrl: '',
-  mediaUrl: '',
-  attachmentUrl: '',
+  imageUrl: detail?.imageUrl || '',
+  coverImageThumbnailUrl: detail?.coverImageThumbnailUrl || '',
+  coverImageUrl: detail?.coverImageUrl || '',
+  thumbnailUrl: detail?.thumbnailUrl || '',
+  mediaUrl: detail?.mediaUrl || '',
+  attachmentUrl: detail?.attachmentUrl || '',
 });
 
 const normalizeFeedParams = (params = {}) => {
@@ -284,24 +341,184 @@ export const setCommunityIncidentSubscription = async (incidentId, shouldSubscri
   const payload = await readPayload(response);
   if (!response.ok) throw buildRequestError(response, payload, 'Không thể cập nhật trạng thái theo dõi sự vụ.');
 
+  const responseData = unwrapData(payload) || {};
   const cached = communityDetailCache.get(normalizedIncidentId);
-  if (cached?.detail) {
-    const currentCount = Number(cached.detail.subscriberCount) || 0;
-    const wasSubscribed = Boolean(cached.detail.isSubscribedByCurrentUser);
-    const nextCount = shouldSubscribe === wasSubscribed
+  const currentCount = Number(cached?.detail?.subscriberCount) || 0;
+  const wasSubscribed = Boolean(cached?.detail?.isSubscribedByCurrentUser);
+  const serverCount = Number(
+    responseData?.subscriberCount ?? responseData?.subscribersCount ?? responseData?.count,
+  );
+  const serverSubscribed = [
+    responseData?.isSubscribedByCurrentUser,
+    responseData?.isSubscribed,
+    responseData?.subscribed,
+  ].find((value) => typeof value === 'boolean');
+  const resolvedSubscribed = typeof serverSubscribed === 'boolean'
+    ? serverSubscribed
+    : shouldSubscribe;
+  const nextCount = Number.isFinite(serverCount)
+    ? Math.max(0, serverCount)
+    : shouldSubscribe === wasSubscribed
       ? currentCount
       : Math.max(0, currentCount + (shouldSubscribe ? 1 : -1));
+
+  if (cached?.detail) {
     communityDetailCache.set(normalizedIncidentId, {
       detail: {
         ...cached.detail,
         subscriberCount: nextCount,
-        isSubscribedByCurrentUser: shouldSubscribe,
+        isSubscribedByCurrentUser: resolvedSubscribed,
       },
       updatedAt: Date.now(),
     });
   }
+
+  recordCommunityIncidentEngagement(normalizedIncidentId, {
+    subscriberCount: nextCount,
+    isSubscribedByCurrentUser: resolvedSubscribed,
+  });
   clearCommunityFeedPageCache();
-  return true;
+  return {
+    ...responseData,
+    subscriberCount: nextCount,
+    isSubscribedByCurrentUser: resolvedSubscribed,
+  };
+};
+
+
+export const setCommunityIncidentSupport = async (incidentId, shouldSupport) => {
+  const normalizedIncidentId = getCommunityCacheKey(incidentId);
+  if (!normalizedIncidentId) throw new Error('Community incident ID is required.');
+  if (!getAuthToken()) {
+    const error = new Error('Bạn cần đăng nhập để đồng tình với sự vụ.');
+    error.status = 401;
+    throw error;
+  }
+
+  const response = await fetch(
+    buildApiEndpoint(`/api/user/incidents/${encodeURIComponent(normalizedIncidentId)}/support`),
+    {
+      method: shouldSupport ? 'POST' : 'DELETE',
+      credentials: 'include',
+      headers: getRequestHeaders(),
+    },
+  );
+  const payload = await readPayload(response);
+  if (!response.ok) throw buildRequestError(response, payload, 'Không thể cập nhật lượt đồng tình cho sự vụ.');
+
+  const responseData = unwrapData(payload) || {};
+  const cached = communityDetailCache.get(normalizedIncidentId);
+  const engagement = getCommunityIncidentEngagementState(normalizedIncidentId);
+  const currentCount = Number(cached?.detail?.supportCount ?? engagement?.supportCount) || 0;
+  const wasSupported = Boolean(
+    cached?.detail?.isSupportedByCurrentUser ?? engagement?.isSupportedByCurrentUser,
+  );
+  const serverCount = Number(responseData?.supportCount ?? responseData?.supports ?? responseData?.count);
+  const serverSupported = [
+    responseData?.isSupportedByCurrentUser,
+    responseData?.isSupported,
+    responseData?.supported,
+  ].find((value) => typeof value === 'boolean');
+  const resolvedSupported = typeof serverSupported === 'boolean' ? serverSupported : shouldSupport;
+  const nextCount = Number.isFinite(serverCount)
+    ? Math.max(0, serverCount)
+    : shouldSupport === wasSupported
+      ? currentCount
+      : Math.max(0, currentCount + (shouldSupport ? 1 : -1));
+
+  if (cached?.detail) {
+    communityDetailCache.set(normalizedIncidentId, {
+      detail: {
+        ...cached.detail,
+        supportCount: nextCount,
+        isSupportedByCurrentUser: resolvedSupported,
+      },
+      updatedAt: Date.now(),
+    });
+  }
+  recordCommunityIncidentEngagement(normalizedIncidentId, {
+    supportCount: nextCount,
+    isSupportedByCurrentUser: resolvedSupported,
+  });
+  clearCommunityFeedPageCache();
+  return {
+    ...responseData,
+    supportCount: nextCount,
+    isSupportedByCurrentUser: resolvedSupported,
+  };
+};
+
+export const getCommunityIncidentComments = async (
+  incidentId,
+  { pageNumber = 1, pageSize = 50, signal } = {},
+) => {
+  const normalizedIncidentId = getCommunityCacheKey(incidentId);
+  if (!normalizedIncidentId) return normalizePagedPayload(null);
+
+  const endpoint = buildApiEndpoint(`/api/public/incidents/${encodeURIComponent(normalizedIncidentId)}/comments`);
+  const url = new URL(endpoint, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+  url.searchParams.set('pageNumber', String(pageNumber));
+  url.searchParams.set('pageSize', String(pageSize));
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    credentials: 'include',
+    headers: getRequestHeaders(),
+    signal,
+  });
+  const payload = await readPayload(response);
+  if (!response.ok) throw buildRequestError(response, payload, 'Không thể tải bình luận của sự vụ.');
+  return normalizePagedPayload(payload);
+};
+
+export const postCommunityIncidentComment = async (incidentId, content) => {
+  const normalizedIncidentId = getCommunityCacheKey(incidentId);
+  const normalizedContent = String(content || '').trim();
+  if (!normalizedIncidentId) throw new Error('Community incident ID is required.');
+  if (!normalizedContent) throw new Error('Nội dung bình luận không được để trống.');
+  if (!getAuthToken()) {
+    const error = new Error('Bạn cần đăng nhập để bình luận về sự vụ.');
+    error.status = 401;
+    throw error;
+  }
+
+  const response = await fetch(
+    buildApiEndpoint(`/api/user/incidents/${encodeURIComponent(normalizedIncidentId)}/comments`),
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...getRequestHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content: normalizedContent }),
+    },
+  );
+  const payload = await readPayload(response);
+  if (!response.ok) throw buildRequestError(response, payload, 'Không thể gửi bình luận cho sự vụ.');
+
+  const responseData = unwrapData(payload) || null;
+  const cached = communityDetailCache.get(normalizedIncidentId);
+  if (cached?.detail) {
+    const currentCount = Number(cached.detail.commentCount) || 0;
+    communityDetailCache.set(normalizedIncidentId, {
+      detail: {
+        ...cached.detail,
+        commentCount: currentCount + 1,
+      },
+      updatedAt: Date.now(),
+    });
+  }
+  const engagement = getCommunityIncidentEngagementState(normalizedIncidentId);
+  const cachedCommentCount = Number(cached?.detail?.commentCount);
+  const previousCommentCount = Number.isFinite(cachedCommentCount)
+    ? cachedCommentCount
+    : Number(engagement?.commentCount) || 0;
+  recordCommunityIncidentEngagement(normalizedIncidentId, {
+    commentCount: previousCommentCount + 1,
+  });
+  clearCommunityFeedPageCache();
+  return responseData;
 };
 
 export const getCommunityFeedPreview = async (incidentId, { force = false } = {}) => {

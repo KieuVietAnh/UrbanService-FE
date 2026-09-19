@@ -6,11 +6,13 @@ import { getAttachmentUrl } from '@urbanmind/shared-utils';
 import { useAuth } from '../../contexts/AuthContext';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import CompactPublicIncidentMap from '../../components/public/CompactPublicIncidentMap';
+import SupportButton from '../../components/community/SupportButton.jsx';
 import {
   getCommunityFeedDetail,
   getCommunityIncidentReports,
-  getCommunityIncidentTimeline,
+  getCommunityIncidentComments,
   setCommunityIncidentSubscription,
+  postCommunityIncidentComment,
 } from '../../services/api/feedApi';
 import {
   getCommunityReportCount,
@@ -39,20 +41,6 @@ const JOURNEY_STEPS = [
   { key: 'approval', label: 'Kiểm tra kết quả', statuses: ['submittedforapproval'], icon: Lucide.ClipboardCheck },
   { key: 'done', label: 'Hoàn tất', statuses: ['approved', 'resolved', 'closed'], icon: Lucide.CircleCheckBig },
 ];
-
-const EVENT_LABELS = {
-  incidentcreated: 'Sự vụ được ghi nhận',
-  reportlinked: 'Có phản ánh mới được liên kết',
-  reportunlinked: 'Một phản ánh được gỡ khỏi sự vụ',
-  statuschanged: 'Trạng thái sự vụ được cập nhật',
-  incidentassigned: 'Sự vụ được phân công xử lý',
-  assignmentcreated: 'Đơn vị xử lý được ghi nhận',
-  assignmentupdated: 'Tiến độ xử lý được cập nhật',
-  resolutionsubmitted: 'Kết quả xử lý được gửi kiểm tra',
-  resolutionapproved: 'Kết quả xử lý được phê duyệt',
-  resolutionrejected: 'Kết quả cần được bổ sung',
-  incidentmerged: 'Sự vụ được gộp',
-};
 
 const REPORT_STATUS_LABELS = Object.freeze({
   submitted: 'Đã gửi',
@@ -89,24 +77,6 @@ const formatDateTime = (value) => {
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   }).format(date);
-};
-
-const getEventLabel = (eventType) => {
-  const key = normalizeKey(eventType);
-  if (EVENT_LABELS[key]) return EVENT_LABELS[key];
-  if (key.includes('report') || key.includes('feedback')) {
-    if (key.includes('unlink') || key.includes('remove')) return 'Liên kết phản ánh được cập nhật';
-    if (key.includes('link') || key.includes('attach') || key.includes('add')) return 'Phản ánh được liên kết vào sự vụ';
-    if (key.includes('submit') || key.includes('create') || key.includes('receive')) return 'Phản ánh được ghi nhận';
-  }
-  if (key.includes('assign')) return 'Sự vụ được phân công xử lý';
-  if (key.includes('status')) return 'Trạng thái sự vụ được cập nhật';
-  if (key.includes('resolution') && key.includes('approve')) return 'Kết quả xử lý được phê duyệt';
-  if (key.includes('resolution')) return 'Kết quả xử lý được cập nhật';
-  if (key.includes('merge')) return 'Sự vụ được gộp';
-  if (key.includes('create')) return 'Sự vụ được ghi nhận';
-  if (key.includes('update')) return 'Thông tin sự vụ được cập nhật';
-  return 'Hoạt động sự vụ được ghi nhận';
 };
 
 const isVideo = (attachment) => {
@@ -255,17 +225,18 @@ export const CommunityFeedbackDetailPage = () => {
 
   const [incident, setIncident] = useState(null);
   const [reports, setReports] = useState([]);
-  const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reportsLoading, setReportsLoading] = useState(true);
-  const [timelineLoading, setTimelineLoading] = useState(true);
   const [error, setError] = useState('');
   const [reportsError, setReportsError] = useState('');
-  const [timelineError, setTimelineError] = useState('');
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState('');
-  const [showAllTimeline, setShowAllTimeline] = useState(false);
   const [viewer, setViewer] = useState(null);
+  const [incidentComments, setIncidentComments] = useState([]);
+  const [commentInput, setCommentInput] = useState('');
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState('');
+  const [commentNotice, setCommentNotice] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -274,10 +245,8 @@ export const CommunityFeedbackDetailPage = () => {
     const run = () => {
       setLoading(true);
       setReportsLoading(true);
-      setTimelineLoading(true);
       setError('');
       setReportsError('');
-      setTimelineError('');
 
       getCommunityFeedDetail(incidentId, { signal: controller.signal })
         .then((detail) => {
@@ -291,6 +260,21 @@ export const CommunityFeedbackDetailPage = () => {
         })
         .finally(() => {
           if (active) setLoading(false);
+        });
+
+      getCommunityIncidentComments(incidentId, {
+        pageNumber: 1,
+        pageSize: 50,
+        signal: controller.signal,
+      })
+        .then((commentPage) => {
+          if (!active) return;
+          setIncidentComments(Array.isArray(commentPage?.items) ? commentPage.items : []);
+        })
+        .catch((loadError) => {
+          if (!active || controller.signal.aborted) return;
+          console.error('Community incident comments failed to load', loadError);
+          setIncidentComments([]);
         });
 
       getCommunityIncidentReports(incidentId, { signal: controller.signal })
@@ -307,19 +291,6 @@ export const CommunityFeedbackDetailPage = () => {
           if (active) setReportsLoading(false);
         });
 
-      getCommunityIncidentTimeline(incidentId, { pageNumber: 1, pageSize: 30, signal: controller.signal })
-        .then((timelinePage) => {
-          if (!active) return;
-          setTimeline(Array.isArray(timelinePage?.items) ? timelinePage.items : []);
-        })
-        .catch((loadError) => {
-          if (!active || controller.signal.aborted) return;
-          setTimeline([]);
-          setTimelineError(loadError?.message || 'Chưa thể tải lịch sử xử lý.');
-        })
-        .finally(() => {
-          if (active) setTimelineLoading(false);
-        });
     };
 
     if (incidentId) run();
@@ -327,7 +298,6 @@ export const CommunityFeedbackDetailPage = () => {
       setError('Định danh sự vụ không hợp lệ.');
       setLoading(false);
       setReportsLoading(false);
-      setTimelineLoading(false);
     }
 
     return () => {
@@ -371,6 +341,8 @@ export const CommunityFeedbackDetailPage = () => {
   const StatusIcon = STATUS_ICONS[statusKey] || Lucide.Clock3;
   const reportCount = getCommunityReportCount(incident);
   const subscriberCount = Math.max(0, Number(incident?.subscriberCount) || 0);
+  const supportCount = Math.max(0, Number(incident?.supportCount ?? incident?.supports) || 0);
+  const commentCount = Math.max(incidentComments.length, Number(incident?.commentCount) || 0);
   const categoryName = translateResidentCategory(incident?.categoryName) || 'Chưa phân loại';
   const currentJourneyIndex = useMemo(() => {
     const index = JOURNEY_STEPS.findIndex((step) => step.statuses.includes(statusKey));
@@ -387,47 +359,6 @@ export const CommunityFeedbackDetailPage = () => {
     });
   }, [reports]);
 
-  const displayTimeline = useMemo(() => {
-    const meaningfulEventKeys = new Set([
-      'incidentcreated',
-      'statuschanged',
-      'incidentassigned',
-      'assignmentcreated',
-      'assignmentupdated',
-      'resolutionsubmitted',
-      'resolutionapproved',
-      'resolutionrejected',
-    ]);
-    const collapseToLatest = new Set(['statuschanged', 'assignmentupdated']);
-    const seenCollapsedTypes = new Set();
-    const groups = [];
-
-    timeline
-      .filter((event) => meaningfulEventKeys.has(normalizeKey(event?.eventType)))
-      .forEach((event) => {
-        const eventKey = normalizeKey(event?.eventType);
-        if (collapseToLatest.has(eventKey)) {
-          if (seenCollapsedTypes.has(eventKey)) return;
-          seenCollapsedTypes.add(eventKey);
-        }
-
-        const label = getEventLabel(event?.eventType);
-        const date = event?.createdAt ? new Date(event.createdAt) : null;
-        const minuteKey = date && !Number.isNaN(date.getTime())
-          ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}-${date.getMinutes()}`
-          : String(event?.createdAt || '');
-        const previous = groups[groups.length - 1];
-        if (previous && previous.label === label && previous.minuteKey === minuteKey) {
-          previous.count += 1;
-        } else {
-          groups.push({ event, label, minuteKey, count: 1 });
-        }
-      });
-
-    return groups;
-  }, [timeline]);
-
-  const visibleTimeline = showAllTimeline ? displayTimeline : displayTimeline.slice(0, 3);
   const backDestination = location.state?.from || '/community/feed';
   const backLabel = backDestination === '/community/map' ? 'Quay lại bản đồ' : 'Quay lại bảng tin';
 
@@ -455,14 +386,21 @@ export const CommunityFeedbackDetailPage = () => {
     setSubscriptionBusy(true);
     setSubscriptionError('');
     try {
-      await setCommunityIncidentSubscription(incidentId, nextSubscribed);
+      const subscriptionState = await setCommunityIncidentSubscription(incidentId, nextSubscribed);
       setIncident((current) => {
         if (!current) return current;
         const currentCount = Math.max(0, Number(current.subscriberCount) || 0);
+        const serverCount = Number(subscriptionState?.subscriberCount);
+        const resolvedCount = Number.isFinite(serverCount)
+          ? Math.max(0, serverCount)
+          : Math.max(0, currentCount + (nextSubscribed ? 1 : -1));
+        const resolvedSubscribed = typeof subscriptionState?.isSubscribedByCurrentUser === 'boolean'
+          ? subscriptionState.isSubscribedByCurrentUser
+          : nextSubscribed;
         return {
           ...current,
-          isSubscribedByCurrentUser: nextSubscribed,
-          subscriberCount: Math.max(0, currentCount + (nextSubscribed ? 1 : -1)),
+          isSubscribedByCurrentUser: resolvedSubscribed,
+          subscriberCount: resolvedCount,
         };
       });
     } catch (subscriptionFailure) {
@@ -478,6 +416,54 @@ export const CommunityFeedbackDetailPage = () => {
       setSubscriptionBusy(false);
     }
   };
+
+  const handleIncidentCommentSubmit = async (event) => {
+    event.preventDefault();
+    const content = commentInput.trim();
+    if (!content || commentBusy) return;
+
+    if (!user) {
+      const redirect = `${location.pathname}${location.search}`;
+      navigate(`/login?redirect=${encodeURIComponent(redirect)}`, {
+        state: { from: redirect, intent: 'community-comment' },
+      });
+      return;
+    }
+
+    setCommentBusy(true);
+    setCommentError('');
+    setCommentNotice('');
+    try {
+      const createdComment = await postCommunityIncidentComment(incidentId, content);
+      const nowIso = new Date().toISOString();
+      const optimisticComment = createdComment && typeof createdComment === 'object'
+        ? createdComment
+        : {
+            commentId: `local-${Date.now()}`,
+            content,
+            createdAt: nowIso,
+            userName: user?.fullName || user?.name || 'Bạn',
+          };
+      setIncidentComments((current) => [...current, optimisticComment]);
+      setIncident((current) => current
+        ? { ...current, commentCount: Math.max(0, Number(current.commentCount) || 0) + 1 }
+        : current);
+      setCommentInput('');
+      setCommentNotice('Đã gửi bình luận vào sự vụ.');
+    } catch (commentFailure) {
+      if (Number(commentFailure?.status) === 401) {
+        const redirect = `${location.pathname}${location.search}`;
+        navigate(`/login?redirect=${encodeURIComponent(redirect)}`, {
+          state: { from: redirect, intent: 'community-comment' },
+        });
+        return;
+      }
+      setCommentError(commentFailure?.message || 'Không thể gửi bình luận.');
+    } finally {
+      setCommentBusy(false);
+    }
+  };
+
 
   if (loading) return <PublicPageMotion><DetailSkeleton /></PublicPageMotion>;
 
@@ -572,6 +558,30 @@ export const CommunityFeedbackDetailPage = () => {
                     {subscriptionBusy ? <Lucide.LoaderCircle size={16} className="animate-spin" /> : <Lucide.Bell size={16} />}
                     {incident?.isSubscribedByCurrentUser ? 'Đang theo dõi' : 'Theo dõi sự vụ'}
                   </button>
+                  <SupportButton
+                    incidentId={incidentId}
+                    initialCount={supportCount}
+                    initialSupported={Boolean(incident?.isSupportedByCurrentUser)}
+                    entityLabel="sự vụ"
+                    showLabel
+                    className="h-10 justify-center rounded-xl border-blue-200 bg-white text-blue-700 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-500/10"
+                    onChange={({ isSupported, count }) => {
+                      setIncident((current) => current ? {
+                        ...current,
+                        isSupportedByCurrentUser: isSupported,
+                        supportCount: count,
+                      } : current);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('incident-community-comments')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+                    aria-label={`Đi tới ${commentCount} bình luận của sự vụ`}
+                  >
+                    <Lucide.MessageCircle size={16} />
+                    {commentCount} bình luận
+                  </button>
                 </div>
               </div>
 
@@ -657,6 +667,74 @@ export const CommunityFeedbackDetailPage = () => {
               ) : (
                 <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-9 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-800/50">
                   Chưa có phản ánh công khai để hiển thị.
+                </div>
+              )}
+            </section>
+
+            <section id="incident-community-comments" className="scroll-mt-28 rounded-[28px] border border-slate-200/90 bg-white px-5 py-5 shadow-[0_18px_48px_rgba(15,23,42,0.055)] dark:border-slate-800 dark:bg-slate-900 sm:px-7 sm:py-6" aria-labelledby="incident-community-comments-title">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 id="incident-community-comments-title" className="text-xl font-bold">Trao đổi cộng đồng</h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Bình luận công khai được gắn với sự vụ này, không tách theo từng phản ánh.</p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                  <Lucide.MessageCircle size={13} />
+                  {commentCount} bình luận
+                </span>
+              </div>
+
+              <form onSubmit={handleIncidentCommentSubmit} className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/65 p-3 dark:border-slate-800 dark:bg-slate-950/30 sm:p-4">
+                <label htmlFor="incident-community-comment" className="sr-only">Bình luận về sự vụ</label>
+                <textarea
+                  id="incident-community-comment"
+                  rows="3"
+                  value={commentInput}
+                  onChange={(event) => setCommentInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent?.isComposing) return;
+                    event.preventDefault();
+                    if (!commentInput.trim() || commentBusy) return;
+                    event.currentTarget.form?.requestSubmit();
+                  }}
+                  placeholder="Chia sẻ thêm thông tin về sự vụ này..."
+                  className="w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-blue-500/10"
+                />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-slate-400">Nội dung được hiển thị công khai trong sự vụ.</p>
+                  <button
+                    type="submit"
+                    disabled={!commentInput.trim() || commentBusy}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {commentBusy ? <Lucide.LoaderCircle size={15} className="animate-spin" /> : <Lucide.Send size={15} />}
+                    Gửi bình luận
+                  </button>
+                </div>
+                {commentError ? <p className="mt-2 text-xs text-red-600">{commentError}</p> : null}
+                {commentNotice ? <p className="mt-2 text-xs font-medium text-emerald-600">{commentNotice}</p> : null}
+              </form>
+
+              {incidentComments.length > 0 ? (
+                <div className="mt-5 space-y-3">
+                  {incidentComments.map((comment, index) => {
+                    const author = comment?.userName || comment?.authorName || comment?.createdByName || 'Người dân';
+                    const content = comment?.content || comment?.message || comment?.text || '';
+                    return (
+                      <article key={comment?.commentId || comment?.id || `${comment?.createdAt}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950/20">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{author}</p>
+                          <time className="text-xs text-slate-400" dateTime={comment?.createdAt || undefined}>{formatDateTime(comment?.createdAt)}</time>
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{content || 'Bình luận không có nội dung.'}</p>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-7 text-center dark:border-slate-700 dark:bg-slate-800/40">
+                  <Lucide.MessagesSquare size={22} className="mx-auto text-blue-500" />
+                  <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Chưa có bình luận được tải trong phiên này</p>
+                  <p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-slate-400">Bạn có thể gửi bình luận mới cho sự vụ. Bình luận vừa gửi sẽ xuất hiện ngay tại đây.</p>
                 </div>
               )}
             </section>
@@ -755,54 +833,7 @@ export const CommunityFeedbackDetailPage = () => {
                 })}
               </ol>
 
-              {timelineLoading ? (
-                <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800" aria-busy="true">
-                  <div className="h-4 w-28 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-                  <div className="mt-3 space-y-3">
-                    {[0, 1, 2].map((item) => (
-                      <div key={item} className="grid grid-cols-[24px_minmax(0,1fr)] gap-2.5">
-                        <div className="h-6 w-6 animate-pulse rounded-full bg-blue-50 dark:bg-blue-950/30" />
-                        <div>
-                          <div className="h-3.5 w-4/5 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-                          <div className="mt-1.5 h-2.5 w-24 animate-pulse rounded bg-slate-100 dark:bg-slate-800/70" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : visibleTimeline.length > 0 ? (
-                <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold">Lịch sử xử lý</h3>
-                      <p className="mt-0.5 text-[11px] text-slate-400">Chỉ hiển thị thay đổi xử lý quan trọng.</p>
-                    </div>
-                    <Lucide.History size={16} className="text-blue-500" />
-                  </div>
-                  <ol className="mt-3 space-y-3">
-                    {visibleTimeline.map(({ event, label, count }, index) => (
-                      <li key={event?.incidentEventId || `${event?.eventType}-${event?.createdAt}-${index}`} className="grid grid-cols-[24px_minmax(0,1fr)] gap-2.5">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"><Lucide.Activity size={12} /></span>
-                        <div className="min-w-0">
-                          <div className="flex items-start gap-2">
-                            <p className="text-[12px] font-semibold leading-5">{label}</p>
-                            {count > 1 ? <span className="mt-0.5 shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 dark:bg-slate-800">×{count}</span> : null}
-                          </div>
-                          <time className="block text-[10px] text-slate-400" dateTime={event?.createdAt || undefined}>{formatDateTime(event?.createdAt)}</time>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                  {displayTimeline.length > 3 ? (
-                    <button type="button" onClick={() => setShowAllTimeline((value) => !value)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-blue-600 transition hover:border-blue-200 hover:bg-blue-50 dark:border-slate-700 dark:text-blue-300 dark:hover:bg-blue-500/10">
-                      {showAllTimeline ? 'Thu gọn lịch sử' : `Xem thêm ${displayTimeline.length - 3} mốc`}
-                      <Lucide.ChevronDown size={14} className={showAllTimeline ? 'rotate-180' : ''} />
-                    </button>
-                  ) : null}
-                </div>
-              ) : timelineError ? (
-                <p className="mt-4 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-400 dark:border-slate-800">{timelineError}</p>
-              ) : null}
+
             </section>
           </aside>
         </div>

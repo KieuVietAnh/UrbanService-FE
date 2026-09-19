@@ -8,6 +8,8 @@ import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import {
   getCommunityFeed,
   getCommunityFeedPreview,
+  getCommunityIncidentEngagementState,
+  subscribeCommunityIncidentEngagement,
 } from '../../services/api/feedApi';
 import { signalrService } from '../../services/socket/signalrService';
 import {
@@ -17,7 +19,6 @@ import {
 import CommunityFeedItem from './CommunityFeedItem';
 import {
   getCommunityIncidentId,
-  getCommunityReportCount,
   isCommunityEndedIncidentStatus,
   isCommunityProcessingIncidentStatus,
   isCommunityPublicIncidentStatus,
@@ -87,9 +88,11 @@ const normalizeFeedTab = (value, fallback = 'Latest') => {
     : fallback;
 };
 
-const getSupportCount = (item) => Number(item?.subscriberCount || item?.subscribersCount || 0);
+const getSupportCount = (item) => Number(item?.supportCount ?? item?.supports ?? 0) || 0;
 
-const getCommentCount = (item) => getCommunityReportCount(item);
+const getCommentCount = (item) => Number(item?.commentCount ?? (Array.isArray(item?.comments) ? item.comments.length : 0)) || 0;
+
+const getSubscriberCount = (item) => Number(item?.subscriberCount ?? item?.subscribersCount ?? 0) || 0;
 
 const getCreatedTimestamp = (item) => {
   const timestamp = new Date(item?.createdAt || item?.createdDate || 0).getTime();
@@ -162,19 +165,28 @@ const mergeFeedMediaFromCache = (incomingItems = [], cachedItems = []) => {
     const cachedItem = cachedById.get(String(getCommunityIncidentId(item) || ''));
     if (!cachedItem) return item;
 
-    return {
+    // Incident media is now authoritative on the Incident DTO. Keep fresh API
+    // fields first, while allowing the existing cache to bridge a background
+    // refresh that temporarily omits an already-known cover URL.
+    const incomingAttachments = Array.isArray(item?.attachments) ? item.attachments : [];
+    const cachedAttachments = Array.isArray(cachedItem?.attachments) ? cachedItem.attachments : [];
+    const mergedItem = {
       ...cachedItem,
       ...item,
-      // Public Incident DTO does not define representative media. Never revive
-      // legacy Feedback media from cache as if it represented the Incident.
-      attachments: [],
-      imageUrl: '',
-      coverImageUrl: '',
-      thumbnailUrl: '',
-      mediaUrl: '',
-      attachmentUrl: '',
-      attachmentCount: 0,
-      __mediaState: 'empty',
+      attachments: incomingAttachments.length > 0 ? incomingAttachments : cachedAttachments,
+      coverImageThumbnailUrl: item?.coverImageThumbnailUrl || cachedItem?.coverImageThumbnailUrl || '',
+      coverImageUrl: item?.coverImageUrl || cachedItem?.coverImageUrl || '',
+      thumbnailUrl: item?.thumbnailUrl || cachedItem?.thumbnailUrl || '',
+      imageUrl: item?.imageUrl || cachedItem?.imageUrl || '',
+      mediaUrl: item?.mediaUrl || cachedItem?.mediaUrl || '',
+      attachmentUrl: item?.attachmentUrl || cachedItem?.attachmentUrl || '',
+    };
+
+    return {
+      ...mergedItem,
+      __mediaState: getPreviewMediaUrl(mergedItem)
+        ? 'ready'
+        : mergedItem?.__mediaState,
     };
   });
 };
@@ -183,10 +195,11 @@ const getPreviewMediaUrl = (item) => {
   const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
   const candidate = (
     attachments[0] ||
-    item?.imageUrl ||
-    item?.image ||
+    item?.coverImageThumbnailUrl ||
     item?.coverImageUrl ||
     item?.thumbnailUrl ||
+    item?.imageUrl ||
+    item?.image ||
     item?.mediaUrl ||
     item?.attachmentUrl
   );
@@ -286,6 +299,7 @@ export default function CommunityFeed({
   const [highlightedIncidentId, setHighlightedIncidentId] = useState(
     restoredContext?.incidentId || restoredContext?.feedbackId || null
   );
+  const [, setEngagementVersion] = useState(0);
   const [error, setError] = useState('');
   const isFetchingRef = useRef(false);
   const hasLoadedSnapshotRef = useRef(
@@ -307,12 +321,13 @@ export default function CommunityFeed({
     );
 
     return publicItems.map((item) => {
-      const hasAttachments = (
-        Array.isArray(item?.attachments) && item.attachments.length > 0
-      );
+      const hasMedia = Boolean(getPreviewMediaUrl(item));
 
-      if (hasAttachments || Number(item?.attachmentCount || 0) <= 0) {
-        return item;
+      if (hasMedia || Number(item?.attachmentCount || 0) <= 0) {
+        return {
+          ...item,
+          __mediaState: hasMedia ? 'ready' : item?.__mediaState,
+        };
       }
 
       return {
@@ -345,7 +360,7 @@ export default function CommunityFeed({
   const hydrateFeedPreviews = useCallback(async (feedItems, sessionId) => {
     const candidates = feedItems.filter((item) => (
       item?.attachmentCount > 0 &&
-      !(Array.isArray(item?.attachments) && item.attachments.length > 0)
+      !getPreviewMediaUrl(item)
     ));
 
     if (candidates.length === 0) return;
@@ -363,6 +378,7 @@ export default function CommunityFeed({
           const fallbackMedia = (
             preview?.imageUrl ||
             preview?.image ||
+            preview?.coverImageThumbnailUrl ||
             preview?.coverImageUrl ||
             preview?.thumbnailUrl ||
             preview?.mediaUrl ||
@@ -376,6 +392,7 @@ export default function CommunityFeed({
               attachments,
               description: item?.description || preview?.description,
               imageUrl: item?.imageUrl || preview?.imageUrl,
+              coverImageThumbnailUrl: item?.coverImageThumbnailUrl || preview?.coverImageThumbnailUrl,
               coverImageUrl: item?.coverImageUrl || preview?.coverImageUrl,
               thumbnailUrl: item?.thumbnailUrl || preview?.thumbnailUrl,
               __mediaState: attachments.length > 0 || fallbackMedia
@@ -819,15 +836,44 @@ export default function CommunityFeed({
     };
   }, [items, loading]);
 
+  useEffect(() => subscribeCommunityIncidentEngagement(() => {
+    setEngagementVersion((version) => version + 1);
+  }), []);
+
+  const itemsWithLiveEngagement = items.map((item) => {
+    const incidentId = getCommunityIncidentId(item);
+    const engagement = getCommunityIncidentEngagementState(incidentId);
+    if (!engagement) return item;
+
+    return {
+      ...item,
+      ...(Number.isFinite(Number(engagement.supportCount))
+        ? { supportCount: Math.max(0, Number(engagement.supportCount)) }
+        : {}),
+      ...(Number.isFinite(Number(engagement.commentCount))
+        ? { commentCount: Math.max(0, Number(engagement.commentCount)) }
+        : {}),
+      ...(Number.isFinite(Number(engagement.subscriberCount))
+        ? { subscriberCount: Math.max(0, Number(engagement.subscriberCount)) }
+        : {}),
+      ...(typeof engagement.isSupportedByCurrentUser === 'boolean'
+        ? { isSupportedByCurrentUser: engagement.isSupportedByCurrentUser }
+        : {}),
+      ...(typeof engagement.isSubscribedByCurrentUser === 'boolean'
+        ? { isSubscribedByCurrentUser: engagement.isSubscribedByCurrentUser }
+        : {}),
+    };
+  });
+
   const tabItems = tab === 'Processing'
-    ? items.filter((item) => (
+    ? itemsWithLiveEngagement.filter((item) => (
         isCommunityProcessingIncidentStatus(item?.incidentStatus || item?.status)
       ))
     : tab === 'Ended'
-      ? items.filter((item) => (
+      ? itemsWithLiveEngagement.filter((item) => (
           isCommunityEndedIncidentStatus(item?.incidentStatus || item?.status)
         ))
-      : items;
+      : itemsWithLiveEngagement;
 
   const normalizedQuery = query.trim().toLocaleLowerCase('vi-VN');
   const searchedItems = normalizedQuery
@@ -868,13 +914,27 @@ export default function CommunityFeed({
     loadedServerPage < totalPages
   );
 
-  const trendingItems = [...items]
+  const trendingItems = [...itemsWithLiveEngagement]
     .sort((left, right) => (
       getSupportCount(right) + getCommentCount(right)
     ) - (
       getSupportCount(left) + getCommentCount(left)
     ))
     .slice(0, 5);
+
+
+  const handleIncidentSupportChange = useCallback((incidentId, { isSupported, count }) => {
+    if (!incidentId) return;
+    setItems((currentItems) => currentItems.map((item) => (
+      String(getCommunityIncidentId(item)) === String(incidentId)
+        ? {
+            ...item,
+            supportCount: Math.max(0, Number(count) || 0),
+            isSupportedByCurrentUser: Boolean(isSupported),
+          }
+        : item
+    )));
+  }, []);
 
   const initialLoading = loading && items.length === 0;
 
@@ -1104,6 +1164,7 @@ export default function CommunityFeed({
                     String(highlightedIncidentId)
                   }
                   onOpen={openDetail}
+                  onSupportChange={handleIncidentSupportChange}
                 />
               ))}
             </div>
@@ -1230,13 +1291,17 @@ export default function CommunityFeed({
                             <span className="truncate">{getAreaName(item)}</span>
                           </span>
                           <span className="mt-1 flex items-center gap-3 text-[10px] text-[var(--public-muted)]">
-                            <span className="inline-flex items-center gap-1">
-                              <Lucide.Bell size={10} aria-hidden="true" />
+                            <span className="inline-flex items-center gap-1" title="Lượt đồng tình">
+                              <Lucide.Heart size={10} aria-hidden="true" />
                               {getSupportCount(item)}
                             </span>
-                            <span className="inline-flex items-center gap-1">
+                            <span className="inline-flex items-center gap-1" title="Bình luận">
                               <Lucide.MessagesSquare size={10} aria-hidden="true" />
                               {getCommentCount(item)}
+                            </span>
+                            <span className="inline-flex items-center gap-1" title="Người theo dõi">
+                              <Lucide.Bell size={10} aria-hidden="true" />
+                              {getSubscriberCount(item)}
                             </span>
                           </span>
                         </span>

@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { getAttachmentUrl } from '@urbanmind/shared-utils';
+import SupportButton from './SupportButton.jsx';
 import {
   getCommunityIncidentId,
   getCommunityItemContext,
@@ -223,16 +224,18 @@ const CommunityFeedItem = ({
   priority = false,
   highlighted = false,
   onOpen,
+  onSupportChange,
 }) => {
   const incidentId = getCommunityIncidentId(item);
   const itemTitle = getCommunityItemTitle(item);
   const itemDescription = getCommunityItemDescription(item);
   const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
   const fallbackAttachment = (
-    item?.imageUrl ||
-    item?.image ||
+    item?.coverImageThumbnailUrl ||
     item?.coverImageUrl ||
     item?.thumbnailUrl ||
+    item?.imageUrl ||
+    item?.image ||
     item?.mediaUrl ||
     item?.attachmentUrl
   );
@@ -425,13 +428,21 @@ const CommunityFeedItem = ({
 
           <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[var(--public-border-soft)] pt-2.5">
             <div className="flex flex-wrap items-center gap-1 text-sm font-semibold text-[var(--public-copy)]">
+              <SupportButton
+                incidentId={incidentId}
+                initialCount={context.supportCount}
+                initialSupported={Boolean(item?.isSupportedByCurrentUser)}
+                entityLabel="sự vụ"
+                className="h-8 rounded-lg border-transparent bg-transparent px-2 text-[var(--public-copy)] shadow-none hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+                onChange={({ isSupported, count }) => onSupportChange?.(incidentId, { isSupported, count })}
+              />
+              <span className="inline-flex h-8 items-center gap-2 rounded-lg px-2" title="Số bình luận trên sự vụ">
+                <Lucide.MessageCircle size={16} aria-hidden="true" />
+                {context.commentCount} bình luận
+              </span>
               <span className="inline-flex h-8 items-center gap-2 rounded-lg px-2" title="Số người đang theo dõi sự vụ">
                 <Lucide.Bell size={16} aria-hidden="true" />
                 {context.subscriberCount} theo dõi
-              </span>
-              <span className="inline-flex h-8 items-center gap-2 rounded-lg px-2" title="Số phản ánh công khai liên quan">
-                <Lucide.MessagesSquare size={16} aria-hidden="true" />
-                {context.reportCount} phản ánh
               </span>
             </div>
 
