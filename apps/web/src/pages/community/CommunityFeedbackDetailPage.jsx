@@ -683,58 +683,73 @@ export const CommunityFeedbackDetailPage = () => {
                 </span>
               </div>
 
-              <form onSubmit={handleIncidentCommentSubmit} className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/65 p-3 dark:border-slate-800 dark:bg-slate-950/30 sm:p-4">
+              <form onSubmit={handleIncidentCommentSubmit} className="mt-5">
                 <label htmlFor="incident-community-comment" className="sr-only">Bình luận về sự vụ</label>
-                <textarea
-                  id="incident-community-comment"
-                  rows="3"
-                  value={commentInput}
-                  onChange={(event) => setCommentInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent?.isComposing) return;
-                    event.preventDefault();
-                    if (!commentInput.trim() || commentBusy) return;
-                    event.currentTarget.form?.requestSubmit();
-                  }}
-                  placeholder="Chia sẻ thêm thông tin về sự vụ này..."
-                  className="w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-blue-500/10"
-                />
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-slate-400">Nội dung được hiển thị công khai trong sự vụ.</p>
-                  <button
-                    type="submit"
-                    disabled={!commentInput.trim() || commentBusy}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    {commentBusy ? <Lucide.LoaderCircle size={15} className="animate-spin" /> : <Lucide.Send size={15} />}
-                    Gửi bình luận
-                  </button>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/75 p-2.5 transition focus-within:border-blue-300 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.08)] dark:border-slate-800 dark:bg-slate-950/30 dark:focus-within:border-blue-700 dark:focus-within:bg-slate-900">
+                  <textarea
+                    id="incident-community-comment"
+                    rows="2"
+                    value={commentInput}
+                    onChange={(event) => setCommentInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent?.isComposing) return;
+                      event.preventDefault();
+                      if (!commentInput.trim() || commentBusy) return;
+                      event.currentTarget.form?.requestSubmit();
+                    }}
+                    placeholder="Viết bình luận về sự vụ..."
+                    className="min-h-[72px] w-full resize-y border-0 bg-transparent px-2.5 py-2 text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400 focus:ring-0 dark:text-slate-100"
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/75 px-2.5 pt-2.5 dark:border-slate-800">
+                    <p className="text-[11px] leading-5 text-slate-400">Enter để gửi · Shift + Enter để xuống dòng</p>
+                    <button
+                      type="submit"
+                      disabled={!commentInput.trim() || commentBusy}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                    >
+                      {commentBusy ? <Lucide.LoaderCircle size={14} className="animate-spin" /> : <Lucide.Send size={14} />}
+                      Gửi bình luận
+                    </button>
+                  </div>
                 </div>
                 {commentError ? <p className="mt-2 text-xs text-red-600">{commentError}</p> : null}
                 {commentNotice ? <p className="mt-2 text-xs font-medium text-emerald-600">{commentNotice}</p> : null}
               </form>
 
               {incidentComments.length > 0 ? (
-                <div className="mt-5 space-y-3">
+                <div className="mt-5 divide-y divide-slate-200/80 border-t border-slate-200/80 dark:divide-slate-800 dark:border-slate-800">
                   {incidentComments.map((comment, index) => {
                     const author = comment?.userName || comment?.authorName || comment?.createdByName || 'Người dân';
                     const content = comment?.content || comment?.message || comment?.text || '';
+                    const initials = author
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(-2)
+                      .map((part) => part.charAt(0))
+                      .join('')
+                      .toUpperCase() || 'ND';
+
                     return (
-                      <article key={comment?.commentId || comment?.id || `${comment?.createdAt}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950/20">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{author}</p>
-                          <time className="text-xs text-slate-400" dateTime={comment?.createdAt || undefined}>{formatDateTime(comment?.createdAt)}</time>
+                      <article key={comment?.commentId || comment?.id || `${comment?.createdAt}-${index}`} className="flex gap-3 py-4 first:pt-4 last:pb-1">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[11px] font-bold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20" aria-hidden="true">
+                          {initials}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{author}</p>
+                            <time className="text-[11px] text-slate-400" dateTime={comment?.createdAt || undefined}>{formatDateTime(comment?.createdAt)}</time>
+                          </div>
+                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{content || 'Bình luận không có nội dung.'}</p>
                         </div>
-                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{content || 'Bình luận không có nội dung.'}</p>
                       </article>
                     );
                   })}
                 </div>
               ) : (
-                <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-7 text-center dark:border-slate-700 dark:bg-slate-800/40">
-                  <Lucide.MessagesSquare size={22} className="mx-auto text-blue-500" />
-                  <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Chưa có bình luận được tải trong phiên này</p>
-                  <p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-slate-400">Bạn có thể gửi bình luận mới cho sự vụ. Bình luận vừa gửi sẽ xuất hiện ngay tại đây.</p>
+                <div className="mt-5 border-t border-slate-200/80 py-7 text-center dark:border-slate-800">
+                  <Lucide.MessagesSquare size={21} className="mx-auto text-blue-500" />
+                  <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Chưa có bình luận</p>
+                  <p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-slate-400">Hãy chia sẻ thêm thông tin nếu bạn biết điều gì hữu ích về sự vụ này.</p>
                 </div>
               )}
             </section>
