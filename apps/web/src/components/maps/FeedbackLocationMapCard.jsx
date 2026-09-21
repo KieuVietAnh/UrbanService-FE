@@ -17,6 +17,27 @@ const markerIcon = new L.Icon({
   shadowSize: [41, 41],
 });
 
+const publicMarkerIcon = L.divIcon({
+  className: '',
+  html: `
+    <span style="
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      width:34px;
+      height:34px;
+      border-radius:999px;
+      border:3px solid rgba(255,255,255,.98);
+      background:#2563eb;
+      box-shadow:0 8px 22px rgba(15,23,42,.24),0 0 0 6px rgba(37,99,235,.12);
+    ">
+      <span style="display:block;width:8px;height:8px;border-radius:999px;background:#fff"></span>
+    </span>
+  `,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+});
+
 const SyncView = ({ position }) => {
   const map = useMap();
 
@@ -110,11 +131,11 @@ export const FeedbackLocationMapCard = ({
       return;
     }
 
+    if (!focusIncidentId) return;
+
     navigate('/community/map', {
       state: {
-        ...(focusIncidentId
-          ? { focusIncidentId }
-          : { focusFeedbackId: feedbackId }),
+        focusIncidentId,
         focusLatitude: lat,
         focusLongitude: lng,
       },
@@ -125,36 +146,52 @@ export const FeedbackLocationMapCard = ({
     <section className={`${isAdmin ? 'admin-panel' : 'rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)]'} overflow-hidden ${className}`} aria-labelledby={`feedback-location-${feedbackId}`}>
       <header className={`flex items-start justify-between gap-3 px-5 py-4 sm:px-6 ${isAdmin ? 'border-b border-slate-200 dark:border-white/10' : ''}`}>
         <div className="flex min-w-0 items-start gap-3">
-          <span className={iconClassName || (isAdmin ? 'admin-mini-icon' : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary')} aria-hidden="true">
+          <span className={iconClassName || (isAdmin ? 'admin-mini-icon' : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600')} aria-hidden="true">
             <Lucide.MapPinned size={iconSize} />
           </span>
           <div className="min-w-0">
             <h2 id={`feedback-location-${feedbackId}`} className={isAdmin ? 'admin-section-title' : 'text-base font-bold'}>{`Vị trí ${entityLabel}`}</h2>
-            <p className={isAdmin ? 'mt-1 break-words text-sm font-medium text-slate-700 dark:text-slate-300' : 'mt-1 break-words text-sm font-medium text-base-content/70'}>
+            <p className={isAdmin ? 'mt-1 break-words text-sm font-medium text-slate-700 dark:text-slate-300' : 'mt-1 break-words text-sm font-medium text-slate-700'}>
               {locationText || areaName || 'Chưa xác định vị trí'}
             </p>
             {locationText && areaName && locationText !== areaName ? (
-              <p className={isAdmin ? 'mt-1 text-xs text-slate-400 dark:text-slate-500' : 'mt-1 text-xs text-base-content/45'}>
+              <p className={isAdmin ? 'mt-1 text-xs text-slate-400 dark:text-slate-500' : 'mt-1 text-xs text-slate-400'}>
                 {areaName}
               </p>
             ) : null}
           </div>
         </div>
+
+        {!isAdmin && hasCoordinates && (Boolean(externalMapUrl) || Boolean(focusIncidentId)) ? (
+          <button
+            type="button"
+            onClick={openFullMap}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-blue-600 transition hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+          >
+            Mở bản đồ
+            <Lucide.ArrowUpRight size={14} aria-hidden="true" />
+          </button>
+        ) : null}
       </header>
 
       {hasCoordinates ? (
-        <button type="button" onClick={openFullMap} className={`group relative block w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)]'}`} aria-label={`Xem vị trí ${entityLabel} trên bản đồ`}>
+        <div
+          className={`relative block w-full overflow-hidden ${isAdmin ? 'h-72' : 'h-56 border-y border-[var(--public-border)] bg-slate-100'}`}
+          role="img"
+          aria-label={`Bản đồ vị trí ${entityLabel}`}
+        >
           <MapContainer center={position} zoom={16} dragging={false} scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false} boxZoom={false} keyboard={false} zoomControl={false} attributionControl={false} className="pointer-events-none h-full w-full">
             <ConfiguredMapTileLayer />
             <SyncView position={position} />
             <ResizeMap />
-            <Marker position={position} icon={markerIcon} />
+            <Marker position={position} icon={isAdmin ? markerIcon : publicMarkerIcon} />
           </MapContainer>
-          <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-slate-950/75 via-slate-950/35 to-transparent px-4 pb-3 pt-12 text-white">
-            <span className="text-sm font-semibold">Xem vị trí trên bản đồ</span>
-            <Lucide.ArrowUpRight size={17} className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
-          </span>
-        </button>
+          {!isAdmin ? (
+            <div className="pointer-events-none absolute bottom-3 left-3 rounded-xl border border-white/80 bg-white/92 px-3 py-2 text-xs font-medium text-slate-600 shadow-md backdrop-blur">
+              Vị trí gần đúng
+            </div>
+          ) : null}
+        </div>
       ) : (
         <div className={`flex h-44 items-center justify-center border-y border-dashed px-5 text-center ${isAdmin ? 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/50' : 'border-[var(--public-border)] bg-[var(--public-surface-soft)]'}`}>
           <div>
