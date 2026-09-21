@@ -290,6 +290,20 @@ export const getCommunityFeedDetail = async (incidentId, { signal, force = false
   return request;
 };
 
+export const getCommunityIncidentResolution = async (incidentId, { signal } = {}) => {
+  const normalizedIncidentId = getCommunityCacheKey(incidentId);
+  if (!normalizedIncidentId) return null;
+
+  const response = await fetch(
+    buildApiEndpoint(`/api/public/incidents/${encodeURIComponent(normalizedIncidentId)}/resolution`),
+    { method: 'GET', credentials: 'include', headers: getRequestHeaders(), signal },
+  );
+  const payload = await readPayload(response);
+  if (response.status === 404) return null;
+  if (!response.ok) throw buildRequestError(response, payload, 'Không thể tải kết quả xử lý của sự vụ.');
+  return unwrapData(payload);
+};
+
 export const getCommunityIncidentReports = async (incidentId, { signal } = {}) => {
   const normalizedIncidentId = getCommunityCacheKey(incidentId);
   if (!normalizedIncidentId) return [];

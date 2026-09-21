@@ -104,6 +104,8 @@ export const NotificationCenterPage = () => {
   const groups = useMemo(() => groupNotifications(visibleNotifications), [visibleNotifications]);
   const hasMoreLoaded = visibleCount < filteredNotifications.length;
   const hasMore = hasMoreLoaded || hasNextPage;
+  const hasActiveFilters = activeCategory !== 'all' || showUnreadOnly || searchQuery.trim().length > 0;
+  const refreshing = loading || loadingMore;
 
   const categoryCounts = useMemo(() => {
     const counts = { all: notifications.length, status: 0, rework: 0, resolution: 0, community: 0 };
@@ -127,7 +129,11 @@ export const NotificationCenterPage = () => {
 
   const handleRefresh = async () => {
     setVisibleCount(NOTIFICATIONS_PER_VIEW);
-    await loadAllNotifications({ force: true });
+    try {
+      await loadAllNotifications({ force: true });
+    } catch {
+      // useNotifications stores the user-facing error state.
+    }
   };
 
   const handleLoadMore = async () => {
@@ -138,8 +144,12 @@ export const NotificationCenterPage = () => {
 
     if (hasNextPage) {
       const before = notifications.length;
-      await loadMoreNotifications();
-      setVisibleCount((count) => Math.max(count + NOTIFICATIONS_PER_VIEW, before + NOTIFICATIONS_PER_VIEW));
+      try {
+        await loadMoreNotifications();
+        setVisibleCount((count) => Math.max(count + NOTIFICATIONS_PER_VIEW, before + NOTIFICATIONS_PER_VIEW));
+      } catch {
+        // useNotifications stores the user-facing error state.
+      }
     }
   };
 
@@ -187,8 +197,8 @@ export const NotificationCenterPage = () => {
               <button type="button" onClick={markAllAsRead} disabled={unreadCount === 0} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
                 <Lucide.CheckCheck size={16} /> Đánh dấu tất cả đã đọc
               </button>
-              <button type="button" onClick={handleRefresh} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)] transition hover:bg-blue-700">
-                <Lucide.RefreshCw size={16} /> Làm mới
+              <button type="button" onClick={handleRefresh} disabled={refreshing} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+                <Lucide.RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'Đang làm mới' : 'Làm mới'}
               </button>
             </div>
           </div>
@@ -253,6 +263,16 @@ export const NotificationCenterPage = () => {
             <Lucide.BellRing size={20} className="text-blue-600 dark:text-blue-300" />
           </header>
 
+          {error && notifications.length > 0 ? (
+            <div className="mx-5 mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200" role="status">
+              <Lucide.WifiOff size={17} className="mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">Chưa thể cập nhật thông báo mới nhất</p>
+                <p className="mt-0.5 text-xs leading-5 opacity-80">Dữ liệu đã tải vẫn được giữ lại. Bạn có thể thử làm mới lại sau.</p>
+              </div>
+            </div>
+          ) : null}
+
           <div className="min-h-[260px]">
             {loading && notifications.length === 0 ? (
               <div className="divide-y divide-slate-100 dark:divide-white/10" aria-busy="true" aria-label="Đang tải thông báo">
@@ -273,8 +293,27 @@ export const NotificationCenterPage = () => {
             ) : groups.length === 0 ? (
               <div className="p-12 text-center">
                 <Lucide.BellOff size={30} className="mx-auto text-slate-300" />
-                <h3 className="mt-3 text-base font-semibold text-slate-800 dark:text-white">Không có thông báo phù hợp</h3>
-                <p className="mt-1 text-sm text-slate-500">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.</p>
+                <h3 className="mt-3 text-base font-semibold text-slate-800 dark:text-white">
+                  {notifications.length === 0 ? 'Chưa có thông báo' : 'Không có thông báo phù hợp'}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {notifications.length === 0
+                    ? 'Khi phản ánh hoặc sự vụ bạn theo dõi có cập nhật, thông báo sẽ xuất hiện tại đây.'
+                    : 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.'}
+                </p>
+                {hasActiveFilters && notifications.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveCategory('all');
+                      setShowUnreadOnly(false);
+                      setSearchQuery('');
+                    }}
+                    className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                  >
+                    <Lucide.RotateCcw size={14} /> Xóa bộ lọc
+                  </button>
+                ) : null}
               </div>
             ) : groups.map((group, groupIndex) => (
               <div key={group.label} className={groupIndex > 0 ? 'border-t border-slate-100 dark:border-white/10' : ''}>

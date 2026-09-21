@@ -23,6 +23,7 @@ const getIcon = (notification) => {
   if (text.includes('hoàn') || text.includes('result') || text.includes('resolved')) return Lucide.CircleCheckBig;
   if (text.includes('làm lại') || text.includes('rework') || text.includes('bổ sung')) return Lucide.RotateCcw;
   if (text.includes('comment') || text.includes('bình luận')) return Lucide.MessageCircle;
+  if (text.includes('subscribe') || text.includes('follow') || text.includes('theo dõi')) return Lucide.BellRing;
   return Lucide.RefreshCcw;
 };
 
@@ -30,11 +31,15 @@ export const NotificationBell = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { notifications, unreadCount, totalCount, loading, error, markAsRead, markAllAsRead } = useNotifications(user?.userId);
-  const visibleNotifications = useMemo(() => notifications.slice(0, 5), [notifications]);
+  const visibleNotifications = useMemo(() => [...notifications]
+    .sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0))
+    .slice(0, 5), [notifications]);
 
-  const openNotification = async (notification) => {
+  const openNotification = (notification) => {
     const destination = resolveNotificationDestination(notification, user?.role);
-    await markAsRead(notification?.notificationId);
+    if (notification?.isRead === false && notification?.notificationId) {
+      markAsRead(notification.notificationId).catch(() => {});
+    }
     navigate(destination);
   };
 
@@ -72,7 +77,17 @@ export const NotificationBell = () => {
 
         <div className="p-2">
           {loading && notifications.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-slate-500">Đang tải thông báo...</div>
+            <div className="space-y-1" aria-busy="true" aria-label="Đang tải thông báo">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="flex gap-3 rounded-2xl px-3 py-3">
+                  <div className="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+                  <div className="min-w-0 flex-1">
+                    <div className="h-3.5 w-2/5 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+                    <div className="mt-2 h-3 w-4/5 animate-pulse rounded bg-slate-100 dark:bg-slate-800/70" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : error && notifications.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-rose-600">{error}</div>
           ) : visibleNotifications.length === 0 ? (

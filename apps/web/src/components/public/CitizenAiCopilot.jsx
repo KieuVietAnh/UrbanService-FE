@@ -394,6 +394,9 @@ export const CitizenAiCopilot = () => {
   const [selectedStaffFeedbackId, setSelectedStaffFeedbackId] = useState(() => routeFeedbackId || '');
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [deletingConversationId, setDeletingConversationId] = useState(null);
+  const [deleteConversationTarget, setDeleteConversationTarget] = useState(null);
+  const [conversationActionError, setConversationActionError] = useState('');
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [aiSessionReady, setAiSessionReady] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState(null);
@@ -814,6 +817,73 @@ const selectConversation = async (conversationId) => {
 } finally {
       setMessagesLoading(false);
       setAiSessionReady(true);
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (conversationId == null || deletingConversationId != null) return;
+
+    const conversationKey = String(conversationId);
+    if (pendingAiConversationKeysRef.current.has(conversationKey)) {
+      setConversationActionError('Hội thoại này đang chờ AI trả lời. Vui lòng đợi xong rồi xóa.');
+      return;
+    }
+
+    const conversation = conversations.find((item) => (
+      String(item?.conversationId ?? item?.id) === conversationKey
+    ));
+    setDeleteConversationTarget({
+      conversationId,
+      title: String(conversation?.title || '').trim(),
+    });
+  };
+
+  const confirmDeleteConversation = async () => {
+    const conversationId = deleteConversationTarget?.conversationId;
+    if (conversationId == null || deletingConversationId != null) return;
+
+    const conversationKey = String(conversationId);
+    setDeletingConversationId(conversationId);
+    setConversationActionError('');
+    try {
+      await toolsApi.deleteAiConversation(conversationId);
+      setDeleteConversationTarget(null);
+
+      const remaining = conversations.filter((item) => (
+        String(item?.conversationId ?? item?.id) !== conversationKey
+      ));
+      setConversations(remaining);
+
+      const isActiveConversation = String(activeConversationIdRef.current ?? '') === conversationKey;
+      if (isActiveConversation) {
+        activeConversationIdRef.current = null;
+        setActiveConversationId(null);
+        setNewConversationMode(false);
+        resetDraftFlow();
+        try {
+          window.localStorage.removeItem(activeConversationStorageKey);
+        } catch (error) {
+          console.warn('Unable to clear deleted AI conversation', error);
+        }
+
+        const nextConversation = remaining[0];
+        const nextConversationId = nextConversation?.conversationId ?? nextConversation?.id;
+        if (nextConversationId != null) {
+          await selectConversation(nextConversationId);
+        } else {
+          setAiSessionReady(true);
+          setChatMessages([{
+            sender: 'ai',
+            text: routeFeedbackId
+              ? `Bạn đang chat theo ngữ cảnh phản ánh #${routeFeedbackId}. Hãy nhập câu hỏi cần AI hỗ trợ.`
+              : 'Chưa có hội thoại AI nào. Bạn có thể bắt đầu bằng một câu hỏi mới.',
+          }]);
+        }
+      }
+    } catch (error) {
+      setConversationActionError(error?.message || 'Không thể xóa hội thoại AI.');
+    } finally {
+      setDeletingConversationId(null);
     }
   };
 
@@ -1365,32 +1435,58 @@ const selectConversation = async (conversationId) => {
                     <span className="loading loading-dots loading-xs" />
                   ) : conversations.length > 0 ? conversations.map((conversation) => {
                     const conversationId = conversation.conversationId ?? conversation.id;
+                    const isDeleting = String(deletingConversationId ?? '') === String(conversationId);
+                    const isPending = pendingAiConversationKeys.includes(String(conversationId));
                     return (
-                      <button
+                      <div
                         key={conversationId}
-                        type="button"
-                        onClick={() => selectConversation(conversationId)}
-                        className={`max-w-44 shrink-0 rounded-xl border px-3 py-2 text-left text-[11px] transition ${
+                        className={`group relative max-w-44 shrink-0 rounded-xl border transition ${
                           String(activeConversationId) === String(conversationId)
                             ? 'border-blue-300 bg-blue-50 text-blue-700'
                             : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
                         }`}
                       >
-                        <span className="block truncate font-bold">
-                          {conversation.title || `Hội thoại #${conversationId}`}
-                        </span>
-                        <span className="mt-0.5 block truncate text-slate-400">
-                          {conversation.lastMessage
-                            || (Number(conversation.messageCount) > 0
-                              ? `${conversation.messageCount} tin nhắn`
-                              : 'Hội thoại AI')}
-                        </span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => selectConversation(conversationId)}
+                          className="block w-full rounded-xl py-2 pl-3 pr-9 text-left text-[11px]"
+                        >
+                          <span className="block truncate font-bold">
+                            {conversation.title || `Hội thoại #${conversationId}`}
+                          </span>
+                          <span className="mt-0.5 block truncate text-slate-400">
+                            {conversation.lastMessage
+                              || (Number(conversation.messageCount) > 0
+                                ? `${conversation.messageCount} tin nhắn`
+                                : 'Hội thoại AI')}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteConversation(conversationId);
+                          }}
+                          disabled={isDeleting || isPending}
+                          className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 opacity-70 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                          title={isPending ? 'Đợi AI trả lời xong trước khi xóa' : 'Xóa hội thoại'}
+                          aria-label={`Xóa ${conversation.title || `hội thoại ${conversationId}`}`}
+                        >
+                          {isDeleting
+                            ? <Lucide.LoaderCircle size={13} className="animate-spin" />
+                            : <Lucide.Trash2 size={13} />}
+                        </button>
+                      </div>
                     );
                   }) : (
                     <span className="text-[11px] text-slate-400">Chưa có hội thoại AI cũ.</span>
                   )}
                 </div>
+                {conversationActionError ? (
+                  <p className="mt-2 text-[11px] leading-4 text-red-600 dark:text-red-300">
+                    {conversationActionError}
+                  </p>
+                ) : null}
               </div>
 
               <div
@@ -1595,6 +1691,58 @@ const selectConversation = async (conversationId) => {
           )}
         </div>
       </div>
+
+      {deleteConversationTarget ? (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && deletingConversationId == null) {
+              setDeleteConversationTarget(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-ai-conversation-title"
+            className="w-full max-w-sm rounded-[22px] border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300">
+                <Lucide.Trash2 size={18} aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 id="delete-ai-conversation-title" className="text-base font-bold text-slate-900 dark:text-white">Xóa hội thoại AI?</h3>
+                <p className="mt-1 text-sm leading-5 text-slate-500 dark:text-slate-400">
+                  {deleteConversationTarget.title
+                    ? <>Hội thoại <span className="font-semibold text-slate-700 dark:text-slate-200">“{deleteConversationTarget.title}”</span> và toàn bộ tin nhắn bên trong sẽ bị xóa.</>
+                    : 'Hội thoại này và toàn bộ tin nhắn bên trong sẽ bị xóa.'}
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConversationTarget(null)}
+                disabled={deletingConversationId != null}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteConversation}
+                disabled={deletingConversationId != null}
+                className="inline-flex h-10 min-w-24 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+              >
+                {deletingConversationId != null ? <Lucide.LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Lucide.Trash2 size={15} aria-hidden="true" />}
+                Xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 };

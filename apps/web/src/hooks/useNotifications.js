@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import * as signalR from '@microsoft/signalr';
 import { notificationApi } from '../services/api/notificationApi';
-import { signalrService } from '../services/socket/signalrService';
+import { buildHubUrl, getSignalRAccessToken } from '../utils/signalRAccessToken';
 import { buildRemainingNotificationPages, mergeNotificationPage, readNotificationTotal } from './notificationStoreUtils';
 
 const CACHE_TTL = 60_000;
 const DEFAULT_PAGE_SIZE = 50;
 const stores = new Map();
+const realtimeSubscriptions = new Map();
+const realtimeRefreshTimers = new Map();
 
 const createStore = () => ({
   notifications: [],
@@ -68,6 +71,76 @@ const applyItems = (store, response, { append = false, unreadTotal } = {}) => {
   store.lastFetchedAt = Date.now();
 };
 
+
+const normalizeRealtimeNotification = (payload) => {
+  const candidates = [payload, payload?.notification, payload?.data, payload?.payload];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const notificationId = Number(candidate.notificationId ?? candidate.NotificationId);
+    if (!Number.isInteger(notificationId) || notificationId <= 0) continue;
+    return {
+      ...candidate,
+      notificationId,
+      title: candidate.title ?? candidate.Title ?? null,
+      message: candidate.message ?? candidate.Message ?? null,
+      type: candidate.type ?? candidate.Type ?? null,
+      isRead: Boolean(candidate.isRead ?? candidate.IsRead ?? false),
+      targetUrl: candidate.targetUrl ?? candidate.TargetUrl ?? null,
+      incidentId: candidate.incidentId ?? candidate.IncidentId ?? null,
+      feedbackId: candidate.feedbackId ?? candidate.FeedbackId ?? null,
+      targetType: candidate.targetType ?? candidate.TargetType ?? null,
+      targetId: candidate.targetId ?? candidate.TargetId ?? null,
+      createdAt: candidate.createdAt ?? candidate.CreatedAt ?? new Date().toISOString(),
+    };
+  }
+  return null;
+};
+
+const upsertRealtimeNotification = (store, notification) => {
+  if (!notification?.notificationId) return false;
+
+  const existingIndex = store.notifications.findIndex(
+    (item) => Number(item?.notificationId) === Number(notification.notificationId),
+  );
+  const existing = existingIndex >= 0 ? store.notifications[existingIndex] : null;
+  const merged = existing ? { ...existing, ...notification } : notification;
+
+  if (existingIndex >= 0) {
+    store.notifications = store.notifications.map((item, index) => (
+      index === existingIndex ? merged : item
+    ));
+  } else {
+    store.notifications = [merged, ...store.notifications];
+    store.totalCount += 1;
+  }
+
+  const wasUnread = existing?.isRead === false;
+  const isUnread = merged?.isRead === false;
+  if (!existing && isUnread) store.unreadCount += 1;
+  else if (existing && !wasUnread && isUnread) store.unreadCount += 1;
+  else if (existing && wasUnread && !isUnread) store.unreadCount = Math.max(0, store.unreadCount - 1);
+
+  store.notifications = [...store.notifications].sort(
+    (a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0),
+  );
+  store.initialized = true;
+  store.lastFetchedAt = Date.now();
+  store.error = '';
+  emit(store);
+  return true;
+};
+
+const scheduleRealtimeRefresh = (userId) => {
+  if (!userId) return;
+  const currentTimer = realtimeRefreshTimers.get(userId);
+  if (currentTimer) window.clearTimeout(currentTimer);
+  const timer = window.setTimeout(() => {
+    realtimeRefreshTimers.delete(userId);
+    fetchNotifications(userId, {}, { force: true }).catch(() => {});
+  }, 450);
+  realtimeRefreshTimers.set(userId, timer);
+};
+
 const fetchNotifications = async (
   userId,
   options = {},
@@ -128,6 +201,62 @@ const fetchNotifications = async (
   return store.request;
 };
 
+
+const retainNotificationRealtime = (userId) => {
+  if (!userId || typeof window === 'undefined') return () => {};
+
+  let entry = realtimeSubscriptions.get(userId);
+  if (!entry) {
+    const accessToken = getSignalRAccessToken();
+    if (!accessToken) return () => {};
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(buildHubUrl('/hubs/notifications'), {
+        accessTokenFactory: () => getSignalRAccessToken(),
+      })
+      .withAutomaticReconnect()
+      .configureLogging(signalR.LogLevel.Warning)
+      .build();
+
+    const handleNotification = (payload) => {
+      const store = getStore(userId);
+      const notification = normalizeRealtimeNotification(payload);
+      if (notification) upsertRealtimeNotification(store, notification);
+      // Reconcile with BE shortly after the event. This keeps paging totals and
+      // unread counts authoritative without making the bell wait for another GET.
+      scheduleRealtimeRefresh(userId);
+    };
+
+    connection.on('NotificationReceived', handleNotification);
+    connection.onreconnected(() => {
+      fetchNotifications(userId, {}, { force: true }).catch(() => {});
+    });
+
+    connection.start().catch((error) => {
+      console.warn('Không thể kết nối notification SignalR.', error);
+    });
+
+    entry = { listeners: 0, connection, handleNotification };
+    realtimeSubscriptions.set(userId, entry);
+  }
+
+  entry.listeners += 1;
+
+  return () => {
+    const current = realtimeSubscriptions.get(userId);
+    if (!current) return;
+    current.listeners -= 1;
+    if (current.listeners > 0) return;
+
+    current.connection.off('NotificationReceived', current.handleNotification);
+    current.connection.stop().catch(() => {});
+    realtimeSubscriptions.delete(userId);
+
+    const timer = realtimeRefreshTimers.get(userId);
+    if (timer) window.clearTimeout(timer);
+    realtimeRefreshTimers.delete(userId);
+  };
+};
 
 const fetchAllNotifications = async (userId, { force = false } = {}) => {
   const store = getStore(userId);
@@ -292,17 +421,7 @@ export function useNotifications(userId) {
     fetchNotifications(userId).catch(() => {});
   }, [userId]);
 
-  useEffect(() => {
-    if (!userId) return undefined;
-
-    signalrService.start();
-    const handleNotification = () => {
-      fetchNotifications(userId, {}, { force: true }).catch(() => {});
-    };
-
-    signalrService.on('NotificationReceived', handleNotification);
-    return () => signalrService.off('NotificationReceived', handleNotification);
-  }, [userId]);
+  useEffect(() => retainNotificationRealtime(userId), [userId]);
 
   return {
     notifications: state.notifications,

@@ -10,6 +10,7 @@ import SupportButton from '../../components/community/SupportButton.jsx';
 import {
   getCommunityFeedDetail,
   getCommunityIncidentReports,
+  getCommunityIncidentResolution,
   getCommunityIncidentComments,
   setCommunityIncidentSubscription,
   postCommunityIncidentComment,
@@ -116,6 +117,34 @@ const getReportMedia = (report) => (
       video: isVideo(attachment),
     }))
     .filter((item) => Boolean(item.url))
+);
+
+const getResolutionDocumentUrl = (document) => String(
+  getAttachmentUrl(document) || document?.fileUrl || document?.url || ''
+).trim();
+
+const getResolutionDocumentKind = (document) => {
+  const url = getResolutionDocumentUrl(document).split('?')[0].toLowerCase();
+  const fileType = String(document?.fileType || document?.mimeType || document?.contentType || '').toLowerCase();
+  if (fileType.startsWith('video/') || ['.mp4', '.webm', '.mov', '.m4v', '.ogg'].some((ext) => url.endsWith(ext))) return 'video';
+  if (fileType.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif', '.bmp'].some((ext) => url.endsWith(ext))) return 'image';
+  return 'file';
+};
+
+const getResolutionMedia = (resolution) => (
+  (Array.isArray(resolution?.completionDocuments) ? resolution.completionDocuments : [])
+    .map((document) => {
+      const url = getResolutionDocumentUrl(document);
+      const kind = getResolutionDocumentKind(document);
+      return { attachment: document, url, video: kind === 'video', kind };
+    })
+    .filter((item) => item.url && item.kind !== 'file')
+);
+
+const getResolutionFiles = (resolution) => (
+  (Array.isArray(resolution?.completionDocuments) ? resolution.completionDocuments : [])
+    .map((document) => ({ document, url: getResolutionDocumentUrl(document), kind: getResolutionDocumentKind(document) }))
+    .filter((item) => item.url && item.kind === 'file')
 );
 
 const hasCoordinate = (value, min, max) => {
@@ -248,10 +277,13 @@ export const CommunityFeedbackDetailPage = () => {
 
   const [incident, setIncident] = useState(null);
   const [reports, setReports] = useState([]);
+  const [resolution, setResolution] = useState(null);
   const [loading, setLoading] = useState(true);
   const [reportsLoading, setReportsLoading] = useState(true);
+  const [resolutionLoading, setResolutionLoading] = useState(true);
   const [error, setError] = useState('');
   const [reportsError, setReportsError] = useState('');
+  const [resolutionError, setResolutionError] = useState('');
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [subscriptionError, setSubscriptionError] = useState('');
   const [viewer, setViewer] = useState(null);
@@ -268,8 +300,10 @@ export const CommunityFeedbackDetailPage = () => {
     const run = () => {
       setLoading(true);
       setReportsLoading(true);
+      setResolutionLoading(true);
       setError('');
       setReportsError('');
+      setResolutionError('');
 
       getCommunityFeedDetail(incidentId, { signal: controller.signal })
         .then((detail) => {
@@ -283,6 +317,20 @@ export const CommunityFeedbackDetailPage = () => {
         })
         .finally(() => {
           if (active) setLoading(false);
+        });
+
+      getCommunityIncidentResolution(incidentId, { signal: controller.signal })
+        .then((result) => {
+          if (!active) return;
+          setResolution(result || null);
+        })
+        .catch((loadError) => {
+          if (!active || controller.signal.aborted) return;
+          setResolution(null);
+          setResolutionError(loadError?.message || 'Chưa thể tải kết quả xử lý công khai.');
+        })
+        .finally(() => {
+          if (active) setResolutionLoading(false);
         });
 
       getCommunityIncidentComments(incidentId, {
@@ -321,6 +369,7 @@ export const CommunityFeedbackDetailPage = () => {
       setError('Định danh sự vụ không hợp lệ.');
       setLoading(false);
       setReportsLoading(false);
+      setResolutionLoading(false);
     }
 
     return () => {
@@ -381,6 +430,12 @@ export const CommunityFeedbackDetailPage = () => {
       return true;
     });
   }, [reports]);
+
+  const resolutionMedia = useMemo(() => getResolutionMedia(resolution), [resolution]);
+  const resolutionFiles = useMemo(() => getResolutionFiles(resolution), [resolution]);
+  const showResolutionSection = Boolean(
+    resolutionLoading || resolution || resolutionError
+  ) && ['approved', 'resolved', 'closed'].includes(statusKey);
 
   const backDestination = location.state?.from || '/community/feed';
   const backLabel = backDestination === '/community/map' ? 'Quay lại bản đồ' : 'Quay lại bảng tin';
@@ -572,10 +627,10 @@ export const CommunityFeedbackDetailPage = () => {
                     type="button"
                     onClick={handleSubscription}
                     disabled={subscriptionBusy}
-                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition-all ${
                       incident?.isSubscribedByCurrentUser
-                        ? 'border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-900 dark:text-blue-300'
-                        : 'bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700'
+                        ? 'border-blue-600 bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.28)] hover:border-blue-700 hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-500 dark:text-white dark:hover:bg-blue-400'
+                        : 'border-blue-200 bg-white text-blue-700 shadow-sm hover:border-blue-300 hover:bg-blue-50 dark:border-blue-500/30 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-500/10'
                     } disabled:cursor-wait disabled:opacity-60`}
                   >
                     {subscriptionBusy ? <Lucide.LoaderCircle size={16} className="animate-spin" /> : <Lucide.Bell size={16} />}
@@ -693,6 +748,143 @@ export const CommunityFeedbackDetailPage = () => {
                 </div>
               )}
             </section>
+
+            {showResolutionSection ? (
+              <section className="rounded-[28px] border border-emerald-100 bg-white px-5 py-5 shadow-[0_18px_48px_rgba(15,23,42,0.055)] dark:border-emerald-500/15 dark:bg-slate-900 sm:px-7 sm:py-6" aria-labelledby="incident-resolution-title">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-emerald-100 pb-4 dark:border-slate-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        <Lucide.CircleCheckBig size={18} />
+                      </span>
+                      <div>
+                        <h2 id="incident-resolution-title" className="text-xl font-bold">Kết quả xử lý</h2>
+                        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Kết quả đã được phê duyệt và công khai cho sự vụ này.</p>
+                      </div>
+                    </div>
+                  </div>
+                  {resolution?.resolvedAt ? (
+                    <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                      Hoàn tất {formatDateTime(resolution.resolvedAt)}
+                    </span>
+                  ) : null}
+                </div>
+
+                {resolutionLoading ? (
+                  <div className="mt-5 space-y-3" aria-busy="true">
+                    <div className="h-20 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
+                    <div className="h-48 animate-pulse rounded-[20px] bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                ) : resolutionError ? (
+                  <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                    {resolutionError}
+                  </div>
+                ) : resolution ? (
+                  <div className="mt-5 space-y-5">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/55 px-4 py-3 dark:border-emerald-500/15 dark:bg-emerald-500/5">
+                        <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                          <Lucide.BadgeCheck size={15} aria-hidden="true" />
+                          <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Trạng thái</span>
+                        </div>
+                        <p className="mt-1.5 text-sm font-bold text-slate-800 dark:text-slate-100">Đã hoàn tất xử lý</p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/30">
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <Lucide.Clock3 size={15} aria-hidden="true" />
+                          <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Hoàn tất lúc</span>
+                        </div>
+                        <p className="mt-1.5 text-sm font-bold text-slate-800 dark:text-slate-100">{resolution?.resolvedAt ? formatDateTime(resolution.resolvedAt) : 'Chưa cập nhật'}</p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/30">
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <Lucide.Files size={15} aria-hidden="true" />
+                          <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Minh chứng</span>
+                        </div>
+                        <p className="mt-1.5 text-sm font-bold text-slate-800 dark:text-slate-100">{resolutionMedia.length + resolutionFiles.length} tệp công khai</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.035)] dark:border-slate-800 dark:bg-slate-950/25">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
+                            <Lucide.ClipboardCheck size={16} aria-hidden="true" />
+                          </span>
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Kết quả cuối cùng</p>
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-slate-600 dark:text-slate-300">
+                          {resolution.resolutionSummary || 'Đơn vị xử lý đã xác nhận hoàn tất sự vụ.'}
+                        </p>
+                      </div>
+                      <div className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.035)] dark:border-slate-800 dark:bg-slate-950/25">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300">
+                            <Lucide.Wrench size={16} aria-hidden="true" />
+                          </span>
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Biện pháp đã thực hiện</p>
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-slate-600 dark:text-slate-300">
+                          {resolution.actionTaken || 'Đơn vị xử lý chưa công khai mô tả chi tiết biện pháp đã thực hiện.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {resolutionMedia.length > 0 ? (
+                      <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-3.5 dark:border-slate-800 dark:bg-slate-950/35">
+                        <div className="flex items-center justify-between gap-3 px-1 pb-1">
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Minh chứng sau xử lý</h3>
+                            <p className="mt-0.5 text-xs text-slate-400">Bấm vào ảnh để xem lớn; video có thể phát trực tiếp.</p>
+                          </div>
+                          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">{resolutionMedia.length} tệp</span>
+                        </div>
+                        <ReportMediaGallery mediaItems={resolutionMedia} onOpen={(items, index) => setViewer({ items, index })} />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/55 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/25 dark:text-slate-400">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm dark:bg-slate-900">
+                          <Lucide.ImageOff size={17} aria-hidden="true" />
+                        </span>
+                        <div>
+                          <p className="font-semibold text-slate-700 dark:text-slate-200">Chưa có ảnh hoặc video sau xử lý</p>
+                          <p className="mt-0.5 text-xs leading-5">Kết quả vẫn được công khai theo nội dung đã phê duyệt ở phía trên.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {resolutionFiles.length > 0 ? (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Tài liệu hoàn thành</p>
+                          <span className="text-xs text-slate-400">{resolutionFiles.length} tệp</span>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {resolutionFiles.map(({ document, url }, index) => (
+                            <a
+                              key={`${url}-${index}`}
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-600 transition hover:border-blue-200 hover:bg-blue-50/35 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-300"
+                            >
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition group-hover:bg-white group-hover:text-blue-600 dark:bg-slate-800">
+                                <Lucide.FileText size={16} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-semibold">{document?.description || `Tài liệu hoàn thành ${index + 1}`}</span>
+                                <span className="mt-0.5 block text-[11px] text-slate-400">Mở tài liệu trong tab mới</span>
+                              </span>
+                              <Lucide.ExternalLink size={14} className="shrink-0" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
 
             <section id="incident-community-comments" className="scroll-mt-28 rounded-[28px] border border-slate-200/90 bg-white px-5 py-5 shadow-[0_18px_48px_rgba(15,23,42,0.055)] dark:border-slate-800 dark:bg-slate-900 sm:px-7 sm:py-6" aria-labelledby="incident-community-comments-title">
               <div className="flex flex-wrap items-start justify-between gap-3">
