@@ -5,37 +5,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import * as Lucide from 'lucide-react';
+import { getRoleEntryPath } from '../../utils/roleMap';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 const OTP_VALIDITY_MINUTES = 5;
 const REGISTER_DRAFT_STORAGE_KEY = 'urbanmind:registration-draft';
-
-const normalizeRole = (role) => {
-  const normalized = String(role || '').trim().toLowerCase();
-  if (normalized === 'serviceuser' || normalized === 'service-user') return 'service-user';
-  if (normalized === 'systemstaff' || normalized === 'system-staff') return 'system-staff';
-  if (
-    normalized === 'serviceprovider' ||
-    normalized === 'service-provider' ||
-    normalized === 'serviceoperator' ||
-    normalized === 'service-operator'
-  ) return 'service-provider';
-  if (normalized === 'interactionmanager' || normalized === 'interaction-manager') return 'interaction-manager';
-  if (normalized === 'systemadmin' || normalized === 'admin' || normalized === 'administrator') return 'administrator';
-  return normalized;
-};
-
-const getRoleDashboard = (role) => {
-  const roleMap = {
-    'service-user': '/dashboard',
-    'system-staff': '/dashboard',
-    'service-provider': '/provider/tasks',
-    'interaction-manager': '/manager/interactions',
-    administrator: '/admin/audit',
-  };
-  return roleMap[normalizeRole(role)] || '/dashboard';
-};
 
 const normalizeForMatch = (value) => String(value || '')
   .normalize('NFD')
@@ -239,7 +214,7 @@ export const VerifyEmailPage = () => {
     }
 
     if (user.isVerified && !verificationHandledRef.current) {
-      navigate(getRoleDashboard(user.role), { replace: true });
+      navigate(getRoleEntryPath(user.role), { replace: true });
     }
   }, [navigate, user]);
 
@@ -422,7 +397,7 @@ export const VerifyEmailPage = () => {
 
       const verifiedUser = result?.user || { ...user, isVerified: true };
       redirectTimerRef.current = window.setTimeout(() => {
-        navigate(getRoleDashboard(verifiedUser?.role || user?.role), { replace: true });
+        navigate(getRoleEntryPath(verifiedUser?.role || user?.role), { replace: true });
       }, 900);
     } catch (verifyError) {
       verificationHandledRef.current = false;
@@ -498,7 +473,7 @@ export const VerifyEmailPage = () => {
             className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 transition hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:text-blue-300 dark:hover:text-blue-200"
           >
             <Lucide.PencilLine size={14} aria-hidden="true" />
-            Sửa email hoặc thông tin đăng ký
+            Sửa thông tin đăng ký
           </button>
         </header>
 
@@ -591,8 +566,24 @@ export const VerifyEmailPage = () => {
                     autoComplete={index === 0 ? 'one-time-code' : 'off'}
                     maxLength={1}
                     value={digit}
+                    onBeforeInput={(event) => {
+                      if (event.data && !/^[0-9]$/.test(event.data)) {
+                        event.preventDefault();
+                      }
+                    }}
                     onChange={(event) => handleOtpChange(index, event.target.value)}
-                    onKeyDown={(event) => handleOtpKeyDown(index, event)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key.length === 1 &&
+                        !/^[0-9]$/.test(event.key) &&
+                        !event.ctrlKey &&
+                        !event.metaKey
+                      ) {
+                        event.preventDefault();
+                        return;
+                      }
+                      handleOtpKeyDown(index, event);
+                    }}
                     aria-label={`Chữ số OTP thứ ${index + 1}`}
                     className="h-12 min-w-0 rounded-xl border border-slate-300 bg-white text-center text-lg font-bold text-slate-900 outline-none transition hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 sm:h-14 sm:rounded-2xl sm:text-xl dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:hover:border-slate-600"
                   />

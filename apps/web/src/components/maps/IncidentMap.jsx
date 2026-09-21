@@ -15,8 +15,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 import ConfiguredMapTileLayer from './ConfiguredMapTileLayer';
-import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
-import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
+import { createIncidentMarkerIcon, getGroupedIncidentMarkerStatus } from './incidentMarkerIcon';
 
 
 const STATUS_LABELS = {
@@ -85,14 +84,6 @@ const translateCategory = (value) => {
 
 const DEFAULT_CENTER = [10.776530, 106.700981];
 const DEFAULT_ZOOM = 12;
-
-const defaultIcon = new L.Icon({
-  iconUrl: markerIconUrl,
-  shadowUrl: markerShadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-});
 
 const isValidCoordinate = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 const isValidLocation = (latitude, longitude) => isValidCoordinate(latitude, -90, 90) && isValidCoordinate(longitude, -180, 180);
@@ -226,11 +217,20 @@ const IncidentMarker = ({ marker, focusFeedbackId, openFeedbackDetail, entityLab
     return () => map.off('focusedincidentready', openFocusedPopup);
   }, [containsFocusedFeedback, focusFeedbackId, map]);
 
+  const markerStatus = getGroupedIncidentMarkerStatus(marker.tickets);
+  const markerIcon = useMemo(
+    () => createIncidentMarkerIcon(markerStatus, {
+      count: marker.tickets.length,
+      focused: containsFocusedFeedback,
+    }),
+    [containsFocusedFeedback, marker.tickets.length, markerStatus]
+  );
+
   return (
     <Marker
       ref={markerRef}
       position={[marker.latitude, marker.longitude]}
-      icon={defaultIcon}
+      icon={markerIcon}
       eventHandlers={{
         click: (event) => {
           event.target.openPopup();

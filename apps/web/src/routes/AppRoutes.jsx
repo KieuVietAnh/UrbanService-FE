@@ -8,7 +8,7 @@ import { RoleGuard } from '../guards/RoleGuard';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import PublicLayout from '../components/public/PublicLayout';
 import LoadingSkeleton from '../components/design-system/LoadingSkeleton';
-import { normalizeRole } from '../utils/roleMap';
+import { getRoleEntryPath, normalizeRole } from '../utils/roleMap';
 import { getSystemStaffLegacyRouteRedirect } from '../roles/system-staff/permissions';
 
 const LandingPage = lazy(() => import('../pages/LandingPage').then((m) => ({ default: m.LandingPage })));
@@ -153,13 +153,6 @@ const LoginRoute = ({ isAuthenticated, fallbackPath }) => {
   return <Navigate to={redirect} replace />;
 };
 
-const roleEntryPaths = {
-  [APP_ROLES.SERVICE_USER]: '/',
-  [APP_ROLES.SYSTEM_STAFF]: '/dashboard',
-  [APP_ROLES.SERVICE_PROVIDER]: '/provider/tasks',
-  [APP_ROLES.INTERACTION_MANAGER]: '/manager/interactions',
-  [APP_ROLES.ADMINISTRATOR]: '/dashboard',
-};
 
 const SystemStaffLegacyRouteRedirect = () => {
   const { pathname } = useLocation();
@@ -171,7 +164,7 @@ const SystemStaffLegacyRouteRedirect = () => {
 export const AppRoutes = () => {
   const { isAuthenticated, user } = useAuth();
   const currentRole = normalizeRole(user?.role);
-  const roleEntryPath = roleEntryPaths[currentRole] || '/dashboard';
+  const roleEntryPath = getRoleEntryPath(currentRole);
   const authRedirect = user?.isVerified ? roleEntryPath : '/verify-email';
   const isCitizen = currentRole === APP_ROLES.SERVICE_USER;
   const renderCommunityPage = (page) => (

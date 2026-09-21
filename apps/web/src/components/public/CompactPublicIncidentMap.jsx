@@ -6,60 +6,15 @@ import {
   Popup,
   useMap,
 } from 'react-leaflet';
-import L from 'leaflet';
 import * as Lucide from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
 import ConfiguredMapTileLayer from '../maps/ConfiguredMapTileLayer';
 import { useTheme } from '../../contexts/ThemeContext';
+import { createIncidentMarkerIcon } from '../maps/incidentMarkerIcon';
 
 const DEFAULT_CENTER = [10.77653, 106.700981];
 const DEFAULT_ZOOM = 12;
-
-const normalizeStatus = (value) => String(value || '')
-  .trim()
-  .replace(/[^a-zA-Z0-9]/g, '')
-  .toLocaleLowerCase('en-US');
-
-const getMarkerColor = (status) => {
-  const normalizedStatus = normalizeStatus(status);
-
-  if (['resolved', 'approved', 'closed'].includes(normalizedStatus)) {
-    return '#10b981';
-  }
-
-  if (normalizedStatus === 'needrework') {
-    return '#f43f5e';
-  }
-
-  return '#2563eb';
-};
-
-const createMarkerIcon = (status) => {
-  const color = getMarkerColor(status);
-
-  return L.divIcon({
-    className: '',
-    html: `
-      <span style="
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        width:32px;
-        height:32px;
-        border-radius:999px;
-        border:3px solid rgba(255,255,255,.96);
-        background:${color};
-        box-shadow:0 8px 20px rgba(15,23,42,.25),0 0 0 6px ${color}22;
-      ">
-        <span style="display:block;width:8px;height:8px;border-radius:999px;background:#fff"></span>
-      </span>
-    `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -17],
-  });
-};
 
 const getIncidentId = (item) => (
   item?.incidentId || item?.id || item?.feedbackId || item?.ticketId || ''
@@ -281,7 +236,7 @@ const CompactPublicIncidentMap = ({
             <Marker
               key={incident.incidentId || `${incident.latitude}:${incident.longitude}`}
               position={[incident.latitude, incident.longitude]}
-              icon={createMarkerIcon(incident.status)}
+              icon={createIncidentMarkerIcon(incident.status, { size: 32 })}
               interactive={interactive}
             >
               {showPopup && interactive ? (

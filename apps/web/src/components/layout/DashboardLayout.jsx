@@ -64,7 +64,35 @@ export const DashboardLayout = ({ children }) => {
       }
     }
 
+    let userInteracted = false;
+    let frameId = null;
+    const timerIds = [];
+
+    const cancelPendingScrollCorrections = () => {
+      if (userInteracted) return;
+      userInteracted = true;
+
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      timerIds.forEach((timerId) => {
+        window.clearTimeout(timerId);
+      });
+    };
+
+    const handleNavigationKey = (event) => {
+      if (
+        ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']
+          .includes(event.key)
+      ) {
+        cancelPendingScrollCorrections();
+      }
+    };
+
     const scrollToTop = () => {
+      if (userInteracted) return;
+
       scrollContainer.scrollTo({
         top: 0,
         left: 0,
@@ -73,7 +101,11 @@ export const DashboardLayout = ({ children }) => {
     };
 
     const scrollToTarget = () => {
+      if (userInteracted) return;
+
       if (!targetId) {
+        // Route navigation only needs to establish the initial top position.
+        // Never pull the user back after they start interacting with the page.
         scrollToTop();
         return;
       }
@@ -101,25 +133,38 @@ export const DashboardLayout = ({ children }) => {
       });
     };
 
-    // Reset ngay, sau đó chạy lại sau transition để tránh giữ scroll của route cũ.
+    // Reset immediately. Delayed corrections are only allowed while the user has
+    // not started scrolling/clicking/typing navigation keys on the new page.
     scrollToTop();
 
-    const frameId = window.requestAnimationFrame(scrollToTarget);
+    scrollContainer.addEventListener('wheel', cancelPendingScrollCorrections, { passive: true });
+    scrollContainer.addEventListener('touchstart', cancelPendingScrollCorrections, { passive: true });
+    scrollContainer.addEventListener('pointerdown', cancelPendingScrollCorrections, { passive: true });
+    scrollContainer.addEventListener('keydown', handleNavigationKey);
 
-    const timerIds = [120, 280, 520].map((delay) =>
-      window.setTimeout(scrollToTarget, delay)
-    );
+    frameId = window.requestAnimationFrame(scrollToTarget);
+
+    [120, 280, 520].forEach((delay) => {
+      timerIds.push(window.setTimeout(scrollToTarget, delay));
+    });
 
     return () => {
-      window.cancelAnimationFrame(frameId);
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
 
       timerIds.forEach((timerId) => {
         window.clearTimeout(timerId);
       });
+
+      scrollContainer.removeEventListener('wheel', cancelPendingScrollCorrections);
+      scrollContainer.removeEventListener('touchstart', cancelPendingScrollCorrections);
+      scrollContainer.removeEventListener('pointerdown', cancelPendingScrollCorrections);
+      scrollContainer.removeEventListener('keydown', handleNavigationKey);
     };
   }, [
     location.hash,
-    location.key,
+    location.pathname,
     location.state?.restoreFeedbackId,
     location.state?.restoreTicketId,
     location.state?.restoreCoordinatorList,

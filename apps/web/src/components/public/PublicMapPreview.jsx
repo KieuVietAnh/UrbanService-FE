@@ -7,12 +7,12 @@ import {
   Popup,
   useMap,
 } from 'react-leaflet';
-import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 import ConfiguredMapTileLayer from '../maps/ConfiguredMapTileLayer';
 import { useIncidentMapData } from '../../hooks/useIncidentMapData';
 import { useTheme } from '../../contexts/ThemeContext';
+import { createIncidentMarkerIcon, getGroupedIncidentMarkerStatus } from '../maps/incidentMarkerIcon';
 
 const DEFAULT_CENTER = [10.77653, 106.700981];
 const DEFAULT_ZOOM = 12;
@@ -61,48 +61,7 @@ const normalizeStatus = (value) => String(value || '')
 
 const getStatusLabel = (value) => STATUS_LABELS[normalizeStatus(value)] || value || 'Đang cập nhật';
 
-const getStatusTone = (value) => {
-  const status = normalizeStatus(value);
-  if (ENDED_STATUSES.has(status)) return 'ended';
-  if (status === 'needrework') return 'rework';
-  return 'processing';
-};
-
-const getMarkerColor = (value) => {
-  const tone = getStatusTone(value);
-  if (tone === 'ended') return '#10b981';
-  if (tone === 'rework') return '#f43f5e';
-  return '#2563eb';
-};
-
 const getIncidentDetailState = () => ({});
-
-const createMarkerIcon = (status, count = 1) => {
-  const color = getMarkerColor(status);
-  const label = count > 1 ? String(count) : '';
-
-  return L.divIcon({
-    className: '',
-    html: `
-      <span style="
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        width:34px;
-        height:34px;
-        border-radius:999px;
-        border:3px solid rgba(255,255,255,.96);
-        background:${color};
-        color:#fff;
-        font:700 11px/1 Inter,Segoe UI,sans-serif;
-        box-shadow:0 8px 20px rgba(15,23,42,.28),0 0 0 7px ${color}24;
-      ">${label || '<span style="width:8px;height:8px;border-radius:999px;background:#fff;display:block"></span>'}</span>
-    `,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-    popupAnchor: [0, -18],
-  });
-};
 
 const groupIncidents = (incidents) => {
   const groups = new Map();
@@ -366,7 +325,7 @@ export const PublicMapPreview = ({ compact = false }) => {
                     <Marker
                       key={`${group.latitude}:${group.longitude}`}
                       position={[group.latitude, group.longitude]}
-                      icon={createMarkerIcon(primaryIncident.status, group.items.length)}
+                      icon={createIncidentMarkerIcon(getGroupedIncidentMarkerStatus(group.items), { count: group.items.length })}
                     >
                       <Popup minWidth={220} maxWidth={270}>
                         <div className="space-y-2 font-sans">
@@ -569,7 +528,7 @@ export const PublicMapPreview = ({ compact = false }) => {
                 <Marker
                   key={`${group.latitude}:${group.longitude}`}
                   position={[group.latitude, group.longitude]}
-                  icon={createMarkerIcon(primaryIncident.status, group.items.length)}
+                  icon={createIncidentMarkerIcon(getGroupedIncidentMarkerStatus(group.items), { count: group.items.length })}
                 >
                   <Popup minWidth={245} maxWidth={300}>
                     <div className="space-y-3 font-sans">
