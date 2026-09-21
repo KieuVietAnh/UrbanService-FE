@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Lucide from 'lucide-react';
 import { extractApiErrorMessage, toolsApi, userAreaAlertApi } from '@urbanmind/shared-api';
+import { ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 
 const PAGE_SIZE = 8;
 
@@ -20,20 +21,142 @@ const formatDateTime = (value) => {
 
 const severityMeta = (severity) => {
   const value = String(severity || '').toLowerCase();
+
   if (['critical', 'urgent', 'severe'].includes(value)) {
-    return { label: severity || 'Nghiêm trọng', className: 'border-rose-200 bg-rose-50 text-rose-700' };
+    return {
+      label: 'Nghiêm trọng',
+      icon: Lucide.Siren,
+      borderClass: 'border-rose-200',
+      chipClass: 'border-rose-200 bg-rose-50 text-rose-700',
+      iconClass: 'bg-rose-50 text-rose-600',
+    };
   }
+
   if (['high', 'warning'].includes(value)) {
-    return { label: severity || 'Cao', className: 'border-amber-200 bg-amber-50 text-amber-700' };
+    return {
+      label: 'Cần chú ý',
+      icon: Lucide.TriangleAlert,
+      borderClass: 'border-amber-200',
+      chipClass: 'border-amber-200 bg-amber-50 text-amber-700',
+      iconClass: 'bg-amber-50 text-amber-600',
+    };
   }
+
   if (['low', 'info', 'informational'].includes(value)) {
-    return { label: severity || 'Thông tin', className: 'border-sky-200 bg-sky-50 text-sky-700' };
+    return {
+      label: 'Thông tin',
+      icon: Lucide.Info,
+      borderClass: 'border-sky-200',
+      chipClass: 'border-sky-200 bg-sky-50 text-sky-700',
+      iconClass: 'bg-sky-50 text-sky-600',
+    };
   }
-  return { label: severity || 'Trung bình', className: 'border-blue-200 bg-blue-50 text-blue-700' };
+
+  return {
+    label: 'Cảnh báo',
+    icon: Lucide.BellRing,
+    borderClass: 'border-blue-200',
+    chipClass: 'border-blue-200 bg-blue-50 text-blue-700',
+    iconClass: 'bg-blue-50 text-blue-600',
+  };
 };
 
 const getAreaId = (area) => area?.areaId ?? area?.id ?? area?.areaID;
 const getAreaName = (area) => area?.areaName ?? area?.name ?? `Khu vực ${getAreaId(area) ?? ''}`;
+
+const getAlertIdentity = (alert) => (
+  alert?.areaAlertId ??
+  alert?.alertId ??
+  alert?.id ??
+  null
+);
+
+const getAlertFingerprint = (alert) => [
+  String(alert?.title || '').trim().toLocaleLowerCase('vi-VN'),
+  String(alert?.message || '').trim().toLocaleLowerCase('vi-VN'),
+  String(alert?.areaId ?? '').trim(),
+  String(alert?.areaName || '').trim().toLocaleLowerCase('vi-VN'),
+  String(alert?.startAt || alert?.createdAt || '').trim(),
+  normalizeToken(alert?.status),
+  normalizeToken(alert?.alertType),
+].join('|');
+
+const dedupeAlerts = (items) => {
+  const seenIds = new Set();
+  const seenFingerprints = new Set();
+
+  return items.filter((alert) => {
+    const id = getAlertIdentity(alert);
+    if (id != null && id !== '') {
+      const key = String(id);
+      if (seenIds.has(key)) return false;
+      seenIds.add(key);
+    }
+
+    const fingerprint = getAlertFingerprint(alert);
+    if (fingerprint.replace(/\|/g, '')) {
+      if (seenFingerprints.has(fingerprint)) return false;
+      seenFingerprints.add(fingerprint);
+    }
+
+    return true;
+  });
+};
+
+const normalizeToken = (value) => String(value || '')
+  .trim()
+  .replace(/[^a-zA-Z0-9]/g, '')
+  .toLowerCase();
+
+const statusLabel = (status) => {
+  const token = normalizeToken(status);
+  const labels = {
+    active: 'Đang hiệu lực',
+    published: 'Đang hiệu lực',
+    ongoing: 'Đang diễn ra',
+    scheduled: 'Sắp diễn ra',
+    expired: 'Đã hết hiệu lực',
+    inactive: 'Đã kết thúc',
+    closed: 'Đã kết thúc',
+    cancelled: 'Đã hủy',
+  };
+  return labels[token] || '';
+};
+
+const alertTypeLabel = (type) => {
+  const token = normalizeToken(type);
+  const labels = {
+    emergency: 'Khẩn cấp',
+    warning: 'Cảnh báo',
+    information: 'Thông tin',
+    info: 'Thông tin',
+    weather: 'Thời tiết',
+    traffic: 'Giao thông',
+    environment: 'Môi trường',
+    safety: 'An toàn',
+    infrastructure: 'Hạ tầng',
+  };
+  return labels[token] || '';
+};
+
+const AlertSkeleton = () => (
+  <div className="rounded-[20px] border border-slate-200/70 bg-white p-4 sm:p-5" aria-hidden="true">
+    <div className="animate-pulse">
+      <div className="flex items-start gap-3">
+        <div className="h-10 w-10 shrink-0 rounded-xl bg-slate-100" />
+        <div className="min-w-0 flex-1">
+          <div className="flex gap-2">
+            <div className="h-5 w-20 rounded-full bg-slate-100" />
+            <div className="h-5 w-28 rounded-full bg-slate-100" />
+          </div>
+          <div className="mt-3 h-5 w-2/3 rounded bg-slate-100" />
+          <div className="mt-2 h-4 w-full rounded bg-slate-100" />
+          <div className="mt-2 h-4 w-4/5 rounded bg-slate-100" />
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 export const ResidentAreaAlertsPage = () => {
   const [areas, setAreas] = useState([]);
@@ -45,7 +168,8 @@ export const ResidentAreaAlertsPage = () => {
   const [loading, setLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [actionAreaId, setActionAreaId] = useState(null);
-  const [error, setError] = useState('');
+  const [subscriptionError, setSubscriptionError] = useState('');
+  const [alertsError, setAlertsError] = useState('');
 
   const subscribedAreaIds = useMemo(
     () => new Set(subscriptions.map((item) => Number(item.areaId))),
@@ -59,16 +183,20 @@ export const ResidentAreaAlertsPage = () => {
 
   const loadSubscriptionsAndAreas = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setSubscriptionError('');
+
     try {
       const [areaList, subscriptionList] = await Promise.all([
         toolsApi.getAreas({}, { throwOnError: true }),
         userAreaAlertApi.getSubscriptions(),
       ]);
+
       setAreas(Array.isArray(areaList) ? areaList : []);
       setSubscriptions(Array.isArray(subscriptionList) ? subscriptionList : []);
     } catch (requestError) {
-      setError(extractApiErrorMessage(requestError, 'Không thể tải danh sách khu vực đang theo dõi.'));
+      setSubscriptionError(
+        extractApiErrorMessage(requestError, 'Không thể tải danh sách khu vực đang theo dõi.')
+      );
     } finally {
       setLoading(false);
     }
@@ -76,16 +204,20 @@ export const ResidentAreaAlertsPage = () => {
 
   const loadAlerts = useCallback(async () => {
     setAlertsLoading(true);
-    setError('');
+    setAlertsError('');
+
     try {
       const payload = await userAreaAlertApi.getAlerts({
         OnlySubscribedAreas: onlySubscribedAreas,
         PageNumber: pageNumber,
         PageSize: PAGE_SIZE,
       });
+
       setAlertsPage(payload);
     } catch (requestError) {
-      setError(extractApiErrorMessage(requestError, 'Không thể tải cảnh báo khu vực.'));
+      setAlertsError(
+        extractApiErrorMessage(requestError, 'Không thể tải cảnh báo khu vực.')
+      );
       setAlertsPage({ items: [], totalItems: 0, totalPages: 0 });
     } finally {
       setAlertsLoading(false);
@@ -105,15 +237,22 @@ export const ResidentAreaAlertsPage = () => {
     if (!areaId) return;
 
     setActionAreaId(areaId);
-    setError('');
+    setSubscriptionError('');
+
     try {
-      await userAreaAlertApi.subscribe(areaId, { receiveAlerts: true, isPrimaryArea: false });
+      await userAreaAlertApi.subscribe(areaId, {
+        receiveAlerts: true,
+        isPrimaryArea: false,
+      });
+
       setSelectedAreaId('');
       await loadSubscriptionsAndAreas();
       setPageNumber(1);
       await loadAlerts();
     } catch (requestError) {
-      setError(extractApiErrorMessage(requestError, 'Không thể theo dõi khu vực này.'));
+      setSubscriptionError(
+        extractApiErrorMessage(requestError, 'Không thể theo dõi khu vực này.')
+      );
     } finally {
       setActionAreaId(null);
     }
@@ -121,200 +260,368 @@ export const ResidentAreaAlertsPage = () => {
 
   const handleUnsubscribe = async (areaId) => {
     setActionAreaId(areaId);
-    setError('');
+    setSubscriptionError('');
+
     try {
       await userAreaAlertApi.unsubscribe(areaId);
       await loadSubscriptionsAndAreas();
       setPageNumber(1);
       await loadAlerts();
     } catch (requestError) {
-      setError(extractApiErrorMessage(requestError, 'Không thể bỏ theo dõi khu vực này.'));
+      setSubscriptionError(
+        extractApiErrorMessage(requestError, 'Không thể bỏ theo dõi khu vực này.')
+      );
     } finally {
       setActionAreaId(null);
     }
   };
 
-  const alerts = Array.isArray(alertsPage.items) ? alertsPage.items : [];
+  const alerts = useMemo(
+    () => dedupeAlerts(Array.isArray(alertsPage.items) ? alertsPage.items : []),
+    [alertsPage.items]
+  );
   const totalPages = Math.max(0, Number(alertsPage.totalPages) || 0);
   const totalItems = Number(alertsPage.totalItems) || alerts.length;
 
-  return (
-    <div className="space-y-6">
-      <section className="resident-area-alert-hero relative isolate overflow-hidden rounded-[30px] border p-6 sm:p-8">
-        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-          <div className="resident-area-alert-orb resident-area-alert-orb-left absolute -left-20 top-1/2 h-56 w-56 -translate-y-1/2 rounded-full blur-3xl" />
-          <div className="resident-area-alert-orb resident-area-alert-orb-right absolute -right-12 -top-20 h-64 w-64 rounded-full blur-3xl" />
-          <div className="resident-area-alert-ring absolute right-[24%] bottom-[-38%] h-52 w-52 rounded-full border-[30px]" />
-          <svg viewBox="0 0 1280 240" preserveAspectRatio="none" className="resident-area-alert-mapline absolute inset-0 h-full w-full" fill="none">
-            <path d="M-40 188C130 124 240 206 408 142C566 82 704 176 870 114C1015 60 1142 87 1320 142" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M-20 216C150 170 290 230 462 184C632 138 755 213 924 166C1070 126 1188 133 1320 174" stroke="currentColor" strokeWidth="1.2" strokeDasharray="7 11" />
-            <circle cx="408" cy="142" r="6" fill="currentColor" />
-            <circle cx="870" cy="114" r="6" fill="currentColor" />
-            <circle cx="1140" cy="88" r="4" fill="currentColor" opacity="0.7" />
-          </svg>
-          <div className="absolute right-[8%] top-[22%] h-2.5 w-2.5 rounded-full bg-cyan-400 shadow-[0_0_0_10px_rgba(34,211,238,0.10)]" />
-          <div className="absolute left-[42%] bottom-[16%] hidden h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_0_9px_rgba(59,130,246,0.08)] sm:block" />
-        </div>
+  const areaSelectPlaceholder = subscriptionError && areas.length === 0
+    ? 'Không tải được khu vực'
+    : areas.length === 0
+      ? 'Chưa có khu vực khả dụng'
+      : availableAreas.length === 0
+        ? 'Đã theo dõi tất cả khu vực'
+        : 'Chọn khu vực';
 
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_12px_28px_rgba(37,99,235,0.24)]">
-              <Lucide.BellRing size={22} aria-hidden="true" />
+  return (
+    <main className="space-y-4">
+      <section className="relative isolate overflow-hidden rounded-[28px] border border-[var(--public-border)] bg-[var(--public-surface)] px-5 py-5 shadow-[0_18px_52px_rgba(15,23,42,0.06)] sm:px-7 sm:py-6">
+        <div
+          className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full border-[32px] border-blue-100/55 dark:border-blue-500/5"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute -bottom-16 left-[44%] h-44 w-44 rounded-full bg-cyan-200/15 blur-3xl dark:bg-cyan-500/5"
+          aria-hidden="true"
+        />
+
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_26px_rgba(37,99,235,0.20)]">
+              <Lucide.BellRing size={21} aria-hidden="true" />
             </span>
-            <div>
-              <h1 className="text-2xl font-bold tracking-[-0.03em] text-[var(--public-title)] sm:text-3xl">Cảnh báo khu vực</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
-                Theo dõi các phường bạn quan tâm và xem cảnh báo đô thị được gửi tới cư dân trong khu vực đó.
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold tracking-[-0.03em] text-[var(--public-title)] sm:text-[30px]">
+                Cảnh báo khu vực
+              </h1>
+              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
+                Theo dõi phường bạn quan tâm và nhận các cảnh báo đô thị đang có hiệu lực tại khu vực đó.
               </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="resident-area-alert-chip resident-area-alert-chip-blue inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur">
-                  <Lucide.MapPinned size={13} aria-hidden="true" />
-                  Theo dõi theo phường
-                </span>
-                <span className="resident-area-alert-chip resident-area-alert-chip-cyan inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur">
-                  <Lucide.RadioTower size={13} aria-hidden="true" />
-                  Cập nhật cảnh báo đô thị
-                </span>
-              </div>
             </div>
           </div>
 
-          <div className="resident-area-alert-count inline-flex w-fit items-center gap-2 rounded-2xl border px-4 py-3 text-sm text-[var(--public-copy)] shadow-sm backdrop-blur">
-            <Lucide.MapPin size={17} className="resident-area-alert-count-icon text-blue-600" aria-hidden="true" />
-            <strong className="text-[var(--public-title)]">{subscriptions.length}</strong>
-            khu vực đang theo dõi
+          <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:min-w-[320px]">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+              <div className="text-[11px] font-semibold text-slate-500">Đang theo dõi</div>
+              <div className="mt-0.5 flex items-baseline gap-1">
+                <span className="text-xl font-bold text-blue-700">{loading ? '—' : subscriptions.length}</span>
+                <span className="text-xs font-medium text-slate-500">khu vực</span>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+              <div className="text-[11px] font-semibold text-slate-500">Cảnh báo hiển thị</div>
+              <div className="mt-0.5 flex items-baseline gap-1">
+                <span className="text-xl font-bold text-emerald-700">{alertsLoading ? '—' : totalItems}</span>
+                <span className="text-xs font-medium text-slate-500">cảnh báo</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {error ? (
-        <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          <Lucide.CircleAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>{error}</span>
-        </div>
-      ) : null}
-
-      <section className="grid items-start gap-6 xl:grid-cols-[minmax(280px,0.68fr)_minmax(0,1.32fr)]">
-        <aside className="self-start xl:sticky xl:top-24">
-          <div className="rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_18px_52px_rgba(15,23,42,0.07)] sm:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-[var(--public-title)]">Khu vực đang theo dõi</h2>
-              <p className="mt-1 text-sm text-[var(--public-copy)]">Chọn một phường để nhận cảnh báo liên quan.</p>
-            </div>
-            <Lucide.RadioTower size={20} className="shrink-0 text-blue-600" aria-hidden="true" />
-          </div>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <select
-              value={selectedAreaId}
-              onChange={(event) => setSelectedAreaId(event.target.value)}
-              disabled={loading || availableAreas.length === 0}
-              className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm text-[var(--public-title)] outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <option value="">{availableAreas.length ? 'Chọn khu vực' : 'Đã theo dõi tất cả khu vực'}</option>
-              {availableAreas.map((area) => (
-                <option key={getAreaId(area)} value={getAreaId(area)}>{getAreaName(area)}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={handleSubscribe}
-              disabled={!selectedAreaId || actionAreaId !== null}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              {actionAreaId && Number(selectedAreaId) === actionAreaId ? <span className="loading loading-spinner loading-xs" /> : <Lucide.Plus size={16} aria-hidden="true" />}
-              Theo dõi
-            </button>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {loading ? (
-              [1, 2].map((item) => <div key={item} className="h-16 animate-pulse rounded-2xl bg-slate-200/60" />)
-            ) : subscriptions.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] p-5 text-center">
-                <Lucide.MapPinned size={24} className="mx-auto text-[var(--public-muted)]" aria-hidden="true" />
-                <p className="mt-2 text-sm font-semibold text-[var(--public-title)]">Chưa theo dõi khu vực nào</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">Chọn một khu vực ở phía trên để bắt đầu nhận cảnh báo.</p>
+      <section className="grid items-start gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="space-y-3 xl:sticky xl:top-24">
+          <div className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_38px_rgba(15,23,42,0.055)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-600">
+                  Khu vực quan tâm
+                </p>
+                <h2 className="mt-1.5 text-lg font-bold text-[var(--public-title)]">
+                  Quản lý theo dõi
+                </h2>
               </div>
-            ) : (
-              subscriptions.map((subscription) => (
-                <div key={subscription.subscriptionId ?? subscription.areaId} className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Lucide.MapPin size={15} className="shrink-0 text-blue-600" aria-hidden="true" />
-                      <strong className="truncate text-sm text-[var(--public-title)]">{subscription.areaName || `Khu vực ${subscription.areaId}`}</strong>
-                    </div>
-                    <p className="mt-1 text-xs text-[var(--public-muted)]">{subscription.receiveAlerts ? 'Đang nhận cảnh báo' : 'Đã tắt cảnh báo'}</p>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                <Lucide.RadioTower size={17} aria-hidden="true" />
+              </span>
+            </div>
+
+            <p className="mt-2 text-xs leading-5 text-[var(--public-muted)]">
+              Thêm một phường để cảnh báo của khu vực đó được ưu tiên trong danh sách.
+            </p>
+
+            <div className="mt-4 space-y-2">
+              <ManagerSelectMenu
+                value={selectedAreaId}
+                onChange={setSelectedAreaId}
+                disabled={loading || availableAreas.length === 0}
+                ariaLabel="Chọn khu vực để theo dõi"
+                className="h-11"
+                options={[
+                  {
+                    value: '',
+                    label: areaSelectPlaceholder,
+                  },
+                  ...availableAreas.map((area) => ({
+                    value: getAreaId(area),
+                    label: getAreaName(area),
+                  })),
+                ]}
+              />
+
+              <button
+                type="button"
+                onClick={handleSubscribe}
+                disabled={!selectedAreaId || actionAreaId !== null}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {actionAreaId && Number(selectedAreaId) === actionAreaId ? (
+                  <span className="loading loading-spinner loading-xs" />
+                ) : (
+                  <Lucide.Plus size={15} aria-hidden="true" />
+                )}
+                Theo dõi khu vực
+              </button>
+            </div>
+
+            {subscriptionError ? (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs leading-5 text-rose-700">
+                <Lucide.CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>{subscriptionError}</span>
+              </div>
+            ) : null}
+
+            <div className="mt-5 border-t border-[var(--public-border-soft)] pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-[var(--public-title)]">Đang theo dõi</h3>
+                <span className="text-[11px] font-medium text-[var(--public-muted)]">
+                  {loading ? '...' : subscriptions.length}
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {loading ? (
+                  [1, 2].map((item) => (
+                    <div key={item} className="h-14 animate-pulse rounded-2xl bg-slate-100" />
+                  ))
+                ) : subscriptions.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] px-4 py-5 text-center">
+                    <Lucide.MapPinned size={22} className="mx-auto text-[var(--public-muted)]" aria-hidden="true" />
+                    <p className="mt-2 text-sm font-semibold text-[var(--public-title)]">
+                      Chưa theo dõi khu vực nào
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">
+                      Chọn một phường phía trên để bắt đầu.
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleUnsubscribe(subscription.areaId)}
-                    disabled={actionAreaId !== null}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
-                  >
-                    {actionAreaId === subscription.areaId ? <span className="loading loading-spinner loading-xs" /> : <Lucide.X size={14} aria-hidden="true" />}
-                    Bỏ theo dõi
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
+                ) : (
+                  subscriptions.map((subscription) => (
+                    <div
+                      key={subscription.subscriptionId ?? subscription.areaId}
+                      className="group flex items-center gap-3 rounded-2xl border border-[var(--public-border-soft)] bg-[var(--public-surface-soft)] px-3.5 py-3"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                        <Lucide.MapPin size={16} aria-hidden="true" />
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <strong className="block truncate text-sm text-[var(--public-title)]">
+                          {subscription.areaName || `Khu vực ${subscription.areaId}`}
+                        </strong>
+                        <p className="mt-0.5 text-[11px] text-emerald-600">
+                          {subscription.receiveAlerts ? 'Đang nhận cảnh báo' : 'Đã tắt cảnh báo'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleUnsubscribe(subscription.areaId)}
+                        disabled={actionAreaId !== null}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                        aria-label={`Bỏ theo dõi ${subscription.areaName || `khu vực ${subscription.areaId}`}`}
+                        title="Bỏ theo dõi"
+                      >
+                        {actionAreaId === subscription.areaId ? (
+                          <span className="loading loading-spinner loading-xs" />
+                        ) : (
+                          <Lucide.X size={15} aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </aside>
 
-        <div className="rounded-[26px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_18px_52px_rgba(15,23,42,0.07)] sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_38px_rgba(15,23,42,0.055)] sm:p-6">
+          <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-[var(--public-title)]">Cảnh báo dành cho cư dân</h2>
-              <p className="mt-1 text-sm text-[var(--public-copy)]">{totalItems} cảnh báo phù hợp với bộ lọc hiện tại.</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-600">
+                Dành cho cư dân
+              </p>
+              <h2 className="mt-1.5 text-xl font-bold tracking-[-0.02em] text-[var(--public-title)]">
+                Cảnh báo mới nhất
+              </h2>
+              <p className="mt-1.5 text-sm leading-6 text-[var(--public-copy)]">
+                {onlySubscribedAreas
+                  ? 'Đang ưu tiên cảnh báo từ các khu vực bạn theo dõi.'
+                  : 'Đang hiển thị cảnh báo từ tất cả khu vực công khai.'}
+              </p>
             </div>
 
-            <label className="inline-flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-3 py-2.5 text-sm font-medium text-[var(--public-title)]">
-              <input
-                type="checkbox"
-                checked={onlySubscribedAreas}
-                onChange={(event) => {
-                  setOnlySubscribedAreas(event.target.checked);
-                  setPageNumber(1);
-                }}
-                className="toggle toggle-sm toggle-primary"
-              />
-              Chỉ khu vực đang theo dõi
-            </label>
-          </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOnlySubscribedAreas((current) => !current);
+                setPageNumber(1);
+              }}
+              aria-pressed={onlySubscribedAreas}
+              className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition ${
+                onlySubscribedAreas
+                  ? 'border-blue-200 bg-blue-50 text-blue-700'
+                  : 'border-[var(--public-border)] bg-[var(--public-surface-strong)] text-[var(--public-copy)] hover:border-blue-200 hover:text-blue-700'
+              }`}
+            >
+              <Lucide.MapPinCheck size={15} aria-hidden="true" />
+              {onlySubscribedAreas ? 'Khu vực đang theo dõi' : 'Tất cả khu vực'}
+            </button>
+          </header>
+
+          {alertsError ? (
+            <div className="mt-4 flex items-start justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <Lucide.CircleAlert size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>{alertsError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={loadAlerts}
+                className="shrink-0 text-xs font-bold text-rose-700 underline underline-offset-2"
+              >
+                Thử lại
+              </button>
+            </div>
+          ) : null}
 
           <div className="mt-5 space-y-3">
             {alertsLoading ? (
-              [1, 2, 3].map((item) => <div key={item} className="h-28 animate-pulse rounded-2xl bg-slate-200/60" />)
+              [1, 2, 3].map((item) => <AlertSkeleton key={item} />)
             ) : alerts.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] px-5 py-10 text-center">
-                <Lucide.BellOff size={28} className="mx-auto text-[var(--public-muted)]" aria-hidden="true" />
-                <p className="mt-3 text-sm font-semibold text-[var(--public-title)]">Chưa có cảnh báo phù hợp</p>
-                <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">Khi có cảnh báo mới từ khu vực phù hợp, nội dung sẽ xuất hiện tại đây.</p>
+              <div className="rounded-[22px] border border-dashed border-[var(--public-border)] bg-[var(--public-surface-soft)] px-5 py-12 text-center">
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Lucide.BellOff size={22} aria-hidden="true" />
+                </span>
+                <p className="mt-3 text-sm font-semibold text-[var(--public-title)]">
+                  Chưa có cảnh báo phù hợp
+                </p>
+                <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[var(--public-muted)]">
+                  {onlySubscribedAreas
+                    ? 'Khu vực bạn đang theo dõi hiện chưa có cảnh báo mới. Bạn có thể xem tất cả khu vực để kiểm tra thêm.'
+                    : 'Khi có cảnh báo đô thị mới, nội dung sẽ xuất hiện tại đây.'}
+                </p>
+                {onlySubscribedAreas ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOnlySubscribedAreas(false);
+                      setPageNumber(1);
+                    }}
+                    className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-xl border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+                  >
+                    Xem tất cả khu vực
+                    <Lucide.ArrowRight size={13} aria-hidden="true" />
+                  </button>
+                ) : null}
               </div>
             ) : (
               alerts.map((alert) => {
                 const severity = severityMeta(alert.severity);
-                return (
-                  <article key={alert.areaAlertId ?? alert.alertId ?? `${alert.areaId}-${alert.createdAt}`} className="rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] p-4 sm:p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${severity.className}`}>{severity.label}</span>
-                          {alert.areaName ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600"><Lucide.MapPin size={13} aria-hidden="true" />{alert.areaName}</span> : null}
-                          {alert.categoryName ? <span className="text-xs text-[var(--public-muted)]">• {alert.categoryName}</span> : null}
-                        </div>
-                        <h3 className="mt-2 text-base font-bold leading-6 text-[var(--public-title)]">{alert.title || 'Cảnh báo khu vực'}</h3>
-                        <p className="mt-1.5 text-sm leading-6 text-[var(--public-copy)]">{alert.message || 'Không có mô tả bổ sung.'}</p>
-                      </div>
-                      <span className="shrink-0 text-xs text-[var(--public-muted)]">{formatDateTime(alert.startAt || alert.createdAt)}</span>
-                    </div>
+                const SeverityIcon = severity.icon;
+                const readableStatus = statusLabel(alert.status);
+                const readableType = alertTypeLabel(alert.alertType);
 
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--public-border)] pt-3 text-xs text-[var(--public-muted)]">
-                      {alert.alertType ? <span className="inline-flex items-center gap-1.5"><Lucide.TriangleAlert size={13} aria-hidden="true" />{alert.alertType}</span> : null}
-                      {alert.status ? <span className="inline-flex items-center gap-1.5"><Lucide.Activity size={13} aria-hidden="true" />{alert.status}</span> : null}
-                      {alert.isSubscribedArea ? <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-600"><Lucide.Radio size={13} aria-hidden="true" />Khu vực đang theo dõi</span> : null}
+                return (
+                  <article
+                    key={getAlertIdentity(alert) ?? getAlertFingerprint(alert)}
+                    className={`rounded-[20px] border bg-[var(--public-surface-strong)] p-4 transition hover:shadow-[0_12px_30px_rgba(15,23,42,0.055)] sm:p-5 ${severity.borderClass}`}
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${severity.iconClass}`}>
+                        <SeverityIcon size={18} aria-hidden="true" />
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${severity.chipClass}`}>
+                                {severity.label}
+                              </span>
+
+                              {alert.areaName ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">
+                                  <Lucide.MapPin size={11} aria-hidden="true" />
+                                  {alert.areaName}
+                                </span>
+                              ) : null}
+
+                              {alert.isSubscribedArea ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                                  <Lucide.Radio size={11} aria-hidden="true" />
+                                  Đang theo dõi
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <h3 className="mt-2.5 text-[15px] font-bold leading-6 text-[var(--public-title)]">
+                              {alert.title || 'Cảnh báo khu vực'}
+                            </h3>
+                          </div>
+
+                          <time className="shrink-0 text-[11px] font-medium text-[var(--public-muted)]">
+                            {formatDateTime(alert.startAt || alert.createdAt)}
+                          </time>
+                        </div>
+
+                        <p className="mt-1.5 text-sm leading-6 text-[var(--public-copy)]">
+                          {alert.message || 'Không có mô tả bổ sung.'}
+                        </p>
+
+                        {(readableType || readableStatus || alert.categoryName) ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--public-border-soft)] pt-3 text-[11px] text-[var(--public-muted)]">
+                            {readableType ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <Lucide.TriangleAlert size={12} aria-hidden="true" />
+                                {readableType}
+                              </span>
+                            ) : null}
+
+                            {readableStatus ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <Lucide.Activity size={12} aria-hidden="true" />
+                                {readableStatus}
+                              </span>
+                            ) : null}
+
+                            {alert.categoryName ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <Lucide.Tag size={12} aria-hidden="true" />
+                                {alert.categoryName}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </article>
                 );
@@ -323,30 +630,34 @@ export const ResidentAreaAlertsPage = () => {
           </div>
 
           {totalPages > 1 ? (
-            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[var(--public-border)] pt-4">
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[var(--public-border-soft)] pt-4">
               <button
                 type="button"
                 onClick={() => setPageNumber((current) => Math.max(1, current - 1))}
                 disabled={pageNumber <= 1 || alertsLoading}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-title)] disabled:opacity-45"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-xs font-semibold text-[var(--public-title)] transition hover:border-blue-200 hover:text-blue-700 disabled:opacity-45"
               >
-                <Lucide.ChevronLeft size={16} aria-hidden="true" />
+                <Lucide.ChevronLeft size={14} aria-hidden="true" />
                 Trước
               </button>
-              <span className="text-sm font-medium text-[var(--public-copy)]">Trang {pageNumber}/{totalPages}</span>
+
+              <span className="text-xs font-medium text-[var(--public-copy)]">
+                Trang {pageNumber}/{totalPages}
+              </span>
+
               <button
                 type="button"
                 onClick={() => setPageNumber((current) => Math.min(totalPages, current + 1))}
                 disabled={pageNumber >= totalPages || alertsLoading}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-title)] disabled:opacity-45"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-xs font-semibold text-[var(--public-title)] transition hover:border-blue-200 hover:text-blue-700 disabled:opacity-45"
               >
                 Sau
-                <Lucide.ChevronRight size={16} aria-hidden="true" />
+                <Lucide.ChevronRight size={14} aria-hidden="true" />
               </button>
             </div>
           ) : null}
-        </div>
+        </section>
       </section>
-    </div>
+    </main>
   );
 };
