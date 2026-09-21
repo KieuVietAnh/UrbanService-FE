@@ -341,7 +341,7 @@ export const TicketDetailPage = () => {
     errorStatus,
     errorFeedbackId,
     getAttachmentUrl,
-  } = useTicketDetail(feedbackId, user);
+  } = useTicketDetail(feedbackId, user, undefined, { cacheTicketDetails: true });
 
   const snapshotUserId = user?.userId ?? user?.id ?? '';
   const ticketSnapshotKey = useMemo(
@@ -1743,7 +1743,6 @@ export const TicketDetailPage = () => {
                 <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] dark:border-slate-800 dark:bg-slate-950">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Các bước xử lý</p>
                       <h2 className="mt-2 text-base font-bold">Theo dõi tiến trình</h2>
                     </div>
                     <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">{citizenJourneyIndex + 1}/{citizenJourneySteps.length}</span>
@@ -1751,8 +1750,9 @@ export const TicketDetailPage = () => {
                   <ol className="mt-5">
                     {citizenJourneySteps.map((step, index) => {
                       const StepIcon = step.icon;
-                      const completed = index < citizenJourneyIndex;
-                      const active = index === citizenJourneyIndex;
+                      const terminalClosed = ticket?.status === managementTypes.feedbackStatus.CLOSED;
+                      const completed = index < citizenJourneyIndex || (terminalClosed && index === citizenJourneyIndex);
+                      const active = index === citizenJourneyIndex && !completed;
                       return (
                         <li key={step.title} className="relative grid grid-cols-[34px_minmax(0,1fr)] gap-3 pb-5 last:pb-0">
                           {index !== citizenJourneySteps.length - 1 ? <span className={`absolute bottom-0 left-[16px] top-8 w-px ${index < citizenJourneyIndex ? 'bg-blue-500' : 'bg-slate-200 dark:bg-slate-800'}`} aria-hidden="true" /> : null}

@@ -35,11 +35,34 @@ const STATUS_ICONS = {
 };
 
 const JOURNEY_STEPS = [
-  { key: 'received', label: 'Đã tiếp nhận', statuses: ['new', 'verified'], icon: Lucide.Inbox },
-  { key: 'assigned', label: 'Đã phân công', statuses: ['assigned'], icon: Lucide.UserRoundCheck },
-  { key: 'processing', label: 'Đang xử lý', statuses: ['inprogress', 'needrework'], icon: Lucide.Wrench },
-  { key: 'approval', label: 'Kiểm tra kết quả', statuses: ['submittedforapproval'], icon: Lucide.ClipboardCheck },
-  { key: 'done', label: 'Hoàn tất', statuses: ['approved', 'resolved', 'closed'], icon: Lucide.CircleCheckBig },
+  {
+    key: 'received',
+    label: 'Đã tiếp nhận',
+    description: 'Sự vụ đã được ghi nhận',
+    statuses: ['new', 'verified'],
+    icon: Lucide.Inbox,
+  },
+  {
+    key: 'processing',
+    label: 'Đang xử lý',
+    description: 'Đơn vị phụ trách thực hiện',
+    statuses: ['assigned', 'inprogress', 'needrework'],
+    icon: Lucide.Wrench,
+  },
+  {
+    key: 'approval',
+    label: 'Kiểm tra kết quả',
+    description: 'Kết quả đang được rà soát',
+    statuses: ['submittedforapproval'],
+    icon: Lucide.ClipboardCheck,
+  },
+  {
+    key: 'done',
+    label: 'Hoàn tất',
+    description: 'Sự vụ đã hoàn thành xử lý',
+    statuses: ['approved', 'resolved', 'closed'],
+    icon: Lucide.CircleCheckBig,
+  },
 ];
 
 const REPORT_STATUS_LABELS = Object.freeze({
@@ -755,7 +778,7 @@ export const CommunityFeedbackDetailPage = () => {
             </section>
           </div>
 
-          <aside className="min-w-0 space-y-4 xl:sticky xl:top-5">
+          <aside className="min-w-0 space-y-3 xl:sticky xl:top-5">
             <section className="rounded-[24px] border border-slate-200/90 bg-white p-4 shadow-[0_14px_38px_rgba(15,23,42,0.055)] dark:border-slate-800 dark:bg-slate-900" aria-labelledby="incident-location-title">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -813,42 +836,35 @@ export const CommunityFeedbackDetailPage = () => {
             <section className="rounded-[24px] border border-slate-200/90 bg-white p-4 shadow-[0_14px_38px_rgba(15,23,42,0.055)] dark:border-slate-800 dark:bg-slate-900" aria-labelledby="incident-progress-title">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 id="incident-progress-title" className="text-lg font-bold">Trạng thái xử lý</h2>
-                  <p className="mt-1 text-xs text-slate-400">Những mốc chính người dân cần theo dõi.</p>
+                  <h2 id="incident-progress-title" className="text-base font-bold">Theo dõi tiến trình</h2>
                 </div>
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
                   {currentJourneyIndex + 1}/{JOURNEY_STEPS.length}
                 </span>
               </div>
 
-              <ol className="mt-4">
+              <ol className="mt-3.5">
                 {JOURNEY_STEPS.map((step, index) => {
-                  const Icon = step.icon;
-                  const active = index === currentJourneyIndex;
-                  const completed = index < currentJourneyIndex;
+                  const StepIcon = step.icon;
+                  const terminalDone = JOURNEY_STEPS[JOURNEY_STEPS.length - 1].statuses.includes(statusKey);
+                  const completed = index < currentJourneyIndex || (terminalDone && index === currentJourneyIndex);
+                  const active = index === currentJourneyIndex && !completed;
                   return (
-                    <li key={step.key} className="relative grid grid-cols-[30px_minmax(0,1fr)] gap-3 pb-4 last:pb-0">
-                      {index < JOURNEY_STEPS.length - 1 ? (
-                        <span className={`absolute left-[14px] top-7 h-[calc(100%-0.65rem)] w-px ${completed ? 'bg-blue-500' : 'bg-slate-200 dark:bg-slate-700'}`} aria-hidden="true" />
+                    <li key={step.key} className="relative grid grid-cols-[34px_minmax(0,1fr)] gap-3 pb-4 last:pb-0">
+                      {index !== JOURNEY_STEPS.length - 1 ? (
+                        <span className={`absolute bottom-0 left-[16px] top-8 w-px ${index < currentJourneyIndex ? 'bg-blue-500' : 'bg-slate-200 dark:bg-slate-800'}`} aria-hidden="true" />
                       ) : null}
-                      <span className={`relative z-10 flex h-[30px] w-[30px] items-center justify-center rounded-full border ${
-                        active
-                          ? 'border-blue-600 bg-blue-600 text-white shadow-[0_0_0_4px_rgba(37,99,235,0.08)]'
-                          : completed
-                            ? 'border-blue-500 bg-blue-500 text-white'
-                            : 'border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800'
-                      }`}>
-                        {completed ? <Lucide.Check size={13} /> : <Icon size={13} />}
+                      <span className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full border ${completed ? 'border-blue-600 bg-blue-600 text-white' : active ? 'border-blue-400 bg-blue-50 text-blue-600 dark:bg-blue-950/40' : 'border-slate-200 bg-white text-slate-300 dark:border-slate-800 dark:bg-slate-950'}`}>
+                        {completed ? <Lucide.Check size={14} /> : <StepIcon size={14} />}
                       </span>
-                      <div className="pt-0.5">
-                        <p className={`text-sm font-semibold ${active ? 'text-blue-700 dark:text-blue-300' : completed ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400'}`}>{step.label}</p>
+                      <div>
+                        <p className={`text-sm font-semibold ${active || completed ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>{step.label}</p>
+                        <p className="mt-0.5 text-xs leading-5 text-slate-400">{step.description}</p>
                       </div>
                     </li>
                   );
                 })}
               </ol>
-
-
             </section>
           </aside>
         </div>
