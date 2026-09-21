@@ -9,7 +9,7 @@ import { Header } from './Header';
 import { Footer } from './Footer';
 import PageTransition from '../motion/PageTransition';
 import { PublicThemeStyles } from '../public/PublicLayout';
-import CitizenFeedbackInbox from '../tickets/CitizenFeedbackInbox';
+import CitizenAiCopilot from '../public/CitizenAiCopilot';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { normalizeRole } from '../../utils/roleMap';
 import { useAuth } from '../../contexts/AuthContext';
@@ -26,13 +26,6 @@ export const DashboardLayout = ({ children }) => {
 
   const isCommunityFeedDetailRoute =
     isCitizen && /^\/community\/feed\/[^/]+\/?$/.test(location.pathname);
-
-  const citizenTicketPathSegments = location.pathname.split('/').filter(Boolean);
-  const isCitizenTicketDetailRoute =
-    isCitizen &&
-    citizenTicketPathSegments.length === 2 &&
-    citizenTicketPathSegments[0] === 'tickets' &&
-    !['create', 'archive'].includes(citizenTicketPathSegments[1]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const mainScrollRef = useRef(null);
@@ -206,7 +199,7 @@ export const DashboardLayout = ({ children }) => {
       }`}
     >
       {isCitizen ? <PublicThemeStyles /> : null}
-      {isCitizen && !isCitizenTicketDetailRoute ? <CitizenFeedbackInbox /> : null}
+      {isCitizen ? <CitizenAiCopilot /> : null}
 
       <div className="flex h-screen w-full overflow-hidden">
         {/* Sidebar navigation */}

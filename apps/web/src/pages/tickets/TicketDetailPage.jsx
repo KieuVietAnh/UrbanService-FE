@@ -14,8 +14,6 @@ import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
 import { LocationPicker } from '../../components/maps/LocationPicker';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
-import { FeedbackMessagesProvider } from '../../contexts/FeedbackMessagesContext';
-import CitizenTicketConversation from '../../components/tickets/CitizenTicketConversation';
 import { cacheTicketPreview, getFirstTicketImageUrl } from './ticketPreviewCache';
 
 const CATEGORY_LABELS = {
@@ -1781,11 +1779,6 @@ export const TicketDetailPage = () => {
               </aside>
             </section>
 
-            {isServiceUser ? (
-              <FeedbackMessagesProvider feedbackId={feedbackId} includeInternal={false}>
-                <CitizenTicketConversation currentUserId={snapshotUserId} />
-              </FeedbackMessagesProvider>
-            ) : null}
           </div>
         </main>
       </TicketDetailShell>

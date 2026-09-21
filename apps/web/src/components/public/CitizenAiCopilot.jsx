@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { ticketApi, toolsApi } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuth } from '../../contexts/AuthContext';
+import { FeedbackMessagesProvider } from '../../contexts/FeedbackMessagesContext';
+import { useFeedbackMessages } from '../../contexts/FeedbackMessagesContextHook';
+import {
+  getCitizenMessageParticipantLabel,
+  getCitizenMessageSide,
+} from '../tickets/citizenConversationUtils.js';
 import { normalizeRole } from '../../utils/roleMap';
 import {
   buildCitizenFeedbackSubmission,
@@ -12,6 +18,7 @@ import {
 
 const AI_DOCK_STORAGE_KEY = 'urbanmind-ai-dock-position';
 const AI_FEEDBACK_DRAFT_STORAGE_PREFIX = 'urbanmind:ai-feedback-draft';
+const AI_ACTIVE_CONVERSATION_STORAGE_PREFIX = 'urbanmind:ai-active-conversation';
 const AI_BUTTON_SIZE = 56;
 const AI_MIN_TOP = 96;
 const AI_CITIZEN_BOTTOM_GAP = 112;
@@ -90,20 +97,307 @@ const normalizeAiMessage = (message, index = 0) => ({
   createdAt: message?.createdAt,
 });
 
+const dedupeAiConversations = (items) => {
+  const byConversationId = new Map();
+
+  (Array.isArray(items) ? items : []).forEach((conversation) => {
+    const conversationId = conversation?.conversationId ?? conversation?.id;
+    if (conversationId == null) return;
+
+    const key = String(conversationId);
+    const existing = byConversationId.get(key);
+    if (!existing) {
+      byConversationId.set(key, conversation);
+      return;
+    }
+
+    const existingTime = new Date(
+      existing?.lastMessageAt || existing?.updatedAt || existing?.startedAt || existing?.createdAt || 0
+    ).getTime();
+    const nextTime = new Date(
+      conversation?.lastMessageAt || conversation?.updatedAt || conversation?.startedAt || conversation?.createdAt || 0
+    ).getTime();
+    const newer = nextTime >= existingTime ? conversation : existing;
+    const older = newer === conversation ? existing : conversation;
+
+    byConversationId.set(key, {
+      ...older,
+      ...newer,
+      conversationId,
+      title: newer?.title || older?.title || null,
+      lastMessage: newer?.lastMessage || older?.lastMessage || null,
+      lastMessageAt: newer?.lastMessageAt || older?.lastMessageAt || null,
+      messageCount: Math.max(
+        Number(existing?.messageCount) || 0,
+        Number(conversation?.messageCount) || 0
+      ),
+    });
+  });
+
+  return [...byConversationId.values()];
+};
+
+const getFeedbackId = (ticket) => (
+  ticket?.feedbackId ??
+  ticket?.feedbackID ??
+  ticket?.ticketId ??
+  ticket?.id ??
+  null
+);
+
+const getFeedbackTitle = (ticket) => (
+  ticket?.title ||
+  ticket?.feedbackTitle ||
+  ticket?.subject ||
+  `Phản ánh #${getFeedbackId(ticket) || ''}`
+);
+
+const getFeedbackUpdatedAt = (ticket) => (
+  ticket?.updatedAt ||
+  ticket?.lastUpdatedAt ||
+  ticket?.modifiedAt ||
+  ticket?.createdAt ||
+  ticket?.submittedAt ||
+  null
+);
+
+const getFeedbackStatusLabel = (status) => {
+  const normalized = String(status || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const labels = {
+    submitted: 'Đã gửi',
+    aireviewed: 'Đang phân loại',
+    verified: 'Đã xác minh',
+    assigned: 'Đã phân công',
+    inprogress: 'Đang xử lý',
+    waitingcitizen: 'Chờ bạn bổ sung',
+    submittedforapproval: 'Đang kiểm tra kết quả',
+    needrework: 'Cần bổ sung',
+    resolved: 'Đã xử lý',
+    approved: 'Chờ đánh giá',
+    closed: 'Đã đóng',
+    rejected: 'Không tiếp nhận',
+    cancelled: 'Đã hủy',
+    duplicate: 'Trùng lặp',
+  };
+  return labels[normalized] || status || 'Đang cập nhật';
+};
+
+const resolveRouteFeedbackId = (pathname) => {
+  const segments = String(pathname || '').split('/').filter(Boolean);
+  if (segments[0] !== 'tickets' || !segments[1]) return null;
+  if (['create', 'archive', 'assign'].includes(segments[1])) return null;
+  return segments[1];
+};
+
+
+const formatSupportMessageTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+  }).format(date);
+};
+
+const CitizenStaffSupportPanel = ({ currentUserId }) => {
+  const {
+    feedbackId,
+    messages,
+    messagesLoading,
+    messagesError,
+    messageSubmitting,
+    loadMessages,
+    sendMessage,
+  } = useFeedbackMessages();
+  const [draft, setDraft] = useState('');
+  const [sendError, setSendError] = useState('');
+  const messageListRef = useRef(null);
+  const endRef = useRef(null);
+
+  const publicMessages = useMemo(
+    () => (Array.isArray(messages) ? messages : [])
+      .filter((message) => message && !message.isInternal)
+      .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0)),
+    [messages]
+  );
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      const container = messageListRef.current;
+      if (!container) return;
+
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: publicMessages.length > 1 ? 'smooth' : 'auto',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [publicMessages.length, messageSubmitting]);
+
+  const submitMessage = async (event) => {
+    event?.preventDefault?.();
+    const messageText = draft.trim();
+    if (!messageText || messageSubmitting) return;
+
+    setSendError('');
+    try {
+      await sendMessage({ messageText, isInternal: false });
+      setDraft('');
+    } catch (error) {
+      setSendError(error?.message || 'Không thể gửi tin nhắn. Vui lòng thử lại.');
+    }
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-[var(--public-border)] bg-emerald-50/55 px-4 py-3 dark:bg-emerald-500/5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <Lucide.LockKeyhole size={16} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <strong className="text-sm text-slate-900 dark:text-white">Trao đổi riêng với nhân viên</strong>
+              <span className="rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-500/20 dark:bg-transparent dark:text-emerald-300">
+                Riêng tư
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              Gắn với phản ánh #{String(feedbackId || '').slice(0, 8)}. Người dân khác trong cùng sự vụ không nhìn thấy cuộc trao đổi này.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => loadMessages({ keepMessagesOnError: true })}
+            disabled={messagesLoading}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white hover:text-blue-600 disabled:opacity-50"
+            aria-label="Làm mới trao đổi"
+          >
+            <Lucide.RefreshCw size={14} className={messagesLoading ? 'animate-spin' : ''} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
+      <div
+        ref={messageListRef}
+        className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,.88),rgba(255,255,255,.98))] px-4 py-4 dark:bg-none dark:bg-slate-950/35"
+      >
+        {messagesLoading && publicMessages.length === 0 ? (
+          <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-slate-500">
+            <span className="loading loading-spinner loading-sm" />
+            Đang tải trao đổi...
+          </div>
+        ) : messagesError && publicMessages.length === 0 ? (
+          <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center">
+            <Lucide.MessageSquareWarning size={26} className="text-rose-500" aria-hidden="true" />
+            <p className="max-w-xs text-sm text-rose-600">{messagesError}</p>
+            <button type="button" onClick={() => loadMessages()} className="btn btn-outline btn-sm rounded-xl">
+              Thử lại
+            </button>
+          </div>
+        ) : publicMessages.length === 0 ? (
+          <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <Lucide.MessagesSquare size={21} aria-hidden="true" />
+            </span>
+            <p className="mt-3 text-sm font-bold text-slate-900 dark:text-white">Chưa có trao đổi nào</p>
+            <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500 dark:text-slate-400">
+              Bạn có thể hỏi thêm hoặc bổ sung thông tin riêng cho bộ phận đang xử lý phản ánh này.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {publicMessages.map((message, index) => {
+              const ownMessage = getCitizenMessageSide(message, currentUserId) === 'outgoing';
+              const participantLabel = getCitizenMessageParticipantLabel(message, ownMessage);
+              const messageKey = message?.interactionMessageId || message?.id || `${message?.createdAt || 'message'}-${index}`;
+
+              return (
+                <div key={messageKey} className={`flex ${ownMessage ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[86%] rounded-[18px] px-3.5 py-2.5 ${
+                    ownMessage
+                      ? 'bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,.16)]'
+                      : 'border border-slate-200 bg-white text-slate-800 shadow-[0_6px_18px_rgba(15,23,42,.05)] dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100'
+                  }`}>
+                    <div className={`text-[11px] font-bold ${ownMessage ? 'text-white/85' : 'text-slate-600 dark:text-slate-300'}`}>
+                      {participantLabel}
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5">
+                      {message?.messageText || ''}
+                    </p>
+                    <time className={`mt-1.5 block text-[10px] ${ownMessage ? 'text-right text-white/65' : 'text-slate-400'}`}>
+                      {formatSupportMessageTime(message?.createdAt)}
+                    </time>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={endRef} />
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={submitMessage} className="border-t border-[var(--public-border)] bg-white p-3 dark:bg-slate-950">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              if (sendError) setSendError('');
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent?.isComposing) {
+                event.preventDefault();
+                submitMessage(event);
+              }
+            }}
+            rows={2}
+            disabled={messageSubmitting}
+            placeholder="Nhắn với bộ phận xử lý..."
+            className="min-h-[50px] flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900"
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim() || messageSubmitting}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,.18)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-45"
+            aria-label="Gửi tin nhắn cho bộ phận xử lý"
+          >
+            {messageSubmitting ? <span className="loading loading-spinner loading-sm" /> : <Lucide.Send size={16} aria-hidden="true" />}
+          </button>
+        </div>
+        <p className={`mt-1.5 text-[10px] ${sendError ? 'text-rose-600' : 'text-slate-400'}`}>
+          {sendError || 'Enter để gửi · Shift + Enter để xuống dòng'}
+        </p>
+      </form>
+    </div>
+  );
+};
+
 export const CitizenAiCopilot = () => {
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const params = useParams();
   const isCitizen = normalizeRole(user?.role) === APP_ROLES.SERVICE_USER;
   const [chatOpen, setChatOpen] = useState(false);
-  const routeFeedbackId = location.pathname.startsWith('/tickets/') && params.feedbackId
-    ? params.feedbackId
-    : null;
+  const routeFeedbackId = resolveRouteFeedbackId(location.pathname);
+  const [activeSupportChannel, setActiveSupportChannel] = useState(() => (
+    routeFeedbackId ? 'staff' : 'ai'
+  ));
+  const [staffTickets, setStaffTickets] = useState([]);
+  const [staffTicketsLoading, setStaffTicketsLoading] = useState(false);
+  const [staffTicketsError, setStaffTicketsError] = useState('');
+  const [selectedStaffFeedbackId, setSelectedStaffFeedbackId] = useState(() => routeFeedbackId || '');
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [aiSessionReady, setAiSessionReady] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState(null);
+  const [newConversationMode, setNewConversationMode] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     {
       sender: 'ai',
@@ -120,7 +414,7 @@ export const CitizenAiCopilot = () => {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [selectedImages, setSelectedImages] = useState([]);
-  const [loadingReply, setLoadingReply] = useState(false);
+  const [pendingAiConversationKeys, setPendingAiConversationKeys] = useState([]);
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [draftHydratedKey, setDraftHydratedKey] = useState(null);
   const [viewportHeight, setViewportHeight] = useState(() => (
@@ -135,7 +429,60 @@ export const CitizenAiCopilot = () => {
   const [aiDragging, setAiDragging] = useState(false);
   const aiDragStateRef = useRef(null);
   const suppressAiClickRef = useRef(false);
+  const aiMessageListRef = useRef(null);
+  const activeConversationIdRef = useRef(null);
+  const pendingAiConversationKeysRef = useRef(new Set());
   const draftStorageKey = `${AI_FEEDBACK_DRAFT_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
+  const activeConversationStorageKey = `${AI_ACTIVE_CONVERSATION_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
+
+  useEffect(() => {
+    if (routeFeedbackId) {
+      setSelectedStaffFeedbackId(String(routeFeedbackId));
+    }
+  }, [routeFeedbackId]);
+
+  const sortedStaffTickets = useMemo(() => (
+    [...staffTickets].sort((left, right) => {
+      const leftTime = new Date(getFeedbackUpdatedAt(left) || 0).getTime();
+      const rightTime = new Date(getFeedbackUpdatedAt(right) || 0).getTime();
+      return rightTime - leftTime;
+    })
+  ), [staffTickets]);
+
+  const selectedStaffTicket = useMemo(
+    () => sortedStaffTickets.find((ticket) => String(getFeedbackId(ticket)) === String(selectedStaffFeedbackId)) || null,
+    [selectedStaffFeedbackId, sortedStaffTickets]
+  );
+
+  const loadStaffTickets = useCallback(async () => {
+    if (!isAuthenticated || !isCitizen) return;
+    setStaffTicketsLoading(true);
+    setStaffTicketsError('');
+    try {
+      const response = await ticketApi.getAllTickets(
+        { pageSize: 100 },
+        { role: 'service-user' }
+      );
+      const nextTickets = Array.isArray(response)
+        ? response.filter((ticket) => getFeedbackId(ticket))
+        : [];
+      setStaffTickets(nextTickets);
+      setSelectedStaffFeedbackId((current) => {
+        if (routeFeedbackId && nextTickets.some((ticket) => String(getFeedbackId(ticket)) === String(routeFeedbackId))) {
+          return String(routeFeedbackId);
+        }
+        if (current && nextTickets.some((ticket) => String(getFeedbackId(ticket)) === String(current))) {
+          return current;
+        }
+        return nextTickets.length > 0 ? String(getFeedbackId(nextTickets[0])) : '';
+      });
+    } catch (error) {
+      console.error('Unable to load resident feedback conversations', error);
+      setStaffTicketsError(error?.message || 'Không thể tải danh sách phản ánh.');
+    } finally {
+      setStaffTicketsLoading(false);
+    }
+  }, [isAuthenticated, isCitizen, routeFeedbackId]);
 
 useEffect(() => {
   const handleResize = () => {
@@ -226,23 +573,121 @@ const getAiDockTop = (dock) => {
     setAiDragging(false);
   };
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     setConversationsLoading(true);
     try {
-      setConversations(await toolsApi.getAiConversations());
+      const nextConversations = await toolsApi.getAiConversations();
+      const safeConversations = dedupeAiConversations(nextConversations);
+      setConversations(safeConversations);
+
+      if (
+        activeSupportChannel === 'ai' &&
+        activeConversationIdRef.current == null &&
+        !newConversationMode &&
+        safeConversations.length > 0
+      ) {
+        let persistedConversationId = null;
+        try {
+          persistedConversationId = window.localStorage.getItem(activeConversationStorageKey);
+        } catch (error) {
+          console.warn('Unable to restore active AI conversation', error);
+        }
+
+        const persistedConversation = persistedConversationId
+          ? safeConversations.find((conversation) => (
+            String(conversation?.conversationId ?? conversation?.id) === String(persistedConversationId)
+          ))
+          : null;
+
+        const fallbackConversation = [...safeConversations]
+          .filter((conversation) => conversation?.conversationId != null || conversation?.id != null)
+          .sort((left, right) => {
+            const leftTime = new Date(
+              left?.lastMessageAt ||
+              left?.updatedAt ||
+              left?.startedAt ||
+              left?.createdAt ||
+              0
+            ).getTime();
+            const rightTime = new Date(
+              right?.lastMessageAt ||
+              right?.updatedAt ||
+              right?.startedAt ||
+              right?.createdAt ||
+              0
+            ).getTime();
+
+            if (rightTime !== leftTime) return rightTime - leftTime;
+
+            const leftId = Number(left?.conversationId ?? left?.id ?? 0);
+            const rightId = Number(right?.conversationId ?? right?.id ?? 0);
+            return rightId - leftId;
+          })[0];
+
+        const conversationToResume = persistedConversation || fallbackConversation;
+        const conversationIdToResume = conversationToResume?.conversationId ?? conversationToResume?.id;
+
+        if (conversationIdToResume != null) {
+          activeConversationIdRef.current = conversationIdToResume;
+          setActiveConversationId(conversationIdToResume);
+          try {
+            window.localStorage.setItem(
+              activeConversationStorageKey,
+              String(conversationIdToResume)
+            );
+          } catch (error) {
+            console.warn('Unable to persist active AI conversation', error);
+          }
+
+          setMessagesLoading(true);
+          try {
+            const messages = await toolsApi.getAiConversationMessages(conversationIdToResume);
+            setChatMessages(
+              (Array.isArray(messages) ? messages : [])
+                .map(normalizeAiMessage)
+                .filter((message) => message.text)
+            );
+          } catch (error) {
+            console.warn('Unable to resume active AI conversation', error);
+          } finally {
+            setMessagesLoading(false);
+          }
+        }
+      }
     } catch (error) {
       console.warn('Unable to load AI conversations', error);
       setConversations([]);
     } finally {
       setConversationsLoading(false);
+      setAiSessionReady(true);
     }
-  };
+  }, [
+    activeConversationStorageKey,
+    activeSupportChannel,
+    newConversationMode,
+  ]);
 
   useEffect(() => {
-  if (chatOpen) {
+    if (!chatOpen) return;
     loadConversations();
-  }
-}, [chatOpen]);
+    loadStaffTickets();
+  }, [chatOpen, loadConversations, loadStaffTickets]);
+
+  useEffect(() => {
+    if (!chatOpen || activeSupportChannel !== 'ai') return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const container = aiMessageListRef.current;
+      if (!container) return;
+
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: chatMessages.length > 1 ? 'smooth' : 'auto',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeSupportChannel, chatMessages.length, chatOpen, pendingAiConversationKeys]);
 
   useEffect(() => {
     setDraftHydratedKey(null);
@@ -348,7 +793,15 @@ if (!isAuthenticated || !isCitizen) {
 }
 
 const selectConversation = async (conversationId) => {
+    setNewConversationMode(false);
+    setAiSessionReady(false);
+    activeConversationIdRef.current = conversationId;
     setActiveConversationId(conversationId);
+    try {
+      window.localStorage.setItem(activeConversationStorageKey, String(conversationId));
+    } catch (error) {
+      console.warn('Unable to persist active AI conversation', error);
+    }
     setMessagesLoading(true);
     try {
       const messages = await toolsApi.getAiConversationMessages(conversationId);
@@ -360,6 +813,7 @@ const selectConversation = async (conversationId) => {
   ]);
 } finally {
       setMessagesLoading(false);
+      setAiSessionReady(true);
     }
   };
 
@@ -381,7 +835,6 @@ const selectConversation = async (conversationId) => {
   };
 
   const startDraftFlow = () => {
-    setActiveConversationId(null);
     setDraftStep(DRAFT_STEPS.TITLE);
     setChatMessages((current) => [
       ...current,
@@ -451,7 +904,15 @@ const selectConversation = async (conversationId) => {
   };
 
   const startNewConversation = () => {
+    setNewConversationMode(true);
+    setAiSessionReady(true);
+    activeConversationIdRef.current = null;
     setActiveConversationId(null);
+    try {
+      window.localStorage.removeItem(activeConversationStorageKey);
+    } catch (error) {
+      console.warn('Unable to clear active AI conversation', error);
+    }
     resetDraftFlow();
     setChatMessages([
       {
@@ -463,7 +924,10 @@ const selectConversation = async (conversationId) => {
     ]);
   };
 
-  const toggleChat = () => setChatOpen((current) => !current);
+  const toggleChat = () => {
+    if (!chatOpen) setAiSessionReady(false);
+    setChatOpen((current) => !current);
+  };
 
   const handleDraftStepMessage = (userMsg) => {
     if (draftStep === DRAFT_STEPS.TITLE) {
@@ -529,9 +993,16 @@ const selectConversation = async (conversationId) => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputVal.trim() || loadingReply) return;
+    if (!inputVal.trim() || messagesLoading) return;
+    if (!aiSessionReady && !newConversationMode) return;
 
     const userMsg = inputVal.trim();
+    const requestedConversationId = activeConversationIdRef.current;
+    const requestedConversationKey = requestedConversationId == null
+      ? '__new__'
+      : String(requestedConversationId);
+    if (pendingAiConversationKeysRef.current.has(requestedConversationKey)) return;
+
     setInputVal('');
     setChatMessages((current) => [...current, { sender: 'user', text: userMsg }]);
 
@@ -544,36 +1015,75 @@ const selectConversation = async (conversationId) => {
       return;
     }
 
-    setLoadingReply(true);
+    pendingAiConversationKeysRef.current.add(requestedConversationKey);
+    setPendingAiConversationKeys([...pendingAiConversationKeysRef.current]);
+
+    const isRequestConversationStillActive = () => {
+      const currentConversationId = activeConversationIdRef.current;
+      const currentConversationKey = currentConversationId == null
+        ? '__new__'
+        : String(currentConversationId);
+      return currentConversationKey === requestedConversationKey;
+    };
 
     try {
       const payload = {
-        conversationId: activeConversationId ?? null,
+        conversationId: requestedConversationId ?? null,
         message: userMsg,
-        ...(!activeConversationId && routeFeedbackId ? { feedbackId: routeFeedbackId } : {}),
+        ...(requestedConversationId == null && routeFeedbackId ? { feedbackId: routeFeedbackId } : {}),
       };
       const response = await toolsApi.getAiChatReply(payload);
       const replyText = getAiMessageText(response);
       const nextConversationId = getAiConversationId(response);
-      if (nextConversationId) setActiveConversationId(nextConversationId);
-      setChatMessages((current) => [
-        ...current,
-        {
-          sender: 'ai',
-          text: replyText || 'Mình đã ghi nhận nội dung. Hãy bổ sung vị trí và ảnh nếu có, sau đó bấm “Tạo bản nháp phản ánh”.',
-        },
-      ]);
+      const requestStillActive = isRequestConversationStillActive();
+
+      if (nextConversationId != null) {
+        if (
+          requestedConversationId != null &&
+          String(requestedConversationId) !== String(nextConversationId)
+        ) {
+          console.warn('AI chat returned a different conversationId than requested', {
+            requestedConversationId,
+            responseConversationId: nextConversationId,
+          });
+        }
+
+        if (requestStillActive) {
+          setNewConversationMode(false);
+          activeConversationIdRef.current = nextConversationId;
+          setActiveConversationId(nextConversationId);
+          try {
+            window.localStorage.setItem(activeConversationStorageKey, String(nextConversationId));
+          } catch (error) {
+            console.warn('Unable to persist active AI conversation', error);
+          }
+        }
+      }
+
+      if (requestStillActive) {
+        setChatMessages((current) => [
+          ...current,
+          {
+            sender: 'ai',
+            text: replyText || 'Mình đã ghi nhận nội dung. Hãy bổ sung vị trí và ảnh nếu có, sau đó bấm “Tạo bản nháp phản ánh”.',
+          },
+        ]);
+      }
+      loadConversations();
     } catch (error) {
-      setChatMessages((current) => [
-        ...current,
-        {
-          sender: 'ai',
-          text: error?.message || 'Chưa thể kết nối AI chat. Bạn vẫn có thể nhập đủ thông tin và tạo bản nháp phản ánh.',
-        },
-      ]);
+      if (isRequestConversationStillActive()) {
+        setChatMessages((current) => [
+          ...current,
+          {
+            sender: 'ai',
+            text: error?.message || 'Chưa thể kết nối AI chat. Bạn vẫn có thể nhập đủ thông tin và tạo bản nháp phản ánh.',
+          },
+        ]);
+      }
       loadConversations();
     } finally {
-      setLoadingReply(false);
+      pendingAiConversationKeysRef.current.delete(requestedConversationKey);
+      setPendingAiConversationKeys([...pendingAiConversationKeysRef.current]);
     }
   };
 
@@ -726,6 +1236,13 @@ const selectConversation = async (conversationId) => {
     }
   };
 
+  const activeAiConversationKey = activeConversationId == null
+    ? (newConversationMode ? '__new__' : null)
+    : String(activeConversationId);
+  const currentConversationWaitingForReply = Boolean(
+    activeAiConversationKey && pendingAiConversationKeys.includes(activeAiConversationKey)
+  );
+
   return (
     <>
       <button
@@ -741,10 +1258,10 @@ const selectConversation = async (conversationId) => {
         onPointerMove={handleAiPointerMove}
         onPointerUp={finishAiDrag}
         onPointerCancel={finishAiDrag}
-        aria-label={chatOpen ? 'Đóng trợ lý AI' : 'Mở trợ lý AI'}
-        title="Bấm để mở trợ lý. Trên máy tính, kéo dọc cạnh phải để đổi vị trí."
-        className={`btn btn-circle btn-primary btn-lg group fixed right-5 z-40 bottom-24 shadow-xl shadow-blue-600/20 transition-[transform,box-shadow,background-color] hover:scale-105 sm:right-6 md:bottom-auto md:cursor-grab md:touch-none md:active:cursor-grabbing lg:right-8 ${
-          aiDragging ? 'scale-105 shadow-2xl ring-4 ring-primary/15' : ''
+        aria-label={chatOpen ? 'Đóng trung tâm hỗ trợ' : 'Mở trung tâm hỗ trợ'}
+        title="Trung tâm hỗ trợ: AI và trao đổi riêng với nhân viên"
+        className={`group fixed right-5 z-40 bottom-24 flex h-14 w-14 items-center justify-center rounded-2xl bg-[linear-gradient(145deg,#2563eb,#4f46e5)] text-white shadow-[0_16px_36px_rgba(37,99,235,.30)] transition-[transform,box-shadow] hover:scale-105 sm:right-6 md:bottom-auto md:cursor-grab md:touch-none md:active:cursor-grabbing lg:right-8 ${
+          aiDragging ? 'scale-105 shadow-2xl ring-4 ring-blue-500/15' : ''
         }`}
         style={
           typeof window !== 'undefined' && window.innerWidth >= 768
@@ -756,201 +1273,326 @@ const selectConversation = async (conversationId) => {
             : undefined
         }
       >
-        <Lucide.Sparkles
-          size={24}
-          className="transition-transform group-hover:rotate-12"
-          aria-hidden="true"
-        />
+        <Lucide.MessagesSquare size={23} aria-hidden="true" />
+        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-white shadow-sm">
+          <Lucide.Sparkles size={10} aria-hidden="true" />
+        </span>
       </button>
 
       {chatOpen ? (
-        <div className="fixed inset-0 z-[2198]" onClick={() => setChatOpen(false)} />
+        <div className="fixed inset-0 z-[2198] bg-slate-950/15 backdrop-blur-[1px]" onClick={() => setChatOpen(false)} />
       ) : null}
 
       <div
-        className={`fixed inset-y-0 right-0 z-[2200] w-[min(24rem,calc(100vw-1rem))] transform border-l border-base-300 bg-base-100 shadow-2xl transition-transform duration-300 ${
+        className={`fixed inset-y-0 right-0 z-[2200] w-[min(26rem,calc(100vw-1rem))] transform border-l border-[var(--public-border)] bg-white shadow-[-22px_0_70px_rgba(15,23,42,.16)] transition-transform duration-300 dark:bg-slate-950 ${
           chatOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b border-base-300 bg-primary px-6 py-4 text-primary-content">
-            <div className="flex items-center gap-2">
-              <Lucide.Sparkles className="animate-pulse" size={20} />
-              <div>
-                <h3 className="text-sm font-bold">UrbanMind AI Copilot</h3>
-                <p className="text-[10px] opacity-75">Tư vấn pháp lý & phản ánh đô thị</p>
+        <div className="flex h-full min-h-0 flex-col">
+          <header className="border-b border-[var(--public-border)] bg-[linear-gradient(135deg,#1d4ed8,#2563eb_55%,#4f46e5)] px-5 pb-4 pt-4 text-white">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/12 ring-1 ring-white/15">
+                  <Lucide.Headphones size={19} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold">Trung tâm hỗ trợ</h2>
+                  <p className="mt-0.5 text-[11px] leading-4 text-blue-100">
+                    AI hỗ trợ sử dụng hệ thống · Nhân viên trao đổi riêng theo từng phản ánh
+                  </p>
+                </div>
               </div>
-            </div>
-            <button
-              type="button"
-              aria-label="Đóng cửa sổ trợ lý"
-              title="Đóng"
-              onClick={toggleChat}
-              className="btn btn-sm btn-ghost btn-circle text-primary-content hover:bg-primary-focus"
-            >
-              <Lucide.X size={18} aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="border-b border-base-300 bg-base-100 px-4 py-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                Hội thoại của tôi
-              </span>
-              <button type="button" onClick={startNewConversation} className="btn btn-ghost btn-xs rounded-xl">
-                Chat mới
+              <button
+                type="button"
+                aria-label="Đóng trung tâm hỗ trợ"
+                title="Đóng"
+                onClick={toggleChat}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white/85 transition hover:bg-white/10 hover:text-white"
+              >
+                <Lucide.X size={18} aria-hidden="true" />
               </button>
             </div>
-            {routeFeedbackId ? (
-              <p className="mb-2 rounded-xl bg-primary/10 px-3 py-2 text-[11px] font-semibold text-primary">
-                Chat theo phản ánh #{routeFeedbackId}
-              </p>
-            ) : null}
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {conversationsLoading ? (
-                <span className="loading loading-dots loading-xs" />
-              ) : conversations.length > 0 ? conversations.map((conversation) => {
-                const conversationId = conversation.conversationId || conversation.id;
-                return (
+
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-2xl bg-black/10 p-1">
+              <button
+                type="button"
+                onClick={() => setActiveSupportChannel('ai')}
+                aria-pressed={activeSupportChannel === 'ai'}
+                className={`inline-flex h-9 items-center justify-center gap-2 rounded-xl text-xs font-bold transition ${
+                  activeSupportChannel === 'ai'
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-blue-100 hover:bg-white/8 hover:text-white'
+                }`}
+              >
+                <Lucide.Sparkles size={14} aria-hidden="true" />
+                Trợ lý AI
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSupportChannel('staff')}
+                aria-pressed={activeSupportChannel === 'staff'}
+                className={`inline-flex h-9 items-center justify-center gap-2 rounded-xl text-xs font-bold transition ${
+                  activeSupportChannel === 'staff'
+                    ? 'bg-white text-emerald-700 shadow-sm'
+                    : 'text-blue-100 hover:bg-white/8 hover:text-white'
+                }`}
+              >
+                <Lucide.UserRoundCheck size={14} aria-hidden="true" />
+                Nhân viên
+              </button>
+            </div>
+          </header>
+
+          {activeSupportChannel === 'ai' ? (
+            <>
+              <div className="border-b border-[var(--public-border)] bg-white px-4 py-3 dark:bg-slate-950">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                    Hội thoại AI của tôi
+                  </span>
                   <button
-                    key={conversationId}
                     type="button"
-                    onClick={() => selectConversation(conversationId)}
-                    className={`max-w-44 shrink-0 rounded-xl border px-3 py-2 text-left text-[11px] transition ${
-                      String(activeConversationId) === String(conversationId)
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-base-300 bg-base-100 hover:border-primary/40'
-                    }`}
+                    onClick={startNewConversation}
+                    className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-blue-600 transition hover:bg-blue-50"
                   >
-                    <span className="block truncate font-bold">
-                      {conversation.title || `Hội thoại #${conversationId}`}
-                    </span>
-                    <span className="mt-0.5 block truncate text-base-content/55">
-                      {conversation.lastMessage || `${conversation.messageCount || 0} tin nhắn`}
-                    </span>
+                    <Lucide.Plus size={12} aria-hidden="true" />
+                    Chat mới
                   </button>
-                );
-              }) : (
-                <span className="text-[11px] text-base-content/50">Chưa có hội thoại cũ.</span>
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {conversationsLoading ? (
+                    <span className="loading loading-dots loading-xs" />
+                  ) : conversations.length > 0 ? conversations.map((conversation) => {
+                    const conversationId = conversation.conversationId ?? conversation.id;
+                    return (
+                      <button
+                        key={conversationId}
+                        type="button"
+                        onClick={() => selectConversation(conversationId)}
+                        className={`max-w-44 shrink-0 rounded-xl border px-3 py-2 text-left text-[11px] transition ${
+                          String(activeConversationId) === String(conversationId)
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                        }`}
+                      >
+                        <span className="block truncate font-bold">
+                          {conversation.title || `Hội thoại #${conversationId}`}
+                        </span>
+                        <span className="mt-0.5 block truncate text-slate-400">
+                          {conversation.lastMessage
+                            || (Number(conversation.messageCount) > 0
+                              ? `${conversation.messageCount} tin nhắn`
+                              : 'Hội thoại AI')}
+                        </span>
+                      </button>
+                    );
+                  }) : (
+                    <span className="text-[11px] text-slate-400">Chưa có hội thoại AI cũ.</span>
+                  )}
+                </div>
+              </div>
+
+              <div
+                ref={aiMessageListRef}
+                className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/80 p-4 dark:bg-slate-950/45"
+              >
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-3.5 py-3 text-xs leading-5 text-blue-700 dark:border-blue-500/15 dark:bg-blue-500/5 dark:text-blue-300">
+                  <div className="flex items-center gap-2 font-bold">
+                    <Lucide.Bot size={14} aria-hidden="true" />
+                    Trợ lý tự động
+                  </div>
+                  <p className="mt-1 text-blue-600/80 dark:text-blue-300/70">
+                    AI có thể hướng dẫn sử dụng, giải thích quy trình và hỗ trợ soạn phản ánh; không đại diện cho cam kết xử lý của nhân viên.
+                  </p>
+                </div>
+
+                {messagesLoading ? (
+                  <div className="flex justify-center py-4">
+                    <span className="loading loading-spinner loading-sm" />
+                  </div>
+                ) : null}
+
+                {chatMessages.map((message, index) => (
+                  <div key={`${message.sender}-${index}`} className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`max-w-[86%] rounded-[18px] px-3.5 py-2.5 text-sm leading-5 ${
+                      message.sender === 'ai'
+                        ? 'border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'
+                        : 'bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,.16)]'
+                    }`}>
+                      {message.text}
+                    </div>
+                  </div>
+                ))}
+
+                {currentConversationWaitingForReply ? (
+                  <div className="flex justify-start">
+                    <div className="rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <span className="loading loading-dots loading-xs" />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="border-t border-[var(--public-border)] bg-white px-4 py-3 dark:bg-slate-950">
+                <div className="mb-2 grid grid-cols-[1fr_auto_auto] gap-2">
+                  <button
+                    type="button"
+                    onClick={draftStep === DRAFT_STEPS.IDLE ? startDraftFlow : handleCreateDraft}
+                    disabled={creatingDraft}
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-blue-50 px-3 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-500/10 dark:text-blue-300"
+                  >
+                    {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={13} />}
+                    {draftStep === DRAFT_STEPS.IDLE ? 'Tạo phản ánh' : 'Gửi phản ánh'}
+                  </button>
+                  <button type="button" onClick={handleUseBrowserLocation} className="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 px-2.5 text-slate-500 hover:text-blue-600" title="Lấy GPS">
+                    <Lucide.MapPin size={14} />
+                  </button>
+                  <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-slate-200 px-2.5 text-slate-500 hover:text-blue-600" title="Đính kèm ảnh">
+                    <Lucide.ImagePlus size={14} />
+                    <input type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
+                  </label>
+                </div>
+
+                {draftStep !== DRAFT_STEPS.IDLE || selectedImages.length > 0 || locationText ? (
+                  <div className="mb-2 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                    <input
+                      type="text"
+                      value={locationText}
+                      onChange={(event) => setLocationText(event.target.value)}
+                      placeholder="Vị trí phản ánh"
+                      className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
+                    />
+                    {selectedImages.length > 0 ? (
+                      <p className="mt-1 truncate text-[10px] text-slate-400">
+                        {selectedImages.length} ảnh đã chọn
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder={!aiSessionReady && !newConversationMode
+                      ? 'Đang mở hội thoại gần nhất...'
+                      : draftStep === DRAFT_STEPS.IDLE
+                        ? 'Hỏi AI hoặc nhập “tạo phản ánh”...'
+                        : 'Trả lời câu hỏi hiện tại...'}
+                    aria-label="Nhắn với trợ lý AI"
+                    disabled={!aiSessionReady || messagesLoading || currentConversationWaitingForReply}
+                    value={inputVal}
+                    onChange={(event) => setInputVal(event.target.value)}
+                    onKeyDown={(event) => event.key === 'Enter' && handleSendMessage()}
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    aria-label="Gửi tin nhắn cho AI"
+                    title="Gửi"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:opacity-50"
+                    disabled={currentConversationWaitingForReply || messagesLoading || !aiSessionReady || !inputVal.trim()}
+                  >
+                    <Lucide.SendHorizontal size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="border-b border-[var(--public-border)] bg-white px-4 py-3 dark:bg-slate-950">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-600">Trao đổi riêng</p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Chọn phản ánh cần trao đổi với bộ phận xử lý.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadStaffTickets}
+                    disabled={staffTicketsLoading}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-50 hover:text-blue-600 disabled:opacity-50 dark:hover:bg-slate-900"
+                    aria-label="Làm mới danh sách phản ánh"
+                  >
+                    <Lucide.RefreshCw size={14} className={staffTicketsLoading ? 'animate-spin' : ''} aria-hidden="true" />
+                  </button>
+                </div>
+
+                {staffTicketsError ? (
+                  <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{staffTicketsError}</div>
+                ) : null}
+
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                  {staffTicketsLoading && sortedStaffTickets.length === 0 ? (
+                    [1, 2].map((item) => <div key={item} className="h-14 w-40 shrink-0 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" />)
+                  ) : sortedStaffTickets.length > 0 ? sortedStaffTickets.map((ticket) => {
+                    const feedbackId = getFeedbackId(ticket);
+                    const selected = String(selectedStaffFeedbackId) === String(feedbackId);
+                    return (
+                      <button
+                        key={feedbackId}
+                        type="button"
+                        onClick={() => setSelectedStaffFeedbackId(String(feedbackId))}
+                        className={`w-44 shrink-0 rounded-xl border px-3 py-2 text-left transition ${
+                          selected
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-800 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                        }`}
+                      >
+                        <span className="block truncate text-xs font-bold">{getFeedbackTitle(ticket)}</span>
+                        <span className="mt-1 block truncate text-[10px] text-slate-400">{getFeedbackStatusLabel(ticket?.status)}</span>
+                      </button>
+                    );
+                  }) : (
+                    <button
+                      type="button"
+                      onClick={() => { setChatOpen(false); navigate('/tickets/create'); }}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-dashed border-blue-200 px-3 text-xs font-semibold text-blue-700"
+                    >
+                      <Lucide.Plus size={13} aria-hidden="true" />
+                      Chưa có phản ánh · Tạo mới
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {selectedStaffFeedbackId ? (
+                <>
+                  <div className="flex items-center justify-between gap-3 border-b border-[var(--public-border)] bg-slate-50/70 px-4 py-2.5 dark:bg-slate-950/60">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
+                        {selectedStaffTicket ? getFeedbackTitle(selectedStaffTicket) : `Phản ánh #${String(selectedStaffFeedbackId).slice(0, 8)}`}
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-slate-400">
+                        {selectedStaffTicket ? getFeedbackStatusLabel(selectedStaffTicket?.status) : 'Trao đổi riêng theo phản ánh'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setChatOpen(false); navigate(`/tickets/${selectedStaffFeedbackId}`); }}
+                      className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-blue-600 transition hover:bg-blue-50"
+                    >
+                      Xem phản ánh
+                      <Lucide.ArrowUpRight size={12} aria-hidden="true" />
+                    </button>
+                  </div>
+                  <FeedbackMessagesProvider feedbackId={selectedStaffFeedbackId} includeInternal={false}>
+                    <CitizenStaffSupportPanel currentUserId={user?.userId || user?.id} />
+                  </FeedbackMessagesProvider>
+                </>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center bg-slate-50/70 px-6 text-center dark:bg-slate-950/45">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <Lucide.MessagesSquare size={20} aria-hidden="true" />
+                  </span>
+                  <p className="mt-3 text-sm font-bold text-slate-900 dark:text-white">Chọn một phản ánh để trao đổi</p>
+                  <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    Mỗi phản ánh có một cuộc trò chuyện riêng với nhân viên. Người dân khác trong cùng sự vụ không nhìn thấy nội dung này.
+                  </p>
+                </div>
               )}
             </div>
-          </div>
-
-          <div className="flex-1 space-y-4 overflow-y-auto bg-base-200/50 p-4">
-            {messagesLoading ? (
-              <div className="flex justify-center py-4">
-                <span className="loading loading-spinner loading-sm" />
-              </div>
-            ) : null}
-            {chatMessages.map((message, index) => (
-              <div
-                key={`${message.sender}-${index}`}
-                className={`chat ${message.sender === 'ai' ? 'chat-start' : 'chat-end'}`}
-              >
-                <div className="chat-image avatar">
-                  <div className="flex w-8 items-center justify-center rounded-full bg-base-300 p-1">
-                    {message.sender === 'ai' ? (
-                      <Lucide.Cpu className="h-full w-full text-primary" />
-                    ) : user?.avatarUrl ? (
-                      <img src={user.avatarUrl} alt="Người dùng" />
-                    ) : (
-                      <Lucide.User className="h-full w-full text-primary" />
-                    )}
-                  </div>
-                </div>
-                <div
-                  className={`chat-bubble max-w-[85%] text-xs font-medium leading-relaxed ${
-                    message.sender === 'ai'
-                      ? 'border border-base-300 bg-base-100 text-base-content shadow-sm'
-                      : 'bg-primary text-primary-content shadow-sm'
-                  }`}
-                >
-                  {message.text}
-                </div>
-              </div>
-            ))}
-
-            {loadingReply ? (
-              <div className="chat chat-start">
-                <div className="chat-image avatar">
-                  <div className="w-8 rounded-full bg-base-300 p-1">
-                    <Lucide.Cpu className="h-full w-full animate-bounce text-primary" />
-                  </div>
-                </div>
-                <div className="chat-bubble flex items-center gap-1.5 border border-base-300 bg-base-100 py-3">
-                  <span className="loading loading-dots loading-xs" />
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="border-t border-base-300 bg-base-100 px-4 py-3">
-            <div className="mb-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={draftStep === DRAFT_STEPS.IDLE ? startDraftFlow : handleCreateDraft}
-                disabled={creatingDraft}
-                className="btn btn-primary btn-sm flex-1 rounded-xl"
-              >
-                {creatingDraft ? <span className="loading loading-spinner loading-xs" /> : <Lucide.FilePlus2 size={14} />}
-                {draftStep === DRAFT_STEPS.IDLE ? 'Tạo phản ánh' : 'Gửi phản ánh'}
-              </button>
-              <button
-                type="button"
-                onClick={handleUseBrowserLocation}
-                className="btn btn-outline btn-sm rounded-xl"
-                title="Lấy GPS"
-              >
-                <Lucide.MapPin size={14} />
-                GPS
-              </button>
-              <label className="btn btn-outline btn-sm rounded-xl" title="Đính kèm ảnh">
-                <Lucide.ImagePlus size={14} />
-                Ảnh
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
-              </label>
-            </div>
-            <input
-              type="text"
-              value={locationText}
-              onChange={(event) => setLocationText(event.target.value)}
-              placeholder="Vị trí phản ánh (có thể nhập sau khi chat)"
-              className="input input-bordered input-xs w-full rounded-xl text-xs"
-            />
-            {selectedImages.length > 0 ? (
-              <p className="mt-1 text-[10px] text-base-content/60">
-                Đã chọn {selectedImages.length} ảnh: {selectedImages.map((file) => file.name).join(', ')}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="flex gap-2 border-t border-base-300 bg-base-100 p-4">
-            <input
-              type="text"
-              placeholder={draftStep === DRAFT_STEPS.IDLE ? 'Nhắn với AI hoặc nhập “tạo phản ánh”...' : 'Trả lời câu hỏi hiện tại...'}
-              aria-label="Nhắn với AI"
-              value={inputVal}
-              onChange={(event) => setInputVal(event.target.value)}
-              onKeyDown={(event) => event.key === 'Enter' && handleSendMessage()}
-              className="input input-bordered input-sm flex-1 rounded-xl text-xs"
-            />
-            <button
-              type="button"
-              onClick={handleSendMessage}
-              aria-label="Gửi tin nhắn"
-              title="Gửi"
-              className="btn btn-sm btn-primary btn-square rounded-xl"
-              disabled={loadingReply}
-            >
-              <Lucide.SendHorizontal size={16} aria-hidden="true" />
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </>
