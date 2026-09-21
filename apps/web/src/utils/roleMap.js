@@ -36,3 +36,15 @@ export const normalizeRole = (role) => {
 
   return roleAliases[normalizedRole] || normalizedRole;
 };
+
+const ROLE_ENTRY_PATHS = {
+  'service-user': '/',
+  'system-staff': '/dashboard',
+  'service-provider': '/provider/tasks',
+  'interaction-manager': '/manager/interactions',
+  administrator: '/admin/audit',
+};
+
+export const getRoleEntryPath = (role) => (
+  ROLE_ENTRY_PATHS[normalizeRole(role)] || '/dashboard'
+);

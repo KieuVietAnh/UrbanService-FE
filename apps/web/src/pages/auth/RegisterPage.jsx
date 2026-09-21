@@ -5,6 +5,7 @@ import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { AuthLayout } from '../../components/auth/AuthLayout';
+import { getRoleEntryPath } from '../../utils/roleMap';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^0\d{9}$/;
@@ -377,6 +378,7 @@ export const RegisterPage = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -391,10 +393,30 @@ export const RegisterPage = () => {
     const storedDraft = readRegistrationDraft();
     const draft = routeDraft || storedDraft || {};
 
+    if (isEditingRegistration && user) {
+      setFullName(user?.fullName || draft.fullName || '');
+      setEmail(user?.email || draft.email || '');
+      setPhone(user?.phoneNumber || draft.phone || '');
+      return;
+    }
+
     setFullName(draft.fullName || user?.fullName || '');
     setEmail(draft.email || user?.email || '');
     setPhone(draft.phone || user?.phoneNumber || '');
-  }, [location.state, user]);
+  }, [isEditingRegistration, location.state, user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    if (user.isVerified) {
+      navigate(getRoleEntryPath(user.role), { replace: true });
+      return;
+    }
+
+    if (!isEditingRegistration) {
+      navigate('/verify-email', { replace: true });
+    }
+  }, [isEditingRegistration, navigate, user]);
 
   useEffect(() => {
     if (!fullName && !email && !phone) return;
@@ -652,6 +674,15 @@ export const RegisterPage = () => {
           </p>
         </header>
 
+        {isEditingRegistration ? (
+          <div className="relative z-10 mt-5 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-xs leading-5 text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+            <Lucide.Info size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <p>
+              Bạn đang chỉnh sửa tài khoản chưa xác thực. Giữ nguyên email hiện tại sẽ không tạo tài khoản mới; nếu đổi email, mã OTP mới sẽ được gửi đến địa chỉ mới sau khi lưu.
+            </p>
+          </div>
+        ) : null}
+
         <div className="auth-login-alerts relative z-10 mt-6" aria-live="polite">
           {error ? (
             <ErrorAlert
@@ -831,7 +862,7 @@ export const RegisterPage = () => {
               <input
                 id="register-confirm-password"
                 name="confirmPassword"
-                type={showPassword ? 'text' : 'password'}
+                type={showConfirmPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 placeholder="••••••••"
                 value={confirmPassword}
@@ -847,12 +878,12 @@ export const RegisterPage = () => {
               />
               <button
                 type="button"
-                onClick={() => setShowPassword((current) => !current)}
+                onClick={() => setShowConfirmPassword((current) => !current)}
                 className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-2xl text-slate-400 transition hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:hover:text-slate-200"
-                aria-label={showPassword ? 'Ẩn mật khẩu xác nhận' : 'Hiện mật khẩu xác nhận'}
-                aria-pressed={showPassword}
+                aria-label={showConfirmPassword ? 'Ẩn mật khẩu xác nhận' : 'Hiện mật khẩu xác nhận'}
+                aria-pressed={showConfirmPassword}
               >
-                {showPassword ? (
+                {showConfirmPassword ? (
                   <Lucide.EyeOff size={17} aria-hidden="true" />
                 ) : (
                   <Lucide.Eye size={17} aria-hidden="true" />
