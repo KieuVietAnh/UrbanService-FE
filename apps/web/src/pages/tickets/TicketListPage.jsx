@@ -1,12 +1,21 @@
 // src/pages/tickets/TicketListPage.jsx
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { ticketApi } from '../../services/api/ticketApi';
 import { toolsApi } from '@urbanmind/shared-api';
 import { getStatusLabel, managementTypes } from '@urbanmind/shared-types';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import PublicPageMotion from '../../components/public/PublicPageMotion';
+import ticketHeroArt from '../../assets/community-hero-option-a.png';
+import ticketSideArt from '../../assets/citizen-tickets-side-art.png';
+import {
+  cacheTicketPreview,
+  getCachedTicketPreviewUrl,
+  hasSettledTicketPreview,
+  readTicketPreviewCache,
+  writeTicketPreviewCache,
+} from './ticketPreviewCache';
 
 const TICKET_LIST_SNAPSHOT_STORAGE_KEY =
   'urbanmind-service-user-ticket-list-snapshot';
@@ -41,6 +50,7 @@ const writeSessionArray = (storageKey, items) => {
     // Storage can be unavailable in private mode.
   }
 };
+
 
 const readTicketListReturnContext = () => {
   if (typeof window === 'undefined') return null;
@@ -152,6 +162,17 @@ const getCategoryLabel = (categoryName) => (
   CATEGORY_LABELS[categoryName] || categoryName || 'Chưa phân loại'
 );
 
+
+const getTicketId = (ticket) => (
+  ticket?.feedbackId ||
+  ticket?.feedbackID ||
+  ticket?.id ||
+  ticket?.feedback?.feedbackId ||
+  ticket?.feedback?.id ||
+  ''
+);
+
+
 const formatDate = (value) => {
   if (!value) return 'Chưa cập nhật';
   const date = new Date(value);
@@ -162,6 +183,27 @@ const formatDate = (value) => {
     month: '2-digit',
     year: 'numeric',
   });
+};
+
+const formatTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
+const RECENT_STATUS_DOT_CLASSES = {
+  blue: 'bg-blue-500',
+  amber: 'bg-amber-500',
+  green: 'bg-emerald-500',
+  red: 'bg-rose-500',
+  violet: 'bg-violet-500',
+  slate: 'bg-slate-400',
 };
 
 const getCitizenStatusMeta = (status) => {
@@ -238,94 +280,85 @@ const getCitizenStatusMeta = (status) => {
 const CitizenTicketThemeStyles = () => (
   <style>{`
     .citizen-ticket-page {
+      overflow-anchor: none;
       --ticket-blue: #2563eb;
-      --ticket-blue-soft: rgba(37, 99, 235, 0.1);
-      --ticket-blue-border: rgba(37, 99, 235, 0.24);
-      --ticket-violet: #6d28d9;
-      --ticket-violet-soft: rgba(109, 40, 217, 0.1);
-      --ticket-violet-border: rgba(109, 40, 217, 0.24);
+      --ticket-blue-soft: rgba(37, 99, 235, 0.08);
+      --ticket-blue-border: rgba(37, 99, 235, 0.2);
       --ticket-amber: #b45309;
-      --ticket-amber-soft: rgba(217, 119, 6, 0.1);
-      --ticket-amber-border: rgba(217, 119, 6, 0.28);
+      --ticket-amber-soft: rgba(245, 158, 11, 0.1);
+      --ticket-amber-border: rgba(245, 158, 11, 0.24);
       --ticket-green: #047857;
-      --ticket-green-soft: rgba(5, 150, 105, 0.1);
-      --ticket-green-border: rgba(5, 150, 105, 0.26);
+      --ticket-green-soft: rgba(16, 185, 129, 0.1);
+      --ticket-green-border: rgba(16, 185, 129, 0.22);
       --ticket-red: #b91c1c;
-      --ticket-red-soft: rgba(220, 38, 38, 0.08);
-      --ticket-red-border: rgba(220, 38, 38, 0.24);
+      --ticket-red-soft: rgba(239, 68, 68, 0.08);
+      --ticket-red-border: rgba(239, 68, 68, 0.2);
       --ticket-slate: #64748b;
-      --ticket-slate-soft: rgba(100, 116, 139, 0.1);
-      --ticket-slate-border: rgba(100, 116, 139, 0.24);
-    }
-
-    .citizen-ticket-page-shell {
-      border-color: rgba(148, 163, 184, 0.42);
-      background:
-        radial-gradient(circle at 8% 5%, rgba(59, 130, 246, 0.09), transparent 25%),
-        radial-gradient(circle at 92% 10%, rgba(14, 165, 233, 0.07), transparent 25%),
-        linear-gradient(180deg, rgba(226, 235, 247, 0.9), rgba(242, 247, 252, 0.72));
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.86),
-        0 24px 70px rgba(15, 23, 42, 0.07);
+      --ticket-slate-soft: rgba(100, 116, 139, 0.08);
+      --ticket-slate-border: rgba(100, 116, 139, 0.18);
     }
 
     .citizen-ticket-hero,
-    .citizen-ticket-panel {
+    .citizen-ticket-panel,
+    .citizen-ticket-side-card {
       border-color: var(--public-border);
       background: var(--public-surface);
-      box-shadow: var(--public-shadow);
+      box-shadow: 0 16px 44px rgba(15, 23, 42, 0.055);
     }
 
     .citizen-ticket-hero {
       background:
-        radial-gradient(circle at 88% 18%, rgba(34, 211, 238, 0.12), transparent 28%),
-        radial-gradient(circle at 10% 10%, rgba(59, 130, 246, 0.1), transparent 27%),
-        linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(243, 248, 255, 0.96));
+        radial-gradient(circle at 88% 18%, rgba(56, 189, 248, 0.13), transparent 30%),
+        radial-gradient(circle at 10% 0%, rgba(37, 99, 235, 0.08), transparent 30%),
+        linear-gradient(145deg, rgba(255,255,255,0.99), rgba(247,251,255,0.98));
     }
 
-    .citizen-ticket-summary {
-      border-color: rgba(148, 163, 184, 0.34);
-      background: rgba(255, 255, 255, 0.76);
-      color: var(--public-title);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    .citizen-ticket-hero-art {
+      mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.32) 20%, #000 58%);
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.32) 20%, #000 58%);
     }
 
-    .citizen-ticket-summary:hover,
-    .citizen-ticket-summary.is-active {
-      border-color: var(--summary-border);
-      background: var(--summary-soft);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.78),
-        0 10px 28px rgba(15, 23, 42, 0.08);
+    .citizen-ticket-thumb {
+      border-color: rgba(148, 163, 184, .24);
+      background: linear-gradient(145deg, rgba(239,246,255,.96), rgba(248,250,252,.98));
     }
 
-    .citizen-ticket-summary-blue {
-      --summary-color: var(--ticket-blue);
-      --summary-soft: var(--ticket-blue-soft);
-      --summary-border: var(--ticket-blue-border);
+    .citizen-ticket-side-visual {
+      background:
+        radial-gradient(circle at 16% 18%, rgba(37, 99, 235, .08), transparent 26%),
+        linear-gradient(155deg, rgba(255,255,255,.99), rgba(241,248,255,.96));
     }
 
-    .citizen-ticket-summary-violet {
-      --summary-color: var(--ticket-violet);
-      --summary-soft: var(--ticket-violet-soft);
-      --summary-border: var(--ticket-violet-border);
+    .citizen-ticket-attention {
+      border-color: rgba(245, 158, 11, 0.3);
+      background: linear-gradient(90deg, rgba(255, 251, 235, 0.98), rgba(255, 247, 214, 0.86));
+      color: #92400e;
     }
 
-    .citizen-ticket-summary-amber {
-      --summary-color: var(--ticket-amber);
-      --summary-soft: var(--ticket-amber-soft);
-      --summary-border: var(--ticket-amber-border);
+    .citizen-ticket-tab {
+      color: var(--public-copy);
+      border-bottom: 2px solid transparent;
     }
 
-    .citizen-ticket-summary-green {
-      --summary-color: var(--ticket-green);
-      --summary-soft: var(--ticket-green-soft);
-      --summary-border: var(--ticket-green-border);
+    .citizen-ticket-tab:hover {
+      color: var(--ticket-blue);
+      background: rgba(37, 99, 235, 0.035);
     }
 
-    .citizen-ticket-summary-icon,
-    .citizen-ticket-summary-value {
-      color: var(--summary-color);
+    .citizen-ticket-tab.is-active {
+      color: var(--ticket-blue);
+      border-bottom-color: var(--ticket-blue);
+      background: rgba(37, 99, 235, 0.045);
+    }
+
+    .citizen-ticket-tab-count {
+      background: rgba(148, 163, 184, 0.14);
+      color: var(--public-copy);
+    }
+
+    .citizen-ticket-tab.is-active .citizen-ticket-tab-count {
+      background: var(--ticket-blue);
+      color: #fff;
     }
 
     .citizen-ticket-control,
@@ -338,13 +371,11 @@ const CitizenTicketThemeStyles = () => (
     .citizen-ticket-control:hover,
     .citizen-ticket-control:focus-visible,
     .citizen-ticket-input:focus {
-      border-color: rgba(37, 99, 235, 0.5);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+      border-color: rgba(37, 99, 235, 0.45);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
     }
 
-    .citizen-ticket-input::placeholder {
-      color: var(--public-muted);
-    }
+    .citizen-ticket-input::placeholder { color: var(--public-muted); }
 
     .citizen-ticket-menu {
       border-color: var(--public-border);
@@ -352,97 +383,44 @@ const CitizenTicketThemeStyles = () => (
       box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
     }
 
-    .citizen-ticket-option {
-      color: var(--public-copy);
-    }
+    .citizen-ticket-option { color: var(--public-copy); }
+    .citizen-ticket-option:hover { background: var(--public-surface-soft); color: var(--public-title); }
+    .citizen-ticket-option.is-selected { background: var(--ticket-blue-soft); color: var(--ticket-blue); }
 
-    .citizen-ticket-option:hover {
-      background: var(--public-surface-soft);
-      color: var(--public-title);
-    }
+    .citizen-ticket-divider { border-color: var(--public-border); }
 
-    .citizen-ticket-option.is-selected {
-      background: var(--ticket-blue-soft);
-      color: var(--ticket-blue);
-    }
-
-    .citizen-ticket-divider {
+    .citizen-ticket-card {
       border-color: var(--public-border);
+      background: var(--public-surface-strong);
+      box-shadow: 0 8px 28px rgba(15, 23, 42, 0.035);
     }
 
-    .citizen-ticket-list > li + li {
-      border-top: 1px solid var(--public-border);
+    .citizen-ticket-card:hover {
+      border-color: rgba(37, 99, 235, 0.28);
+      transform: translateY(-1px);
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
     }
 
-    .citizen-ticket-row {
-      color: var(--public-title);
-    }
-
-    .citizen-ticket-row:hover {
-      background: rgba(37, 99, 235, 0.045);
-    }
-
-    .citizen-ticket-row:hover .citizen-ticket-row-title,
-    .citizen-ticket-row:hover .citizen-ticket-row-arrow {
-      color: var(--ticket-blue);
-    }
-
-    .citizen-ticket-row:hover .citizen-ticket-row-arrow {
-      border-color: var(--ticket-blue-border);
-      background: var(--ticket-blue-soft);
-    }
-
-    .citizen-ticket-row.is-returned {
-      background: rgba(37, 99, 235, 0.055);
-      box-shadow: inset 3px 0 0 var(--ticket-blue);
+    .citizen-ticket-card.is-returned {
       animation: citizen-ticket-return-highlight 2.5s ease-out both;
     }
 
-    .citizen-ticket-row.is-returned .citizen-ticket-row-title,
-    .citizen-ticket-row.is-returned .citizen-ticket-row-arrow {
-      color: var(--ticket-blue);
-    }
-
-    .citizen-ticket-row.is-returned .citizen-ticket-row-arrow {
-      border-color: var(--ticket-blue-border);
-      background: var(--ticket-blue-soft);
-    }
-
     @keyframes citizen-ticket-return-highlight {
-      0%, 72% {
-        background: rgba(37, 99, 235, 0.075);
-        box-shadow: inset 3px 0 0 var(--ticket-blue);
+      0%, 68% {
+        border-color: rgba(37, 99, 235, 0.42);
+        background: rgba(239, 246, 255, 0.72);
+        box-shadow: 0 0 0 3px rgba(37,99,235,.1), 0 14px 34px rgba(15,23,42,.07);
       }
       100% {
-        background: transparent;
-        box-shadow: inset 0 0 0 transparent;
+        border-color: var(--public-border);
+        background: var(--public-surface-strong);
+        box-shadow: 0 8px 28px rgba(15,23,42,.035);
       }
-    }
-
-    .citizen-ticket-eyebrow,
-    .citizen-ticket-clear-button {
-      color: var(--ticket-blue);
-    }
-
-    .citizen-ticket-filter-icon,
-    .citizen-ticket-sync,
-    .citizen-ticket-active-chip {
-      border-color: var(--ticket-blue-border);
-      background: var(--ticket-blue-soft);
-      color: var(--ticket-blue);
-    }
-
-    .citizen-ticket-skeleton-strong {
-      background: rgba(203, 213, 225, 0.78);
-    }
-
-    .citizen-ticket-skeleton-soft {
-      background: rgba(226, 232, 240, 0.78);
     }
 
     .citizen-ticket-row-icon {
-      border-color: rgba(37, 99, 235, 0.18);
-      background: rgba(37, 99, 235, 0.08);
+      border-color: rgba(37, 99, 235, 0.16);
+      background: rgba(37, 99, 235, 0.07);
       color: var(--ticket-blue);
     }
 
@@ -451,164 +429,89 @@ const CitizenTicketThemeStyles = () => (
       background: var(--status-soft);
       color: var(--status-color);
     }
-
-    .citizen-status-blue {
-      --status-color: var(--ticket-blue);
-      --status-soft: var(--ticket-blue-soft);
-      --status-border: var(--ticket-blue-border);
-    }
-
-    .citizen-status-violet {
-      --status-color: var(--ticket-violet);
-      --status-soft: var(--ticket-violet-soft);
-      --status-border: var(--ticket-violet-border);
-    }
-
-    .citizen-status-amber {
-      --status-color: var(--ticket-amber);
-      --status-soft: var(--ticket-amber-soft);
-      --status-border: var(--ticket-amber-border);
-    }
-
-    .citizen-status-green {
-      --status-color: var(--ticket-green);
-      --status-soft: var(--ticket-green-soft);
-      --status-border: var(--ticket-green-border);
-    }
-
-    .citizen-status-red {
-      --status-color: var(--ticket-red);
-      --status-soft: var(--ticket-red-soft);
-      --status-border: var(--ticket-red-border);
-    }
-
-    .citizen-status-slate {
-      --status-color: var(--ticket-slate);
-      --status-soft: var(--ticket-slate-soft);
-      --status-border: var(--ticket-slate-border);
-    }
+    .citizen-status-blue { --status-color: var(--ticket-blue); --status-soft: var(--ticket-blue-soft); --status-border: var(--ticket-blue-border); }
+    .citizen-status-violet { --status-color: #6d28d9; --status-soft: rgba(109,40,217,.08); --status-border: rgba(109,40,217,.18); }
+    .citizen-status-amber { --status-color: var(--ticket-amber); --status-soft: var(--ticket-amber-soft); --status-border: var(--ticket-amber-border); }
+    .citizen-status-green { --status-color: var(--ticket-green); --status-soft: var(--ticket-green-soft); --status-border: var(--ticket-green-border); }
+    .citizen-status-red { --status-color: var(--ticket-red); --status-soft: var(--ticket-red-soft); --status-border: var(--ticket-red-border); }
+    .citizen-status-slate { --status-color: var(--ticket-slate); --status-soft: var(--ticket-slate-soft); --status-border: var(--ticket-slate-border); }
 
     .citizen-ticket-primary-button {
       background: #2563eb;
-      color: #ffffff;
-      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(37,99,235,.18);
     }
-
-    .citizen-ticket-primary-button:hover {
-      background: #1d4ed8;
-      transform: translateY(-1px);
-    }
+    .citizen-ticket-primary-button:hover { background: #1d4ed8; transform: translateY(-1px); }
 
     .citizen-ticket-secondary-button {
       border-color: var(--public-border);
       background: var(--public-surface-strong);
       color: var(--public-title);
     }
+    .citizen-ticket-secondary-button:hover { border-color: rgba(37,99,235,.3); color: var(--ticket-blue); background: var(--public-surface-soft); }
 
-    .citizen-ticket-secondary-button:hover {
-      border-color: rgba(37, 99, 235, 0.35);
-      background: var(--public-surface-soft);
-      color: #2563eb;
+    .citizen-ticket-skeleton-strong { background: rgba(203,213,225,.78); }
+    .citizen-ticket-skeleton-soft { background: rgba(226,232,240,.78); }
+
+    .citizen-ticket-results-shell {
+      transition: opacity 120ms ease;
+    }
+
+
+    .citizen-ticket-thumb-loading {
+      background: linear-gradient(100deg, rgba(226,232,240,.78) 20%, rgba(248,250,252,.98) 42%, rgba(226,232,240,.78) 64%);
+      background-size: 220% 100%;
+      animation: citizen-ticket-thumb-shimmer 1.2s ease-in-out infinite;
+    }
+
+    @keyframes citizen-ticket-thumb-shimmer {
+      0% { background-position: 100% 0; }
+      100% { background-position: -100% 0; }
     }
 
     html[data-theme="dark"] .citizen-ticket-page {
       --ticket-blue: #7db5ff;
-      --ticket-blue-soft: rgba(37, 99, 235, 0.18);
-      --ticket-blue-border: rgba(96, 165, 250, 0.28);
-      --ticket-violet: #c4b5fd;
-      --ticket-violet-soft: rgba(109, 40, 217, 0.2);
-      --ticket-violet-border: rgba(167, 139, 250, 0.28);
+      --ticket-blue-soft: rgba(37,99,235,.18);
+      --ticket-blue-border: rgba(96,165,250,.28);
       --ticket-amber: #fbbf24;
-      --ticket-amber-soft: rgba(217, 119, 6, 0.16);
-      --ticket-amber-border: rgba(251, 191, 36, 0.26);
+      --ticket-amber-soft: rgba(217,119,6,.16);
+      --ticket-amber-border: rgba(251,191,36,.26);
       --ticket-green: #6ee7b7;
-      --ticket-green-soft: rgba(5, 150, 105, 0.17);
-      --ticket-green-border: rgba(110, 231, 183, 0.24);
+      --ticket-green-soft: rgba(5,150,105,.17);
+      --ticket-green-border: rgba(110,231,183,.24);
       --ticket-red: #fca5a5;
-      --ticket-red-soft: rgba(220, 38, 38, 0.16);
-      --ticket-red-border: rgba(248, 113, 113, 0.24);
+      --ticket-red-soft: rgba(220,38,38,.16);
+      --ticket-red-border: rgba(248,113,113,.24);
       --ticket-slate: #a8b6ca;
-      --ticket-slate-soft: rgba(100, 116, 139, 0.16);
-      --ticket-slate-border: rgba(148, 163, 184, 0.2);
-    }
-
-    html[data-theme="dark"] .citizen-ticket-page-shell {
-      border-color: rgba(71, 85, 105, 0.5);
-      background:
-        radial-gradient(circle at 8% 5%, rgba(37, 99, 235, 0.13), transparent 25%),
-        radial-gradient(circle at 92% 10%, rgba(8, 145, 178, 0.1), transparent 25%),
-        linear-gradient(180deg, rgba(8, 22, 42, 0.9), rgba(5, 13, 27, 0.72));
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.035),
-        0 24px 70px rgba(0, 0, 0, 0.24);
+      --ticket-slate-soft: rgba(100,116,139,.16);
+      --ticket-slate-border: rgba(148,163,184,.2);
     }
 
     html[data-theme="dark"] .citizen-ticket-hero,
-    html[data-theme="dark"] .citizen-ticket-panel {
-      border-color: rgba(96, 165, 250, 0.18);
-      background:
-        radial-gradient(circle at 92% 2%, rgba(37, 99, 235, 0.07), transparent 24%),
-        linear-gradient(145deg, rgba(13, 29, 54, 0.98), rgba(8, 20, 40, 0.98));
-      box-shadow:
-        0 26px 72px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    html[data-theme="dark"] .citizen-ticket-panel,
+    html[data-theme="dark"] .citizen-ticket-side-card,
+    html[data-theme="dark"] .citizen-ticket-card {
+      border-color: rgba(96,165,250,.16);
+      background: linear-gradient(145deg, rgba(13,29,54,.98), rgba(8,20,40,.98));
+      box-shadow: 0 20px 50px rgba(0,0,0,.24);
     }
 
-    html[data-theme="dark"] .citizen-ticket-summary {
-      border-color: rgba(71, 85, 105, 0.54);
-      background: rgba(7, 18, 36, 0.76);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
-    }
-
-    html[data-theme="dark"] .citizen-ticket-summary:hover,
-    html[data-theme="dark"] .citizen-ticket-summary.is-active {
-      border-color: var(--summary-border);
-      background: var(--summary-soft);
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.035),
-        0 12px 30px rgba(0, 0, 0, 0.22);
+    html[data-theme="dark"] .citizen-ticket-attention {
+      border-color: rgba(251,191,36,.24);
+      background: linear-gradient(90deg, rgba(120,53,15,.24), rgba(92,48,9,.16));
+      color: #fcd34d;
     }
 
     html[data-theme="dark"] .citizen-ticket-control,
     html[data-theme="dark"] .citizen-ticket-input,
     html[data-theme="dark"] .citizen-ticket-menu,
     html[data-theme="dark"] .citizen-ticket-secondary-button {
-      border-color: rgba(71, 85, 105, 0.62);
-      background: rgba(7, 18, 36, 0.88);
+      border-color: rgba(71,85,105,.62);
+      background: rgba(7,18,36,.88);
       color: #f8fafc;
-    }
-
-    html[data-theme="dark"] .citizen-ticket-option:hover,
-    html[data-theme="dark"] .citizen-ticket-row:hover {
-      background: rgba(37, 99, 235, 0.1);
-    }
-
-    html[data-theme="dark"] .citizen-ticket-skeleton-strong {
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    html[data-theme="dark"] .citizen-ticket-skeleton-soft {
-      background: rgba(255, 255, 255, 0.05);
-    }
-
-    html[data-theme="dark"] .citizen-ticket-divider {
-      border-color: rgba(71, 85, 105, 0.52);
-    }
-
-    html[data-theme="dark"] .citizen-ticket-row-icon {
-      border-color: rgba(96, 165, 250, 0.24);
-      background: rgba(30, 64, 175, 0.22);
-      color: #93c5fd;
-    }
-
-    html[data-theme="dark"] .citizen-ticket-secondary-button:hover {
-      border-color: rgba(96, 165, 250, 0.34);
-      background: rgba(17, 38, 70, 0.92);
-      color: #dbeafe;
     }
   `}</style>
 );
-
 const FilterDropdown = ({
   menuId,
   value,
@@ -623,6 +526,7 @@ const FilterDropdown = ({
   const selectedOption = options.find(
     (option) => String(option.value) === String(value)
   ) || options[0];
+  const useWideMenu = options.length > 4;
 
   return (
     <section className="relative min-w-0" data-ticket-menu>
@@ -639,7 +543,10 @@ const FilterDropdown = ({
           className="shrink-0 text-[var(--public-muted)]"
           aria-hidden="true"
         />
-        <span className="min-w-0 flex-1 truncate text-left">
+        <span
+          className="min-w-0 flex-1 whitespace-nowrap text-left text-[13px] sm:text-sm"
+          title={selectedOption?.label}
+        >
           {selectedOption?.label}
         </span>
         <Lucide.ChevronDown
@@ -653,7 +560,13 @@ const FilterDropdown = ({
 
       {isOpen ? (
         <menu
-          className="citizen-ticket-menu absolute left-0 right-0 z-40 mt-2 max-h-72 overflow-y-auto rounded-xl border p-1.5"
+          className={`citizen-ticket-menu absolute z-50 mt-2 rounded-xl border p-1.5 ${
+            menuId === 'status' || menuId === 'sort' ? 'right-0' : 'left-0'
+          } ${
+            useWideMenu
+              ? 'w-[420px] max-w-[calc(100vw-2rem)] sm:grid sm:grid-cols-2 sm:gap-1'
+              : 'w-full min-w-[220px]'
+          }`}
           role="listbox"
           aria-label={label}
         >
@@ -674,7 +587,7 @@ const FilterDropdown = ({
                   role="option"
                   aria-selected={isSelected}
                 >
-                  <span>{option.label}</span>
+                  <span className="whitespace-nowrap">{option.label}</span>
                   {isSelected ? (
                     <Lucide.Check
                       size={15}
@@ -692,58 +605,75 @@ const FilterDropdown = ({
   );
 };
 
-const SummaryButton = ({
-  label,
-  helper,
-  value,
-  icon: Icon,
-  tone,
-  active,
-  onClick,
-}) => (
+const StatusTab = ({ label, value, icon: Icon, active, onClick }) => (
   <button
     type="button"
     onClick={onClick}
     aria-pressed={active}
-    className={`citizen-ticket-summary citizen-ticket-summary-${tone} ${
+    className={`citizen-ticket-tab flex min-h-14 items-center gap-2 px-4 text-sm font-semibold transition ${
       active ? 'is-active' : ''
-    } group min-w-0 rounded-2xl border px-4 py-3.5 text-left transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25`}
+    }`}
   >
-    <span className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--public-muted)]">
-      {label}
-      <Icon
-        size={15}
-        className="citizen-ticket-summary-icon"
-        aria-hidden="true"
-      />
-    </span>
-    <strong className="citizen-ticket-summary-value mt-1.5 block text-2xl font-bold tracking-tight">
+    <Icon size={15} aria-hidden="true" />
+    <span>{label}</span>
+    <span className="citizen-ticket-tab-count inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold">
       {value}
-    </strong>
-    <span className="mt-1 block truncate text-[11px] text-[var(--public-copy)]">
-      {helper}
     </span>
   </button>
 );
+const TicketThumbnail = ({ src, loading = false, className = 'h-[68px] w-[88px] rounded-[16px]' }) => {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
+  const showImage = Boolean(src) && !imageFailed;
+  const showSkeleton = loading && !src;
+
+  return (
+    <span className={`citizen-ticket-thumb relative flex shrink-0 overflow-hidden border ${className}`}>
+      {showImage ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          loading="eager"
+          decoding="async"
+          onError={() => setImageFailed(true)}
+        />
+      ) : null}
+      {showSkeleton ? (
+        <span className="citizen-ticket-thumb-loading absolute inset-0" aria-hidden="true" />
+      ) : null}
+      {!showImage && !showSkeleton ? (
+        <span className="absolute inset-0 flex items-center justify-center bg-blue-500/5 text-blue-600" aria-hidden="true">
+          <Lucide.Image size={18} />
+        </span>
+      ) : null}
+    </span>
+  );
+};
+
 
 const TicketListSkeleton = () => (
-  <ol className="citizen-ticket-list" aria-hidden="true">
+  <ol className="space-y-2.5" aria-hidden="true">
     {[0, 1, 2, 3].map((item) => (
       <li key={item}>
-        <div className="grid animate-pulse gap-4 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="flex items-start gap-4">
-            <div className="citizen-ticket-skeleton-soft h-11 w-11 shrink-0 rounded-2xl" />
-            <div className="min-w-0 flex-1">
-              <div className="citizen-ticket-skeleton-strong h-4 w-64 max-w-[70%] rounded" />
-              <div className="mt-3 flex gap-3">
+        <div className="citizen-ticket-card grid animate-pulse gap-4 rounded-[20px] border p-4 sm:px-5 sm:py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="citizen-ticket-skeleton-soft h-[68px] w-[88px] shrink-0 rounded-[16px]" />
+            <div className="min-w-0 flex-1 pt-1">
+              <div className="citizen-ticket-skeleton-strong h-4 w-72 max-w-[76%] rounded" />
+              <div className="mt-3 flex flex-wrap gap-2.5">
+                <div className="citizen-ticket-skeleton-soft h-3 w-44 rounded" />
                 <div className="citizen-ticket-skeleton-soft h-3 w-24 rounded" />
-                <div className="citizen-ticket-skeleton-soft h-3 w-32 rounded" />
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3 pl-[60px] lg:pl-0">
+          <div className="flex items-center gap-3 pl-[102px] lg:min-w-[330px] lg:justify-end lg:pl-0">
             <div className="citizen-ticket-skeleton-soft h-7 w-32 rounded-full" />
-            <div className="citizen-ticket-skeleton-soft h-8 w-8 rounded-xl" />
+            <div className="citizen-ticket-skeleton-soft h-10 w-32 rounded-xl" />
           </div>
         </div>
       </li>
@@ -754,8 +684,10 @@ const TicketListSkeleton = () => (
 export const TicketListPage = () => {
   const pageRootRef = useRef(null);
   const filtersSectionRef = useRef(null);
-  const filtersReadyRef = useRef(false);
+  const listSectionRef = useRef(null);
+  const listScrollTimerRef = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [restoredContext] = useState(() => {
     const storedContext = readTicketListReturnContext();
@@ -810,6 +742,12 @@ export const TicketListPage = () => {
     Math.max(1, Number(restoredContext?.page) || 1)
   ));
   const [highlightedTicketId, setHighlightedTicketId] = useState('');
+  const [ticketPreviewCache, setTicketPreviewCache] = useState(() => (
+    readTicketPreviewCache()
+  ));
+  const [previewImageLoading, setPreviewImageLoading] = useState({});
+  const previewRequestedIdsRef = useRef(new Set());
+  const deferredSearch = useDeferredValue(search);
   const pageSize = 6;
 
   const loadTickets = useCallback(async () => {
@@ -878,6 +816,7 @@ export const TicketListPage = () => {
     setSearchParams(nextSearchParams, {
       replace: true,
       state: location.state,
+      preventScrollReset: true,
     });
   }, [
     categoryId,
@@ -935,14 +874,6 @@ export const TicketListPage = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!filtersReadyRef.current) {
-      filtersReadyRef.current = true;
-      return;
-    }
-
-    setCurrentPage(1);
-  }, [search, status, categoryId, sortKey]);
 
   const categoryOptions = useMemo(() => [
     { value: '', label: 'Tất cả danh mục' },
@@ -969,7 +900,7 @@ export const TicketListPage = () => {
   }), [tickets]);
 
   const filteredTickets = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = deferredSearch.trim().toLowerCase();
     const statusOrder = {
       [managementTypes.feedbackStatus.SUBMITTED]: 1,
       [managementTypes.feedbackStatus.AI_REVIEWED]: 2,
@@ -1023,14 +954,18 @@ export const TicketListPage = () => {
         return new Date(b.updatedAt || b.createdAt || 0)
           - new Date(a.updatedAt || a.createdAt || 0);
       });
-  }, [categoryId, search, sortKey, status, tickets]);
+  }, [categoryId, deferredSearch, sortKey, status, tickets]);
 
+  const isFilterPending = deferredSearch !== search;
   const totalItems = filteredTickets.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const paginatedTickets = filteredTickets.slice(startIndex, endIndex);
+  const paginatedTickets = useMemo(
+    () => filteredTickets.slice(startIndex, endIndex),
+    [endIndex, filteredTickets, startIndex]
+  );
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
@@ -1068,7 +1003,6 @@ export const TicketListPage = () => {
     let cancelled = false;
     let retryCount = 0;
     let retryTimer = null;
-    let highlightTimer = null;
 
     const consumeReturnContext = () => {
       try {
@@ -1132,9 +1066,6 @@ export const TicketListPage = () => {
           behavior: 'auto',
         });
         setHighlightedTicketId(restoreTicketId);
-        highlightTimer = window.setTimeout(() => {
-          setHighlightedTicketId('');
-        }, 2500);
         consumeReturnContext();
       });
     };
@@ -1144,7 +1075,6 @@ export const TicketListPage = () => {
     return () => {
       cancelled = true;
       if (retryTimer) window.clearTimeout(retryTimer);
-      if (highlightTimer) window.clearTimeout(highlightTimer);
     };
   }, [
     filteredTickets,
@@ -1152,6 +1082,16 @@ export const TicketListPage = () => {
     pageSize,
     safeCurrentPage,
   ]);
+
+  useEffect(() => {
+    if (!highlightedTicketId) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setHighlightedTicketId('');
+    }, 2500);
+
+    return () => window.clearTimeout(timer);
+  }, [highlightedTicketId]);
 
   const currentListPath = `${location.pathname}${location.search}`;
   const handleOpenTicket = (ticketId) => {
@@ -1164,20 +1104,83 @@ export const TicketListPage = () => {
     });
   };
 
+  const openTicketDetail = (ticket, destination = 'detail') => {
+    const feedbackId = getTicketId(ticket);
+    if (!feedbackId) {
+      setError('Không xác định được mã phản ánh để mở chi tiết.');
+      return;
+    }
+
+    handleOpenTicket(feedbackId);
+    navigate(
+      destination === 'result' ? `/tickets/${feedbackId}/result` : `/tickets/${feedbackId}`,
+      {
+        state: {
+          from: currentListPath,
+          returnLabel: 'Quay lại phản ánh của tôi',
+          ticketId: feedbackId,
+        },
+      }
+    );
+  };
+
+  const cancelPendingReturnRestore = () => {
+    if (!restoreContextRef.current?.pendingRestore) return;
+
+    try {
+      window.sessionStorage.removeItem(TICKET_LIST_RETURN_STORAGE_KEY);
+    } catch {
+      // Storage can be unavailable in private mode.
+    }
+
+    restoreContextRef.current = null;
+  };
+
+  const requestListScrollAfterFilter = () => {
+    if (listScrollTimerRef.current !== null) {
+      window.clearTimeout(listScrollTimerRef.current);
+    }
+
+    listScrollTimerRef.current = window.setTimeout(() => {
+      const target = listSectionRef.current;
+      const scrollContainer = document.querySelector(
+        '[data-dashboard-scroll-container]'
+      );
+
+      if (!target || !scrollContainer) return;
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const targetTop = Math.max(
+        0,
+        scrollContainer.scrollTop + targetRect.top - containerRect.top - 18
+      );
+
+      scrollContainer.scrollTo({
+        top: targetTop,
+        left: 0,
+        behavior: 'smooth',
+      });
+    }, 90);
+  };
+
   const handleSummaryFilter = (nextStatus) => {
+    cancelPendingReturnRestore();
+    requestListScrollAfterFilter();
     setStatus(nextStatus);
     setOpenMenu(null);
     setCurrentPage(1);
-
-    window.requestAnimationFrame(() => {
-      filtersSectionRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    });
   };
 
+  useEffect(() => () => {
+    if (listScrollTimerRef.current !== null) {
+      window.clearTimeout(listScrollTimerRef.current);
+    }
+  }, []);
+
   const clearFilters = () => {
+    cancelPendingReturnRestore();
+    requestListScrollAfterFilter();
     setSearch('');
     setStatus('');
     setCategoryId('');
@@ -1189,9 +1192,93 @@ export const TicketListPage = () => {
   const hasActiveFilters = Boolean(
     search || status || categoryId || sortKey !== 'newest'
   );
-  const selectedStatusLabel = STATUS_OPTIONS.find(
-    (option) => String(option.value) === String(status)
-  )?.label;
+  const awaitingReviewTickets = useMemo(() => (
+    tickets
+      .filter((ticket) => (
+        ticket.status === managementTypes.feedbackStatus.APPROVED
+      ))
+      .slice(0, 2)
+  ), [tickets]);
+  const recentTickets = useMemo(() => (
+    [...tickets]
+      .sort((a, b) => (
+        new Date(b.updatedAt || b.createdAt || 0)
+        - new Date(a.updatedAt || a.createdAt || 0)
+      ))
+      .slice(0, 4)
+  ), [tickets]);
+
+  useEffect(() => {
+    const candidates = [...paginatedTickets, ...awaitingReviewTickets];
+    const uniqueCandidates = new Map();
+
+    candidates.forEach((ticket) => {
+      const feedbackId = String(getTicketId(ticket) || '');
+      if (feedbackId) uniqueCandidates.set(feedbackId, ticket);
+    });
+
+    const missingTickets = [...uniqueCandidates.values()].filter((ticket) => {
+      const feedbackId = String(getTicketId(ticket) || '');
+      const hasAttachment = Number(ticket?.attachmentCount || 0) > 0;
+
+      return (
+        feedbackId &&
+        hasAttachment &&
+        !hasSettledTicketPreview(ticketPreviewCache, ticket) &&
+        !previewRequestedIdsRef.current.has(feedbackId)
+      );
+    });
+
+    if (missingTickets.length === 0) return;
+
+    missingTickets.forEach((ticket) => {
+      const feedbackId = String(getTicketId(ticket));
+      previewRequestedIdsRef.current.add(feedbackId);
+    });
+
+    setPreviewImageLoading((current) => {
+      const next = { ...current };
+      missingTickets.forEach((ticket) => {
+        next[String(getTicketId(ticket))] = true;
+      });
+      return next;
+    });
+
+    Promise.allSettled(
+      missingTickets.map(async (ticket) => {
+        const feedbackId = String(getTicketId(ticket));
+        const detail = await ticketApi.getTicketById(feedbackId, { role: 'service-user' });
+        const mergedTicket = {
+          ...ticket,
+          ...detail,
+          feedbackId: detail?.feedbackId || feedbackId,
+        };
+        return { feedbackId, mergedTicket };
+      })
+    ).then((results) => {
+      setTicketPreviewCache((current) => {
+        let next = { ...current };
+
+        results.forEach((result) => {
+          if (result.status !== 'fulfilled') return;
+          const { mergedTicket } = result.value;
+          const cached = cacheTicketPreview(mergedTicket);
+          if (cached) next = { ...next, ...cached };
+        });
+
+        writeTicketPreviewCache(next);
+        return next;
+      });
+
+      setPreviewImageLoading((current) => {
+        const next = { ...current };
+        missingTickets.forEach((ticket) => {
+          delete next[String(getTicketId(ticket))];
+        });
+        return next;
+      });
+    });
+  }, [awaitingReviewTickets, paginatedTickets, ticketPreviewCache]);
 
   return (
     <PublicPageMotion>
@@ -1199,517 +1286,585 @@ export const TicketListPage = () => {
       <main
         ref={pageRootRef}
         data-public-reveal
-        className="citizen-ticket-page relative isolate space-y-5 text-[var(--public-title)]"
+        className="citizen-ticket-page text-[var(--public-title)]"
       >
-        <div
-          className="pointer-events-none absolute -inset-x-3 -inset-y-4 -z-10 overflow-hidden rounded-[36px] border border-[var(--public-border-soft)] bg-[linear-gradient(180deg,var(--public-surface-soft),transparent)] sm:-inset-x-5 sm:-inset-y-5"
-          aria-hidden="true"
-        />
-
-        <section
-          data-public-reveal
-          className="citizen-ticket-hero relative overflow-hidden rounded-[30px] border"
-          aria-labelledby="my-feedback-title"
-        >
-          <div
-            className="pointer-events-none absolute inset-0 overflow-hidden"
-            aria-hidden="true"
-          >
-            <svg
-              viewBox="0 0 1400 300"
-              preserveAspectRatio="none"
-              className="absolute inset-0 h-full w-full text-blue-500 opacity-[0.12]"
-              fill="none"
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+          <div className="min-w-0 space-y-5">
+            <section
+              data-public-reveal
+              className="citizen-ticket-hero relative overflow-hidden rounded-[28px] border"
+              aria-labelledby="my-feedback-title"
             >
-              <path
-                d="M-25 238C145 210 215 126 365 126C510 126 559 197 700 194C848 190 913 112 1052 112C1191 112 1272 166 1430 143"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-              <path
-                d="M-15 278C184 251 250 200 403 204C544 208 626 264 760 256C898 248 959 193 1095 190C1231 186 1299 220 1420 236"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeDasharray="10 12"
-                strokeLinecap="round"
-                opacity="0.75"
-              />
-              <circle cx="365" cy="126" r="7" fill="currentColor" opacity="0.7" />
-              <circle cx="700" cy="194" r="8" fill="currentColor" opacity="0.55" />
-              <circle cx="1052" cy="112" r="7" fill="currentColor" opacity="0.7" />
-            </svg>
-          </div>
-
-          <div className="relative px-5 py-6 sm:px-7 sm:py-7">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <header className="flex max-w-2xl items-start gap-3.5">
-                <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]">
-                  <Lucide.ClipboardList size={21} aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <h1
-                    id="my-feedback-title"
-                    className="text-3xl font-bold tracking-tight sm:text-4xl"
-                  >
-                    Phản ánh của tôi
-                  </h1>
-                  <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--public-copy)] sm:text-base">
-                    Theo dõi tiến trình, xem kết quả và quản lý những phản ánh bạn đã gửi.
-                  </p>
-                </div>
-              </header>
-
-              <nav
-                className="flex flex-wrap items-center gap-2.5"
-                aria-label="Thao tác phản ánh"
-              >
-                <Link
-                  to="/tickets/create"
-                  className="citizen-ticket-primary-button inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition"
-                >
-                  <Lucide.Plus size={17} aria-hidden="true" />
-                  Gửi phản ánh
-                </Link>
-                <Link
-                  to="/tickets/archive"
-                  className="citizen-ticket-secondary-button inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition"
-                >
-                  <Lucide.Archive size={16} aria-hidden="true" />
-                  Kho lưu trữ
-                </Link>
-              </nav>
-            </div>
-
-            <nav
-              className="mt-6 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5"
-              aria-label="Lọc nhanh theo tình trạng phản ánh"
-            >
-              <SummaryButton
-                label="Tổng phản ánh"
-                helper="Xem toàn bộ"
-                value={summary.total}
-                icon={Lucide.Files}
-                tone="blue"
-                active={status === STATUS_FILTER_VALUES.ALL}
-                onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ALL)}
-              />
-              <SummaryButton
-                label="Đang xử lý"
-                helper="Theo dõi tiến độ"
-                value={summary.inProgress}
-                icon={Lucide.LoaderCircle}
-                tone="amber"
-                active={status === STATUS_FILTER_VALUES.PROCESSING}
-                onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.PROCESSING)}
-              />
-              <SummaryButton
-                label="Đang kiểm tra"
-                helper="Kết quả đang duyệt"
-                value={summary.checking}
-                icon={Lucide.ClipboardCheck}
-                tone="violet"
-                active={status === STATUS_FILTER_VALUES.CHECKING}
-                onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.CHECKING)}
-              />
-              <SummaryButton
-                label="Chờ đánh giá"
-                helper="Cần bạn phản hồi"
-                value={summary.awaitingReview}
-                icon={Lucide.Star}
-                tone="green"
-                active={status === STATUS_FILTER_VALUES.AWAITING_REVIEW}
-                onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
-              />
-              <SummaryButton
-                label="Đã kết thúc"
-                helper="Hồ sơ hoàn tất"
-                value={summary.ended}
-                icon={Lucide.CircleCheckBig}
-                tone="green"
-                active={status === STATUS_FILTER_VALUES.ENDED}
-                onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ENDED)}
-              />
-            </nav>
-          </div>
-        </section>
-
-        <section
-          ref={filtersSectionRef}
-          data-public-reveal
-          className="citizen-ticket-panel scroll-mt-28 rounded-[26px] border p-4 sm:p-5"
-          aria-labelledby="ticket-filters-title"
-        >
-          <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <span className="citizen-ticket-filter-icon flex h-9 w-9 items-center justify-center rounded-xl border">
-                <Lucide.SlidersHorizontal size={16} aria-hidden="true" />
-              </span>
-              <div>
-                <h2 id="ticket-filters-title" className="text-sm font-semibold">
-                  Tìm và lọc phản ánh
-                </h2>
-                <p className="mt-0.5 text-xs text-[var(--public-muted)]">
-                  Thu hẹp danh sách theo tiêu đề, khu vực, danh mục hoặc trạng thái.
-                </p>
-              </div>
-            </div>
-
-            {refreshing ? (
-              <span
-                className="citizen-ticket-sync inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold"
-                role="status"
-              >
-                <span className="loading loading-spinner loading-xs" />
-                Đang đồng bộ
-              </span>
-            ) : null}
-          </header>
-
-          <div className="mt-4 grid gap-2.5 md:grid-cols-[minmax(240px,1.55fr)_minmax(180px,0.8fr)_minmax(190px,0.85fr)_minmax(180px,0.75fr)]">
-            <label className="relative block" htmlFor="ticket-search">
-              <span className="sr-only">Tìm phản ánh</span>
-              <Lucide.Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--public-muted)]"
+              <img
+                src={ticketHeroArt}
+                alt=""
                 aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-3 hidden h-[136px] w-[56%] object-contain object-right-top opacity-85 lg:block"
               />
-              <input
-                id="ticket-search"
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="citizen-ticket-input h-11 w-full rounded-xl border pl-9 pr-9 text-sm outline-none transition"
-                placeholder="Tìm theo tiêu đề hoặc khu vực"
-                autoComplete="off"
-              />
-              {search ? (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--public-muted)] transition hover:bg-blue-500/10 hover:text-blue-600"
-                  aria-label="Xóa từ khóa tìm kiếm"
-                >
-                  <Lucide.X size={14} aria-hidden="true" />
-                </button>
-              ) : null}
-            </label>
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/94 to-white/20 dark:from-slate-950 dark:via-slate-950/94 dark:to-slate-950/28" aria-hidden="true" />
+              <div className="relative px-5 py-6 sm:px-7 sm:py-7">
+                <header className="flex max-w-2xl items-start gap-3.5">
+                  <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]">
+                    <Lucide.ClipboardList size={21} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h1
+                      id="my-feedback-title"
+                      className="text-3xl font-bold tracking-tight sm:text-4xl"
+                    >
+                      Phản ánh của tôi
+                    </h1>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--public-copy)] sm:text-base">
+                      Theo dõi tiến trình, xem kết quả và quản lý các phản ánh bạn đã gửi.
+                    </p>
+                  </div>
+                </header>
 
-            <FilterDropdown
-              menuId="category"
-              value={categoryId}
-              options={categoryOptions}
-              onChange={setCategoryId}
-              icon={Lucide.Tags}
-              label="Lọc theo danh mục"
-              openMenu={openMenu}
-              setOpenMenu={setOpenMenu}
-            />
+                {summary.awaitingReview > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
+                    className="citizen-ticket-attention mt-6 flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm sm:px-5"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-600">
+                      <Lucide.Star size={18} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-sm font-bold">
+                        {summary.awaitingReview} phản ánh đang chờ bạn đánh giá
+                      </strong>
+                      <span className="mt-0.5 block text-xs opacity-80 sm:text-sm">
+                        Hãy xem kết quả xử lý và gửi đánh giá để hoàn tất phản ánh.
+                      </span>
+                    </span>
+                    <span className="hidden items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-bold text-white shadow-sm sm:inline-flex">
+                      Xem ngay
+                      <Lucide.ArrowRight size={14} aria-hidden="true" />
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+            </section>
 
-            <FilterDropdown
-              menuId="status"
-              value={status}
-              options={STATUS_OPTIONS}
-              onChange={setStatus}
-              icon={Lucide.ListFilter}
-              label="Lọc theo trạng thái"
-              openMenu={openMenu}
-              setOpenMenu={setOpenMenu}
-            />
+            <section
+              ref={filtersSectionRef}
+              data-public-reveal
+              className="citizen-ticket-panel relative z-20 scroll-mt-28 overflow-visible rounded-[24px] border"
+              aria-labelledby="ticket-filters-title"
+            >
+              <div className="citizen-ticket-divider flex flex-wrap border-b px-2 sm:px-3" aria-label="Lọc nhanh theo tình trạng phản ánh">
+                <StatusTab
+                  label="Tất cả"
+                  value={summary.total}
+                  icon={Lucide.LayoutList}
+                  active={status === STATUS_FILTER_VALUES.ALL}
+                  onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ALL)}
+                />
+                <StatusTab
+                  label="Đang xử lý"
+                  value={summary.inProgress + summary.checking}
+                  icon={Lucide.LoaderCircle}
+                  active={status === STATUS_FILTER_VALUES.PROCESSING || status === STATUS_FILTER_VALUES.CHECKING}
+                  onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.PROCESSING)}
+                />
+                <StatusTab
+                  label="Chờ bạn"
+                  value={summary.awaitingReview}
+                  icon={Lucide.Star}
+                  active={status === STATUS_FILTER_VALUES.AWAITING_REVIEW}
+                  onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
+                />
+                <StatusTab
+                  label="Hoàn tất"
+                  value={summary.ended}
+                  icon={Lucide.CircleCheckBig}
+                  active={status === STATUS_FILTER_VALUES.ENDED}
+                  onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.ENDED)}
+                />
+              </div>
 
-            <FilterDropdown
-              menuId="sort"
-              value={sortKey}
-              options={SORT_OPTIONS}
-              onChange={setSortKey}
-              icon={Lucide.ArrowUpDown}
-              label="Sắp xếp danh sách"
-              openMenu={openMenu}
-              setOpenMenu={setOpenMenu}
-            />
-          </div>
-
-          {hasActiveFilters ? (
-            <footer className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t citizen-ticket-divider pt-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {status ? (
-                  <span className="citizen-ticket-active-chip inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold">
-                    <Lucide.Filter size={13} aria-hidden="true" />
-                    {selectedStatusLabel || 'Trạng thái đã chọn'}
+              <div className="px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4">
+                <div className="mb-2.5 flex min-h-5 items-center justify-between gap-3">
+                  <h2 id="ticket-filters-title" className="sr-only">Tìm và lọc phản ánh</h2>
+                  <p className="min-w-0 text-xs text-[var(--public-muted)]">
+                    Tìm theo tiêu đề, khu vực hoặc thu hẹp danh sách bằng bộ lọc.
+                  </p>
+                  {hasActiveFilters ? (
                     <button
                       type="button"
-                      onClick={() => setStatus(STATUS_FILTER_VALUES.ALL)}
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full transition hover:bg-blue-500/10"
-                      aria-label="Xóa bộ lọc trạng thái"
+                      onClick={clearFilters}
+                      className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-blue-600 hover:underline"
                     >
-                      <Lucide.X size={12} aria-hidden="true" />
+                      <Lucide.RotateCcw size={13} aria-hidden="true" />
+                      Xóa bộ lọc
                     </button>
+                  ) : null}
+                  <span className="sr-only" role="status" aria-live="polite">
+                    {refreshing ? 'Đang cập nhật danh sách phản ánh' : isFilterPending ? 'Đang tìm phản ánh' : ''}
                   </span>
-                ) : null}
-                {search ? (
-                  <span className="rounded-full border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-3 py-1.5 text-xs text-[var(--public-copy)]">
-                    Từ khóa: “{search.trim()}”
-                  </span>
-                ) : null}
+                </div>
+
+                <div className="grid min-w-0 gap-2.5 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.35fr)_minmax(0,.9fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                  <label className="relative block" htmlFor="ticket-search">
+                    <span className="sr-only">Tìm phản ánh</span>
+                    <Lucide.Search
+                      size={16}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--public-muted)]"
+                      aria-hidden="true"
+                    />
+                    <input
+                      id="ticket-search"
+                      type="search"
+                      value={search}
+                      onChange={(event) => {
+                        cancelPendingReturnRestore();
+                        setSearch(event.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="citizen-ticket-input h-11 w-full rounded-xl border pl-9 pr-9 text-sm outline-none transition"
+                      placeholder="Tìm theo tiêu đề hoặc khu vực"
+                      autoComplete="off"
+                    />
+                    {search ? (
+                      <button
+                        type="button"
+                        onClick={() => { cancelPendingReturnRestore(); setSearch(''); setCurrentPage(1); }}
+                        className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--public-muted)] transition hover:bg-blue-500/10 hover:text-blue-600"
+                        aria-label="Xóa từ khóa tìm kiếm"
+                      >
+                        <Lucide.X size={14} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </label>
+
+                  <FilterDropdown
+                    menuId="category"
+                    value={categoryId}
+                    options={categoryOptions}
+                    onChange={(nextValue) => {
+                      cancelPendingReturnRestore();
+                      requestListScrollAfterFilter();
+                      setCategoryId(nextValue);
+                      setCurrentPage(1);
+                    }}
+                    icon={Lucide.Tags}
+                    label="Lọc theo danh mục"
+                    openMenu={openMenu}
+                    setOpenMenu={setOpenMenu}
+                  />
+                  <FilterDropdown
+                    menuId="status"
+                    value={status}
+                    options={STATUS_OPTIONS}
+                    onChange={(nextValue) => {
+                      cancelPendingReturnRestore();
+                      requestListScrollAfterFilter();
+                      setStatus(nextValue);
+                      setCurrentPage(1);
+                    }}
+                    icon={Lucide.ListFilter}
+                    label="Lọc theo trạng thái"
+                    openMenu={openMenu}
+                    setOpenMenu={setOpenMenu}
+                  />
+                  <FilterDropdown
+                    menuId="sort"
+                    value={sortKey}
+                    options={SORT_OPTIONS}
+                    onChange={(nextValue) => {
+                      cancelPendingReturnRestore();
+                      requestListScrollAfterFilter();
+                      setSortKey(nextValue);
+                      setCurrentPage(1);
+                    }}
+                    icon={Lucide.ArrowUpDown}
+                    label="Sắp xếp danh sách"
+                    openMenu={openMenu}
+                    setOpenMenu={setOpenMenu}
+                  />
+                </div>
+
               </div>
+            </section>
 
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="citizen-ticket-clear-button inline-flex items-center gap-2 text-xs font-semibold transition hover:underline"
-              >
-                <Lucide.RotateCcw size={13} aria-hidden="true" />
-                Xóa bộ lọc
-              </button>
-            </footer>
-          ) : null}
-        </section>
+            {error ? (
+              <aside aria-live="assertive">
+                <ErrorAlert
+                  title="Không thể tải dữ liệu"
+                  message={error}
+                  onClose={() => setError('')}
+                />
+              </aside>
+            ) : null}
 
-        {error ? (
-          <aside aria-live="assertive">
-            <ErrorAlert
-              title="Không thể tải dữ liệu"
-              message={error}
-              onClose={() => setError('')}
-            />
-          </aside>
-        ) : null}
+            <section
+              data-public-reveal
+              aria-labelledby="ticket-list-title"
+              aria-busy={loading || isFilterPending}
+            >
+              <h2 id="ticket-list-title" className="sr-only">Danh sách phản ánh</h2>
 
-        <section
-          data-public-reveal
-          className="citizen-ticket-panel overflow-hidden rounded-[26px] border"
-          aria-labelledby="ticket-list-title"
-          aria-busy={loading}
-        >
-          <header className="citizen-ticket-divider flex items-center justify-between gap-4 border-b px-5 py-4 sm:px-6">
-            <div>
-              <h2 id="ticket-list-title" className="text-lg font-semibold">
-                Danh sách phản ánh
-              </h2>
-              <p className="mt-1 text-xs text-[var(--public-muted)]">
-                {totalItems} phản ánh phù hợp với bộ lọc hiện tại.
-              </p>
-            </div>
+              <div className="relative">
+                <div ref={listSectionRef} className="citizen-ticket-results-shell scroll-mt-28">
+              {loading ? (
+                <div className="citizen-ticket-panel overflow-hidden rounded-[24px] border">
+                  <TicketListSkeleton />
+                </div>
+              ) : paginatedTickets.length === 0 ? (
+                <section className="citizen-ticket-panel flex min-h-72 flex-col items-center justify-center rounded-[24px] border px-6 py-12 text-center">
+                  <span className="citizen-ticket-row-icon flex h-14 w-14 items-center justify-center rounded-2xl border" aria-hidden="true">
+                    {hasActiveFilters ? <Lucide.SearchX size={24} /> : <Lucide.FilePlus2 size={24} />}
+                  </span>
+                  <h3 className="mt-4 text-base font-semibold">
+                    {hasActiveFilters ? 'Không có phản ánh phù hợp' : 'Bạn chưa gửi phản ánh nào'}
+                  </h3>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-[var(--public-copy)]">
+                    {hasActiveFilters
+                      ? 'Hãy thay đổi từ khóa hoặc bộ lọc để mở rộng kết quả.'
+                      : 'Khi phát hiện vấn đề đô thị, hãy gửi thông tin và hình ảnh để theo dõi tiến độ xử lý tại đây.'}
+                  </p>
+                  {hasActiveFilters ? (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="citizen-ticket-secondary-button mt-5 inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition"
+                    >
+                      <Lucide.RotateCcw size={15} aria-hidden="true" />
+                      Xóa bộ lọc
+                    </button>
+                  ) : (
+                    <Link
+                      to="/tickets/create"
+                      className="citizen-ticket-primary-button mt-5 inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition"
+                    >
+                      <Lucide.Plus size={16} aria-hidden="true" />
+                      Gửi phản ánh đầu tiên
+                    </Link>
+                  )}
+                </section>
+              ) : (
+                <ol className="space-y-2.5">
+                  {paginatedTickets.map((ticket) => {
+                    const feedbackId = getTicketId(ticket);
+                    const previewImage = getCachedTicketPreviewUrl(ticketPreviewCache, ticket);
+                    const statusMeta = getCitizenStatusMeta(ticket.status);
+                    const StatusIcon = statusMeta.icon;
+                    const updatedAt = ticket.updatedAt || ticket.createdAt;
+                    const parentTicketId = ticket.parentTicketId || ticket.parentFeedbackId || null;
+                    const isConfirmedDuplicate = Boolean(parentTicketId);
+                    const isPotentialDuplicate = Boolean(ticket.duplicateWarning && !isConfirmedDuplicate);
+                    const needsReview = ticket.status === managementTypes.feedbackStatus.APPROVED;
 
-            <span className="hidden items-center gap-2 text-xs font-medium text-[var(--public-copy)] sm:inline-flex">
-              <Lucide.MousePointerClick size={14} aria-hidden="true" />
-              Chọn một phản ánh để xem chi tiết
-            </span>
-          </header>
+                    return (
+                      <li key={feedbackId || `${ticket.title}-${ticket.createdAt}`}>
+                        <article
+                          data-ticket-id={feedbackId || undefined}
+                          role="button"
+                          tabIndex={0}
+                          onClick={(event) => {
+                            if (event.target.closest('button, a, input, select, textarea')) return;
+                            openTicketDetail(ticket);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              openTicketDetail(ticket);
+                            }
+                          }}
+                          className={`citizen-ticket-card group cursor-pointer rounded-[20px] border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 sm:px-5 sm:py-4 ${
+                            String(highlightedTicketId) === String(feedbackId) ? 'is-returned' : ''
+                          }`}
+                        >
+                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                            <div className="flex min-w-0 items-start gap-3.5">
+                              <button
+                                type="button"
+                                onClick={() => openTicketDetail(ticket)}
+                                className="mt-0.5 shrink-0 rounded-[16px] transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                                aria-label={`Mở chi tiết phản ánh ${ticket.title || ''}`}
+                              >
+                                <TicketThumbnail
+                                  src={previewImage}
+                                  loading={Boolean(previewImageLoading[feedbackId])}
+                                />
+                              </button>
 
-          {loading ? (
-            <TicketListSkeleton />
-          ) : paginatedTickets.length === 0 ? (
-            <section className="flex min-h-80 flex-col items-center justify-center px-6 py-12 text-center">
-              <span
-                className="citizen-ticket-row-icon flex h-14 w-14 items-center justify-center rounded-2xl border"
+                              <button
+                                type="button"
+                                onClick={() => openTicketDetail(ticket)}
+                                className="min-w-0 flex-1 text-left focus-visible:outline-none"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className="min-w-0 text-[15px] font-bold leading-6 text-[var(--public-title)] transition group-hover:text-blue-600 sm:text-base">
+                                    {ticket.title || 'Phản ánh chưa có tiêu đề'}
+                                  </h3>
+                                  <span className="rounded-full border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--public-copy)]">
+                                    {getCategoryLabel(ticket.categoryName)}
+                                  </span>
+                                  {isConfirmedDuplicate ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-violet-300/70 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300">
+                                      <Lucide.GitMerge size={12} aria-hidden="true" />
+                                      Phản ánh trùng
+                                    </span>
+                                  ) : isPotentialDuplicate ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300">
+                                      <Lucide.ScanSearch size={12} aria-hidden="true" />
+                                      Nghi trùng
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--public-muted)]">
+                                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                                    <Lucide.MapPin size={13} className="shrink-0" aria-hidden="true" />
+                                    <span className="max-w-xl truncate" title={ticket.locationText || ticket.areaName || ''}>
+                                      {ticket.locationText || ticket.areaName || 'Chưa xác định vị trí'}
+                                    </span>
+                                  </span>
+                                  <time className="inline-flex items-center gap-1.5" dateTime={ticket.createdAt || undefined}>
+                                    <Lucide.CalendarDays size={13} aria-hidden="true" />
+                                    Gửi {formatDate(ticket.createdAt)}
+                                  </time>
+                                </div>
+                              </button>
+                            </div>
+
+                            <aside className="flex flex-wrap items-center gap-3 pl-[102px] lg:min-w-[330px] lg:justify-end lg:pl-0" aria-label="Trạng thái phản ánh">
+                              <div className="text-left lg:text-right">
+                                <span className={`citizen-status citizen-status-${statusMeta.tone} inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold`}>
+                                  <StatusIcon size={13} aria-hidden="true" />
+                                  {statusMeta.label}
+                                </span>
+                                <time className="mt-1.5 block text-[11px] text-[var(--public-muted)]" dateTime={updatedAt || undefined}>
+                                  Cập nhật {formatDate(updatedAt)}
+                                </time>
+                              </div>
+
+                              {needsReview ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openTicketDetail(ticket)}
+                                    className="citizen-ticket-secondary-button inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition"
+                                  >
+                                    Xem chi tiết
+                                    <Lucide.ArrowRight size={14} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openTicketDetail(ticket, 'result')}
+                                    className="citizen-ticket-primary-button inline-flex h-10 items-center gap-2 rounded-xl px-4 text-xs font-bold transition"
+                                  >
+                                    <Lucide.Star size={14} aria-hidden="true" />
+                                    Đánh giá kết quả
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openTicketDetail(ticket)}
+                                  className="citizen-ticket-secondary-button inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition"
+                                >
+                                  Xem chi tiết
+                                  <Lucide.ArrowRight size={14} aria-hidden="true" />
+                                </button>
+                              )}
+                            </aside>
+                          </div>
+                        </article>
+                      </li>
+                    );
+                  })}                </ol>
+              )}
+
+              {totalItems > 0 ? (
+                <footer className="mt-4 flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-[var(--public-muted)]">
+                    Hiển thị <strong className="text-[var(--public-title)]">{startIndex + 1}–{endIndex}</strong> trong tổng số <strong className="text-[var(--public-title)]">{totalItems}</strong> phản ánh
+                  </p>
+                  <nav className="flex items-center gap-2" aria-label="Phân trang danh sách phản ánh">
+                    <button
+                      type="button"
+                      className="citizen-ticket-secondary-button inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45"
+                      disabled={safeCurrentPage <= 1}
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    >
+                      <Lucide.ChevronLeft size={15} aria-hidden="true" />
+                      Trước
+                    </button>
+                    <span className="citizen-ticket-control inline-flex h-9 min-w-16 items-center justify-center rounded-xl border px-3 text-xs font-medium text-[var(--public-copy)]">
+                      {safeCurrentPage} / {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="citizen-ticket-secondary-button inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45"
+                      disabled={safeCurrentPage >= totalPages}
+                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    >
+                      Sau
+                      <Lucide.ChevronRight size={15} aria-hidden="true" />
+                    </button>
+                  </nav>
+                </footer>
+              ) : null}
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside className="space-y-5 self-start" aria-label="Thông tin hỗ trợ phản ánh">
+            <section className="citizen-ticket-side-card citizen-ticket-side-visual relative min-h-[198px] overflow-hidden rounded-[24px] border">
+              <img
+                src={ticketSideArt}
+                alt=""
                 aria-hidden="true"
-              >
-                {hasActiveFilters ? (
-                  <Lucide.SearchX size={24} />
-                ) : (
-                  <Lucide.FilePlus2 size={24} />
-                )}
-              </span>
-              <h3 className="mt-4 text-base font-semibold">
-                {hasActiveFilters
-                  ? 'Không có phản ánh phù hợp'
-                  : 'Bạn chưa gửi phản ánh nào'}
-              </h3>
-              <p className="mt-2 max-w-md text-sm leading-6 text-[var(--public-copy)]">
-                {hasActiveFilters
-                  ? 'Hãy thay đổi từ khóa hoặc bộ lọc để mở rộng kết quả.'
-                  : 'Khi phát hiện vấn đề đô thị, hãy gửi thông tin và hình ảnh để theo dõi tiến độ xử lý tại đây.'}
-              </p>
-              {hasActiveFilters ? (
+                className="pointer-events-none absolute bottom-0 right-0 h-[176px] w-[150px] object-cover object-left-bottom"
+              />
+              <div
+                className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,1)_0%,rgba(255,255,255,.98)_48%,rgba(255,255,255,.70)_67%,rgba(255,255,255,.05)_100%)] dark:bg-[linear-gradient(90deg,rgba(7,18,36,1)_0%,rgba(7,18,36,.98)_48%,rgba(7,18,36,.76)_68%,rgba(7,18,36,.18)_100%)]"
+                aria-hidden="true"
+              />
+              <div className="relative flex min-h-[198px] max-w-[66%] flex-col justify-center px-6 py-6">
+                <h2 className="text-[19px] font-bold leading-6 tracking-tight">
+                  Mỗi phản ánh là một thay đổi tích cực
+                </h2>
+                <p className="mt-2 max-w-[210px] text-sm leading-6 text-[var(--public-copy)]">
+                  Cảm ơn bạn đã chung tay xây dựng đô thị văn minh, sạch đẹp hơn.
+                </p>
+              </div>
+            </section>
+
+            {summary.awaitingReview > 0 ? (
+              <section className="citizen-ticket-side-card overflow-hidden rounded-[24px] border" aria-labelledby="ticket-attention-title">
+                <div className="p-5 pb-4">
+                  <header className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
+                        <Lucide.BellRing size={16} aria-hidden="true" />
+                      </span>
+                      <h2 id="ticket-attention-title" className="text-[17px] font-bold">Cần bạn chú ý</h2>
+                    </div>
+                    <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-600">
+                      {summary.awaitingReview}
+                    </span>
+                  </header>
+                  <p className="mt-3 text-xs leading-5 text-[var(--public-copy)]">
+                    {summary.awaitingReview} phản ánh đã có kết quả xử lý. Hãy xem và đánh giá để hoàn tất phản ánh của bạn.
+                  </p>
+                </div>
+
+                <div className="px-3 pb-3">
+                  <div className="space-y-1">
+                    {awaitingReviewTickets.map((ticket) => {
+                      const feedbackId = getTicketId(ticket);
+                      const previewImage = getCachedTicketPreviewUrl(ticketPreviewCache, ticket);
+                      return (
+                        <Link
+                          key={feedbackId}
+                          to={`/tickets/${feedbackId}`}
+                          state={{ from: currentListPath, returnLabel: 'Quay lại phản ánh của tôi', ticketId: feedbackId }}
+                          onClick={() => handleOpenTicket(feedbackId)}
+                          className="group flex items-center gap-3 rounded-2xl px-2.5 py-2.5 transition hover:bg-blue-500/[0.055]"
+                        >
+                          <TicketThumbnail
+                            src={previewImage}
+                            loading={Boolean(previewImageLoading[feedbackId])}
+                            className="h-11 w-11 rounded-xl"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <strong className="block truncate text-sm font-semibold leading-5 group-hover:text-blue-600">
+                              {ticket.title || 'Phản ánh chưa có tiêu đề'}
+                            </strong>
+                            <span className="mt-0.5 block text-[11px] text-[var(--public-muted)]">
+                              Cập nhật {formatDate(ticket.updatedAt || ticket.createdAt)}
+                            </span>
+                          </span>
+                          <Lucide.ChevronRight size={15} className="shrink-0 text-[var(--public-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" aria-hidden="true" />
+                        </Link>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSummaryFilter(STATUS_FILTER_VALUES.AWAITING_REVIEW)}
+                    className="mt-2.5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50/70 px-3 text-xs font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300"
+                  >
+                    Xem tất cả phản ánh chờ đánh giá
+                    <Lucide.ArrowRight size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            <section className="citizen-ticket-side-card rounded-[24px] border p-5" aria-labelledby="recent-ticket-title">
+              <header className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600">
+                    <Lucide.Clock3 size={16} aria-hidden="true" />
+                  </span>
+                  <h2 id="recent-ticket-title" className="font-bold">Cập nhật gần đây</h2>
+                </div>
                 <button
                   type="button"
-                  onClick={clearFilters}
-                  className="citizen-ticket-secondary-button mt-5 inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition"
+                  onClick={() => {
+                    clearFilters();
+                    window.requestAnimationFrame(() => {
+                      filtersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 transition hover:text-blue-700"
                 >
-                  <Lucide.RotateCcw size={15} aria-hidden="true" />
-                  Xóa bộ lọc
+                  Xem tất cả
+                  <Lucide.ArrowRight size={12} aria-hidden="true" />
                 </button>
-              ) : (
-                <Link
-                  to="/tickets/create"
-                  className="citizen-ticket-primary-button mt-5 inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition"
-                >
-                  <Lucide.Plus size={16} aria-hidden="true" />
-                  Gửi phản ánh đầu tiên
-                </Link>
-              )}
-            </section>
-          ) : (
-            <ol className="citizen-ticket-list">
-              {paginatedTickets.map((ticket) => {
-                const feedbackId = ticket.feedbackId || ticket.id;
-                const statusMeta = getCitizenStatusMeta(ticket.status);
-                const StatusIcon = statusMeta.icon;
-                const updatedAt = ticket.updatedAt || ticket.createdAt;
-                const parentTicketId = ticket.parentTicketId || ticket.parentFeedbackId || null;
-                const isConfirmedDuplicate = Boolean(parentTicketId);
-                const isPotentialDuplicate = Boolean(
-                  ticket.duplicateWarning && !isConfirmedDuplicate
-                );
+              </header>
 
-                return (
-                  <li key={feedbackId}>
-                    <Link
-                      to={`/tickets/${feedbackId}`}
-                      state={{
-                        from: currentListPath,
-                        returnLabel: 'Quay lại phản ánh của tôi',
-                        ticketId: feedbackId,
-                      }}
-                      onClick={() => handleOpenTicket(feedbackId)}
-                      data-ticket-id={feedbackId}
-                      className={`citizen-ticket-row group grid gap-4 px-5 py-5 transition sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center ${
-                        String(highlightedTicketId) === String(feedbackId)
-                          ? 'is-returned'
-                          : ''
-                      }`}
-                      aria-label={`Xem chi tiết phản ánh ${ticket.title || ''}`}
-                    >
-                      <article className="flex min-w-0 items-start gap-4">
-                        <span
-                          className="citizen-ticket-row-icon mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border"
-                          aria-hidden="true"
+              {recentTickets.length > 0 ? (
+                <ol className="mt-4 space-y-0">
+                  {recentTickets.map((ticket, index) => {
+                    const feedbackId = getTicketId(ticket);
+                    const statusMeta = getCitizenStatusMeta(ticket.status);
+                    const updatedAt = ticket.updatedAt || ticket.createdAt;
+                    const dotClass = RECENT_STATUS_DOT_CLASSES[statusMeta.tone] || RECENT_STATUS_DOT_CLASSES.blue;
+                    return (
+                      <li key={feedbackId} className="relative pl-5">
+                        {index < recentTickets.length - 1 ? (
+                          <span className="absolute left-[4px] top-4 h-[calc(100%-2px)] w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+                        ) : null}
+                        <span className={`absolute left-0 top-[9px] h-2.5 w-2.5 rounded-full border-2 border-white shadow-sm dark:border-slate-900 ${dotClass}`} aria-hidden="true" />
+                        <Link
+                          to={`/tickets/${feedbackId}`}
+                          state={{ from: currentListPath, returnLabel: 'Quay lại phản ánh của tôi', ticketId: feedbackId }}
+                          onClick={() => handleOpenTicket(feedbackId)}
+                          className="group grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl py-2.5"
                         >
-                          <Lucide.MapPinned size={18} />
-                        </span>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="citizen-ticket-row-title min-w-0 truncate text-base font-semibold leading-6 transition-colors">
+                          <span className="min-w-0">
+                            <strong className="block truncate text-[13px] font-semibold leading-5 group-hover:text-blue-600">
                               {ticket.title || 'Phản ánh chưa có tiêu đề'}
-                            </h3>
-                            <span className="rounded-full border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--public-copy)]">
-                              {getCategoryLabel(ticket.categoryName)}
+                            </strong>
+                            <span className="mt-0.5 block truncate text-[11px] text-[var(--public-copy)]">
+                              {statusMeta.label}
                             </span>
-                            {isConfirmedDuplicate ? (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full border border-violet-300/70 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-300"
-                                title="Phản ánh này đã được đánh dấu trùng và xử lý theo phản ánh đã có."
-                              >
-                                <Lucide.GitMerge size={12} aria-hidden="true" />
-                                Phản ánh trùng
-                              </span>
-                            ) : isPotentialDuplicate ? (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full border border-amber-300/70 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300"
-                                title="Hệ thống đang kiểm tra khả năng phản ánh này trùng với một phản ánh khác."
-                              >
-                                <Lucide.ScanSearch size={12} aria-hidden="true" />
-                                Nghi trùng
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--public-muted)]">
-                            <span className="inline-flex min-w-0 items-start gap-1.5">
-                              <Lucide.MapPin size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-                              <span className="min-w-0 max-w-md">
-                                <span
-                                  className="block truncate font-medium text-[var(--public-copy)]"
-                                  title={ticket.locationText || ticket.areaName || ''}
-                                >
-                                  {ticket.locationText || ticket.areaName || 'Chưa xác định vị trí'}
-                                </span>
-                                {ticket.locationText && ticket.areaName ? (
-                                  <span className="mt-0.5 block truncate text-[11px] text-[var(--public-muted)]">
-                                    {ticket.areaName}
-                                  </span>
-                                ) : null}
-                              </span>
-                            </span>
-
-                            <time
-                              className="inline-flex items-center gap-1.5"
-                              dateTime={ticket.createdAt || undefined}
-                            >
-                              <Lucide.CalendarDays size={13} aria-hidden="true" />
-                              Gửi {formatDate(ticket.createdAt)}
-                            </time>
-                          </div>
-                        </div>
-                      </article>
-
-                      <aside
-                        className="flex items-center justify-between gap-3 pl-[60px] lg:min-w-[290px] lg:justify-end lg:pl-0"
-                        aria-label="Trạng thái phản ánh"
-                      >
-                        <div className="text-right">
-                          <span
-                            className={`citizen-status citizen-status-${statusMeta.tone} inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold`}
-                          >
-                            <StatusIcon size={13} aria-hidden="true" />
-                            {statusMeta.label}
                           </span>
                           <time
-                            className="mt-1.5 block text-[11px] text-[var(--public-muted)]"
+                            className="pt-0.5 text-right text-[10px] leading-4 text-[var(--public-muted)]"
                             dateTime={updatedAt || undefined}
                           >
-                            Cập nhật {formatDate(updatedAt)}
+                            <span className="block">{formatDate(updatedAt)}</span>
+                            {formatTime(updatedAt) ? <span className="block">{formatTime(updatedAt)}</span> : null}
                           </time>
-                        </div>
-
-                        <span className="citizen-ticket-row-arrow flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] text-[var(--public-muted)] transition">
-                          <Lucide.ArrowRight size={16} aria-hidden="true" />
-                        </span>
-                      </aside>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-
-          {totalItems > 0 ? (
-            <footer className="citizen-ticket-divider flex flex-col gap-3 border-t px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <p className="text-xs text-[var(--public-muted)]">
-                Hiển thị{' '}
-                <strong className="text-[var(--public-title)]">
-                  {startIndex + 1}–{endIndex}
-                </strong>{' '}
-                trong tổng số{' '}
-                <strong className="text-[var(--public-title)]">
-                  {totalItems}
-                </strong>{' '}
-                phản ánh
-              </p>
-
-              <nav
-                className="flex items-center gap-2"
-                aria-label="Phân trang danh sách phản ánh"
-              >
-                <button
-                  type="button"
-                  className="citizen-ticket-secondary-button inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45"
-                  disabled={safeCurrentPage <= 1}
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                >
-                  <Lucide.ChevronLeft size={15} aria-hidden="true" />
-                  Trước
-                </button>
-
-                <span className="citizen-ticket-control inline-flex h-9 min-w-16 items-center justify-center rounded-xl border px-3 text-xs font-medium text-[var(--public-copy)]">
-                  {safeCurrentPage} / {totalPages}
-                </span>
-
-                <button
-                  type="button"
-                  className="citizen-ticket-secondary-button inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45"
-                  disabled={safeCurrentPage >= totalPages}
-                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                >
-                  Sau
-                  <Lucide.ChevronRight size={15} aria-hidden="true" />
-                </button>
-              </nav>
-            </footer>
-          ) : null}
-        </section>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="mt-4 text-sm text-[var(--public-muted)]">Chưa có cập nhật mới.</p>
+              )}
+            </section>
+          </aside>
+        </div>
       </main>
     </PublicPageMotion>
   );

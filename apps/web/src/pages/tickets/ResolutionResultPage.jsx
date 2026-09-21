@@ -17,12 +17,7 @@ const CATEGORY_LABELS = {
   'Water Supply': 'Cấp nước',
 };
 
-const PRIORITY_LABELS = {
-  Low: 'Thấp',
-  Medium: 'Trung bình',
-  High: 'Cao',
-  Urgent: 'Khẩn cấp',
-};
+
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -73,14 +68,7 @@ const normalizeImageList = (value) => {
 const getCategoryLabel = (name) =>
   CATEGORY_LABELS[name] || name || 'Chưa phân loại';
 
-const getPriorityTone = (priority) => {
-  switch (priority) {
-    case 'Urgent': return 'border-error/25 bg-error/10 text-error';
-    case 'High':   return 'border-warning/30 bg-warning/10 text-warning';
-    case 'Low':    return 'border-base-300 bg-base-200/65 text-base-content/60';
-    default:       return 'border-info/20 bg-info/8 text-info';
-  }
-};
+
 
 const getRatingText = (value) => {
   switch (value) {
@@ -388,13 +376,7 @@ export const ResolutionResultPage = () => {
   const alreadyRated = ticket?.status === managementTypes.feedbackStatus.CLOSED;
 
   // ── Author / metadata ───────────────────────────────────────────────────────
-  const authorName =
-    ticket?.userName ||
-    ticket?.reporterName ||
-    ticket?.createdByName ||
-    user?.fullName ||
-    user?.name ||
-    'Bạn';
+
 
   const locationText =
     ticket?.locationText ||
@@ -454,186 +436,146 @@ export const ResolutionResultPage = () => {
           aria-hidden="true"
         />
 
-        {/* ── SECTION 1: REPORT RESULT HEADER ─────────────────────────────── */}
-        <article className="relative isolate overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]">
-          <ResultSmartCityBackdrop />
+        {/* ── RESULT OVERVIEW ───────────────────────────────────────────── */}
+        <article className="relative overflow-hidden rounded-[28px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[0_18px_48px_rgba(15,23,42,0.07)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_82%_0%,rgba(37,99,235,0.11),transparent_44%)]" aria-hidden="true" />
 
-          <div className="relative grid gap-6 px-5 py-5 sm:px-7 sm:py-6 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-center">
-            {/* Left: identity */}
-            <header className="min-w-0">
-              {/* Back + badges */}
-              <div className="flex flex-wrap items-center gap-2.5">
+          <div className="relative p-5 sm:p-7">
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+              <header className="min-w-0 max-w-4xl">
                 <button
                   type="button"
                   onClick={() => navigate(`/tickets/${feedbackId}`)}
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-copy)] shadow-sm transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-sm font-semibold text-[var(--public-copy)] transition hover:border-primary/25 hover:bg-primary/8 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 >
                   <Lucide.ArrowLeft size={15} aria-hidden="true" />
                   Quay lại chi tiết
                 </button>
 
-                <span className="hidden h-5 w-px bg-[var(--public-border)] sm:block" aria-hidden="true" />
-
-                {ticket.categoryName && (
-                  <span className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-secondary/15 bg-secondary/8 px-3 text-xs font-semibold text-secondary">
-                    <Lucide.Tag size={13} aria-hidden="true" />
-                    {getCategoryLabel(ticket.categoryName)}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/15 bg-primary/8 px-3 text-xs font-semibold text-primary">
+                    <Lucide.ClipboardCheck size={13} aria-hidden="true" />
+                    Kết quả xử lý
                   </span>
-                )}
+                  {ticket.categoryName && (
+                    <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-3 text-xs font-semibold text-[var(--public-copy)]">
+                      <Lucide.Tag size={13} aria-hidden="true" />
+                      {getCategoryLabel(ticket.categoryName)}
+                    </span>
+                  )}
+                  <span className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold ${statusTone}`}>
+                    <Lucide.CircleCheck size={13} aria-hidden="true" />
+                    {statusLabel}
+                  </span>
+                </div>
 
-                <span className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold ${getPriorityTone(ticket.priority)}`}>
-                  <Lucide.Gauge size={13} aria-hidden="true" />
-                  Mức độ {PRIORITY_LABELS[ticket.priority] || 'Trung bình'}
-                </span>
-
-                <span className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-primary/15 bg-primary/8 px-3 text-xs font-semibold text-primary">
-                  <Lucide.ClipboardCheck size={13} aria-hidden="true" />
-                  Kết quả xử lý
-                </span>
-              </div>
-
-              {/* Title */}
-              <h1 className="mt-5 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
-                {ticket.title || 'Kết quả xử lý phản ánh'}
-              </h1>
-
-              {/* Description */}
-              {resolutionSummary ? (
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-copy)] line-clamp-2">
-                  {resolutionSummary}
+                <h1 className="mt-4 text-[2rem] font-bold leading-[1.12] tracking-[-0.025em] sm:text-[2.35rem]">
+                  {ticket.title || 'Kết quả xử lý phản ánh'}
+                </h1>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--public-copy)]">
+                  {resolutionSummary || 'Kết quả xử lý đã được cập nhật. Bạn có thể xem minh chứng, tiến độ và gửi đánh giá ở bên dưới.'}
                 </p>
-              ) : (
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-muted)]">
-                  Cảm ơn bạn đã phản ánh. Phản ánh này đã được cơ quan chức năng tiếp nhận và xử lý.
-                </p>
-              )}
+              </header>
 
-              {/* Metadata row */}
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-base-content/55">
-                <span className="inline-flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-xs font-bold text-primary-content">
-                    {authorName.charAt(0).toUpperCase()}
-                  </span>
-                  <strong className="font-semibold text-base-content">{authorName}</strong>
-                </span>
-
-                <span className="inline-flex min-w-0 items-center gap-1.5">
-                  <Lucide.MapPin size={15} className="shrink-0" aria-hidden="true" />
-                  <span className="max-w-xl truncate" title={locationText}>
-                    {locationText}
-                  </span>
-                </span>
-
-                {createdAt && (
-                  <time dateTime={createdAt} className="inline-flex items-center gap-1.5">
-                    <Lucide.CalendarDays size={15} aria-hidden="true" />
-                    Tạo lúc {formatDate(createdAt)}
-                  </time>
-                )}
-
-                {resolutionDate && resolutionDate !== createdAt && (
-                  <time dateTime={resolutionDate} className="inline-flex items-center gap-1.5">
-                    <Lucide.Clock3 size={15} aria-hidden="true" />
-                    Cập nhật {formatDate(resolutionDate)}
-                  </time>
-                )}
-              </div>
-            </header>
-
-            {/* Right: compact status card */}
-            <aside className="rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)]/90 px-4 py-4 shadow-sm backdrop-blur">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-medium text-[var(--public-muted)]">Trạng thái</p>
-                  <p className="mt-1 text-lg font-bold text-[var(--public-title)]">{statusLabel}</p>
-                </div>
-                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${statusTone}`}>
-                  {alreadyRated
-                    ? <Lucide.Archive size={18} aria-hidden="true" />
-                    : isCompleted
-                      ? <Lucide.CircleCheck size={18} aria-hidden="true" />
-                      : <Lucide.ClipboardCheck size={18} aria-hidden="true" />}
-                </span>
-              </div>
-
-              <div className="mt-3 space-y-2 border-t border-[var(--public-border)] pt-3 text-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[var(--public-muted)]">Hoàn tất lúc</span>
-                  <span className="font-semibold text-[var(--public-title)]">{formatDate(resolutionDate)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[var(--public-muted)]">Thời gian xử lý</span>
-                  <span className="font-semibold text-[var(--public-title)]">{processingDuration}</span>
-                </div>
-                {operatorName && (
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="shrink-0 text-[var(--public-muted)]">Đơn vị xử lý</span>
-                    <span className="text-right font-semibold text-[var(--public-title)]">{operatorName}</span>
+              <aside className="w-full shrink-0 xl:w-[320px]">
+                <div className="rounded-2xl border border-primary/15 bg-primary/[0.045] p-4">
+                  <div className="flex items-start gap-3">
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${statusTone}`}>
+                      {alreadyRated
+                        ? <Lucide.Archive size={18} aria-hidden="true" />
+                        : <Lucide.CircleCheck size={18} aria-hidden="true" />}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-[var(--public-muted)]">Trạng thái kết quả</p>
+                      <p className="mt-1 text-base font-bold text-[var(--public-title)]">{statusLabel}</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">
+                        {alreadyRated ? 'Phản ánh đã hoàn tất quy trình.' : canSubmitReview ? 'Kết quả đã được duyệt và đang chờ đánh giá của bạn.' : 'Kết quả đang trong quá trình hoàn tất.'}
+                      </p>
+                    </div>
                   </div>
-                )}
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-2.5">
+                      <p className="text-[10px] text-[var(--public-muted)]">Hoàn tất</p>
+                      <p className="mt-1 text-xs font-semibold text-[var(--public-title)]">{formatDate(resolutionDate)}</p>
+                    </div>
+                    <div className="rounded-xl border border-[var(--public-border)] bg-[var(--public-surface)] px-3 py-2.5">
+                      <p className="text-[10px] text-[var(--public-muted)]">Thời gian xử lý</p>
+                      <p className="mt-1 text-xs font-semibold text-[var(--public-title)]">{processingDuration}</p>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+
+            <div className="mt-6 grid gap-3 border-t border-[var(--public-border)] pt-5 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_auto_auto] xl:items-center">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-primary">
+                  <Lucide.MapPin size={16} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--public-muted)]">Vị trí</p>
+                  <p className="mt-0.5 truncate text-sm font-medium text-[var(--public-title)]" title={locationText}>{locationText}</p>
+                </div>
               </div>
-            </aside>
+
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-primary">
+                  <Lucide.CalendarDays size={16} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--public-muted)]">Ngày gửi</p>
+                  <p className="mt-0.5 text-sm font-medium text-[var(--public-title)]">{formatDate(createdAt)}</p>
+                </div>
+              </div>
+
+              {operatorName && (
+                <div className="flex items-center gap-3 sm:col-span-2 xl:col-span-1">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-primary">
+                    <Lucide.Building2 size={16} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--public-muted)]">Đơn vị xử lý</p>
+                    <p className="mt-0.5 text-sm font-medium text-[var(--public-title)]">{operatorName}</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </article>
 
-        {/* ── SECTION 2: PROGRESS TRACKER ──────────────────────────────────── */}
+        {/* ── COMPACT PROGRESS ───────────────────────────────────────────── */}
         <section
-          className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5"
+          className="rounded-[22px] border border-[var(--public-border)] bg-[var(--public-surface)] px-4 py-4 shadow-[0_10px_28px_rgba(15,23,42,0.045)] sm:px-5"
           aria-labelledby="result-progress-title"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 id="result-progress-title" className="text-lg font-bold">Tiến độ xử lý</h2>
-              <p className="mt-1 text-sm text-base-content/60">Các mốc chính trong quá trình xử lý phản ánh.</p>
+              <h2 id="result-progress-title" className="text-sm font-bold">Tiến độ xử lý</h2>
+              <p className="mt-0.5 text-xs text-[var(--public-muted)]">Các mốc chính từ tiếp nhận đến hoàn tất.</p>
             </div>
             <span className="rounded-full border border-primary/15 bg-primary/8 px-3 py-1.5 text-xs font-semibold text-primary">
-              {isCompleted
-                ? `Hoàn tất ${JOURNEY_STEPS.length}/${JOURNEY_STEPS.length}`
-                : `Bước ${journeyIndex + 1}/${JOURNEY_STEPS.length}`}
+              {isCompleted ? 'Đã hoàn tất' : `Bước ${journeyIndex + 1}/${JOURNEY_STEPS.length}`}
             </span>
           </div>
 
-          <div className="mt-4 overflow-x-auto pb-1">
-            <ol className="grid min-w-[680px] grid-cols-4">
-              {JOURNEY_STEPS.map((step, index) => {
-                const StepIcon = step.icon;
-                const completed = isCompleted ? true : index < journeyIndex;
-                const active = !isCompleted && index === journeyIndex;
-
-                return (
-                  <li key={step.title} className="relative px-2 text-center">
-                    {index < JOURNEY_STEPS.length - 1 && (
-                      <span
-                        className={`absolute left-[calc(50%+20px)] right-[calc(-50%+20px)] top-[18px] h-0.5 ${
-                          completed ? 'bg-primary/75' : 'bg-base-content/15'
-                        }`}
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span
-                      className={`relative z-10 mx-auto flex h-9 w-9 items-center justify-center rounded-full border ${
-                        completed
-                          ? 'border-primary bg-primary text-primary-content shadow-sm'
-                          : active
-                            ? 'border-primary bg-primary/12 text-primary ring-4 ring-primary/12'
-                            : 'border-base-content/20 bg-base-100 text-base-content/45 shadow-sm'
-                      }`}
-                    >
-                      {completed
-                        ? <Lucide.Check size={16} aria-hidden="true" />
-                        : <StepIcon size={16} aria-hidden="true" />}
-                    </span>
-                    <p className={`mt-2 text-sm font-semibold ${active || completed ? 'text-base-content' : 'text-base-content/60'}`}>
-                      {step.title}
-                    </p>
-                    <p className={`mt-0.5 text-xs ${active || completed ? 'text-base-content/55' : 'text-base-content/48'}`}>
-                      {step.description}
-                    </p>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
+          <ol className="mt-4 grid gap-2 sm:grid-cols-4">
+            {JOURNEY_STEPS.map((step, index) => {
+              const completed = isCompleted ? true : index < journeyIndex;
+              const active = !isCompleted && index === journeyIndex;
+              return (
+                <li key={step.title} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 ${completed || active ? 'border-primary/15 bg-primary/[0.035]' : 'border-[var(--public-border)] bg-[var(--public-surface-strong)]'}`}>
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${completed ? 'bg-primary text-primary-content' : active ? 'bg-primary/12 text-primary' : 'bg-base-content/5 text-base-content/35'}`}>
+                    {completed ? <Lucide.Check size={14} aria-hidden="true" /> : <span className="text-[11px] font-bold">{index + 1}</span>}
+                  </span>
+                  <div className="min-w-0">
+                    <p className={`truncate text-xs font-semibold ${completed || active ? 'text-[var(--public-title)]' : 'text-[var(--public-muted)]'}`}>{step.title}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-[var(--public-muted)]">{step.description}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         </section>
 
         {/* ── SECTION 3: 2-COLUMN MAIN GRID ───────────────────────────────── */}
@@ -872,120 +814,134 @@ export const ResolutionResultPage = () => {
 
             {/* Resident Rating */}
             <section
-              className={`rounded-[24px] border bg-[var(--public-surface)] p-4 shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:p-5 ${
+              className={`relative overflow-hidden rounded-[24px] border bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)] ${
                 alreadyRated
-                  ? 'border-base-300'
+                  ? 'border-[var(--public-border)]'
                   : canSubmitReview
-                    ? 'border-success/25'
+                    ? 'border-primary/20'
                     : 'border-[var(--public-border)]'
               }`}
               aria-labelledby="rating-title"
             >
-              <header className="flex items-start gap-3">
-                <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                    alreadyRated ? 'bg-base-200/55 text-base-content/50' : 'bg-success/10 text-success'
-                  }`}
-                  aria-hidden="true"
-                >
-                  <Lucide.Star size={18} />
-                </span>
-                <div>
-                  <h2 id="rating-title" className="text-base font-bold">Đánh giá kết quả</h2>
-                  <p className="mt-0.5 text-xs leading-5 text-base-content/55">
-                    Cảm nhận của bạn giúp chúng tôi cải thiện chất lượng phục vụ.
-                  </p>
-                </div>
-              </header>
-
-              {canSubmitReview ? (
-                <form onSubmit={handleRateSubmit} className="mt-4 space-y-4">
-                  {/* Stars */}
-                  <fieldset>
-                    <legend className="text-sm font-semibold">Mức độ hài lòng</legend>
-                    <div className="mt-2 flex gap-1">
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <label key={value} className="cursor-pointer">
-                          <input
-                            type="radio"
-                            name="result-rating"
-                            value={value}
-                            checked={rating === value}
-                            onChange={() => setRating(value)}
-                            className="peer sr-only"
-                            aria-label={`${value} sao`}
-                          />
-                          <Lucide.Star
-                            size={26}
-                            className={`transition ${
-                              rating >= value
-                                ? 'fill-warning text-warning'
-                                : 'text-base-content/20 peer-focus-visible:ring-2 peer-focus-visible:ring-primary/35'
-                            }`}
-                            aria-hidden="true"
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    {rating > 0 && (
-                      <p className="mt-1.5 text-xs font-semibold text-warning">
-                        {getRatingText(rating)}
-                      </p>
-                    )}
-                  </fieldset>
-
-                  {/* Satisfied toggle */}
-                  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-base-300 bg-base-200/35 px-4 py-3">
-                    <span className="text-sm font-medium">Tôi hài lòng với kết quả này</span>
-                    <input
-                      type="checkbox"
-                      checked={satisfied}
-                      onChange={(e) => setSatisfied(e.target.checked)}
-                      className="checkbox checkbox-primary checkbox-sm"
-                    />
-                  </label>
-
-                  {/* Comment */}
-                  <label className="block">
-                    <span className="text-sm font-semibold">Ý kiến thêm</span>
-                    <textarea
-                      rows="3"
-                      value={reviewComment}
-                      onChange={(e) => setReviewComment(e.target.value)}
-                      placeholder="Chia sẻ nhận xét về kết quả xử lý..."
-                      className="textarea textarea-bordered mt-2 w-full rounded-2xl bg-base-100 text-sm"
-                    />
-                  </label>
-
-                  <button
-                    type="submit"
-                    disabled={ratingLoading}
-                    className="btn admin-primary-action w-full rounded-2xl"
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_90%_0%,rgba(37,99,235,0.10),transparent_45%)]" aria-hidden="true" />
+              <div className="relative p-4 sm:p-5">
+                <header className="flex items-start gap-3">
+                  <span
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                      alreadyRated ? 'bg-base-content/5 text-base-content/45' : 'bg-primary/10 text-primary'
+                    }`}
+                    aria-hidden="true"
                   >
-                    {ratingLoading
-                      ? <span className="loading loading-spinner loading-sm" />
-                      : <Lucide.Send size={15} aria-hidden="true" />}
-                    Gửi đánh giá
-                  </button>
-                </form>
-              ) : alreadyRated ? (
-                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-base-300 bg-base-200/35 px-4 py-4">
-                  <Lucide.CircleCheck size={18} className="shrink-0 text-success" aria-hidden="true" />
-                  <div>
-                    <p className="text-sm font-semibold">Đã gửi đánh giá</p>
-                    <p className="mt-0.5 text-xs text-base-content/55">Cảm ơn bạn đã dành thời gian đánh giá phản ánh này.</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-4 py-4 text-sm text-base-content/60">
-                  <div className="flex items-start gap-2">
-                    <Lucide.Info size={16} className="mt-0.5 shrink-0 text-info" aria-hidden="true" />
-                    <p className="leading-5">
-                      Kết quả cần được Manager phê duyệt trước khi bạn có thể đánh giá.
+                    <Lucide.Star size={19} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-[var(--public-muted)]">Phản hồi của bạn</p>
+                    <h2 id="rating-title" className="mt-1 text-lg font-bold">Đánh giá kết quả xử lý</h2>
+                    <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">
+                      Đánh giá của bạn giúp cải thiện chất lượng xử lý phản ánh.
                     </p>
                   </div>
-                </div>
-              )}
+                </header>
+
+                {canSubmitReview ? (
+                  <form onSubmit={handleRateSubmit} className="mt-5 space-y-4">
+                    <fieldset className="rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 py-4">
+                      <legend className="px-1 text-xs font-semibold text-[var(--public-muted)]">Mức độ hài lòng</legend>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <label key={value} className="group flex flex-1 cursor-pointer justify-center">
+                            <input
+                              type="radio"
+                              name="result-rating"
+                              value={value}
+                              checked={rating === value}
+                              onChange={() => setRating(value)}
+                              className="peer sr-only"
+                              aria-label={`${value} sao`}
+                            />
+                            <span className="flex h-11 w-11 items-center justify-center rounded-xl transition group-hover:bg-warning/8 peer-focus-visible:ring-2 peer-focus-visible:ring-primary/35">
+                              <Lucide.Star
+                                size={28}
+                                className={`transition ${
+                                  rating >= value
+                                    ? 'fill-warning text-warning'
+                                    : 'text-base-content/18'
+                                }`}
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-2 min-h-5 text-center">
+                        <p className={`text-xs font-semibold ${rating > 0 ? 'text-warning' : 'text-[var(--public-muted)]'}`}>
+                          {rating > 0 ? getRatingText(rating) : 'Chọn từ 1 đến 5 sao'}
+                        </p>
+                      </div>
+                    </fieldset>
+
+                    <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3.5 transition ${satisfied ? 'border-success/25 bg-success/[0.055]' : 'border-[var(--public-border)] bg-[var(--public-surface-strong)]'}`}>
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${satisfied ? 'bg-success/10 text-success' : 'bg-base-content/5 text-base-content/45'}`}>
+                        <Lucide.ThumbsUp size={17} aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold">Tôi hài lòng với kết quả này</span>
+                        <span className="mt-0.5 block text-[11px] text-[var(--public-muted)]">Xác nhận nhanh mức độ hài lòng của bạn.</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={satisfied}
+                        onChange={(e) => setSatisfied(e.target.checked)}
+                        className="checkbox checkbox-primary checkbox-sm"
+                      />
+                    </label>
+
+                    <label className="block rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] p-3.5">
+                      <span className="text-sm font-semibold">Ý kiến thêm</span>
+                      <span className="mt-0.5 block text-[11px] text-[var(--public-muted)]">Không bắt buộc, nhưng sẽ hữu ích cho đơn vị xử lý.</span>
+                      <textarea
+                        rows="4"
+                        value={reviewComment}
+                        onChange={(e) => setReviewComment(e.target.value)}
+                        placeholder="Chia sẻ nhận xét về kết quả xử lý..."
+                        className="textarea textarea-bordered mt-3 min-h-[104px] w-full resize-y rounded-xl border-[var(--public-border)] bg-[var(--public-surface)] text-sm focus:border-primary/40 focus:outline-none"
+                      />
+                    </label>
+
+                    <button
+                      type="submit"
+                      disabled={ratingLoading}
+                      className="btn admin-primary-action h-11 min-h-11 w-full rounded-xl"
+                    >
+                      {ratingLoading
+                        ? <span className="loading loading-spinner loading-sm" />
+                        : <Lucide.Send size={15} aria-hidden="true" />}
+                      Gửi đánh giá
+                    </button>
+                  </form>
+                ) : alreadyRated ? (
+                  <div className="mt-5 rounded-2xl border border-success/20 bg-success/[0.055] px-4 py-4">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+                        <Lucide.CircleCheck size={18} aria-hidden="true" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold">Đánh giá đã được ghi nhận</p>
+                        <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">Cảm ơn bạn đã phản hồi về kết quả xử lý phản ánh này.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)] px-4 py-4 text-sm text-[var(--public-muted)]">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info">
+                        <Lucide.Info size={16} aria-hidden="true" />
+                      </span>
+                      <p className="leading-6">Kết quả cần được phê duyệt trước khi bạn có thể gửi đánh giá.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </section>
 
             {/* Community Discussion */}
@@ -996,9 +952,9 @@ export const ResolutionResultPage = () => {
             >
               <header className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 id="comments-title" className="text-base font-bold">Trao đổi cộng đồng</h2>
+                  <h2 id="comments-title" className="text-base font-bold">Trao đổi về phản ánh</h2>
                   <p className="mt-0.5 text-xs text-base-content/55">
-                    Chia sẻ thông tin hữu ích và trao đổi văn minh.
+                    Trao đổi thêm về kết quả xử lý của phản ánh này.
                   </p>
                 </div>
                 <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-primary/15 bg-primary/8 px-2.5 text-xs font-semibold text-primary">
