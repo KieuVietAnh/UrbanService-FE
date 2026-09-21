@@ -147,10 +147,6 @@ export const PublicHeader = () => {
                     <Lucide.UserRound size={16} aria-hidden="true" />
                     Trang cá nhân
                   </Link>
-                  <Link to="/settings" className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900">
-                    <Lucide.Settings size={16} aria-hidden="true" />
-                    Cài đặt
-                  </Link>
                   <button type="button" onClick={handleLogout} className="mt-1 flex min-h-10 w-full items-center gap-3 border-t border-slate-200 px-3 pt-2 text-left text-sm font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-slate-800 dark:text-rose-300 dark:hover:bg-rose-500/10">
                     <Lucide.LogOut size={16} aria-hidden="true" />
                     Đăng xuất
