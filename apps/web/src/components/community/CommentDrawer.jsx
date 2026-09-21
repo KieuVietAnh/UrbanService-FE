@@ -1,38 +1,46 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import CommentList from './CommentList';
 import CommentForm from './CommentForm';
 
-export default function CommentDrawer({ open, onClose, feedbackId }) {
+export default function CommentDrawer({ open, onClose, incidentId }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose && onClose(); };
+    const onKey = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
     if (open) window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
   if (!open) return null;
 
+  const comments = (
+    <>
+      <CommentList incidentId={incidentId} refreshKey={refreshKey} />
+      <CommentForm incidentId={incidentId} onPosted={() => setRefreshKey((value) => value + 1)} />
+    </>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="hidden lg:block w-96 bg-white border-l shadow-xl overflow-auto p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold">Bình luận</h3>
-          <button onClick={onClose} className="btn btn-ghost btn-sm">Đóng</button>
+      <div className="hidden w-96 overflow-auto border-l bg-white p-4 shadow-xl lg:block">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-bold">Bình luận sự vụ</h3>
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">Đóng</button>
         </div>
-        <CommentList feedbackId={feedbackId} />
-        <CommentForm feedbackId={feedbackId} onPosted={() => {/* trigger refresh via list's effect by re-mounting if needed */}} />
+        {comments}
       </div>
 
-      {/* Mobile bottom sheet */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl p-3 max-h-[70vh] overflow-auto">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="font-bold">Bình luận</h3>
-          <button onClick={onClose} className="btn btn-ghost btn-sm">Đóng</button>
+      <div className="fixed bottom-0 left-0 right-0 max-h-[70vh] overflow-auto rounded-t-2xl bg-white p-3 shadow-xl lg:hidden">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-bold">Bình luận sự vụ</h3>
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">Đóng</button>
         </div>
-        <CommentList feedbackId={feedbackId} />
-        <CommentForm feedbackId={feedbackId} onPosted={() => {}} />
+        {comments}
       </div>
 
-      <div className="flex-1" onClick={onClose} />
+      <button type="button" className="flex-1" aria-label="Đóng bình luận" onClick={onClose} />
     </div>
   );
 }

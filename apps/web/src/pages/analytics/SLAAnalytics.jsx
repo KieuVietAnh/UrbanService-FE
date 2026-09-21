@@ -28,6 +28,34 @@ const EMPTY_PERFORMANCE = {
 
 const SOURCE_KEYS = ['overview', 'compliance', 'performance', 'trend', 'near', 'recent'];
 const AVAILABLE_BY_DEFAULT = Object.fromEntries(SOURCE_KEYS.map((key) => [key, true]));
+const SLA_ANALYTICS_SNAPSHOT_STORAGE_KEY = 'urbanmind-manager-sla-analytics-snapshot-v1';
+
+const readSlaAnalyticsSnapshot = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const rawSnapshot = window.sessionStorage.getItem(SLA_ANALYTICS_SNAPSHOT_STORAGE_KEY);
+    if (!rawSnapshot) return null;
+
+    const parsedSnapshot = JSON.parse(rawSnapshot);
+    return parsedSnapshot && typeof parsedSnapshot === 'object' ? parsedSnapshot : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeSlaAnalyticsSnapshot = (snapshot) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      SLA_ANALYTICS_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({ ...snapshot, updatedAt: Date.now() })
+    );
+  } catch {
+    // Storage can be unavailable in private mode or when quota is exceeded.
+  }
+};
 
 const toNumber = (value) => Number(value) || 0;
 const clampPercent = (value) => Math.max(0, Math.min(100, toNumber(value)));
@@ -149,84 +177,100 @@ const SourceUnavailable = ({ text, compact = false }) => (
   </div>
 );
 
-const OperationalSummary = ({ overview, available }) => {
-  if (!available) return <SourceUnavailable text="Không tải được dữ liệu tình trạng SLA." />;
-  if (overview.totalSla === 0) return <div className="admin-empty-panel px-5 py-7 text-center text-sm text-slate-500">Chưa có SLA để phân tích tình trạng vận hành.</div>;
-
-  const statusTotal = Math.max(overview.runningSla + overview.completedSla, 1);
-  const runningPercent = Math.round((overview.runningSla / statusTotal) * 100);
-  const completedPercent = Math.max(0, 100 - runningPercent);
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <section className="rounded-2xl border border-slate-200/80 bg-slate-50/45 p-4 dark:border-slate-800 dark:bg-slate-950/30 sm:p-5">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-slate-950 dark:text-white">Tiến độ vận hành</p>
-            <p className="mt-1 text-xs text-slate-500">{overview.runningSla + overview.completedSla} SLA đang được theo dõi.</p>
-          </div>
-          <span className="text-xs font-medium text-slate-400">Tổng {overview.totalSla}</span>
-        </div>
-        <div className="mt-5 flex h-3 overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800" aria-label="Phân bổ SLA đang chạy và đã hoàn thành">
-          <span className="bg-blue-500" style={{ width: `${runningPercent}%` }} />
-          <span className="bg-emerald-500" style={{ width: `${completedPercent}%` }} />
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-800">
-            <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-slate-500">Đang chạy</span><span className="h-2 w-2 rounded-full bg-blue-500" /></div>
-            <div className="mt-1 flex items-end justify-between gap-2"><strong className="text-2xl font-semibold tabular-nums text-slate-950 dark:text-white">{overview.runningSla}</strong><span className="text-xs text-slate-400">{runningPercent}%</span></div>
-          </div>
-          <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-900 dark:ring-slate-800">
-            <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-slate-500">Đã hoàn thành</span><span className="h-2 w-2 rounded-full bg-emerald-500" /></div>
-            <div className="mt-1 flex items-end justify-between gap-2"><strong className="text-2xl font-semibold tabular-nums text-slate-950 dark:text-white">{overview.completedSla}</strong><span className="text-xs text-slate-400">{completedPercent}%</span></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-        <div className="flex items-center gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/65 px-4 py-4 dark:border-amber-900/50 dark:bg-amber-950/10">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 shadow-sm dark:bg-amber-950/30"><Lucide.ClockAlert size={18} /></span>
-          <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Đang cảnh báo</p><p className="mt-0.5 text-xs text-slate-500">SLA đang chạy cần theo dõi</p></div>
-          <strong className="text-2xl font-semibold tabular-nums text-amber-700">{overview.warningSla}</strong>
-        </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/65 px-4 py-4 dark:border-rose-900/50 dark:bg-rose-950/10">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-rose-700 shadow-sm dark:bg-rose-950/30"><Lucide.TriangleAlert size={18} /></span>
-          <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Đã vi phạm</p><p className="mt-0.5 text-xs text-slate-500">Phản hồi hoặc hoàn thành quá hạn</p></div>
-          <strong className="text-2xl font-semibold tabular-nums text-rose-700">{overview.breachedSla}</strong>
-        </div>
-      </section>
-    </div>
-  );
-};
-
 const ViolationTrend = ({ data, available }) => {
   const normalized = useMemo(() => ([...data]
     .map((item) => ({ date: item?.date ?? item?.Date, count: toNumber(item?.count ?? item?.Count) }))
     .filter((item) => item.date)
     .sort((a, b) => new Date(a.date) - new Date(b.date))), [data]);
   const maxCount = Math.max(1, ...normalized.map((item) => item.count));
+  const peak = normalized.reduce((best, item) => (item.count > (best?.count ?? -1) ? item : best), null);
+  const points = normalized.map((item, index) => ({
+    ...item,
+    x: normalized.length === 1 ? 50 : (index / (normalized.length - 1)) * 100,
+    y: 86 - ((item.count / maxCount) * 68),
+  }));
+  const linePoints = points.map((item) => `${item.x},${item.y}`).join(' ');
+  const areaPoints = points.length > 0
+    ? `${points[0].x},90 ${linePoints} ${points[points.length - 1].x},90`
+    : '';
 
   if (!available) return <SourceUnavailable text="Không tải được dữ liệu xu hướng vi phạm." />;
   if (normalized.length === 0) return <div className="admin-empty-panel px-5 py-7 text-center text-sm text-slate-500">30 ngày gần đây chưa phát sinh sự kiện vi phạm SLA.</div>;
 
   return (
-    <div className="overflow-x-auto pb-1">
-      <div className="min-w-[680px]">
-        <div className="relative flex h-32 items-end gap-3 border-b border-slate-200 px-1 dark:border-slate-800">
-          <span className="pointer-events-none absolute inset-x-0 top-1/3 border-t border-dashed border-slate-100 dark:border-slate-800/70" />
-          <span className="pointer-events-none absolute inset-x-0 top-2/3 border-t border-dashed border-slate-100 dark:border-slate-800/70" />
-          {normalized.map((item) => {
-            const height = item.count === 0 ? 3 : Math.max(10, (item.count / maxCount) * 86);
-            return (
-              <div key={`${item.date}-${item.count}`} className="group relative z-10 flex min-w-[34px] flex-1 flex-col items-center justify-end self-stretch">
-                <span className="mb-1.5 mt-auto text-[11px] font-semibold tabular-nums text-slate-600 dark:text-slate-300">{item.count}</span>
-                <span className="block w-full max-w-8 rounded-t-lg bg-rose-500 transition-[height,opacity] duration-300 group-hover:opacity-80" style={{ height }} title={`${formatShortDate(item.date)}: ${item.count} sự kiện vi phạm`} />
-              </div>
-            );
-          })}
+    <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/45 px-4 pb-3 pt-4 dark:border-slate-800 dark:from-slate-950 dark:to-slate-900/55 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+          <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden="true" />
+          <span>Mỗi điểm là số sự kiện vi phạm được ghi nhận trong ngày.</span>
         </div>
-        <div className="flex gap-3 px-1 pt-2">
-          {normalized.map((item) => <span key={`label-${item.date}`} className="min-w-[34px] flex-1 text-center text-[10px] text-slate-400">{formatShortDate(item.date)}</span>)}
+        {peak ? (
+          <div className="flex items-baseline gap-2 rounded-full bg-rose-50 px-3 py-1.5 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+            <span className="font-medium">Cao nhất</span>
+            <strong className="tabular-nums">{peak.count} sự kiện</strong>
+            <span className="text-rose-500/80">· {formatShortDate(peak.date)}</span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-3 grid grid-cols-[26px_minmax(0,1fr)] gap-2">
+        <div className="relative h-[158px] text-[10px] tabular-nums text-slate-400" aria-hidden="true">
+          <span className="absolute right-0 top-[10px]">{maxCount}</span>
+          <span className="absolute right-0 top-1/2 -translate-y-1/2">{Math.round(maxCount / 2)}</span>
+          <span className="absolute bottom-[8px] right-0">0</span>
+        </div>
+
+        <div className="min-w-0">
+          <div className="relative h-[158px]">
+            <span className="pointer-events-none absolute inset-x-0 top-[18%] border-t border-dashed border-slate-200/80 dark:border-slate-800" />
+            <span className="pointer-events-none absolute inset-x-0 top-[52%] border-t border-dashed border-slate-200/80 dark:border-slate-800" />
+            <span className="pointer-events-none absolute inset-x-0 top-[86%] border-t border-slate-200 dark:border-slate-800" />
+
+            <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="slaViolationArea" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.24" />
+                  <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              <polygon points={areaPoints} fill="url(#slaViolationArea)" />
+              <polyline
+                points={linePoints}
+                fill="none"
+                stroke="#e11d48"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+
+            {points.map((item) => (
+              <button
+                key={`${item.date}-${item.count}`}
+                type="button"
+                className="group absolute z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-rose-500 shadow-[0_3px_10px_rgba(225,29,72,0.28)] outline-none transition hover:scale-125 focus-visible:scale-125 focus-visible:ring-2 focus-visible:ring-rose-400/50 dark:border-slate-950"
+                style={{ left: `${item.x}%`, top: `${item.y}%` }}
+                aria-label={`${formatShortDate(item.date)}: ${item.count} sự kiện vi phạm`}
+              >
+                <span className={`pointer-events-none absolute bottom-[calc(100%+8px)] z-20 whitespace-nowrap rounded-lg bg-slate-950 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${item.x < 12 ? 'left-0' : item.x > 88 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
+                  {formatShortDate(item.date)} · {item.count} sự kiện
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="mt-1 grid gap-1"
+            style={{ gridTemplateColumns: `repeat(${Math.max(points.length, 1)}, minmax(0, 1fr))` }}
+            aria-hidden="true"
+          >
+            {points.map((item) => (
+              <span key={`label-${item.date}`} className="truncate text-center text-[10px] tabular-nums text-slate-400">
+                {formatShortDate(item.date)}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -251,83 +295,116 @@ const groupRecentBreachesBySla = (items) => {
     .sort((a, b) => new Date(b.events[0]?.breachedAt || 0).getTime() - new Date(a.events[0]?.breachedAt || 0).getTime());
 };
 
-const RecentBreachesPanel = ({ groups, events, returnPath, available }) => (
-  <article className="admin-panel overflow-hidden">
-    <ManagerSectionHeader
-      title="Vi phạm gần đây"
-      description="Theo từng sự vụ để phân biệt rõ vi phạm phản hồi và vi phạm hoàn thành."
-      icon={Lucide.ShieldAlert}
-      actions={available ? <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">{groups.length} SLA · {events.length} sự kiện</span> : null}
-    />
-    <section className="p-4 sm:p-5">
-      {!available ? <SourceUnavailable text="Không tải được danh sách vi phạm gần đây." /> : groups.length === 0 ? (
-        <div className="admin-empty-panel px-5 py-7 text-center text-sm text-slate-500">Chưa có sự kiện vi phạm SLA gần đây.</div>
-      ) : (
-        <ul className="grid gap-3 xl:grid-cols-2">
-          {groups.map((group, index) => {
-            const isLastOdd = groups.length % 2 === 1 && index === groups.length - 1;
-            return (
-              <li key={group.key} className={isLastOdd ? 'xl:col-span-2' : ''}>
-                <article className="h-full overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-slate-950/30">
-                  <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-4 py-3.5 dark:border-slate-800">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{group.title}</h3>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                        {group.incidentSlaId ? <span>SLA #{group.incidentSlaId}</span> : null}
-                        {group.incidentId ? <Link to={`/manager/incidents/${group.incidentId}`} state={{ from: returnPath }} className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800">Xem sự vụ <Lucide.ArrowUpRight size={13} /></Link> : null}
+const RecentBreachesPanel = ({ groups, events, returnPath, available }) => {
+  const breachRows = groups.flatMap((group) => group.events.map((event, eventIndex) => ({
+    ...event,
+    rowKey: `${group.key}-${event.type || eventIndex}-${event.breachedAt || eventIndex}`,
+    incidentId: group.incidentId,
+    incidentSlaId: group.incidentSlaId,
+    title: group.title,
+  }))).sort((a, b) => new Date(b.breachedAt || 0).getTime() - new Date(a.breachedAt || 0).getTime());
+
+  return (
+    <article className="admin-panel overflow-hidden">
+      <ManagerSectionHeader
+        title="Vi phạm gần đây"
+        description="Các sự kiện vi phạm SLA gần nhất, sắp xếp theo thời điểm ghi nhận."
+        icon={Lucide.ShieldAlert}
+        actions={available ? <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">{groups.length} SLA · {events.length} sự kiện</span> : null}
+      />
+      <section className="p-4 sm:p-5">
+        {!available ? <SourceUnavailable text="Không tải được danh sách vi phạm gần đây." /> : breachRows.length === 0 ? (
+          <div className="admin-empty-panel px-5 py-7 text-center text-sm text-slate-500">Chưa có sự kiện vi phạm SLA gần đây.</div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-slate-950/30">
+            <div className="hidden grid-cols-[minmax(220px,1.25fr)_minmax(220px,1.25fr)_160px_110px_105px] gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:border-slate-800 dark:bg-slate-900/50 xl:grid">
+              <span>Sự vụ / SLA</span>
+              <span>Loại vi phạm</span>
+              <span>Thời điểm</span>
+              <span>Quá hạn</span>
+              <span className="text-right">Thao tác</span>
+            </div>
+
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              {breachRows.map((row) => {
+                const EventIcon = row.Icon;
+                return (
+                  <li key={row.rowKey} className="px-4 py-4 transition hover:bg-slate-50/70 sm:px-5 dark:hover:bg-slate-900/35">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1.25fr)_160px_110px_105px] xl:items-center xl:gap-4">
+                      <div className="min-w-0">
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 xl:hidden">Sự vụ / SLA</span>
+                        <h3 className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{row.title}</h3>
+                        <p className="mt-1 text-xs text-slate-500">{row.incidentSlaId ? `SLA #${row.incidentSlaId}` : 'SLA chưa có mã hiển thị'}</p>
+                      </div>
+
+                      <div className="min-w-0">
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 xl:hidden">Loại vi phạm</span>
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"><EventIcon size={15} /></span>
+                          <p className="min-w-0 text-sm font-medium text-slate-800 dark:text-slate-200">{row.label}</p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 xl:hidden">Thời điểm</span>
+                        <p className="text-sm tabular-nums text-slate-600 dark:text-slate-300">{formatDateTime(row.breachedAt)}</p>
+                      </div>
+
+                      <div>
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 xl:hidden">Quá hạn</span>
+                        <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold tabular-nums text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/20 dark:text-rose-300">
+                          {formatDuration(row.overdueMinutes)}
+                        </span>
+                      </div>
+
+                      <div className="xl:text-right">
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 xl:hidden">Thao tác</span>
+                        {row.incidentId ? (
+                          <Link to={`/manager/incidents/${row.incidentId}`} state={{ from: returnPath }} className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200">
+                            Xem sự vụ <Lucide.ArrowUpRight size={13} />
+                          </Link>
+                        ) : <span className="text-xs text-slate-400">Không có liên kết</span>}
                       </div>
                     </div>
-                    <span className="shrink-0 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">{group.events.length} vi phạm</span>
-                  </header>
-                  <div className={`grid divide-y divide-slate-100 dark:divide-slate-800 ${isLastOdd && group.events.length > 1 ? 'xl:grid-cols-2 xl:divide-x xl:divide-y-0' : ''}`}>
-                    {group.events.map((event, eventIndex) => {
-                      const EventIcon = event.Icon;
-                      return (
-                        <div key={`${group.key}-${event.type || eventIndex}-${event.breachedAt || eventIndex}`} className="flex items-start gap-3 px-4 py-3.5">
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-700"><EventIcon size={16} /></span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-                              <div><p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{event.label}</p><p className="mt-1 text-xs text-slate-500">{event.shortLabel} · {formatDateTime(event.breachedAt)}</p></div>
-                              <strong className="text-sm font-semibold tabular-nums text-rose-700">Quá hạn {formatDuration(event.overdueMinutes)}</strong>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </article>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  </article>
-);
-
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </section>
+    </article>
+  );
+};
 const LoadingSkeleton = () => (
   <article className="admin-page-shell space-y-5" aria-busy="true" aria-label="Đang tải phân tích SLA">
     <header className="admin-page-hero h-32 animate-pulse" />
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <article key={index} className="admin-stat-card h-32 animate-pulse" />)}</section>
-    <section className="grid items-start gap-5 xl:grid-cols-2"><article className="admin-panel h-72 animate-pulse" /><article className="admin-panel h-72 animate-pulse" /></section>
+    <section className="grid items-stretch gap-5 xl:grid-cols-2"><article className="admin-panel h-72 animate-pulse" /><article className="admin-panel h-72 animate-pulse" /></section>
     <article className="admin-panel h-64 animate-pulse" />
-    <article className="admin-panel h-56 animate-pulse" />
-    <article className="admin-panel h-72 animate-pulse" />
+    <article className="admin-panel h-24 animate-pulse" />
+    <article className="admin-panel h-64 animate-pulse" />
   </article>
 );
 
 export const SLAAnalytics = () => {
   const location = useLocation();
   const returnPath = `${location.pathname}${location.search}`;
+  const [cachedSnapshot] = useState(() => readSlaAnalyticsSnapshot());
   const requestIdRef = useRef(0);
-  const [overview, setOverview] = useState(EMPTY_OVERVIEW);
-  const [compliance, setCompliance] = useState(EMPTY_COMPLIANCE);
-  const [performance, setPerformance] = useState(EMPTY_PERFORMANCE);
-  const [violationTrend, setViolationTrend] = useState([]);
-  const [nearBreaches, setNearBreaches] = useState([]);
-  const [recentBreaches, setRecentBreaches] = useState([]);
-  const [availability, setAvailability] = useState(AVAILABLE_BY_DEFAULT);
-  const [loading, setLoading] = useState(true);
+  const snapshotRef = useRef(cachedSnapshot);
+  const [overview, setOverview] = useState(() => cachedSnapshot?.overview || EMPTY_OVERVIEW);
+  const [compliance, setCompliance] = useState(() => cachedSnapshot?.compliance || EMPTY_COMPLIANCE);
+  const [performance, setPerformance] = useState(() => cachedSnapshot?.performance || EMPTY_PERFORMANCE);
+  const [violationTrend, setViolationTrend] = useState(() => normalizeArray(cachedSnapshot?.violationTrend));
+  const [nearBreaches, setNearBreaches] = useState(() => normalizeArray(cachedSnapshot?.nearBreaches));
+  const [recentBreaches, setRecentBreaches] = useState(() => normalizeArray(cachedSnapshot?.recentBreaches));
+  const [availability, setAvailability] = useState(() => (
+    cachedSnapshot?.availability && typeof cachedSnapshot.availability === 'object'
+      ? { ...AVAILABLE_BY_DEFAULT, ...cachedSnapshot.availability }
+      : AVAILABLE_BY_DEFAULT
+  ));
+  const [loading, setLoading] = useState(() => !cachedSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
@@ -343,35 +420,78 @@ export const SLAAnalytics = () => {
     if (requestId !== requestIdRef.current) return;
 
     const [overviewResult, complianceResult, performanceResult, violationsResult, nearResult, recentResult] = requests;
-    const nextAvailability = {
+    const previousSnapshot = snapshotRef.current;
+    const previousAvailability = previousSnapshot?.availability || {};
+    const requestAvailability = {
       overview: overviewResult.status === 'fulfilled', compliance: complianceResult.status === 'fulfilled',
       performance: performanceResult.status === 'fulfilled', trend: violationsResult.status === 'fulfilled',
       near: nearResult.status === 'fulfilled', recent: recentResult.status === 'fulfilled',
     };
+    const nextAvailability = Object.fromEntries(
+      SOURCE_KEYS.map((key) => [key, requestAvailability[key] || previousAvailability[key] === true])
+    );
+
+    const nextSnapshot = {
+      overview: overviewResult.status === 'fulfilled'
+        ? normalizeOverview(overviewResult.value)
+        : previousSnapshot?.overview || EMPTY_OVERVIEW,
+      compliance: complianceResult.status === 'fulfilled'
+        ? normalizeCompliance(complianceResult.value)
+        : previousSnapshot?.compliance || EMPTY_COMPLIANCE,
+      performance: performanceResult.status === 'fulfilled'
+        ? normalizePerformance(performanceResult.value)
+        : previousSnapshot?.performance || EMPTY_PERFORMANCE,
+      violationTrend: violationsResult.status === 'fulfilled'
+        ? normalizeArray(violationsResult.value)
+        : normalizeArray(previousSnapshot?.violationTrend),
+      nearBreaches: nearResult.status === 'fulfilled'
+        ? normalizeArray(nearResult.value)
+        : normalizeArray(previousSnapshot?.nearBreaches),
+      recentBreaches: recentResult.status === 'fulfilled'
+        ? normalizeArray(recentResult.value)
+        : normalizeArray(previousSnapshot?.recentBreaches),
+      availability: nextAvailability,
+    };
+
+    const failedCount = Object.values(requestAvailability).filter((value) => !value).length;
+    if (failedCount < SOURCE_KEYS.length || previousSnapshot) {
+      snapshotRef.current = nextSnapshot;
+      writeSlaAnalyticsSnapshot(nextSnapshot);
+    }
     setAvailability(nextAvailability);
+    setOverview(nextSnapshot.overview);
+    setCompliance(nextSnapshot.compliance);
+    setPerformance(nextSnapshot.performance);
+    setViolationTrend(nextSnapshot.violationTrend);
+    setNearBreaches(nextSnapshot.nearBreaches);
+    setRecentBreaches(nextSnapshot.recentBreaches);
 
-    if (overviewResult.status === 'fulfilled') setOverview(normalizeOverview(overviewResult.value));
-    if (complianceResult.status === 'fulfilled') setCompliance(normalizeCompliance(complianceResult.value));
-    if (performanceResult.status === 'fulfilled') setPerformance(normalizePerformance(performanceResult.value));
-    if (violationsResult.status === 'fulfilled') setViolationTrend(normalizeArray(violationsResult.value));
-    if (nearResult.status === 'fulfilled') setNearBreaches(normalizeArray(nearResult.value));
-    if (recentResult.status === 'fulfilled') setRecentBreaches(normalizeArray(recentResult.value));
-
-    const failedCount = Object.values(nextAvailability).filter((value) => !value).length;
-    if (failedCount > 0) setError(failedCount === SOURCE_KEYS.length ? 'Không thể tải dữ liệu phân tích SLA. Vui lòng thử lại.' : `Có ${failedCount}/${SOURCE_KEYS.length} nguồn dữ liệu SLA chưa tải được. Các phần còn lại vẫn được giữ nguyên.`);
+    if (failedCount > 0) {
+      if (previousSnapshot) {
+        setError(failedCount === SOURCE_KEYS.length
+          ? 'Không thể làm mới dữ liệu SLA. Đang hiển thị dữ liệu gần nhất.'
+          : `Có ${failedCount}/${SOURCE_KEYS.length} nguồn dữ liệu SLA chưa làm mới được. Dữ liệu gần nhất vẫn được giữ lại.`);
+      } else {
+        setError(failedCount === SOURCE_KEYS.length
+          ? 'Không thể tải dữ liệu phân tích SLA. Vui lòng thử lại.'
+          : `Có ${failedCount}/${SOURCE_KEYS.length} nguồn dữ liệu SLA chưa tải được. Các phần còn lại vẫn được giữ nguyên.`);
+      }
+    }
     setLoading(false);
     setRefreshing(false);
   }, []);
 
   useEffect(() => {
-    fetchStats({ initial: true }).catch((err) => {
+    fetchStats({ initial: !cachedSnapshot }).catch((err) => {
       console.error(err);
-      setError('Không thể tải dữ liệu phân tích SLA. Vui lòng thử lại.');
+      setError(cachedSnapshot
+        ? 'Không thể làm mới dữ liệu SLA. Đang hiển thị dữ liệu gần nhất.'
+        : 'Không thể tải dữ liệu phân tích SLA. Vui lòng thử lại.');
       setLoading(false);
       setRefreshing(false);
     });
     return () => { requestIdRef.current += 1; };
-  }, [fetchStats]);
+  }, [cachedSnapshot, fetchStats]);
 
   const groupedRecentBreaches = useMemo(() => groupRecentBreachesBySla(recentBreaches), [recentBreaches]);
   const successRate = clampPercent(overview.successRate);
@@ -408,16 +528,16 @@ export const SLAAnalytics = () => {
       {error ? <section className="flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert"><span>{error}</span><button type="button" onClick={() => fetchStats()} disabled={refreshing} className="shrink-0 font-semibold text-amber-900 underline underline-offset-2">Thử lại</button></section> : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số SLA tổng quan">
-        <ManagerMetricCard label="Tỷ lệ đạt SLA đã hoàn thành" value={metricValue(`${Math.round(successRate)}%`)} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : `${overview.completedSla} SLA đã hoàn thành được dùng làm mẫu tính.`} icon={Lucide.CircleCheckBig} toneClass="bg-blue-50 text-blue-700" />
-        <ManagerMetricCard label="SLA có vi phạm" value={metricValue(overview.breachedSla)} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : 'Vi phạm thời hạn phản hồi hoặc hoàn thành.'} icon={Lucide.TriangleAlert} toneClass="bg-rose-50 text-rose-700" />
-        <ManagerMetricCard label="Thời gian hoàn thành trung bình" value={metricValue(formatDuration(overview.averageResolutionMinutes))} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : 'Tính trên SLA đã hoàn thành, loại thời gian tạm dừng.'} icon={Lucide.Clock3} toneClass="bg-amber-50 text-amber-700" />
-        <ManagerMetricCard label="Tổng số SLA" value={metricValue(overview.totalSla)} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : `${overview.runningSla} đang chạy · ${overview.completedSla} đã hoàn thành.`} icon={Lucide.Files} toneClass="bg-emerald-50 text-emerald-700" />
+        <ManagerMetricCard label="Tổng số SLA" value={metricValue(overview.totalSla)} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : `${overview.completedSla} đã hoàn thành · ${Math.round(successRate)}% đạt SLA.`} icon={Lucide.Files} toneClass="bg-slate-100 text-slate-700" />
+        <ManagerMetricCard label="SLA đang chạy" value={metricValue(overview.runningSla)} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : 'Các SLA hiện còn trong quá trình theo dõi.'} icon={Lucide.TimerReset} toneClass="bg-blue-50 text-blue-700" />
+        <ManagerMetricCard label="SLA cần cảnh báo" value={metricValue(overview.warningSla)} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : 'Đang tiến gần thời hạn và cần được ưu tiên.'} icon={Lucide.ClockAlert} toneClass="bg-amber-50 text-amber-700" />
+        <ManagerMetricCard label="SLA có vi phạm" value={metricValue(overview.breachedSla)} description={metricUnavailable ? 'Không tải được dữ liệu tổng quan.' : 'Đã vi phạm thời hạn phản hồi hoặc hoàn thành.'} icon={Lucide.TriangleAlert} toneClass="bg-rose-50 text-rose-700" />
       </section>
 
-      <section className="grid items-start gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-        <article className="admin-panel overflow-hidden">
+      <section className="grid items-stretch gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <article className="admin-panel flex h-full flex-col overflow-hidden">
           <ManagerSectionHeader title="Tuân thủ theo thời gian" description="Tỷ lệ SLA tạo trong từng kỳ chưa phát sinh vi phạm." icon={Lucide.Gauge} />
-          <section className="p-5">
+          <section className="flex flex-1 flex-col p-5">
             {!availability.compliance ? <SourceUnavailable text="Không tải được dữ liệu tuân thủ theo thời gian." /> : (
               <div className="space-y-4">
                 <RateBar label="Hôm nay" value={compliance.todayRate} tone="blue" detail="SLA tạo hôm nay" />
@@ -429,16 +549,16 @@ export const SLAAnalytics = () => {
           </section>
         </article>
 
-        <article className="admin-panel overflow-hidden">
+        <article className="admin-panel flex h-full flex-col overflow-hidden">
           <ManagerSectionHeader title="Hiệu suất xử lý" description="Thời gian trung bình và mức đạt mục tiêu của SLA đã hoàn thành." icon={Lucide.Activity} />
-          <section className="p-5">
+          <section className="flex flex-1 flex-col p-5">
             {!availability.performance ? <SourceUnavailable text="Không tải được dữ liệu hiệu suất xử lý." /> : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <article className="rounded-2xl border border-blue-100 bg-blue-50/45 p-4 dark:border-blue-900/40 dark:bg-blue-950/10">
+              <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                <article className="flex h-full flex-col justify-between rounded-2xl border border-blue-100 bg-blue-50/45 p-4 dark:border-blue-900/40 dark:bg-blue-950/10">
                   <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.11em] text-slate-400">Phản hồi đầu tiên</p><strong className="mt-2 block text-2xl font-semibold text-slate-950 dark:text-white">{formatDuration(performance.averageResponseMinutes)}</strong></div><Lucide.MessageCircle size={19} className="text-blue-600" /></div>
                   <div className="mt-4"><RateBar label="Đạt SLA phản hồi" value={performance.responseSuccessRate} tone="blue" /></div>
                 </article>
-                <article className="rounded-2xl border border-emerald-100 bg-emerald-50/45 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/10">
+                <article className="flex h-full flex-col justify-between rounded-2xl border border-emerald-100 bg-emerald-50/45 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/10">
                   <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.11em] text-slate-400">Hoàn thành xử lý</p><strong className="mt-2 block text-2xl font-semibold text-slate-950 dark:text-white">{formatDuration(performance.averageResolutionMinutes)}</strong></div><Lucide.CircleCheckBig size={19} className="text-emerald-600" /></div>
                   <div className="mt-4"><RateBar label="Đạt SLA hoàn thành" value={performance.resolutionSuccessRate} tone="emerald" /></div>
                 </article>
@@ -448,25 +568,31 @@ export const SLAAnalytics = () => {
         </article>
       </section>
 
-      <section className="admin-panel overflow-hidden">
-        <ManagerSectionHeader title="Tình trạng vận hành" description="Phân bổ SLA đang xử lý, đã hoàn thành và các trường hợp cần chú ý." icon={Lucide.ChartNoAxesCombined} />
-        <section className="p-4 sm:p-5"><OperationalSummary overview={overview} available={availability.overview} /></section>
-      </section>
 
       <section className="admin-panel overflow-hidden">
-        <ManagerSectionHeader title="Xu hướng vi phạm SLA" description="Các sự kiện vi phạm phản hồi hoặc hoàn thành được backend ghi nhận trong 30 ngày gần đây." icon={Lucide.ChartColumnIncreasing} actions={availability.trend ? <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">{totalViolationEvents} sự kiện</span> : null} />
+        <ManagerSectionHeader title="Xu hướng vi phạm SLA" description="Theo dõi số sự kiện vi phạm SLA trong 30 ngày gần đây." icon={Lucide.ChartColumnIncreasing} actions={availability.trend ? <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">{totalViolationEvents} sự kiện</span> : null} />
         <section className="p-4 sm:p-5"><ViolationTrend data={violationTrend} available={availability.trend} /></section>
       </section>
 
-      <section className="admin-panel overflow-hidden">
-        <ManagerSectionHeader title="Theo dõi ưu tiên" description="SLA đang tiến gần thời hạn để Manager ưu tiên xử lý trước khi vi phạm." icon={Lucide.AlarmClock} actions={availability.near ? <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${nearBreaches.length ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{nearBreaches.length} SLA</span> : null} />
-        <section className="p-4 sm:p-5">
-          {!availability.near ? <SourceUnavailable text="Không tải được danh sách SLA sắp đến hạn." /> : nearBreaches.length === 0 ? (
-            <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/55 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><Lucide.CircleCheckBig size={19} /></span><div><p className="text-sm font-semibold text-slate-900">Không có SLA trong vùng cảnh báo</p><p className="mt-0.5 text-xs text-slate-500">Hiện chưa có SLA đang chạy nào cần ưu tiên vì sắp đến hạn.</p></div></div>
-              <span className="text-xs font-medium text-emerald-700">Trạng thái tốt</span>
+      {!availability.near ? (
+        <section className="admin-panel p-4 sm:p-5">
+          <SourceUnavailable text="Không tải được danh sách SLA sắp đến hạn." />
+        </section>
+      ) : nearBreaches.length === 0 ? (
+        <section className="admin-panel flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5" aria-label="Theo dõi ưu tiên SLA">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><Lucide.CircleCheckBig size={17} /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Không có SLA cần ưu tiên</p>
+              <p className="mt-0.5 text-xs text-slate-500">Hiện chưa có SLA đang chạy nào tiến gần thời hạn cảnh báo.</p>
             </div>
-          ) : (
+          </div>
+          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300">0 SLA · Trạng thái tốt</span>
+        </section>
+      ) : (
+        <section className="admin-panel overflow-hidden">
+          <ManagerSectionHeader title="Theo dõi ưu tiên" description="SLA đang tiến gần thời hạn để Manager ưu tiên xử lý trước khi vi phạm." icon={Lucide.AlarmClock} actions={<span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{nearBreaches.length} SLA</span>} />
+          <section className="p-4 sm:p-5">
             <ul className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
               {nearBreaches.map((item, index) => {
                 const incidentId = getIncidentId(item);
@@ -478,23 +604,23 @@ export const SLAAnalytics = () => {
                 return (
                   <li key={incidentSlaId || incidentId || index}>
                     <article className="h-full rounded-2xl border border-amber-200/80 bg-amber-50/45 p-4 dark:border-amber-900/50 dark:bg-amber-950/10">
-                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-950">{title}</h3><p className="mt-1 text-xs text-slate-500">Hạn: {formatDateTime(deadline)}</p></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getPriorityTone(priority)}`}>{formatPriority(priority)}</span></div>
-                      <div className="mt-4 flex items-center justify-between gap-3 border-t border-amber-100 pt-3"><span className="text-xs text-slate-400">{incidentSlaId ? `SLA #${incidentSlaId}` : 'SLA'}</span><strong className="text-sm font-semibold tabular-nums text-amber-700">Còn {formatDuration(remainingMinutes)}</strong></div>
-                      {incidentId ? <Link to={`/manager/incidents/${incidentId}`} state={{ from: returnPath }} className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-800">Xem sự vụ <Lucide.ArrowUpRight size={13} /></Link> : null}
+                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100">{title}</h3><p className="mt-1 text-xs text-slate-500">Hạn: {formatDateTime(deadline)}</p></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getPriorityTone(priority)}`}>{formatPriority(priority)}</span></div>
+                      <div className="mt-4 flex items-center justify-between gap-3 border-t border-amber-100 pt-3 dark:border-amber-900/40"><span className="text-xs text-slate-400">{incidentSlaId ? `SLA #${incidentSlaId}` : 'SLA'}</span><strong className="text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-300">Còn {formatDuration(remainingMinutes)}</strong></div>
+                      {incidentId ? <Link to={`/manager/incidents/${incidentId}`} state={{ from: returnPath }} className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200">Xem sự vụ <Lucide.ArrowUpRight size={13} /></Link> : null}
                     </article>
                   </li>
                 );
               })}
             </ul>
-          )}
-          {availability.near && nearBreaches.length >= 10 ? <p className="mt-3 text-right text-[11px] text-slate-400">Đang hiển thị tối đa 10 SLA gần hạn.</p> : null}
+            {nearBreaches.length >= 10 ? <p className="mt-3 text-right text-[11px] text-slate-400">Đang hiển thị tối đa 10 SLA gần hạn.</p> : null}
+          </section>
         </section>
-      </section>
+      )}
 
       <RecentBreachesPanel groups={groupedRecentBreaches} events={recentBreaches} returnPath={returnPath} available={availability.recent} />
       {availability.recent && recentBreaches.length >= 10 ? <p className="-mt-2 px-1 text-right text-[11px] text-slate-400">Danh sách đang hiển thị tối đa 10 sự kiện vi phạm gần nhất.</p> : null}
 
-      <p className="px-1 text-xs leading-5 text-slate-500">Một SLA có thể phát sinh cả vi phạm phản hồi và vi phạm hoàn thành; các sự kiện được nhóm theo SLA để tránh hiểu nhầm thành nhiều sự vụ khác nhau.</p>
+      <p className="px-1 text-xs leading-5 text-slate-500">Một SLA có thể phát sinh nhiều sự kiện vi phạm phản hồi hoặc hoàn thành; mỗi hàng bên trên tương ứng với một sự kiện vi phạm.</p>
     </article>
   );
 };

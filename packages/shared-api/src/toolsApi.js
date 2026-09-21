@@ -91,6 +91,10 @@ export const toolsApi = {
     const response = await axiosClient.get(`/api/ai/conversations/${conversationId}/messages`);
     return normalizeCollection(response);
   },
+  async deleteAiConversation(conversationId) {
+    await axiosClient.delete(`/api/ai/conversations/${conversationId}`);
+    return true;
+  },
   async getAiChatReply(messageOrPayload) {
     const payload = typeof messageOrPayload === 'string'
       ? { message: messageOrPayload }

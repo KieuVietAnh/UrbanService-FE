@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MapContainer,
@@ -61,8 +61,8 @@ const createMarkerIcon = (status) => {
   });
 };
 
-const getFeedbackId = (item) => (
-  item?.feedbackId || item?.id || item?.ticketId || ''
+const getIncidentId = (item) => (
+  item?.incidentId || item?.id || item?.feedbackId || item?.ticketId || ''
 );
 
 const parseCoordinatesFromLocationText = (locationText) => {
@@ -84,7 +84,7 @@ const normalizeMapItem = (item) => {
 
   return {
     ...item,
-    feedbackId: getFeedbackId(item),
+    incidentId: getIncidentId(item),
     latitude: Number(
       item?.latitude ??
       item?.lat ??
@@ -199,11 +199,19 @@ const CompactPublicIncidentMap = ({
   loading = false,
   error = '',
   fullMapPath = '/community/map#incident-map',
-  detailPathBuilder = (feedbackId) => `/community/feed/${feedbackId}`,
+  detailPathBuilder = (incidentId) => `/community/feed/${incidentId}`,
   detailStateBuilder = () => undefined,
   mapLabel = 'Bản đồ sự cố',
+  showOpenMapCard = true,
+  minHeight = 320,
+  compact = false,
+  deferUntilTilesReady = false,
+  interactive = true,
+  showPopup = true,
 }) => {
   const { theme } = useTheme();
+  const [tilesReady, setTilesReady] = useState(false);
+  const [tilesUnavailable, setTilesUnavailable] = useState(false);
 
   const incidents = useMemo(
     () => items
@@ -219,6 +227,11 @@ const CompactPublicIncidentMap = ({
     [items]
   );
 
+  useEffect(() => {
+    setTilesReady(false);
+    setTilesUnavailable(false);
+  }, [theme]);
+
   const statusText = loading
     ? 'Đang tải vị trí'
     : error
@@ -230,68 +243,113 @@ const CompactPublicIncidentMap = ({
   return (
     <>
       <CompactPublicIncidentMapStyles />
-      <div className="compact-public-incident-map relative h-full min-h-[320px] overflow-hidden rounded-[22px] border border-[var(--public-border)] bg-[var(--public-surface-soft)]">
+      <div
+        className={`compact-public-incident-map relative h-full overflow-hidden border border-[var(--public-border)] ${
+          compact
+            ? 'rounded-[18px] bg-slate-100 dark:bg-slate-900'
+            : 'rounded-[22px] bg-[var(--public-surface-soft)]'
+        }`}
+        style={{ minHeight }}
+      >
         <MapContainer
           center={DEFAULT_CENTER}
           zoom={DEFAULT_ZOOM}
           scrollWheelZoom={false}
-          zoomControl
-          className="h-full min-h-[320px] w-full"
+          dragging={interactive}
+          doubleClickZoom={interactive}
+          touchZoom={interactive}
+          boxZoom={interactive}
+          keyboard={interactive}
+          zoomControl={interactive}
+          className="h-full w-full"
+          style={{ minHeight }}
         >
           <ConfiguredMapTileLayer
             key={theme}
+            onReady={deferUntilTilesReady ? () => {
+              setTilesReady(true);
+              setTilesUnavailable(false);
+            } : undefined}
+            onUnavailable={deferUntilTilesReady ? () => {
+              setTilesUnavailable(true);
+              setTilesReady(false);
+            } : undefined}
           />
           <FitCompactBounds incidents={incidents} />
 
           {incidents.map((incident) => (
             <Marker
-              key={incident.feedbackId || `${incident.latitude}:${incident.longitude}`}
+              key={incident.incidentId || `${incident.latitude}:${incident.longitude}`}
               position={[incident.latitude, incident.longitude]}
               icon={createMarkerIcon(incident.status)}
+              interactive={interactive}
             >
-              <Popup minWidth={220} maxWidth={270}>
-                <div className="space-y-2 font-sans">
-                  <h3 className="text-sm font-semibold leading-5">
-                    {incident.title || 'Phản ánh đô thị'}
-                  </h3>
-                  <p className="text-xs leading-5 opacity-70">
-                    {incident.areaName || incident.locationText || 'Chưa xác định khu vực'}
-                  </p>
-                  {incident.feedbackId ? (
-                    <Link
-                      to={detailPathBuilder(incident.feedbackId)}
-                      state={detailStateBuilder(incident)}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600"
-                    >
-                      Xem chi tiết
-                      <Lucide.ArrowUpRight size={13} aria-hidden="true" />
-                    </Link>
-                  ) : null}
-                </div>
-              </Popup>
+              {showPopup && interactive ? (
+                <Popup minWidth={220} maxWidth={270}>
+                  <div className="space-y-2 font-sans">
+                    <h3 className="text-sm font-semibold leading-5">
+                      {incident.title || 'Sự vụ đô thị'}
+                    </h3>
+                    <p className="text-xs leading-5 opacity-70">
+                      {incident.areaName || incident.locationText || 'Chưa xác định khu vực'}
+                    </p>
+                    {incident.incidentId ? (
+                      <Link
+                        to={detailPathBuilder(incident.incidentId)}
+                        state={detailStateBuilder(incident)}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600"
+                      >
+                        Xem chi tiết
+                        <Lucide.ArrowUpRight size={13} aria-hidden="true" />
+                      </Link>
+                    ) : null}
+                  </div>
+                </Popup>
+              ) : null}
             </Marker>
           ))}
         </MapContainer>
 
-        <Link
-          to={fullMapPath}
-          state={{ focusMap: true }}
-          className="absolute bottom-4 left-4 z-[500] flex w-[min(250px,calc(100%-2rem))] items-center gap-3 rounded-2xl border border-white/75 bg-white/94 p-3.5 text-left shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur transition hover:-translate-y-0.5 hover:border-blue-300 dark:border-white/10 dark:bg-slate-950/90 dark:hover:border-blue-400/35"
-          aria-label="Mở bản đồ sự cố đầy đủ"
-        >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white" aria-hidden="true">
-            <Lucide.MapPinned size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
-              {mapLabel}
+        {deferUntilTilesReady && !tilesReady && !tilesUnavailable ? (
+          <div className="pointer-events-none absolute inset-0 z-[450] flex items-center justify-center bg-slate-100/95 backdrop-blur-[1px] dark:bg-slate-900/95">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-300">
+              <Lucide.LoaderCircle size={16} className="animate-spin text-blue-600" />
+              Đang tải bản đồ...
+            </div>
+          </div>
+        ) : null}
+
+        {deferUntilTilesReady && tilesUnavailable ? (
+          <div className="absolute inset-0 z-[460] flex items-center justify-center bg-slate-50 px-5 text-center dark:bg-slate-900">
+            <div>
+              <Lucide.MapPin size={20} className="mx-auto text-blue-600" />
+              <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Không tải được nền bản đồ</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Vị trí sự vụ vẫn được ghi nhận. Bạn có thể mở bản đồ lớn để thử lại.</p>
+            </div>
+          </div>
+        ) : null}
+
+        {showOpenMapCard ? (
+          <Link
+            to={fullMapPath}
+            state={{ focusMap: true }}
+            className="absolute bottom-4 left-4 z-[500] flex w-[min(250px,calc(100%-2rem))] items-center gap-3 rounded-2xl border border-white/75 bg-white/94 p-3.5 text-left shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur transition hover:-translate-y-0.5 hover:border-blue-300 dark:border-white/10 dark:bg-slate-950/90 dark:hover:border-blue-400/35"
+            aria-label="Mở bản đồ sự cố đầy đủ"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white" aria-hidden="true">
+              <Lucide.MapPinned size={18} />
             </span>
-            <strong className="mt-1 block truncate text-sm font-semibold text-slate-950 dark:text-white">
-              {statusText}
-            </strong>
-          </span>
-          <Lucide.ArrowUpRight size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
-        </Link>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
+                {mapLabel}
+              </span>
+              <strong className="mt-1 block truncate text-sm font-semibold text-slate-950 dark:text-white">
+                {statusText}
+              </strong>
+            </span>
+            <Lucide.ArrowUpRight size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
+          </Link>
+        ) : null}
       </div>
     </>
   );

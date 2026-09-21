@@ -18,11 +18,16 @@ const ROLE_LABELS = {
 };
 
 const STATUS_LABELS = {
-  New: 'Mới',
+  New: 'Đã tiếp nhận',
+  AIReviewed: 'AI đã phân tích',
+  AiReviewed: 'AI đã phân tích',
+  'AI Reviewed': 'AI đã phân tích',
   Verified: 'Đã xác minh',
-  Assigned: 'Đã phân công',
+  Assigned: 'Đang xử lý',
   InProgress: 'Đang xử lý',
-  Resolved: 'Đã giải quyết',
+  Resolved: 'Kiểm tra kết quả',
+  Approved: 'Chờ đánh giá',
+  ReworkRequested: 'Cần xử lý bổ sung',
   Closed: 'Đã đóng',
   Rejected: 'Đã từ chối',
 };
@@ -102,16 +107,16 @@ const validatePhoneNumber = value => {
 };
 
 const statusTone = status => {
-  if ([managementTypes.feedbackStatus.RESOLVED, managementTypes.feedbackStatus.CLOSED].includes(status)) {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if ([managementTypes.feedbackStatus.CLOSED, 'Closed'].includes(status)) {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300';
   }
-  if (status === managementTypes.feedbackStatus.IN_PROGRESS || status === 'InProgress') {
+  if ([managementTypes.feedbackStatus.ASSIGNED, managementTypes.feedbackStatus.IN_PROGRESS, 'Assigned', 'InProgress'].includes(status)) {
     return 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/25 dark:bg-blue-400/10 dark:text-blue-300';
   }
-  if (status === managementTypes.feedbackStatus.ASSIGNED || status === 'Assigned') {
-    return 'border-violet-200 bg-violet-50 text-violet-700';
+  if (['Resolved', 'Approved'].includes(status)) {
+    return 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-400/25 dark:bg-cyan-400/10 dark:text-cyan-300';
   }
-  return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-300';
 };
 
 export const ProfilePage = () => {
@@ -233,6 +238,12 @@ export const ProfilePage = () => {
   const latestTickets = [...userTickets]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 3);
+
+  const hasProfileChanges = canManageProfile && (
+    String(fullName || '').trim() !== String(profile?.fullName || '').trim()
+    || String(phone || '').trim() !== String(profile?.phoneNumber || '').trim()
+    || String(address || '').trim() !== String(profile?.address || '').trim()
+  );
 
   const handleUpdate = async event => {
     event.preventDefault();
@@ -389,7 +400,6 @@ export const ProfilePage = () => {
         .profile-kpi-blue { background: linear-gradient(145deg, rgba(239,246,255,.96), rgba(236,254,255,.9)); }
         .profile-kpi-amber { background: linear-gradient(145deg, rgba(255,251,235,.96), rgba(255,247,237,.9)); }
         .profile-kpi-emerald { background: linear-gradient(145deg, rgba(236,253,245,.96), rgba(240,253,250,.9)); }
-        .profile-kpi-violet { background: linear-gradient(145deg, rgba(245,243,255,.96), rgba(253,244,255,.9)); }
 
         html[data-theme="dark"] .profile-kpi-tile {
           background: linear-gradient(145deg, rgba(14,32,58,.96), rgba(8,23,43,.96)) !important;
@@ -399,7 +409,6 @@ export const ProfilePage = () => {
         html[data-theme="dark"] .profile-kpi-blue .text-blue-600 { color: #7dd3fc !important; }
         html[data-theme="dark"] .profile-kpi-amber .text-amber-600 { color: #fbbf24 !important; }
         html[data-theme="dark"] .profile-kpi-emerald .text-emerald-600 { color: #34d399 !important; }
-        html[data-theme="dark"] .profile-kpi-violet .text-violet-600 { color: #c4b5fd !important; }
       `}</style>
       <section className="public-hero profile-hero-surface relative overflow-hidden rounded-[30px] border">
         <div className="public-hero-backdrop pointer-events-none absolute inset-0 overflow-hidden bg-[radial-gradient(circle_at_18%_18%,rgba(56,189,248,0.18),transparent_26%),radial-gradient(circle_at_84%_24%,rgba(99,102,241,0.12),transparent_28%)]" aria-hidden="true">
@@ -448,7 +457,7 @@ export const ProfilePage = () => {
             <div className="profile-hero-metric rounded-2xl border border-white/80 bg-white/70 px-4 py-4 text-slate-900 shadow-sm backdrop-blur-md">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-medium profile-hero-metric-label text-slate-500">Thành viên</span>
-                <Lucide.CalendarDays size={17} className="text-indigo-600" aria-hidden="true" />
+                <Lucide.CalendarDays size={17} className="text-blue-600" aria-hidden="true" />
               </div>
               <strong className="mt-3 block text-lg font-semibold">{membershipAge}</strong>
               <p className="mt-1 text-xs profile-hero-metric-copy text-slate-500">Từ {createdAtLabel}</p>
@@ -481,31 +490,20 @@ export const ProfilePage = () => {
                 {profile?.email || user?.email || 'Chưa có email'}
               </p>
 
-              <span className={`mt-4 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                isVerified
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-amber-200 bg-amber-50 text-amber-700'
-              }`}>
-                {isVerified ? <Lucide.BadgeCheck size={14} aria-hidden="true" /> : <Lucide.Clock3 size={14} aria-hidden="true" />}
-                {isVerified ? 'Đã xác minh' : 'Chưa xác minh'}
-              </span>
             </div>
 
-            <div className="mt-6 divide-y divide-[var(--public-border)] rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-4">
-              <div className="flex items-center justify-between gap-4 py-3.5">
-                <span className="text-xs text-[var(--public-muted)]">Mã người dùng</span>
-                <span className="max-w-[155px] truncate text-xs font-semibold text-[var(--public-title)]">{user?.userId || 'N/A'}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-3.5">
-                <span className="text-xs text-[var(--public-muted)]">Ngày tham gia</span>
-                <span className="text-xs font-semibold text-[var(--public-title)]">{createdAtLabel}</span>
-              </div>
+            <div className="mt-5 flex items-center justify-between gap-4 rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] px-4 py-3.5">
+              <span className="inline-flex items-center gap-2 text-xs text-[var(--public-muted)]">
+                <Lucide.CalendarDays size={14} aria-hidden="true" />
+                Tham gia từ
+              </span>
+              <span className="text-xs font-semibold text-[var(--public-title)]">{createdAtLabel}</span>
             </div>
           </section>
 
           <section className="public-overview-panel rounded-[26px] border p-5 sm:p-6">
             <div className="flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.2)]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-[0_8px_18px_rgba(37,99,235,0.2)]">
                 <Lucide.Activity size={17} aria-hidden="true" />
               </span>
               <div>
@@ -519,7 +517,7 @@ export const ProfilePage = () => {
                 ['Tổng phản ánh', loadingTickets ? '—' : totalTickets, Lucide.Files, 'profile-kpi-blue', 'text-blue-600'],
                 ['Đang mở', loadingTickets ? '—' : openTickets, Lucide.Clock3, 'profile-kpi-amber', 'text-amber-600'],
                 ['Đã xử lý', loadingTickets ? '—' : resolvedTickets, Lucide.CircleCheckBig, 'profile-kpi-emerald', 'text-emerald-600'],
-                ['Tháng này', loadingTickets ? '—' : reportedThisMonth, Lucide.CalendarDays, 'profile-kpi-violet', 'text-violet-600'],
+                ['Tháng này', loadingTickets ? '—' : reportedThisMonth, Lucide.CalendarDays, 'profile-kpi-blue', 'text-blue-600'],
               ].map(([label, value, Icon, tileTone, iconColor]) => (
                 <div key={label} className={`profile-kpi-tile ${tileTone} min-h-[116px] rounded-2xl border p-4`}>
                   <Icon size={16} className={iconColor} aria-hidden="true" />
@@ -613,7 +611,7 @@ export const ProfilePage = () => {
           <section className="public-overview-panel overflow-hidden rounded-[26px] border">
             <header className="border-b border-[var(--public-border)] bg-[var(--public-surface-soft)] px-5 py-5 sm:px-6 ">
               <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-600 text-white shadow-[0_8px_18px_rgba(79,70,229,0.2)]">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-[0_8px_18px_rgba(79,70,229,0.2)]">
                   <Lucide.Settings2 size={17} aria-hidden="true" />
                 </span>
                 <div>
@@ -662,7 +660,7 @@ export const ProfilePage = () => {
                 <div>
                   <label htmlFor="profile-phone" className="mb-2 block text-xs font-semibold text-[var(--public-title)]">Số điện thoại</label>
                   <div className="relative">
-                    <Lucide.Phone size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-violet-500" aria-hidden="true" />
+                    <Lucide.Phone size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-blue-500" aria-hidden="true" />
                     <input
                       id="profile-phone"
                       type="tel"
@@ -722,8 +720,8 @@ export const ProfilePage = () => {
                 {canManageProfile ? (
                   <button
                     type="submit"
-                    disabled={savingProfile || loadingProfile}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:pointer-events-none disabled:opacity-60"
+                    disabled={savingProfile || loadingProfile || !hasProfileChanges || Boolean(phoneError)}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:pointer-events-none disabled:opacity-60"
                   >
                     {savingProfile ? <Lucide.LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : <Lucide.Save size={16} aria-hidden="true" />}
                     {savingProfile ? 'Đang lưu...' : 'Lưu thay đổi'}

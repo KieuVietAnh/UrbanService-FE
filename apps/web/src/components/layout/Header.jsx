@@ -187,12 +187,6 @@ const CitizenHeader = ({ user, logout, navigate, pathname }) => {
                   Trang cá nhân
                 </button>
               </li>
-              <li>
-                <button type="button" onClick={() => navigate('/settings')} className="gap-3 rounded-xl py-2.5 text-sm font-medium">
-                  <Lucide.Settings size={16} aria-hidden="true" />
-                  Cài đặt
-                </button>
-              </li>
               <li className="mt-1 border-t border-[var(--public-border)] pt-1">
                 <button
                   type="button"
@@ -264,12 +258,6 @@ const CitizenHeader = ({ user, logout, navigate, pathname }) => {
                     Trang cá nhân
                   </button>
                 </li>
-                <li>
-                  <button type="button" onClick={() => navigate('/settings')} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium hover:bg-blue-50 hover:text-blue-700">
-                    <Lucide.Settings size={16} aria-hidden="true" />
-                    Cài đặt
-                  </button>
-                </li>
                 <li className="mt-2 border-t border-[var(--public-border)] pt-2">
                   <button
                     type="button"
@@ -331,7 +319,7 @@ export const Header = ({ onMenuToggle }) => {
       review: 'Duyệt kết quả',
       community: 'Cộng đồng',
       feed: 'Bảng tin',
-      map: 'Bản đồ phản ánh',
+      map: 'Bản đồ sự vụ',
       profile: 'Hồ sơ',
       settings: 'Cài đặt',
       new: 'Thêm điều phối viên',

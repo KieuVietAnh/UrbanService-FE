@@ -17,6 +17,10 @@ export const buildManagerDashboardStats = (baseStats = {}, managerDashboard = {}
       managerDashboard?.statusDistribution,
       previousStats?.statusDistribution ?? baseStats?.statusDistribution,
     ),
+    priorityDistribution: arrayOrFallback(
+      managerDashboard?.priorityDistribution,
+      previousStats?.priorityDistribution ?? baseStats?.priorityDistribution,
+    ),
     areaDistribution: arrayOrFallback(managerDashboard?.areaDistribution, previousStats?.areaDistribution),
     monthlyTrend: arrayOrFallback(managerDashboard?.monthlyTrend, previousStats?.monthlyTrend),
     urgentOpen: arrayOrFallback(managerDashboard?.urgentOpen, previousStats?.urgentOpen),

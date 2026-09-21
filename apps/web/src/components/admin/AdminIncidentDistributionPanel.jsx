@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import {
   INCIDENT_DASHBOARD_RANGES,
@@ -6,12 +7,11 @@ import {
   incidentDashboardApi,
   toolsApi,
 } from '@urbanmind/shared-api';
-import { ManagerSectionHeader, ManagerSelectMenu } from './ManagerPageElements';
+import {
+  ManagerSectionHeader,
+  ManagerSelectMenu,
+} from '../manager/ManagerPageElements';
 
-/*
- * Bản đồ kéo theo Leaflet nên chỉ nạp khi thực sự hiển thị, tránh làm nặng lần
- * tải đầu của dashboard.
- */
 const IncidentMap = lazy(() => import('../maps/IncidentMap').then((module) => ({ default: module.IncidentMap })));
 
 const ALL_VALUE = '';
@@ -26,7 +26,7 @@ const RANGE_OPTIONS = [
 
 const toCount = (value) => {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 };
 
 const normalizeAreaBoundaryGeoJson = (value) => {
@@ -61,7 +61,7 @@ const normalizeAreaBoundaryGeoJson = (value) => {
         ? parsed
         : null;
     } catch {
-      // Thử tiếp biến thể serialized khác từ backend.
+      // Tiếp tục thử biến thể serialized khác.
     }
   }
 
@@ -69,41 +69,44 @@ const normalizeAreaBoundaryGeoJson = (value) => {
 };
 
 const SummaryStat = ({ label, value, toneClass }) => (
-  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-400">{label}</p>
-    <p className={`mt-1 text-xl font-bold tracking-[-0.02em] ${toneClass || 'text-slate-900 dark:text-slate-100'}`}>{value}</p>
+  <div className="min-w-0 px-4 py-3.5 sm:px-5">
+    <p className="text-[10px] font-semibold uppercase tracking-[0.055em] text-slate-400">{label}</p>
+    <p className={`mt-1 text-lg font-bold tracking-[-0.02em] ${toneClass || 'text-slate-900 dark:text-slate-100'}`}>{value}</p>
   </div>
 );
 
-/**
- * Phân bố sự vụ theo danh mục và phường, kèm bản đồ các điểm đã có tọa độ.
- *
- * Ba tiêu chí lọc đều tùy chọn và gửi thẳng cho backend, nên con số hiển thị
- * luôn là con số backend tính chứ không phải lọc lại ở trình duyệt.
- */
-export const IncidentDistributionPanel = () => {
+const buildDetailedMapUrl = (filters) => {
+  const params = new URLSearchParams();
+  if (filters.areaId) params.set('areaId', filters.areaId);
+  if (filters.categoryId) params.set('categoryId', filters.categoryId);
+  const query = params.toString();
+  return query ? `/management/map?${query}` : '/management/map';
+};
+
+export const AdminIncidentDistributionPanel = () => {
   const [report, setReport] = useState(null);
   const [areas, setAreas] = useState([]);
   const [categories, setCategories] = useState([]);
   const [filters, setFilters] = useState({
     categoryId: ALL_VALUE,
     areaId: ALL_VALUE,
-    range: INCIDENT_DASHBOARD_RANGES.LAST_1_MONTH,
+    range: INCIDENT_DASHBOARD_RANGES.ALL,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedCategoryId, setExpandedCategoryId] = useState(null);
-  const [showMap, setShowMap] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.allSettled([toolsApi.getAreas({ includeInactive: false }), toolsApi.getCategories()])
-      .then(([areaResult, categoryResult]) => {
-        if (cancelled) return;
-        if (areaResult.status === 'fulfilled' && Array.isArray(areaResult.value)) setAreas(areaResult.value);
-        if (categoryResult.status === 'fulfilled' && Array.isArray(categoryResult.value)) setCategories(categoryResult.value);
-      });
+    Promise.allSettled([
+      toolsApi.getAreas({ includeInactive: false }),
+      toolsApi.getCategories(),
+    ]).then(([areaResult, categoryResult]) => {
+      if (cancelled) return;
+      if (areaResult.status === 'fulfilled' && Array.isArray(areaResult.value)) setAreas(areaResult.value);
+      if (categoryResult.status === 'fulfilled' && Array.isArray(categoryResult.value)) setCategories(categoryResult.value);
+    });
 
     return () => { cancelled = true; };
   }, []);
@@ -111,6 +114,7 @@ export const IncidentDistributionPanel = () => {
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+
     try {
       const result = await incidentDashboardApi.getDistribution({
         categoryId: filters.categoryId || undefined,
@@ -118,9 +122,8 @@ export const IncidentDistributionPanel = () => {
         range: filters.range,
       });
       setReport(result);
-    } catch (err) {
-      setError(extractApiErrorMessage(err, 'Không thể tải phân bố sự vụ.'));
-      setReport(null);
+    } catch (loadError) {
+      setError(extractApiErrorMessage(loadError, 'Không thể tải phân bố sự vụ.'));
     } finally {
       setLoading(false);
     }
@@ -154,20 +157,12 @@ export const IncidentDistributionPanel = () => {
     [selectedArea?.boundaryGeoJson],
   );
 
-  /*
-   * Phải ổn định giữa các lần render vì mapIncidents lấy nó làm dependency;
-   * nếu tạo mảng mới mỗi lần thì useMemo bên dưới không bao giờ dùng lại được.
-   */
   const categoriesData = useMemo(
     () => (Array.isArray(report?.categories) ? report.categories : []),
     [report],
   );
   const maxCategoryCount = Math.max(1, ...categoriesData.map((item) => toCount(item?.count)));
 
-  /*
-   * IncidentMap dùng feedbackId làm khóa của marker, nên điểm sự vụ được ánh xạ
-   * sang đúng khóa đó và điều hướng được chuyển về trang chi tiết sự vụ.
-   */
   const mapIncidents = useMemo(() => categoriesData.flatMap((category) => (
     (Array.isArray(category?.areas) ? category.areas : []).flatMap((area) => (
       (Array.isArray(area?.points) ? area.points : []).map((point) => ({
@@ -214,10 +209,10 @@ export const IncidentDistributionPanel = () => {
     const totalCount = Math.max(1, toCount(report?.totalCount));
     return [...grouped.values()]
       .sort((left, right) => right.count - left.count || left.areaName.localeCompare(right.areaName, 'vi'))
-      .slice(0, 3)
+      .slice(0, 4)
       .map((area) => ({
         ...area,
-        percentage: Number(((area.count / totalCount) * 100).toFixed(2)),
+        percentage: Number(((area.count / totalCount) * 100).toFixed(1)),
       }));
   }, [categoriesData, report?.totalCount]);
 
@@ -229,100 +224,119 @@ export const IncidentDistributionPanel = () => {
         percentage: Number(area?.percentageInCategory ?? 0),
       }))
       .sort((left, right) => right.count - left.count || left.areaName.localeCompare(right.areaName, 'vi'))
-      .slice(0, 3)
+      .slice(0, 4)
     : topAreaRows;
 
   const areaInsightMax = Math.max(1, ...areaInsightRows.map((area) => area.count));
+  const detailedMapUrl = useMemo(() => buildDetailedMapUrl(filters), [filters]);
 
   return (
-    <section className="admin-panel overflow-hidden" aria-labelledby="incident-distribution-title">
+    <section data-admin-incident-distribution className="admin-panel overflow-hidden" aria-labelledby="admin-incident-distribution-title">
       <ManagerSectionHeader
-        id="incident-distribution-title"
+        id="admin-incident-distribution-title"
         title="Phân bố sự vụ"
-        description="Lọc theo danh mục, phường và khoảng thời gian, kèm vị trí các sự vụ trên bản đồ."
+        description="Quan sát cơ cấu sự vụ toàn hệ thống theo danh mục, phường và khoảng thời gian."
         icon={Lucide.ChartPie}
         actions={(
-          <button
-            type="button"
-            onClick={() => setShowMap((open) => !open)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+          <Link
+            to={detailedMapUrl}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 transition hover:text-blue-800 dark:text-blue-300"
           >
-            {showMap ? <Lucide.List size={14} aria-hidden="true" /> : <Lucide.Map size={14} aria-hidden="true" />}
-            {showMap ? 'Ẩn bản đồ' : 'Hiện bản đồ'}
-          </button>
+            Mở bản đồ chi tiết
+            <Lucide.ArrowUpRight size={14} aria-hidden="true" />
+          </Link>
         )}
       />
 
-      <div className="space-y-4 px-5 pb-5 sm:px-6 sm:pb-6">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
+      <div className="space-y-4 border-t border-slate-100 px-5 py-5 sm:px-6 dark:border-slate-800">
+        <div className={`grid gap-2 sm:grid-cols-2 ${hasActiveFilter ? 'xl:grid-cols-[repeat(3,minmax(0,1fr))_auto]' : 'xl:grid-cols-3'}`}>
           <ManagerSelectMenu
             value={filters.categoryId}
             options={categoryOptions}
-            onChange={(value) => { setFilters((current) => ({ ...current, categoryId: value })); setExpandedCategoryId(null); }}
-            ariaLabel="Lọc theo danh mục"
+            onChange={(value) => {
+              setFilters((current) => ({ ...current, categoryId: value }));
+              setExpandedCategoryId(null);
+            }}
+            ariaLabel="Lọc phân bố sự vụ theo danh mục"
             className="w-full"
           />
           <ManagerSelectMenu
             value={filters.areaId}
             options={areaOptions}
-            onChange={(value) => { setFilters((current) => ({ ...current, areaId: value })); setExpandedCategoryId(null); }}
-            ariaLabel="Lọc theo phường"
+            onChange={(value) => {
+              setFilters((current) => ({ ...current, areaId: value }));
+              setExpandedCategoryId(null);
+            }}
+            ariaLabel="Lọc phân bố sự vụ theo phường"
             className="w-full"
           />
           <ManagerSelectMenu
             value={filters.range}
             options={RANGE_OPTIONS}
             onChange={(value) => setFilters((current) => ({ ...current, range: value }))}
-            ariaLabel="Lọc theo khoảng thời gian"
+            ariaLabel="Lọc phân bố sự vụ theo khoảng thời gian"
             className="w-full"
           />
           {hasActiveFilter ? (
             <button
               type="button"
-              onClick={() => { setFilters({ categoryId: ALL_VALUE, areaId: ALL_VALUE, range: INCIDENT_DASHBOARD_RANGES.ALL }); setExpandedCategoryId(null); }}
+              onClick={() => {
+                setFilters({
+                  categoryId: ALL_VALUE,
+                  areaId: ALL_VALUE,
+                  range: INCIDENT_DASHBOARD_RANGES.ALL,
+                });
+                setExpandedCategoryId(null);
+              }}
               className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-500 transition hover:border-blue-200 hover:bg-blue-50/60 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
             >
               <Lucide.RotateCcw size={14} aria-hidden="true" />
               Xóa lọc
             </button>
-          ) : (
-            <div className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50/60 px-3 text-xs font-semibold text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
-              <Lucide.Layers3 size={15} aria-hidden="true" />
-              <span className="whitespace-nowrap">Đang xem toàn bộ dữ liệu</span>
-            </div>
-          )}
+          ) : null}
         </div>
 
         {error ? (
           <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
             <Lucide.TriangleAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
             <p className="min-w-0 flex-1 leading-6">{error}</p>
-            <button type="button" onClick={() => void load()} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold hover:bg-amber-100 dark:bg-transparent">
-              <Lucide.RefreshCcw size={14} aria-hidden="true" />Thử lại
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold hover:bg-amber-100 dark:bg-transparent"
+            >
+              <Lucide.RefreshCcw size={14} aria-hidden="true" />
+              Thử lại
             </button>
           </div>
         ) : null}
 
-        <div className={`grid gap-3 sm:grid-cols-2 xl:grid-cols-4 ${loading ? 'opacity-60' : ''}`}>
-          <SummaryStat label="Tổng sự vụ" value={toCount(report?.totalCount)} />
-          <SummaryStat label="Đang mở" value={toCount(report?.openCount)} toneClass="text-blue-700 dark:text-blue-300" />
-          <SummaryStat label="Đã hoàn thành" value={toCount(report?.completedCount)} toneClass="text-emerald-700 dark:text-emerald-300" />
-          <SummaryStat label="Có tọa độ" value={toCount(report?.mappedCount)} />
+        <div
+          data-admin-distribution-metrics
+          className={`grid grid-cols-2 divide-x divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/55 sm:divide-y-0 xl:grid-cols-4 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900/40 ${loading ? 'opacity-60' : ''}`}
+        >
+          <SummaryStat label="Tổng sự vụ" value={loading && !report ? '—' : toCount(report?.totalCount)} />
+          <SummaryStat label="Đang mở" value={loading && !report ? '—' : toCount(report?.openCount)} toneClass="text-blue-700 dark:text-blue-300" />
+          <SummaryStat label="Đã hoàn thành" value={loading && !report ? '—' : toCount(report?.completedCount)} toneClass="text-emerald-700 dark:text-emerald-300" />
+          <SummaryStat label="Có tọa độ" value={loading && !report ? '—' : toCount(report?.mappedCount)} />
         </div>
 
         {loading && !report ? (
-          <div className="h-64 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <div className="h-[470px] animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+            <div className="h-[470px] animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+          </div>
         ) : categoriesData.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/60">
             Không có sự vụ nào khớp với bộ lọc hiện tại.
           </p>
         ) : (
-          <div className={`grid gap-4 ${showMap ? 'xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:items-start' : ''}`}>
-            <div className={`overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 ${showMap ? 'xl:h-[470px]' : ''}`}>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:items-start">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 xl:min-h-[470px]">
               <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-400">Danh mục sự vụ</p>
-                  <p className="mt-0.5 text-[11px] text-slate-400">Bấm một danh mục để xem phân bố theo phường</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">Chọn một danh mục để xem các phường phát sinh nhiều sự vụ nhất</p>
                 </div>
                 {expandedCategory ? (
                   <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 sm:inline-flex dark:bg-blue-500/10 dark:text-blue-300">
@@ -345,10 +359,10 @@ export const IncidentDistributionPanel = () => {
                         key={key}
                         type="button"
                         onClick={() => setExpandedCategoryId(expanded ? null : key)}
-                        className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${
+                        className={`min-w-0 rounded-xl px-3 py-2.5 text-left transition ${
                           expanded
-                            ? 'border-blue-200 bg-blue-50/70 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10'
-                            : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-500/30 dark:hover:bg-slate-900'
+                            ? 'bg-blue-50/80 ring-1 ring-inset ring-blue-200 dark:bg-blue-500/10 dark:ring-blue-500/30'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-900'
                         }`}
                         aria-expanded={expanded}
                       >
@@ -360,7 +374,7 @@ export const IncidentDistributionPanel = () => {
                           />
                           <span className="min-w-0 flex-1">
                             <strong className="block line-clamp-2 text-sm font-semibold leading-5 text-slate-900 dark:text-slate-100">
-                              {category?.categoryName}
+                              {category?.categoryName || 'Chưa xác định danh mục'}
                             </strong>
                             <span className="mt-0.5 block text-[11px] leading-4 text-slate-400">
                               {toCount(category?.openCount)} mở · {toCount(category?.completedCount)} hoàn thành · {areaRows.length} phường
@@ -379,7 +393,7 @@ export const IncidentDistributionPanel = () => {
                   })}
                 </div>
 
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/40">
+                <div className="mt-3 border-t border-slate-100 px-1 pt-3 dark:border-slate-800">
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-slate-400">
@@ -420,33 +434,31 @@ export const IncidentDistributionPanel = () => {
               </div>
             </div>
 
-            {showMap ? (
-              <div className="h-[430px] self-start overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 xl:h-[470px] [&_.incident-map-shell]:!h-full">
-                {mapIncidents.length === 0 ? (
-                  <div className="flex h-full items-center justify-center px-6 text-center">
-                    <div>
-                      <Lucide.MapPinOff size={26} className="mx-auto text-slate-300 dark:text-slate-600" aria-hidden="true" />
-                      <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Chưa có sự vụ nào có tọa độ</p>
-                      <p className="mt-1 text-xs text-slate-400">Sự vụ khớp bộ lọc nhưng chưa gắn vị trí sẽ không hiện trên bản đồ.</p>
-                    </div>
+            <div data-admin-dashboard-map className="h-[430px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900 xl:h-[470px] [&_.incident-map-shell]:!h-full">
+              {mapIncidents.length === 0 ? (
+                <div className="flex h-full items-center justify-center px-6 text-center">
+                  <div>
+                    <Lucide.MapPinOff size={26} className="mx-auto text-slate-300 dark:text-slate-600" aria-hidden="true" />
+                    <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Chưa có sự vụ nào có tọa độ</p>
+                    <p className="mt-1 text-xs text-slate-400">Sự vụ khớp bộ lọc nhưng chưa gắn vị trí sẽ không hiển thị trên bản đồ.</p>
                   </div>
-                ) : (
-                  <Suspense fallback={<div className="h-full animate-pulse bg-slate-100 dark:bg-slate-900" />}>
-                    <IncidentMap
-                      incidents={mapIncidents}
-                      autoFitIncidents
-                      fitRequestKey={`${filters.categoryId}:${filters.areaId}:${filters.range}:${mapIncidents.length}`}
-                      areaBoundaryGeoJson={selectedAreaBoundary}
-                      areaBoundaryKey={filters.areaId || null}
-                      areaCenterLatitude={selectedArea?.centerLatitude ?? null}
-                      areaCenterLongitude={selectedArea?.centerLongitude ?? null}
-                      returnPath="/dashboard"
-                      detailPathBuilder={(ticket) => `/manager/incidents/${ticket?.incidentId ?? ticket?.feedbackId}`}
-                    />
-                  </Suspense>
-                )}
-              </div>
-            ) : null}
+                </div>
+              ) : (
+                <Suspense fallback={<div className="h-full animate-pulse bg-slate-100 dark:bg-slate-900" />}>
+                  <IncidentMap
+                    incidents={mapIncidents}
+                    autoFitIncidents
+                    fitRequestKey={`${filters.categoryId}:${filters.areaId}:${filters.range}:${mapIncidents.length}`}
+                    areaBoundaryGeoJson={selectedAreaBoundary}
+                    areaBoundaryKey={filters.areaId || null}
+                    areaCenterLatitude={selectedArea?.centerLatitude ?? null}
+                    areaCenterLongitude={selectedArea?.centerLongitude ?? null}
+                    returnPath="/dashboard"
+                    detailPathBuilder={(incident) => `/management/incidents/${incident?.incidentId ?? incident?.feedbackId}`}
+                  />
+                </Suspense>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -454,4 +466,4 @@ export const IncidentDistributionPanel = () => {
   );
 };
 
-export default IncidentDistributionPanel;
+export default AdminIncidentDistributionPanel;

@@ -1,87 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { managementTypes } from '@urbanmind/shared-types';
-import { getAttachmentUrl } from '@urbanmind/shared-utils';
+import { getCommunityFeed } from '../services/api/feedApi';
 import {
-  getCommunityFeed,
-  getCommunityFeedDetail,
-} from '../services/api/feedApi';
+  getCommunityIncidentId,
+  isCommunityEndedIncidentStatus,
+  isCommunityPublicIncidentStatus,
+} from '../components/community/communityPresentation.js';
+
+const getIncidentId = (item) => getCommunityIncidentId(item);
 
 const PREVIEW_SIZE = 4;
-
-const TERMINAL_STATUSES = new Set([
-  managementTypes.feedbackStatus.RESOLVED,
-  managementTypes.feedbackStatus.APPROVED,
-  managementTypes.feedbackStatus.CLOSED,
-]);
-
-const HIDDEN_PUBLIC_STATUSES = new Set([
-  managementTypes.feedbackStatus.SUBMITTED,
-  managementTypes.feedbackStatus.AI_REVIEWED,
-]);
-
-const getFeedbackId = (item) => (
-  item?.feedbackId || item?.id || item?.ticketId || ''
-);
 
 const getCreatedAt = (item) => (
   item?.createdAt || item?.createdDate || item?.submittedAt
 );
 
-const getMediaCandidates = (item) => {
-  const attachments = Array.isArray(item?.attachments)
-    ? item.attachments
-    : [];
-  const fallbackMedia = [
-    item?.imageUrl,
-    item?.image,
-    item?.coverImageUrl,
-    item?.thumbnailUrl,
-    item?.mediaUrl,
-    item?.attachmentUrl,
-  ].filter(Boolean);
-
-  return attachments.length > 0 ? attachments : fallbackMedia;
-};
-
-const hasMedia = (item) => getMediaCandidates(item).some((attachment) => (
-  Boolean(getAttachmentUrl(attachment))
-));
-
-const hasCoordinates = (item) => {
-  const latitude = Number(item?.latitude ?? item?.lat);
-  const longitude = Number(item?.longitude ?? item?.lng);
-
-  return (
-    Number.isFinite(latitude) &&
-    latitude >= -90 &&
-    latitude <= 90 &&
-    Number.isFinite(longitude) &&
-    longitude >= -180 &&
-    longitude <= 180
-  );
-};
-
-const isPublicFeedback = (item) => {
+const isPublicIncident = (item) => {
   if (!item || item?.isPublic === false) return false;
 
   const visibility = String(item?.visibility || item?.scope || '').toLowerCase();
   if (visibility === 'private' || visibility === 'internal') return false;
 
-  return !HIDDEN_PUBLIC_STATUSES.has(item?.status);
+  return isCommunityPublicIncidentStatus(item?.incidentStatus || item?.status);
 };
 
-const hydrateFeedback = async (item) => {
-  const feedbackId = getFeedbackId(item);
-  if (!feedbackId || (hasMedia(item) && hasCoordinates(item))) return item;
-
-  try {
-    const detail = await getCommunityFeedDetail(feedbackId);
-    return detail && typeof detail === 'object'
-      ? { ...item, ...detail }
-      : item;
-  } catch {
-    return item;
-  }
+const dedupeIncidents = (feedItems = []) => {
+  const seen = new Set();
+  return feedItems.filter((item) => {
+    const incidentId = String(getIncidentId(item) || '');
+    if (!incidentId || seen.has(incidentId)) return false;
+    seen.add(incidentId);
+    return true;
+  });
 };
 
 const usePublicLandingFeed = () => {
@@ -99,23 +48,22 @@ const usePublicLandingFeed = () => {
         PageNumber: 1,
         PageSize: 8,
       });
-      const publicItems = (Array.isArray(response?.items) ? response.items : [])
-        .filter(isPublicFeedback)
+      const publicItems = dedupeIncidents(
+        (Array.isArray(response?.items) ? response.items : [])
+          .filter(isPublicIncident)
+      )
         .sort((firstItem, secondItem) => (
           new Date(getCreatedAt(secondItem) || 0).getTime() -
           new Date(getCreatedAt(firstItem) || 0).getTime()
         ));
       const previewItems = publicItems.slice(0, PREVIEW_SIZE);
-      const hydratedItems = await Promise.all(
-        previewItems.map(hydrateFeedback)
-      );
 
-      setItems(hydratedItems);
+      setItems(previewItems);
       setTotalItems(Number(response?.totalItems) || publicItems.length);
     } catch (loadError) {
       setItems([]);
       setTotalItems(0);
-      setError(loadError?.message || 'Không thể tải phản ánh gần đây.');
+      setError(loadError?.message || 'Không thể tải sự vụ gần đây.');
     } finally {
       setLoading(false);
     }
@@ -127,15 +75,15 @@ const usePublicLandingFeed = () => {
 
   const summary = useMemo(() => {
     const activeCount = items.filter((item) => (
-      item?.status && !TERMINAL_STATUSES.has(item.status)
+      !isCommunityEndedIncidentStatus(item?.incidentStatus || item?.status)
     )).length;
     const completedCount = items.filter((item) => (
-      TERMINAL_STATUSES.has(item?.status)
+      isCommunityEndedIncidentStatus(item?.incidentStatus || item?.status)
     )).length;
     const interactionCount = items.reduce((total, item) => (
       total +
-      Number(item?.supportCount || item?.supports || 0) +
-      Number(item?.commentCount || 0)
+      Number(item?.subscriberCount || 0) +
+      Number(item?.reportCount || 0)
     ), 0);
 
     return {

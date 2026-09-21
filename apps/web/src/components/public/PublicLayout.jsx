@@ -26,6 +26,33 @@ export const PublicThemeStyles = () => (
       color: var(--public-title);
     }
 
+    /* Authenticated resident workspace owns one page background.
+       Global index.css has a broad main background rule with !important;
+       without this scoped reset, nested page <main> elements render as visible
+       rectangular gradient layers behind cards. Keep the marketing/public
+       landing surface unchanged and reset only the resident dashboard shell. */
+    html:not([data-theme="dark"]) .public-page.citizen-dashboard-shell {
+      background: #f6f8fb !important;
+      background-image: none !important;
+    }
+
+    html:not([data-theme="dark"]) .public-page.citizen-dashboard-shell main,
+    html:not([data-theme="dark"]) .public-page.citizen-dashboard-shell .citizen-content-shell {
+      background: transparent !important;
+      background-image: none !important;
+    }
+
+    html[data-theme="dark"] .public-page.citizen-dashboard-shell {
+      background: #050d1b !important;
+      background-image: none !important;
+    }
+
+    html[data-theme="dark"] .public-page.citizen-dashboard-shell main,
+    html[data-theme="dark"] .public-page.citizen-dashboard-shell .citizen-content-shell {
+      background: transparent !important;
+      background-image: none !important;
+    }
+
     html[data-theme="dark"] .public-page {
       --public-page-bg: #050d1b;
       --public-surface: rgba(12, 27, 50, 0.92);

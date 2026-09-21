@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import * as Lucide from 'lucide-react';
-import { managementTypes } from '@urbanmind/shared-types';
 import { normalizeTicketsResponse } from '@urbanmind/shared-api';
+import { getAttachmentUrl } from '@urbanmind/shared-utils';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import {
   getCommunityFeed,
   getCommunityFeedPreview,
+  getCommunityIncidentEngagementState,
+  subscribeCommunityIncidentEngagement,
 } from '../../services/api/feedApi';
 import { signalrService } from '../../services/socket/signalrService';
 import {
@@ -15,10 +17,15 @@ import {
   writeCommunityFeedCache,
 } from '../../services/cache/communityFeedCache';
 import CommunityFeedItem from './CommunityFeedItem';
+import {
+  getCommunityIncidentId,
+  isCommunityEndedIncidentStatus,
+  isCommunityProcessingIncidentStatus,
+  isCommunityPublicIncidentStatus,
+} from './communityPresentation.js';
+import communityHeroImage from '../../assets/community-hero-option-a.png';
 
 const COMMUNITY_RETURN_STORAGE_KEY = 'urbanmind-community-feed-return';
-const COMMUNITY_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const COMMUNITY_REFERENCE_TIMESTAMP = Date.now();
 const COMMUNITY_FEED_PAGE_SIZE = 10;
 const COMMUNITY_PREVIEW_CONCURRENCY = 3;
 const COMMUNITY_FEED_BACKGROUND_REFRESH_MS = 30 * 1000;
@@ -67,19 +74,11 @@ const readCommunityReturnContext = () => {
 const TAB_OPTIONS = [
   { value: 'Latest', label: 'Mới nhất', icon: Lucide.Clock3 },
   { value: 'Trending', label: 'Được quan tâm', icon: Lucide.Flame },
-  { value: 'Nearby', label: 'Gần bạn', icon: Lucide.MapPin },
   { value: 'Processing', label: 'Đang xử lý', icon: Lucide.LoaderCircle },
-  { value: 'Ended', label: 'Đã kết thúc', icon: Lucide.CircleCheckBig },
+  { value: 'Ended', label: 'Đã xử lý xong', icon: Lucide.CircleCheckBig },
 ];
 
-const PROCESSING_STATUSES = new Set([
-  managementTypes.feedbackStatus.VERIFIED,
-  managementTypes.feedbackStatus.ASSIGNED,
-  managementTypes.feedbackStatus.IN_PROGRESS,
-  managementTypes.feedbackStatus.RESOLVED,
-  managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL,
-  managementTypes.feedbackStatus.APPROVED,
-]);
+const PRIMARY_TAB_OPTIONS = TAB_OPTIONS.filter((option) => option.value !== 'Trending');
 
 const normalizeFeedTab = (value, fallback = 'Latest') => {
   if (value === 'Resolved') return 'Ended';
@@ -89,13 +88,11 @@ const normalizeFeedTab = (value, fallback = 'Latest') => {
     : fallback;
 };
 
-const getItemId = (item) => item?.feedbackId || item?.id || item?.ticketId;
+const getSupportCount = (item) => Number(item?.supportCount ?? item?.supports ?? 0) || 0;
 
-const getSupportCount = (item) => Number(item?.supportCount || item?.supports || 0);
+const getCommentCount = (item) => Number(item?.commentCount ?? (Array.isArray(item?.comments) ? item.comments.length : 0)) || 0;
 
-const getCommentCount = (item) => Number(
-  item?.commentCount ?? (Array.isArray(item?.comments) ? item.comments.length : 0)
-);
+const getSubscriberCount = (item) => Number(item?.subscriberCount ?? item?.subscribersCount ?? 0) || 0;
 
 const getCreatedTimestamp = (item) => {
   const timestamp = new Date(item?.createdAt || item?.createdDate || 0).getTime();
@@ -125,15 +122,25 @@ const getCategoryLabel = (item) => {
   return CATEGORY_LABELS[normalizedCategory] || rawCategory;
 };
 
-const dedupeFeedItems = (feedItems = []) => {
-  const seen = new Set();
+const coalesceIncidentFeedItems = (feedItems = []) => {
+  const unique = new Map();
 
-  return feedItems.filter((item, index) => {
-    const itemId = getItemId(item) || String(index);
-    if (seen.has(itemId)) return false;
-    seen.add(itemId);
-    return true;
+  feedItems.forEach((item) => {
+    const incidentId = String(getCommunityIncidentId(item) || '');
+    if (!incidentId) return;
+
+    const current = unique.get(incidentId);
+    if (!current) {
+      unique.set(incidentId, { ...item, incidentId });
+      return;
+    }
+
+    const currentUpdatedAt = new Date(current?.updatedAt || current?.createdAt || 0).getTime();
+    const incomingUpdatedAt = new Date(item?.updatedAt || item?.createdAt || 0).getTime();
+    unique.set(incidentId, incomingUpdatedAt >= currentUpdatedAt ? { ...current, ...item, incidentId } : current);
   });
+
+  return [...unique.values()];
 };
 
 const filterPublicItems = (feedItems = []) => (
@@ -143,83 +150,85 @@ const filterPublicItems = (feedItems = []) => (
     const visibility = String(item?.visibility || item?.scope || '').toLowerCase();
     if (visibility === 'private' || visibility === 'internal') return false;
 
-    const status = item?.status;
-    if (!status) return false;
-    if (status === managementTypes.feedbackStatus.SUBMITTED) return false;
-    if (status === managementTypes.feedbackStatus.AI_REVIEWED) return false;
-
-    return true;
+    return isCommunityPublicIncidentStatus(item?.incidentStatus || item?.status);
   })
 );
 
 const mergeFeedMediaFromCache = (incomingItems = [], cachedItems = []) => {
   const cachedById = new Map(
     cachedItems
-      .map((item) => [String(getItemId(item) || ''), item])
+      .map((item) => [String(getCommunityIncidentId(item) || ''), item])
       .filter(([itemId]) => itemId)
   );
 
   return incomingItems.map((item) => {
-    const cachedItem = cachedById.get(String(getItemId(item) || ''));
+    const cachedItem = cachedById.get(String(getCommunityIncidentId(item) || ''));
     if (!cachedItem) return item;
 
-    const incomingAttachments = Array.isArray(item?.attachments)
-      ? item.attachments
-      : [];
-    const cachedAttachments = Array.isArray(cachedItem?.attachments)
-      ? cachedItem.attachments
-      : [];
-    const hasIncomingMedia = (
-      incomingAttachments.length > 0 ||
-      item?.imageUrl ||
-      item?.coverImageUrl ||
-      item?.thumbnailUrl ||
-      item?.mediaUrl ||
-      item?.attachmentUrl
-    );
+    // Incident media is now authoritative on the Incident DTO. Keep fresh API
+    // fields first, while allowing the existing cache to bridge a background
+    // refresh that temporarily omits an already-known cover URL.
+    const incomingAttachments = Array.isArray(item?.attachments) ? item.attachments : [];
+    const cachedAttachments = Array.isArray(cachedItem?.attachments) ? cachedItem.attachments : [];
+    const mergedItem = {
+      ...cachedItem,
+      ...item,
+      attachments: incomingAttachments.length > 0 ? incomingAttachments : cachedAttachments,
+      coverImageThumbnailUrl: item?.coverImageThumbnailUrl || cachedItem?.coverImageThumbnailUrl || '',
+      coverImageUrl: item?.coverImageUrl || cachedItem?.coverImageUrl || '',
+      thumbnailUrl: item?.thumbnailUrl || cachedItem?.thumbnailUrl || '',
+      imageUrl: item?.imageUrl || cachedItem?.imageUrl || '',
+      mediaUrl: item?.mediaUrl || cachedItem?.mediaUrl || '',
+      attachmentUrl: item?.attachmentUrl || cachedItem?.attachmentUrl || '',
+    };
 
     return {
-      ...item,
-      description: item?.description || cachedItem?.description,
-      attachments: incomingAttachments.length > 0
-        ? incomingAttachments
-        : cachedAttachments,
-      imageUrl: item?.imageUrl || cachedItem?.imageUrl,
-      coverImageUrl: item?.coverImageUrl || cachedItem?.coverImageUrl,
-      thumbnailUrl: item?.thumbnailUrl || cachedItem?.thumbnailUrl,
-      mediaUrl: item?.mediaUrl || cachedItem?.mediaUrl,
-      attachmentUrl: item?.attachmentUrl || cachedItem?.attachmentUrl,
-      __mediaState: hasIncomingMedia
-        ? (item?.__mediaState || 'ready')
-        : cachedItem?.__mediaState || item?.__mediaState,
+      ...mergedItem,
+      __mediaState: getPreviewMediaUrl(mergedItem)
+        ? 'ready'
+        : mergedItem?.__mediaState,
     };
   });
 };
 
+const getPreviewMediaUrl = (item) => {
+  const attachments = Array.isArray(item?.attachments) ? item.attachments : [];
+  const candidate = (
+    attachments[0] ||
+    item?.coverImageThumbnailUrl ||
+    item?.coverImageUrl ||
+    item?.thumbnailUrl ||
+    item?.imageUrl ||
+    item?.image ||
+    item?.mediaUrl ||
+    item?.attachmentUrl
+  );
+
+  const url = getAttachmentUrl(candidate);
+  const normalizedUrl = String(url || '').toLowerCase().split('?')[0];
+  const looksLikeVideo = ['.mp4', '.webm', '.ogg', '.mov', '.m4v']
+    .some((extension) => normalizedUrl.endsWith(extension));
+
+  return looksLikeVideo ? '' : url;
+};
+
 const FeedSkeleton = () => (
-  <div className="space-y-4" aria-hidden="true">
+  <div className="space-y-3" aria-hidden="true">
     {[0, 1, 2].map((item) => (
       <div
         key={item}
-        className="public-loading-surface animate-pulse overflow-hidden rounded-[26px] border border-base-300 bg-base-100 shadow-sm"
+        className="public-loading-surface grid min-h-[196px] animate-pulse overflow-hidden rounded-[18px] border border-base-300 bg-base-100 shadow-sm lg:grid-cols-[300px_minmax(0,1fr)]"
       >
-        <div className="flex items-center gap-3 px-5 py-5 sm:px-6">
-          <div className="h-11 w-11 rounded-2xl bg-base-300/65" />
-          <div className="flex-1">
-            <div className="h-4 w-36 rounded bg-base-300/70" />
-            <div className="mt-2 h-3 w-52 rounded bg-base-300/45" />
+        <div className="h-52 bg-base-300/55 lg:h-[196px]" />
+        <div className="flex flex-col p-5">
+          <div className="h-3 w-44 rounded bg-base-300/55" />
+          <div className="mt-3 h-5 w-2/3 rounded bg-base-300/70" />
+          <div className="mt-3 h-3 w-full rounded bg-base-300/45" />
+          <div className="mt-2 h-3 w-4/5 rounded bg-base-300/40" />
+          <div className="mt-auto flex justify-between border-t border-base-300/70 pt-3">
+            <div className="h-8 w-24 rounded bg-base-300/45" />
+            <div className="h-8 w-24 rounded bg-base-300/40" />
           </div>
-          <div className="h-7 w-24 rounded-full bg-base-300/50" />
-        </div>
-        <div className="px-5 pb-4 sm:px-6">
-          <div className="h-6 w-3/5 rounded bg-base-300/70" />
-          <div className="mt-3 h-4 w-full rounded bg-base-300/45" />
-          <div className="mt-2 h-4 w-4/5 rounded bg-base-300/40" />
-        </div>
-        <div className="mx-5 h-44 rounded-2xl bg-base-300/50 sm:mx-6 sm:h-52" />
-        <div className="mt-4 flex justify-between border-t border-base-300 px-5 py-4 sm:px-6">
-          <div className="h-9 w-24 rounded-xl bg-base-300/50" />
-          <div className="h-9 w-28 rounded-xl bg-base-300/45" />
         </div>
       </div>
     ))}
@@ -240,8 +249,12 @@ export default function CommunityFeed({
   const [restoredContext] = useState(() => {
     if (resetScroll) return null;
     const stored = readCommunityReturnContext();
-    return location.state?.restoreFeedbackId
-      ? { ...stored, feedbackId: location.state.restoreFeedbackId }
+    const restoredIncidentId = (
+      location.state?.restoreIncidentId ||
+      location.state?.restoreFeedbackId
+    );
+    return restoredIncidentId
+      ? { ...stored, incidentId: restoredIncidentId }
       : stored;
   });
   const restoreContextRef = useRef(restoredContext);
@@ -283,9 +296,10 @@ export default function CommunityFeed({
     if (resetScroll && initialQuery) return initialQuery;
     return initialCache?.query || initialQuery || '';
   });
-  const [highlightedFeedbackId, setHighlightedFeedbackId] = useState(
-    restoredContext?.feedbackId || null
+  const [highlightedIncidentId, setHighlightedIncidentId] = useState(
+    restoredContext?.incidentId || restoredContext?.feedbackId || null
   );
+  const [, setEngagementVersion] = useState(0);
   const [error, setError] = useState('');
   const isFetchingRef = useRef(false);
   const hasLoadedSnapshotRef = useRef(
@@ -302,17 +316,18 @@ export default function CommunityFeed({
   });
 
   const normalizePageItems = useCallback((rawItems = []) => {
-    const publicItems = dedupeFeedItems(
+    const publicItems = coalesceIncidentFeedItems(
       filterPublicItems(normalizeTicketsResponse(rawItems))
     );
 
     return publicItems.map((item) => {
-      const hasAttachments = (
-        Array.isArray(item?.attachments) && item.attachments.length > 0
-      );
+      const hasMedia = Boolean(getPreviewMediaUrl(item));
 
-      if (hasAttachments || Number(item?.attachmentCount || 0) <= 0) {
-        return item;
+      if (hasMedia || Number(item?.attachmentCount || 0) <= 0) {
+        return {
+          ...item,
+          __mediaState: hasMedia ? 'ready' : item?.__mediaState,
+        };
       }
 
       return {
@@ -345,7 +360,7 @@ export default function CommunityFeed({
   const hydrateFeedPreviews = useCallback(async (feedItems, sessionId) => {
     const candidates = feedItems.filter((item) => (
       item?.attachmentCount > 0 &&
-      !(Array.isArray(item?.attachments) && item.attachments.length > 0)
+      !getPreviewMediaUrl(item)
     ));
 
     if (candidates.length === 0) return;
@@ -354,16 +369,16 @@ export default function CommunityFeed({
       candidates,
       COMMUNITY_PREVIEW_CONCURRENCY,
       async (item) => {
-        const feedbackId = getItemId(item);
-
+        const incidentId = getCommunityIncidentId(item);
         try {
-          const preview = await getCommunityFeedPreview(feedbackId);
+          const preview = await getCommunityFeedPreview(incidentId);
           const attachments = Array.isArray(preview?.attachments)
             ? preview.attachments
             : [];
           const fallbackMedia = (
             preview?.imageUrl ||
             preview?.image ||
+            preview?.coverImageThumbnailUrl ||
             preview?.coverImageUrl ||
             preview?.thumbnailUrl ||
             preview?.mediaUrl ||
@@ -372,11 +387,12 @@ export default function CommunityFeed({
           );
 
           return {
-            feedbackId,
+            incidentId,
             patch: {
               attachments,
               description: item?.description || preview?.description,
               imageUrl: item?.imageUrl || preview?.imageUrl,
+              coverImageThumbnailUrl: item?.coverImageThumbnailUrl || preview?.coverImageThumbnailUrl,
               coverImageUrl: item?.coverImageUrl || preview?.coverImageUrl,
               thumbnailUrl: item?.thumbnailUrl || preview?.thumbnailUrl,
               __mediaState: attachments.length > 0 || fallbackMedia
@@ -387,12 +403,12 @@ export default function CommunityFeed({
         } catch (previewError) {
           console.warn(
             'Không thể tải minh chứng công khai cho bảng tin',
-            feedbackId,
+            incidentId,
             previewError?.message || previewError
           );
 
           return {
-            feedbackId,
+            incidentId,
             patch: {
               __mediaState: 'error',
             },
@@ -410,12 +426,12 @@ export default function CommunityFeed({
 
     const patchMap = new Map(
       results
-        .filter((result) => result?.feedbackId)
-        .map((result) => [String(result.feedbackId), result.patch])
+        .filter((result) => result?.incidentId)
+        .map((result) => [String(result.incidentId), result.patch])
     );
 
     setItems((currentItems) => currentItems.map((item) => {
-      const patch = patchMap.get(String(getItemId(item)));
+      const patch = patchMap.get(String(getCommunityIncidentId(item)));
       return patch ? { ...item, ...patch } : item;
     }));
   }, []);
@@ -467,7 +483,7 @@ export default function CommunityFeed({
         { allowStale: true }
       );
       const mergedItems = mergeFeedMediaFromCache(
-        dedupeFeedItems(
+        coalesceIncidentFeedItems(
           pageResults.flatMap((result) => result.items)
         ),
         cachedSnapshot?.items || []
@@ -526,7 +542,7 @@ export default function CommunityFeed({
         return;
       }
 
-      setItems((currentItems) => dedupeFeedItems([
+      setItems((currentItems) => coalesceIncidentFeedItems([
         ...currentItems,
         ...nextPage.items,
       ]));
@@ -544,7 +560,7 @@ export default function CommunityFeed({
       setError(
         loadError?.response?.data?.message ||
         loadError?.message ||
-        'Không thể tải thêm phản ánh.'
+        'Không thể tải thêm sự vụ.'
       );
     } finally {
       if (
@@ -702,82 +718,35 @@ export default function CommunityFeed({
   useEffect(() => {
     signalrService.start();
 
-    const handleCommentAdded = (incomingFeedbackId) => {
-      setItems((currentItems) => currentItems.map((item) => {
-        if (getItemId(item) !== incomingFeedbackId) return item;
-        return { ...item, commentCount: getCommentCount(item) + 1 };
-      }));
+    const refreshIncidentFeed = () => {
+      void loadFeedSnapshot({ background: true, force: true });
     };
 
-    const handleSupportAdded = (incomingFeedbackId, payload) => {
-      setItems((currentItems) => currentItems.map((item) => (
-        getItemId(item) === incomingFeedbackId
-          ? { ...item, supportCount: payload?.supportCount ?? getSupportCount(item) }
-          : item
-      )));
-    };
+    const refreshEvents = [
+      'FeedbackStatusChanged',
+      'AssignmentCreated',
+      'AssignmentUpdated',
+      'ResolutionSubmitted',
+      'ResolutionApproved',
+      'ResolutionRejected',
+      'IncidentCreated',
+      'IncidentUpdated',
+      'IncidentStatusChanged',
+      'IncidentMerged',
+      'ReportLinked',
+      'ReportUnlinked',
+    ];
 
-    const handleStatusChanged = (incomingFeedbackId, payload) => {
-      setItems((currentItems) => currentItems
-        .map((item) => {
-          if (getItemId(item) !== incomingFeedbackId) return item;
-
-          const nextStatus = payload?.newStatus;
-          if (
-            nextStatus === managementTypes.feedbackStatus.SUBMITTED ||
-            nextStatus === managementTypes.feedbackStatus.AI_REVIEWED
-          ) {
-            return null;
-          }
-
-          return { ...item, status: nextStatus };
-        })
-        .filter(Boolean));
-    };
-
-    const handleAssignment = (incomingFeedbackId, payload) => {
-      setItems((currentItems) => currentItems.map((item) => (
-        getItemId(item) === incomingFeedbackId
-          ? { ...item, assignment: payload }
-          : item
-      )));
-    };
-
-    const handleResolutionRefresh = async (incomingFeedbackId) => {
-      try {
-        const detail = await getCommunityFeedPreview(incomingFeedbackId, {
-          force: true,
-        });
-        setItems((currentItems) => currentItems.map((item) => (
-          getItemId(item) === incomingFeedbackId
-            ? { ...item, ...detail }
-            : item
-        )));
-      } catch {
-        // Giữ dữ liệu hiện có nếu chưa thể tải bản cập nhật realtime.
-      }
-    };
-
-    signalrService.on('CommentAdded', handleCommentAdded);
-    signalrService.on('SupportAdded', handleSupportAdded);
-    signalrService.on('FeedbackStatusChanged', handleStatusChanged);
-    signalrService.on('AssignmentCreated', handleAssignment);
-    signalrService.on('AssignmentUpdated', handleAssignment);
-    signalrService.on('ResolutionSubmitted', handleResolutionRefresh);
-    signalrService.on('ResolutionApproved', handleResolutionRefresh);
-    signalrService.on('ResolutionRejected', handleResolutionRefresh);
+    refreshEvents.forEach((eventName) => {
+      signalrService.on(eventName, refreshIncidentFeed);
+    });
 
     return () => {
-      signalrService.off('CommentAdded', handleCommentAdded);
-      signalrService.off('SupportAdded', handleSupportAdded);
-      signalrService.off('FeedbackStatusChanged', handleStatusChanged);
-      signalrService.off('AssignmentCreated', handleAssignment);
-      signalrService.off('AssignmentUpdated', handleAssignment);
-      signalrService.off('ResolutionSubmitted', handleResolutionRefresh);
-      signalrService.off('ResolutionApproved', handleResolutionRefresh);
-      signalrService.off('ResolutionRejected', handleResolutionRefresh);
+      refreshEvents.forEach((eventName) => {
+        signalrService.off(eventName, refreshIncidentFeed);
+      });
     };
-  }, []);
+  }, [loadFeedSnapshot]);
 
   useEffect(() => {
     const savedContext = restoreContextRef.current;
@@ -796,15 +765,17 @@ export default function CommunityFeed({
     const restorePosition = () => {
       if (cancelled) return;
 
-      const feedbackId = String(savedContext.feedbackId || '');
-      const escapedFeedbackId = (
-        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-          ? CSS.escape(feedbackId)
-          : feedbackId.replace(/["\\]/g, '\\$&')
+      const incidentId = String(
+        savedContext.incidentId || savedContext.feedbackId || ''
       );
-      const targetRow = escapedFeedbackId
+      const escapedIncidentId = (
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(incidentId)
+          : incidentId.replace(/["\\]/g, '\\$&')
+      );
+      const targetRow = escapedIncidentId
         ? document.querySelector(
-          `[data-community-feedback-id="${escapedFeedbackId}"]`
+          `[data-community-incident-id="${escapedIncidentId}"]`
         )
         : null;
       const scrollContainer = document.querySelector(
@@ -848,9 +819,9 @@ export default function CommunityFeed({
           left: 0,
           behavior: 'auto',
         });
-        setHighlightedFeedbackId(feedbackId);
+        setHighlightedIncidentId(incidentId);
         clearHighlightTimer = window.setTimeout(() => {
-          setHighlightedFeedbackId(null);
+          setHighlightedIncidentId(null);
         }, 2500);
         consumeReturnContext();
       });
@@ -865,15 +836,44 @@ export default function CommunityFeed({
     };
   }, [items, loading]);
 
+  useEffect(() => subscribeCommunityIncidentEngagement(() => {
+    setEngagementVersion((version) => version + 1);
+  }), []);
+
+  const itemsWithLiveEngagement = items.map((item) => {
+    const incidentId = getCommunityIncidentId(item);
+    const engagement = getCommunityIncidentEngagementState(incidentId);
+    if (!engagement) return item;
+
+    return {
+      ...item,
+      ...(Number.isFinite(Number(engagement.supportCount))
+        ? { supportCount: Math.max(0, Number(engagement.supportCount)) }
+        : {}),
+      ...(Number.isFinite(Number(engagement.commentCount))
+        ? { commentCount: Math.max(0, Number(engagement.commentCount)) }
+        : {}),
+      ...(Number.isFinite(Number(engagement.subscriberCount))
+        ? { subscriberCount: Math.max(0, Number(engagement.subscriberCount)) }
+        : {}),
+      ...(typeof engagement.isSupportedByCurrentUser === 'boolean'
+        ? { isSupportedByCurrentUser: engagement.isSupportedByCurrentUser }
+        : {}),
+      ...(typeof engagement.isSubscribedByCurrentUser === 'boolean'
+        ? { isSubscribedByCurrentUser: engagement.isSubscribedByCurrentUser }
+        : {}),
+    };
+  });
+
   const tabItems = tab === 'Processing'
-    ? items.filter((item) => PROCESSING_STATUSES.has(item?.status))
+    ? itemsWithLiveEngagement.filter((item) => (
+        isCommunityProcessingIncidentStatus(item?.incidentStatus || item?.status)
+      ))
     : tab === 'Ended'
-      ? items.filter(
-          (item) => (
-            item?.status === managementTypes.feedbackStatus.CLOSED
-          )
-        )
-      : items;
+      ? itemsWithLiveEngagement.filter((item) => (
+          isCommunityEndedIncidentStatus(item?.incidentStatus || item?.status)
+        ))
+      : itemsWithLiveEngagement;
 
   const normalizedQuery = query.trim().toLocaleLowerCase('vi-VN');
   const searchedItems = normalizedQuery
@@ -914,60 +914,31 @@ export default function CommunityFeed({
     loadedServerPage < totalPages
   );
 
-  const trendingItems = [...items]
+  const trendingItems = [...itemsWithLiveEngagement]
     .sort((left, right) => (
       getSupportCount(right) + getCommentCount(right)
     ) - (
       getSupportCount(left) + getCommentCount(left)
     ))
-    .slice(0, 3);
+    .slice(0, 5);
 
-  const processingCount = items.filter(
-    (item) => PROCESSING_STATUSES.has(item?.status)
-  ).length;
-  const endedCount = items.filter(
-    (item) => (
-      item?.status === managementTypes.feedbackStatus.CLOSED
-    )
-  ).length;
-  const sevenDaysAgo = (
-    COMMUNITY_REFERENCE_TIMESTAMP - COMMUNITY_RECENT_WINDOW_MS
-  );
-  const recentPublicCount = items.filter(
-    (item) => getCreatedTimestamp(item) >= sevenDaysAgo
-  ).length;
-  const loadedInteractionCount = items.reduce(
-    (total, item) => (
-      total + getSupportCount(item) + getCommentCount(item)
-    ),
-    0
-  );
-  const latestActivityTimestamp = items.reduce(
-    (latestTimestamp, item) => {
-      const itemTimestamp = new Date(
-        item?.updatedAt ||
-        item?.createdAt ||
-        item?.createdDate ||
-        0
-      ).getTime();
 
-      if (Number.isNaN(itemTimestamp)) return latestTimestamp;
-      return Math.max(latestTimestamp, itemTimestamp);
-    },
-    0
-  );
-  const latestActivityText = latestActivityTimestamp
-    ? new Intl.DateTimeFormat('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(new Date(latestActivityTimestamp))
-    : 'Chưa có hoạt động';
+  const handleIncidentSupportChange = useCallback((incidentId, { isSupported, count }) => {
+    if (!incidentId) return;
+    setItems((currentItems) => currentItems.map((item) => (
+      String(getCommunityIncidentId(item)) === String(incidentId)
+        ? {
+            ...item,
+            supportCount: Math.max(0, Number(count) || 0),
+            isSupportedByCurrentUser: Boolean(isSupported),
+          }
+        : item
+    )));
+  }, []);
 
   const initialLoading = loading && items.length === 0;
 
-  const persistFeedReturnContext = (feedbackId) => {
+  const persistFeedReturnContext = (incidentId) => {
     writeCommunityFeedCache(cacheOwnerKey, {
       items,
       page,
@@ -986,49 +957,39 @@ export default function CommunityFeed({
           query,
           page,
           scrollY: document.querySelector('[data-dashboard-scroll-container]')?.scrollTop || 0,
-          feedbackId,
+          incidentId,
         })
       );
     } catch (storageError) {
       console.warn('Không thể lưu vị trí bảng tin', storageError);
     }
 
-    // Keep the selected feedback on the current history entry as well.
-    // Browser Back can then restore exactly like the in-app Back button,
-    // while sessionStorage remains the fallback for reload/remount cases.
     navigate(
       `${location.pathname}${location.search}${location.hash}`,
       {
         replace: true,
         state: {
           ...(location.state || {}),
-          restoreFeedbackId: feedbackId,
+          restoreIncidentId: incidentId,
           preserveScrollOnEnter: true,
         },
       }
     );
   };
 
+  const buildIncidentDetailState = () => ({ from: '/community/feed' });
+
   const openDetail = (item) => {
-    const feedbackId = getItemId(item);
-    if (!feedbackId) return;
+    const incidentId = getCommunityIncidentId(item);
+    if (!incidentId) return;
 
-    persistFeedReturnContext(feedbackId);
+    persistFeedReturnContext(incidentId);
 
-    navigate(`/community/feed/${feedbackId}`, {
-      state: { from: '/community/feed' },
+    navigate(`/community/feed/${incidentId}`, {
+      state: buildIncidentDetailState(item),
     });
   };
 
-  const openComments = (feedbackId) => {
-    if (!feedbackId) return;
-
-    persistFeedReturnContext(feedbackId);
-
-    navigate(`/community/feed/${feedbackId}#community-comments`, {
-      state: { from: '/community/feed' },
-    });
-  };
 
   const retryLoad = () => {
     loadFeedSnapshot({
@@ -1050,198 +1011,79 @@ export default function CommunityFeed({
 
   return (
     <>
-      <section data-public-reveal className="relative isolate overflow-hidden rounded-[30px] border border-[var(--public-border)] bg-[var(--public-surface)] shadow-[var(--public-shadow)]">
-        <div
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-          aria-hidden="true"
-        >
-          <svg
-            viewBox="0 0 1400 320"
-            preserveAspectRatio="none"
-            className="absolute inset-0 h-full w-full text-primary"
-            fill="none"
-          >
-            <path
-              d="M-40 250C135 210 185 72 365 96C515 116 515 260 690 243C836 229 856 81 1018 90C1165 98 1192 214 1445 142"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeOpacity="0.09"
-            />
-            <path
-              d="M-15 278C180 238 222 129 397 145C564 160 614 294 786 262C934 234 964 126 1131 124C1250 122 1320 171 1435 188"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeDasharray="9 12"
-              strokeOpacity="0.075"
-            />
-            <path
-              d="M722 -25C761 70 742 145 802 207C872 278 1014 280 1075 194C1129 118 1091 38 1173 -28"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeOpacity="0.065"
-            />
-            <circle
-              cx="360"
-              cy="97"
-              r="7"
-              fill="currentColor"
-              fillOpacity="0.09"
-            />
-            <circle
-              cx="690"
-              cy="243"
-              r="9"
-              fill="currentColor"
-              fillOpacity="0.075"
-            />
-            <circle
-              cx="1018"
-              cy="90"
-              r="6"
-              fill="currentColor"
-              fillOpacity="0.11"
-            />
-            <circle
-              cx="1131"
-              cy="124"
-              r="15"
-              stroke="currentColor"
-              strokeOpacity="0.075"
-            />
-          </svg>
-
-          <div className="absolute -left-20 -top-24 h-72 w-72 rounded-full bg-primary/[0.035] blur-3xl" />
-          <div className="absolute -bottom-28 right-[12%] h-72 w-72 rounded-full bg-info/[0.07] blur-3xl" />
-
-          <span className="absolute left-[42%] top-[24%] flex h-8 w-8 items-center justify-center rounded-full border border-primary/10 bg-base-100/50 text-primary/35 shadow-sm">
-            <Lucide.MapPin size={14} />
-          </span>
-          <span className="absolute bottom-[18%] left-[57%] flex h-7 w-7 items-center justify-center rounded-full border border-success/10 bg-base-100/50 text-success/35 shadow-sm">
-            <Lucide.Check size={13} />
-          </span>
-          <span className="absolute right-[24%] top-[18%] flex h-7 w-7 items-center justify-center rounded-full border border-secondary/10 bg-base-100/50 text-secondary/35 shadow-sm">
-            <Lucide.MessageCircle size={13} />
-          </span>
-        </div>
-
-        <div className="relative grid gap-6 px-6 py-7 sm:px-8 sm:py-8 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-          <div className="max-w-3xl">
-            <div className="flex items-start gap-3.5">
-              <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]">
-                <Lucide.Newspaper size={21} aria-hidden="true" />
+      <section
+        data-public-reveal
+        className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.09)] ring-1 ring-slate-100/80 dark:border-slate-800 dark:bg-slate-950 dark:ring-slate-800/80"
+      >
+        <div className="grid min-h-[176px] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+          <div className="relative z-10 flex items-center px-6 py-6 sm:px-8 lg:px-9">
+            <div className="flex items-start gap-4">
+              <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.18)]">
+                <Lucide.Newspaper size={20} aria-hidden="true" />
               </span>
               <div className="min-w-0">
-                <h1 className="text-3xl font-bold tracking-tight text-[var(--public-title)] sm:text-4xl">
-                  Bảng tin đô thị
+                <h1 className="text-[26px] font-bold leading-8 tracking-[-0.03em] text-[var(--public-title)] sm:text-[28px]">
+                  Chuyện quanh khu phố
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--public-copy)]">
-                  Theo dõi phản ánh đã xác minh, trao đổi và giám sát tiến độ xử lý trong cộng đồng.
+                <p className="mt-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-300">
+                  Cùng nhau xây dựng đô thị xanh – sạch – an toàn hơn.
                 </p>
+                <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-[var(--public-copy)]">
+                  <Lucide.MapPin size={13} className="shrink-0 text-blue-600" aria-hidden="true" />
+                  Khám phá những vấn đề đang được cộng đồng chia sẻ quanh bạn.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/community/map')}
+                  className="btn btn-sm mt-3.5 h-9 rounded-xl border-0 bg-blue-600 px-4 text-white shadow-[0_8px_18px_rgba(37,99,235,0.16)] hover:bg-blue-700"
+                >
+                  <Lucide.Map size={14} aria-hidden="true" />
+                  Xem bản đồ quanh bạn
+                </button>
               </div>
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-success/25 bg-success/10 px-3 py-1.5 text-xs font-semibold text-success">
-                <Lucide.Radio size={14} aria-hidden="true" />
-                Cập nhật theo thời gian thực
-              </span>
             </div>
           </div>
 
-          <div className="relative">
-            <dl className="grid grid-cols-3 gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => handleFeedTabChange('Latest')}
-                className="group min-w-[118px] rounded-2xl border border-[var(--public-border)] bg-[var(--public-surface-strong)]/90 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md"
-              >
-                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
-                  Tổng công khai
-                  <Lucide.Files
-                    size={14}
-                    className="text-primary"
-                    aria-hidden="true"
-                  />
-                </dt>
-                <dd className="mt-1 text-2xl font-bold tracking-tight text-base-content">
-                  {initialLoading ? (
-                    <span className="inline-block h-7 w-8 animate-pulse rounded bg-base-300/55" />
-                  ) : (
-                    totalItems || items.length
-                  )}
-                </dd>
-                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-primary">
-                  Xem toàn bộ
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleFeedTabChange('Processing')}
-                className="group min-w-[118px] rounded-2xl border border-warning/25 bg-[var(--public-surface-strong)]/90 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-warning/40 hover:shadow-md"
-              >
-                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
-                  Đang xử lý
-                  <Lucide.LoaderCircle
-                    size={14}
-                    className="text-warning"
-                    aria-hidden="true"
-                  />
-                </dt>
-                <dd className="mt-1 text-2xl font-bold tracking-tight text-warning">
-                  {initialLoading ? (
-                    <span className="inline-block h-7 w-8 animate-pulse rounded bg-warning/15" />
-                  ) : (
-                    processingCount
-                  )}
-                </dd>
-                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-warning">
-                  Theo dõi tiến độ
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleFeedTabChange('Ended')}
-                className="group min-w-[118px] rounded-2xl border border-success/25 bg-[var(--public-surface-strong)]/90 px-4 py-4 text-left shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-success/40 hover:shadow-md"
-              >
-                <dt className="flex items-center justify-between gap-2 text-[11px] font-medium text-base-content/50">
-                  Đã kết thúc
-                  <Lucide.CircleCheckBig
-                    size={14}
-                    className="text-success"
-                    aria-hidden="true"
-                  />
-                </dt>
-                <dd className="mt-1 text-2xl font-bold tracking-tight text-success">
-                  {initialLoading ? (
-                    <span className="inline-block h-7 w-8 animate-pulse rounded bg-success/15" />
-                  ) : (
-                    endedCount
-                  )}
-                </dd>
-                <span className="mt-1 block text-[11px] text-base-content/40 group-hover:text-success">
-                  Xem hồ sơ đã kết thúc
-                </span>
-              </button>
-            </dl>
+          <div className="relative hidden min-h-[176px] overflow-hidden bg-[#f3f9ff] lg:block dark:bg-slate-900">
+            <img
+              src={communityHeroImage}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full object-cover object-center"
+            />
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-white via-white/60 to-transparent dark:from-slate-950 dark:via-slate-950/55" />
           </div>
         </div>
       </section>
 
-      <section data-public-reveal className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
-        <div className="min-w-0 space-y-4">
+      <section
+        data-public-reveal
+        className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_318px]"
+      >
+        <div className="min-w-0 space-y-3">
           <section
             ref={filterSectionRef}
-            className="scroll-mt-28 rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-3 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-4"
+            className="sticky top-3 z-30 scroll-mt-28 rounded-[18px] border border-[var(--public-border)] bg-white/95 p-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.09)] backdrop-blur-xl dark:bg-slate-950/92"
           >
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
               <div
-                className="flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-[var(--public-border-soft)] bg-[var(--public-surface-soft)] p-1"
+                className="flex max-w-full items-center gap-1 overflow-x-auto"
                 role="tablist"
                 aria-label="Lọc bảng tin"
               >
-                {TAB_OPTIONS.map((option) => {
+                {tab === 'Trending' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleFeedTabChange('Trending')}
+                    role="tab"
+                    aria-selected="true"
+                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-blue-50 px-3 text-sm font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+                  >
+                    <Lucide.Flame size={15} aria-hidden="true" />
+                    Được quan tâm
+                  </button>
+                ) : null}
+                {PRIMARY_TAB_OPTIONS.map((option) => {
                   const Icon = option.icon;
                   const active = tab === option.value;
 
@@ -1254,8 +1096,8 @@ export default function CommunityFeed({
                       aria-selected={active}
                       className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition ${
                         active
-                          ? 'bg-[var(--public-surface-strong)] text-primary shadow-sm ring-1 ring-[var(--public-border)]'
-                          : 'text-[var(--public-copy)] hover:bg-[var(--public-surface-strong)]/75 hover:text-[var(--public-title)]'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+                          : 'text-[var(--public-copy)] hover:bg-[var(--public-surface-soft)] hover:text-[var(--public-title)]'
                       }`}
                     >
                       <Icon size={15} aria-hidden="true" />
@@ -1265,10 +1107,10 @@ export default function CommunityFeed({
                 })}
               </div>
 
-              <label className="relative block w-full lg:max-w-[360px]">
+              <label className="relative block w-full lg:max-w-[330px]">
                 <span className="sr-only">Tìm kiếm trong bảng tin</span>
                 <Lucide.Search
-                  size={17}
+                  size={16}
                   className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--public-muted)]"
                   aria-hidden="true"
                 />
@@ -1277,32 +1119,13 @@ export default function CommunityFeed({
                   value={query}
                   onFocus={handleQueryFocus}
                   onChange={handleQueryChange}
-                  placeholder="Tìm tiêu đề, khu vực, danh mục..."
-                  className="input input-bordered h-10 w-full rounded-xl border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-10 text-sm text-[var(--public-title)] placeholder:text-[var(--public-muted)] focus:border-primary/45 focus:outline-none"
+                  placeholder="Tìm kiếm sự việc, khu vực, vấn đề..."
+                  className="input input-bordered h-9 w-full rounded-xl border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-10 text-sm text-[var(--public-title)] placeholder:text-[var(--public-muted)] focus:border-blue-400 focus:outline-none"
                 />
-              </label>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-[var(--public-muted)]">
-              <span>
-                {initialLoading
-                  ? 'Đang tải dữ liệu bảng tin...'
-                  : `${sortedItems.length}${loadedServerPage < totalPages ? '+' : ''} phản ánh phù hợp`}
-              </span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${
-                refreshing
-                  ? 'bg-info/8 text-info'
-                  : 'bg-success/8 text-success'
-              }`}>
                 {refreshing ? (
-                  <span className="loading loading-spinner loading-xs" />
-                ) : (
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                )}
-                {refreshing
-                  ? 'Đang đồng bộ dữ liệu'
-                  : 'Cập nhật trực tiếp'}
-              </span>
+                  <span className="loading loading-spinner loading-xs absolute right-3.5 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-300" aria-hidden="true" />
+                ) : null}
+              </label>
             </div>
           </section>
 
@@ -1329,38 +1152,38 @@ export default function CommunityFeed({
           {!initialLoading && visibleItems.length > 0 ? (
             <div
               ref={feedListSectionRef}
-              className="scroll-mt-28 space-y-4"
+              className="scroll-mt-28 space-y-3"
             >
               {visibleItems.map((item, index) => (
                 <CommunityFeedItem
-                  key={getItemId(item) || index}
+                  key={getCommunityIncidentId(item) || index}
                   item={item}
                   priority={index < 2}
                   highlighted={
-                    String(getItemId(item)) ===
-                    String(highlightedFeedbackId)
+                    String(getCommunityIncidentId(item)) ===
+                    String(highlightedIncidentId)
                   }
-                  onOpenComments={openComments}
                   onOpen={openDetail}
+                  onSupportChange={handleIncidentSupportChange}
                 />
               ))}
             </div>
           ) : null}
 
           {!initialLoading && visibleItems.length === 0 && !error ? (
-            <div className="rounded-[26px] border border-base-300 bg-base-100 px-6 py-12 text-center shadow-sm">
-              <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/8 text-primary">
+            <div className="rounded-[20px] border border-[var(--public-border)] bg-[var(--public-surface)] px-6 py-12 text-center shadow-sm">
+              <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
                 <Lucide.Newspaper size={25} aria-hidden="true" />
               </span>
               <h2 className="mt-4 text-lg font-bold">
                 {query
-                  ? 'Không tìm thấy phản ánh phù hợp'
-                  : 'Chưa có phản ánh công khai'}
+                  ? 'Không tìm thấy cập nhật phù hợp'
+                  : 'Chưa có cập nhật công khai'}
               </h2>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-base-content/55">
                 {query
-                  ? 'Thử sử dụng từ khóa khác hoặc chuyển sang một nhóm bảng tin khác.'
-                  : 'Các phản ánh đã được xác minh sẽ xuất hiện tại đây để cộng đồng cùng theo dõi.'}
+                  ? 'Thử từ khóa khác hoặc chuyển sang một nhóm bảng tin khác.'
+                  : 'Những vấn đề đã đủ điều kiện công khai sẽ xuất hiện tại đây để cộng đồng cùng theo dõi.'}
               </p>
               {query ? (
                 <button
@@ -1399,137 +1222,127 @@ export default function CommunityFeed({
                 ) : (
                   <Lucide.Plus size={16} aria-hidden="true" />
                 )}
-                {refreshing ? 'Đang tải thêm...' : 'Hiện thêm phản ánh'}
+                {refreshing ? 'Đang tải thêm...' : 'Xem thêm cập nhật'}
               </button>
             </div>
           ) : null}
 
           {!initialLoading && !hasMore && sortedItems.length > 0 ? (
             <div className="flex items-center justify-center gap-2 py-4 text-sm text-base-content/45">
-              <Lucide.CircleCheck
-                size={16}
-                className="text-success"
-                aria-hidden="true"
-              />
-              Bạn đã xem hết các phản ánh phù hợp.
+              <Lucide.CircleCheck size={16} className="text-success" aria-hidden="true" />
+              Bạn đã xem hết các cập nhật phù hợp.
             </div>
           ) : null}
         </div>
 
-        <aside className="self-stretch">
-          <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+        <aside className="space-y-3 xl:sticky xl:top-3 xl:self-start">
+          <section className="rounded-[20px] border border-[var(--public-border)] bg-[var(--public-surface)] p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="font-bold text-[var(--public-title)]">Được quan tâm</h2>
-                <p className="mt-1 text-xs text-[var(--public-muted)]">
-                  Phản ánh có nhiều tương tác
-                </p>
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-warning/10 text-warning">
+                  <Lucide.Flame size={16} aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-bold text-[var(--public-title)]">Đang được quan tâm</h2>
+                  <p className="mt-0.5 text-[11px] text-[var(--public-muted)]">Những vấn đề cộng đồng chú ý</p>
+                </div>
               </div>
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-warning/10 text-warning">
-                <Lucide.Flame size={19} aria-hidden="true" />
-              </span>
+              <button
+                type="button"
+                onClick={() => handleFeedTabChange('Trending', 'list')}
+                className="shrink-0 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-300 dark:hover:text-blue-200"
+              >
+                Xem tất cả
+              </button>
             </div>
 
             {trendingItems.length > 0 ? (
-              <ol className="mt-4 space-y-1.5">
-                {trendingItems.map((item, index) => (
-                  <li key={getItemId(item) || index}>
-                    <button
-                      type="button"
-                      onClick={() => openDetail(item)}
-                      className="group flex w-full items-start gap-3 rounded-2xl border border-transparent px-2 py-2.5 text-left transition hover:border-[var(--public-border)] hover:bg-[var(--public-surface-soft)]"
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/8 text-xs font-bold text-primary">
-                        {index + 1}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 text-sm font-semibold leading-5 text-[var(--public-title)] transition group-hover:text-primary">
-                          {item?.title || 'Phản ánh đô thị'}
+              <ol className="mt-3 divide-y divide-[var(--public-border-soft)]">
+                {trendingItems.map((item, index) => {
+                  const previewUrl = getPreviewMediaUrl(item);
+                  return (
+                    <li key={getCommunityIncidentId(item) || index}>
+                      <button
+                        type="button"
+                        onClick={() => openDetail(item)}
+                        className="group grid w-full grid-cols-[26px_52px_minmax(0,1fr)_14px] items-center gap-2.5 py-3 text-left"
+                      >
+                        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-50 text-[10px] font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                          {index + 1}
                         </span>
-                        <span className="mt-1 flex items-center gap-3 text-[11px] text-[var(--public-muted)]">
-                          <span className="inline-flex items-center gap-1">
-                            <Lucide.Heart size={11} aria-hidden="true" />
-                            {getSupportCount(item)}
+                        {previewUrl ? (
+                          <img
+                            src={previewUrl}
+                            alt=""
+                            className="h-11 w-[52px] rounded-lg object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="flex h-11 w-[52px] items-center justify-center rounded-lg bg-[var(--public-surface-soft)] text-blue-500/60 dark:text-blue-300/70">
+                            <Lucide.MapPin size={16} aria-hidden="true" />
                           </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Lucide.MessageCircle size={11} aria-hidden="true" />
-                            {getCommentCount(item)}
+                        )}
+                        <span className="min-w-0">
+                          <span className="line-clamp-1 text-xs font-bold text-[var(--public-title)] transition group-hover:text-blue-600 dark:group-hover:text-blue-300">
+                            {item?.title || 'Cập nhật đô thị'}
+                          </span>
+                          <span className="mt-1 flex min-w-0 items-center gap-1 text-[10px] text-[var(--public-muted)]">
+                            <Lucide.MapPin size={10} className="shrink-0 text-blue-600 dark:text-blue-300" aria-hidden="true" />
+                            <span className="truncate">{getAreaName(item)}</span>
+                          </span>
+                          <span className="mt-1 flex items-center gap-3 text-[10px] text-[var(--public-muted)]">
+                            <span className="inline-flex items-center gap-1" title="Lượt đồng tình">
+                              <Lucide.Heart size={10} aria-hidden="true" />
+                              {getSupportCount(item)}
+                            </span>
+                            <span className="inline-flex items-center gap-1" title="Bình luận">
+                              <Lucide.MessagesSquare size={10} aria-hidden="true" />
+                              {getCommentCount(item)}
+                            </span>
+                            <span className="inline-flex items-center gap-1" title="Người theo dõi">
+                              <Lucide.Bell size={10} aria-hidden="true" />
+                              {getSubscriberCount(item)}
+                            </span>
                           </span>
                         </span>
-                      </span>
-                      <Lucide.ChevronRight
-                        size={15}
-                        className="mt-1 shrink-0 text-[var(--public-muted)] transition group-hover:translate-x-0.5 group-hover:text-primary"
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </li>
-                ))}
+                        <Lucide.ChevronRight
+                          size={14}
+                          className="text-[var(--public-muted)] transition group-hover:translate-x-0.5 group-hover:text-blue-600 dark:group-hover:text-blue-300"
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </li>
+                  );
+                })}
               </ol>
             ) : (
-              <p className="mt-4 rounded-2xl border border-[var(--public-border-soft)] bg-[var(--public-surface-soft)] px-4 py-5 text-center text-sm text-[var(--public-muted)]">
+              <p className="mt-4 rounded-xl bg-[var(--public-surface-soft)] px-4 py-5 text-center text-sm text-[var(--public-muted)]">
                 Chưa có dữ liệu xu hướng.
               </p>
             )}
           </section>
 
-          <div className="mt-4 space-y-4 xl:sticky xl:top-24">
-            <section className="overflow-hidden rounded-[24px] border border-primary/18 bg-gradient-to-br from-primary/8 via-[var(--public-surface)] to-secondary/8 p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
+          <section className="overflow-hidden rounded-[20px] border border-sky-200/70 bg-[linear-gradient(145deg,#f0f9ff_0%,#eef7ff_48%,#edfdf6_100%)] p-4 shadow-[0_8px_24px_rgba(37,99,235,0.06)] dark:border-sky-400/15 dark:bg-none dark:bg-base-200">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <Lucide.Activity size={19} aria-hidden="true" />
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/90 text-success shadow-sm dark:bg-base-100">
+                <Lucide.HeartHandshake size={23} aria-hidden="true" />
               </span>
               <div>
-                <h2 className="font-bold text-[var(--public-title)]">Hoạt động cộng đồng</h2>
-                <p className="mt-0.5 text-xs text-[var(--public-muted)]">
-                  Dựa trên toàn bộ bảng tin
+                <h2 className="text-sm font-bold text-[var(--public-title)]">Cùng nhau xây dựng khu phố tốt đẹp hơn</h2>
+                <p className="mt-1 text-[11px] leading-5 text-[var(--public-muted)]">
+                  Mỗi phản ánh của bạn đều góp phần thay đổi cộng đồng.
                 </p>
               </div>
             </div>
-
-            <dl className="mt-4 space-y-2">
-              <div className="flex items-center justify-between rounded-xl border border-[var(--public-border-soft)] bg-[var(--public-surface-strong)]/88 px-3 py-3">
-                <dt className="text-xs text-[var(--public-copy)]">
-                  Phản ánh mới trong 7 ngày
-                </dt>
-                <dd className="text-sm font-bold text-info">
-                  {recentPublicCount}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between rounded-xl border border-[var(--public-border-soft)] bg-[var(--public-surface-strong)]/88 px-3 py-3">
-                <dt className="text-xs text-[var(--public-copy)]">
-                  Tổng lượt tương tác
-                </dt>
-                <dd className="text-sm font-bold text-secondary">
-                  {loadedInteractionCount}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between rounded-xl border border-[var(--public-border-soft)] bg-[var(--public-surface-strong)]/88 px-3 py-3">
-                <dt className="text-xs text-[var(--public-copy)]">
-                  Cập nhật gần nhất
-                </dt>
-                <dd className="text-xs font-semibold text-[var(--public-title)]">
-                  {latestActivityText}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="rounded-[24px] border border-[var(--public-border)] bg-[var(--public-surface)] p-5 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
-            <h2 className="font-bold text-[var(--public-title)]">Khám phá theo khu vực</h2>
-            <p className="mt-1 text-xs leading-5 text-[var(--public-muted)]">
-              Xem các phản ánh trên bản đồ để nắm tình hình xung quanh bạn.
-            </p>
             <button
               type="button"
-              onClick={() => navigate('/community/map')}
-              className="btn btn-outline mt-4 w-full rounded-xl border-[var(--public-border)] bg-[var(--public-surface-strong)] text-[var(--public-title)] hover:border-primary/30 hover:bg-primary/8 hover:text-primary"
+              onClick={() => navigate('/tickets/create')}
+              className="btn btn-sm mt-4 w-full rounded-xl border-0 bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.16)] hover:bg-blue-700"
             >
-              <Lucide.Map size={16} aria-hidden="true" />
-              Mở bản đồ sự cố
+              <Lucide.Plus size={15} aria-hidden="true" />
+              Gửi phản ánh ngay
             </button>
           </section>
-          </div>
         </aside>
       </section>
     </>

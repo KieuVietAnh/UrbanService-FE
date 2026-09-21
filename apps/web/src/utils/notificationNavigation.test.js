@@ -122,3 +122,52 @@ test('ADMINISTRATOR chuẩn hóa targetUrl Feedback của Manager về namespace
     '/management/feedbacks/feedback-from-manager-url',
   );
 });
+
+
+test('SERVICEUSER mở Incident khi notification trạng thái chỉ có incidentId', () => {
+  const notification = { incidentId: 'incident-status', type: 'StatusChanged', title: 'Trạng thái sự vụ được cập nhật' };
+  assert.equal(resolveNotificationDestination(notification, APP_ROLES.SERVICE_USER), '/community/feed/incident-status');
+  assert.equal(getNotificationDestinationEntity(notification, APP_ROLES.SERVICE_USER), 'incident');
+});
+
+test('SERVICEUSER mở Community Incident khi notification có incidentId rõ ràng', () => {
+  assert.equal(
+    resolveNotificationDestination({
+      incidentId: 'incident-community',
+      type: 'CommunityUpdated',
+      targetUrl: '/community/feed/legacy-value',
+    }, APP_ROLES.SERVICE_USER),
+    '/community/feed/incident-community',
+  );
+});
+
+test('SERVICEUSER không biến community targetUrl legacy dùng feedbackId thành incidentId', () => {
+  assert.equal(
+    resolveNotificationDestination({
+      feedbackId: 'feedback-legacy',
+      type: 'CommentAdded',
+      targetUrl: '/community/feed/feedback-legacy',
+    }, APP_ROLES.SERVICE_USER),
+    '/notifications',
+  );
+});
+
+test('SERVICEUSER notification community chỉ có feedbackId quay về Notification Center', () => {
+  assert.equal(
+    resolveNotificationDestination({
+      feedbackId: 'feedback-only',
+      type: 'SupportAdded',
+    }, APP_ROLES.SERVICE_USER),
+    '/notifications',
+  );
+});
+
+test('SERVICEUSER notification Community có cả feedbackId và incidentId vẫn được nhận diện là Incident', () => {
+  const notification = {
+    feedbackId: 'feedback-child',
+    incidentId: 'incident-parent',
+    type: 'CommunityUpdated',
+  };
+  assert.equal(getNotificationDestinationEntity(notification, APP_ROLES.SERVICE_USER), 'incident');
+  assert.equal(resolveNotificationDestination(notification, APP_ROLES.SERVICE_USER), '/community/feed/incident-parent');
+});

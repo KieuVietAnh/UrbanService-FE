@@ -1,21 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { setCommunityIncidentSupport } from '../../services/api/feedApi';
 
 export default function SupportButton({
-  feedbackId,
+  incidentId,
   initialCount = 0,
   initialSupported = false,
   className = '',
   onChange,
   isAuthenticated,
   onRequireAuth,
+  entityLabel = 'phản ánh',
+  showLabel = false,
 }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSupported, setIsSupported] = useState(Boolean(initialSupported));
+  const entityId = incidentId;
+  const supportStorageKey = useMemo(() => (
+    incidentId && entityId ? `urbanmind:incident-support:${entityId}` : null
+  ), [entityId, incidentId]);
+  const cachedSupported = (() => {
+    if (!supportStorageKey || typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem(supportStorageKey) === '1';
+  })();
+  const [isSupported, setIsSupported] = useState(Boolean(initialSupported || cachedSupported));
   const [count, setCount] = useState(initialCount || 0);
   const [loading, setLoading] = useState(false);
 
@@ -24,8 +35,11 @@ export default function SupportButton({
   }, [initialCount]);
 
   useEffect(() => {
-    setIsSupported(Boolean(initialSupported));
-  }, [feedbackId, initialSupported]);
+    const cached = supportStorageKey && typeof window !== 'undefined'
+      ? window.sessionStorage.getItem(supportStorageKey) === '1'
+      : false;
+    setIsSupported(Boolean(initialSupported || cached));
+  }, [entityId, initialSupported, supportStorageKey]);
 
   const toggle = async (event) => {
     event?.stopPropagation();
@@ -35,7 +49,7 @@ export default function SupportButton({
       return;
     }
 
-    if (loading) return;
+    if (loading || !entityId) return;
 
     if (!user) {
       const redirect = `${location.pathname}${location.search}${location.hash}`;
@@ -60,35 +74,7 @@ export default function SupportButton({
     setLoading(true);
 
     try {
-      const base = (
-        import.meta.env.VITE_API_URL ||
-        import.meta.env.VITE_API_BASE_URL ||
-        ''
-      );
-      const prefix = base ? base.replace(/\/$/, '') : '';
-      const url = `${prefix}/api/user/feedbacks/${feedbackId}/support`;
-      const token = typeof localStorage !== 'undefined'
-        ? (
-          localStorage.getItem('urbanmind_auth_token') ||
-          localStorage.getItem('token')
-        )
-        : null;
-      const headers = token
-        ? { Authorization: `Bearer ${token}` }
-        : {};
-
-      const response = await fetch(url, {
-        method: nextSupported ? 'POST' : 'DELETE',
-        credentials: 'include',
-        headers,
-      });
-
-      if (!response.ok) {
-        throw new Error('Không thể cập nhật lượt quan tâm.');
-      }
-
-      const responsePayload = await response.json().catch(() => null);
-      const responseData = responsePayload?.data || responsePayload || {};
+      const responseData = await setCommunityIncidentSupport(entityId, nextSupported);
 
       const serverSupported = [
         responseData?.isSupportedByCurrentUser,
@@ -111,6 +97,10 @@ export default function SupportButton({
 
       setIsSupported(resolvedSupported);
       setCount(resolvedCount);
+      if (supportStorageKey && typeof window !== 'undefined') {
+        if (resolvedSupported) window.sessionStorage.setItem(supportStorageKey, '1');
+        else window.sessionStorage.removeItem(supportStorageKey);
+      }
       onChange?.({
         isSupported: resolvedSupported,
         count: resolvedCount,
@@ -131,17 +121,18 @@ export default function SupportButton({
       disabled={loading}
       className={`inline-flex items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
         isSupported
-          ? 'border-error/20 bg-error/8 text-error'
-          : 'border-base-300 bg-base-100 text-base-content/60 hover:border-error/20 hover:bg-error/5 hover:text-error'
+          ? 'border-rose-300 bg-rose-100 text-rose-700 shadow-[0_8px_20px_rgba(244,63,94,0.12)] hover:border-rose-400 hover:bg-rose-200 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-300'
+          : 'border-slate-200 bg-white text-slate-600 shadow-sm hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-rose-500/30 dark:hover:bg-rose-500/10 dark:hover:text-rose-300'
       } ${className}`}
       aria-pressed={isSupported}
-      aria-label={isSupported ? 'Bỏ quan tâm phản ánh' : 'Quan tâm phản ánh'}
+      aria-label={isSupported ? `Bỏ quan tâm ${entityLabel}` : `Quan tâm ${entityLabel}`}
     >
       <Lucide.Heart
         size={16}
         fill={isSupported ? 'currentColor' : 'none'}
         aria-hidden="true"
       />
+      {showLabel ? <span>{isSupported ? 'Đã đồng tình' : 'Đồng tình'}</span> : null}
       <span>{count}</span>
     </button>
   );

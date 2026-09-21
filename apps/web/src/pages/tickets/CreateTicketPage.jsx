@@ -5,6 +5,7 @@ import * as Lucide from 'lucide-react';
 import { toolsApi } from '@urbanmind/shared-api';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketApi } from '../../services/api/ticketApi';
+import { ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 import {
   LocationPicker,
   isLocationInsideBoundaryGeoJson,
@@ -100,11 +101,12 @@ export const CreateTicketPage = () => {
   const [attachmentError, setAttachmentError] = useState('');
   const [areas, setAreas] = useState([]);
   const [areasLoading, setAreasLoading] = useState(true);
-  const [duplicates, setDuplicates] = useState([]);
-  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
+  const [areasError, setAreasError] = useState('');
+  const [areasReloadKey, setAreasReloadKey] = useState(0);
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedFeedbackId, setSubmittedFeedbackId] = useState(null);
   const [previewAttachmentId, setPreviewAttachmentId] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [pendingFocusField, setPendingFocusField] = useState(null);
@@ -275,26 +277,28 @@ export const CreateTicketPage = () => {
 
     const loadOptions = async () => {
       setAreasLoading(true);
+      setAreasError('');
 
-      const [areasResult] = await Promise.allSettled([
-        toolsApi.getAreas(),
-      ]);
+      try {
+        const result = await toolsApi.getAreas();
+        if (!active) return;
 
-      if (!active) return;
-
-      setAreas(
-        areasResult.status === 'fulfilled' && Array.isArray(areasResult.value)
-          ? areasResult.value
-          : []
-      );
-      setAreasLoading(false);
+        setAreas(Array.isArray(result) ? result : []);
+      } catch (error) {
+        if (!active) return;
+        console.warn('Unable to load active areas for create ticket', error);
+        setAreas([]);
+        setAreasError('Không tải được danh sách khu vực. Vui lòng thử lại.');
+      } finally {
+        if (active) setAreasLoading(false);
+      }
     };
 
     loadOptions();
     return () => {
       active = false;
     };
-  }, []);
+  }, [areasReloadKey]);
 
   useEffect(() => {
     if (!previewAttachmentId) return undefined;
@@ -530,7 +534,7 @@ export const CreateTicketPage = () => {
 
     if (stepId === 3) {
       if (attachments.length === 0) {
-        errors.attachments = 'Vui lòng thêm ít nhất một hình ảnh hoặc video minh chứng.';
+        errors.attachments = 'Vui lòng thêm ít nhất 1 ảnh hoặc video để xác thực phản ánh.';
       } else if (
         attachments.length > MAX_ATTACHMENT_COUNT ||
         totalAttachmentSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES
@@ -854,16 +858,10 @@ export const CreateTicketPage = () => {
     );
     clearFieldError('location');
     setSubmitError('');
-    setShowDuplicateWarning(false);
-    setDuplicates([]);
-
-    // Duplicate detection is deferred until after AI review because category
-    // is intentionally not assigned during citizen submission.
-    setDuplicates([]);
-    setShowDuplicateWarning(false);
   };
 
   const handleSubmit = async () => {
+    if (submitting) return;
     setSubmitError('');
 
     const allErrors = {};
@@ -890,7 +888,7 @@ export const CreateTicketPage = () => {
     setSubmitting(true);
 
     try {
-      await ticketApi.createTicket(
+      const createResponse = await ticketApi.createTicket(
         user?.userId,
         user?.fullName,
         {
@@ -904,6 +902,10 @@ export const CreateTicketPage = () => {
         },
         { role: user?.role || 'service-user' }
       );
+      const createdPayload = createResponse?.data ?? createResponse?.item ?? createResponse?.result ?? createResponse;
+      const createdFeedbackId = createdPayload?.feedbackId ?? createdPayload?.id ?? null;
+      setSubmittedFeedbackId(createdFeedbackId ? String(createdFeedbackId) : null);
+
       window.localStorage.removeItem(draftStorageKey);
       const aiDraftStorageKey = routeLocation.state?.aiDraftSource?.storageKey;
       if (aiDraftStorageKey) {
@@ -916,10 +918,11 @@ export const CreateTicketPage = () => {
       console.error('createTicket error', error);
 
       const networkUploadError = error?.message === 'Network Error';
+      const responseMessage = error?.response?.data?.message || error?.response?.data?.msg;
       setSubmitError(
         networkUploadError
-          ? 'Không thể tải minh chứng lên. Hãy kiểm tra kết nối và bảo đảm tệp không vượt quá giới hạn dung lượng.'
-          : error?.message || 'Không thể gửi phản ánh. Vui lòng thử lại sau.'
+          ? 'Không thể kết nối tới hệ thống. Hãy kiểm tra mạng rồi thử gửi lại.'
+          : responseMessage || error?.message || 'Không thể gửi phản ánh. Vui lòng thử lại sau.'
       );
     } finally {
       setSubmitting(false);
@@ -939,8 +942,6 @@ export const CreateTicketPage = () => {
     setAttachments([]);
     reviewAttachmentsRef.current = [];
     setAttachmentError('');
-    setDuplicates([]);
-    setShowDuplicateWarning(false);
     setSubmitError('');
     setFieldErrors({});
     setPendingFocusField(null);
@@ -959,10 +960,9 @@ export const CreateTicketPage = () => {
     setAttachments([]);
     reviewAttachmentsRef.current = [];
     setAttachmentError('');
-    setDuplicates([]);
-    setShowDuplicateWarning(false);
     setSubmitError('');
     setSubmitted(false);
+    setSubmittedFeedbackId(null);
     setPreviewAttachmentId(null);
     setFieldErrors({});
     setPendingFocusField(null);
@@ -985,11 +985,11 @@ export const CreateTicketPage = () => {
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={() => navigate('/tickets')}
+              onClick={() => navigate(submittedFeedbackId ? `/tickets/${submittedFeedbackId}` : '/tickets')}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700 disabled:opacity-50"
             >
               <Lucide.ListChecks size={16} aria-hidden="true" />
-              Xem phản ánh của tôi
+              {submittedFeedbackId ? 'Xem phản ánh vừa gửi' : 'Xem phản ánh của tôi'}
             </button>
             <button
               type="button"
@@ -1249,7 +1249,7 @@ export const CreateTicketPage = () => {
               ) : null}
               {aiImageUrls.length > 0 ? (
                 <p className="mt-2 text-xs">
-                  AI trả về {aiImageUrls.length} ảnh đã upload. Nếu hệ thống yêu cầu minh chứng khi gửi, vui lòng chọn lại ảnh ở bước Minh chứng.
+                  AI trả về {aiImageUrls.length} ảnh đã upload. Nếu muốn gửi kèm minh chứng, vui lòng chọn lại ảnh ở bước Minh chứng.
                 </p>
               ) : null}
             </div>
@@ -1394,47 +1394,75 @@ export const CreateTicketPage = () => {
               </header>
 
               <div className="space-y-5 p-5 sm:p-7 lg:p-8">
-                <label className="block">
+                <div className="block">
                   <span className="text-sm font-semibold dark:text-slate-100">Khu vực</span>
                   <span className="ml-1 text-error">*</span>
-                  <select
+                  <div
                     ref={areaFieldRef}
-                    value={areaId}
-                    onChange={(event) => {
-                      setAreaId(event.target.value);
-                      setLatitude(null);
-                      setLongitude(null);
-                      setLocationText('');
-                      clearFieldError('areaId');
-                      clearFieldError('location');
-                    }}
-                    disabled={areasLoading}
+                    tabIndex={-1}
                     aria-invalid={Boolean(fieldErrors.areaId)}
                     aria-describedby={fieldErrors.areaId ? 'area-error' : undefined}
-                    className={`mt-2.5 h-[52px] w-full rounded-xl border bg-base-100 px-4 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 text-[15px] font-medium outline-none transition focus:ring-2 ${
-                      fieldErrors.areaId
-                        ? 'border-error focus:border-error focus:ring-error/15'
-                        : 'border-base-300 focus:border-primary focus:ring-primary/15'
+                    className={`mt-2.5 rounded-xl outline-none transition ${
+                      fieldErrors.areaId ? 'ring-2 ring-error/15' : ''
                     }`}
                   >
-                    <option value="">
-                      {areasLoading ? 'Đang tải khu vực...' : 'Chọn khu vực xảy ra sự cố'}
-                    </option>
-                    {areas.map((area) => (
-                      <option key={getAreaId(area)} value={getAreaId(area)}>
-                        {getAreaName(area)}
-                      </option>
-                    ))}
-                  </select>
+                    <ManagerSelectMenu
+                      value={areaId}
+                      onChange={(value) => {
+                        setAreaId(String(value || ''));
+                        setLatitude(null);
+                        setLongitude(null);
+                        setLocationText('');
+                        clearFieldError('areaId');
+                        clearFieldError('location');
+                      }}
+                      disabled={areasLoading || Boolean(areasError) || areas.length === 0}
+                      ariaLabel="Chọn khu vực xảy ra sự cố"
+                      placeholder={
+                        areasLoading
+                          ? 'Đang tải khu vực...'
+                          : areasError
+                            ? 'Không tải được khu vực'
+                            : areas.length === 0
+                              ? 'Chưa có khu vực khả dụng'
+                              : 'Chọn khu vực xảy ra sự cố'
+                      }
+                      options={areas.map((area) => ({
+                        value: getAreaId(area),
+                        label: getAreaName(area),
+                      }))}
+                    />
+                  </div>
                   {fieldErrors.areaId ? (
                     <span id="area-error" className="mt-1.5 block text-xs font-medium text-error" role="alert">
                       {fieldErrors.areaId}
                     </span>
                   ) : null}
-                  <span className="mt-2 block text-xs leading-5 text-base-content/45">
-                    Danh sách khu vực được cập nhật tự động từ hệ thống.
-                  </span>
-                </label>
+                  {areasError ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-error" role="alert">
+                      <span>{areasError}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAreasReloadKey((current) => current + 1)}
+                        className="font-semibold text-blue-600 hover:underline dark:text-blue-300"
+                      >
+                        Thử lại
+                      </button>
+                    </div>
+                  ) : areasLoading ? (
+                    <span className="mt-2 block text-xs leading-5 text-base-content/45">
+                      Đang tải danh sách khu vực từ hệ thống...
+                    </span>
+                  ) : areas.length === 0 ? (
+                    <span className="mt-2 block text-xs leading-5 text-base-content/45">
+                      Chưa có khu vực đang hoạt động để gửi phản ánh.
+                    </span>
+                  ) : (
+                    <span className="mt-2 block text-xs leading-5 text-base-content/45">
+                      Danh sách khu vực được cập nhật tự động từ hệ thống.
+                    </span>
+                  )}
+                </div>
 
                 <div>
                   <div
@@ -1464,44 +1492,6 @@ export const CreateTicketPage = () => {
                   ) : null}
                 </div>
 
-                {showDuplicateWarning ? (
-                  <aside className="rounded-2xl border border-warning/25 bg-warning/8 p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/12 text-warning" aria-hidden="true">
-                        <Lucide.TriangleAlert size={17} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-semibold dark:text-slate-100">Có phản ánh tương tự gần vị trí này</h3>
-                        <p className="mt-1 text-xs leading-5 text-base-content/55">
-                          Hệ thống tìm thấy {duplicates.length} phản ánh có thể liên quan. Bạn có thể xem trước khi quyết định gửi mới.
-                        </p>
-                        <ul className="mt-3 space-y-2">
-                          {duplicates.slice(0, 3).map((duplicate, index) => (
-                            <li key={duplicate.feedbackId || index}>
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/tickets/${duplicate.feedbackId}`)}
-                                className="flex w-full items-center justify-between gap-3 rounded-xl border border-warning/15 bg-base-100 px-3 py-2 text-left text-xs transition hover:border-warning/35"
-                              >
-                                <span className="truncate font-medium">
-                                  {duplicate.title || 'Phản ánh tương tự'}
-                                </span>
-                                <Lucide.ArrowUpRight size={14} className="shrink-0" aria-hidden="true" />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                        <button
-                          type="button"
-                          onClick={() => setShowDuplicateWarning(false)}
-                          className="mt-3 text-xs font-semibold text-warning hover:underline"
-                        >
-                          Tôi vẫn muốn gửi phản ánh mới
-                        </button>
-                      </div>
-                    </div>
-                  </aside>
-                ) : null}
               </div>
             </section>
           ) : null}
@@ -1513,7 +1503,7 @@ export const CreateTicketPage = () => {
                   Thêm minh chứng
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-base-content/50">
-                  Hình ảnh hoặc video rõ ràng giúp việc xác minh và xử lý nhanh hơn.
+                  Vui lòng thêm ít nhất 1 ảnh hoặc video để hỗ trợ xác thực và xử lý phản ánh.
                 </p>
               </header>
 
@@ -1522,10 +1512,10 @@ export const CreateTicketPage = () => {
                   ref={attachmentFieldRef}
                   tabIndex={-1}
                   aria-invalid={Boolean(fieldErrors.attachments)}
-                  className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed bg-base-200/30 dark:border-slate-700 dark:bg-slate-950/70 p-5 text-center outline-none transition hover:bg-primary/5 ${
+                  className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed bg-base-200/30 dark:border-slate-700 dark:bg-slate-950/70 p-5 text-center outline-none transition hover:bg-blue-50/60 dark:hover:bg-blue-500/5 ${
                     fieldErrors.attachments
                       ? 'border-error ring-2 ring-error/15'
-                      : 'border-base-300 hover:border-primary/40'
+                      : 'border-base-300 hover:border-blue-400'
                   }`}
                 >
                   <input
@@ -1536,7 +1526,7 @@ export const CreateTicketPage = () => {
                     className="sr-only"
                     aria-describedby="evidence-upload-rules"
                   />
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300" aria-hidden="true">
                     <Lucide.UploadCloud size={23} />
                   </span>
                   <strong className="mt-4 text-sm font-semibold">
@@ -1804,7 +1794,7 @@ export const CreateTicketPage = () => {
                         </div>
                       ) : (
                         <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-                          Chưa có minh chứng được chọn.
+                          Vui lòng quay lại bước Minh chứng và thêm ít nhất 1 ảnh hoặc video.
                         </p>
                       )}
                     </article>

@@ -18,17 +18,18 @@ const DEFAULT_CENTER = [10.77653, 106.700981];
 const DEFAULT_ZOOM = 12;
 
 const PROCESSING_STATUSES = new Set([
-  'submitted',
-  'aireviewed',
+  'new',
+  'open',
   'verified',
+  'pending',
   'assigned',
   'inprogress',
   'submittedforapproval',
   'needrework',
+  'resolved',
 ]);
 
 const ENDED_STATUSES = new Set([
-  'resolved',
   'approved',
   'closed',
 ]);
@@ -40,9 +41,10 @@ const FILTERS = {
 };
 
 const STATUS_LABELS = {
-  submitted: 'Đã gửi',
-  aireviewed: 'Đã phân loại',
-  verified: 'Đã xác minh',
+  new: 'Đã tiếp nhận',
+  open: 'Đã tiếp nhận',
+  verified: 'Đã tiếp nhận',
+  pending: 'Chờ xử lý',
   assigned: 'Đã chuyển xử lý',
   inprogress: 'Đang xử lý',
   resolved: 'Đã có kết quả',
@@ -72,6 +74,8 @@ const getMarkerColor = (value) => {
   if (tone === 'rework') return '#f43f5e';
   return '#2563eb';
 };
+
+const getIncidentDetailState = () => ({});
 
 const createMarkerIcon = (status, count = 1) => {
   const color = getMarkerColor(status);
@@ -171,7 +175,8 @@ const Metric = ({ label, value, tone = 'blue' }) => {
 
 const IncidentListItem = ({ incident }) => (
   <Link
-    to={`/community/feed/${incident.feedbackId}`}
+    to={`/community/feed/${incident.incidentId}`}
+    state={getIncidentDetailState(incident)}
     className="public-map-preview__item group block rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
   >
     <div className="flex items-center justify-between gap-3">
@@ -186,7 +191,7 @@ const IncidentListItem = ({ incident }) => (
     </h3>
     <p className="mt-2 flex items-center gap-1.5 truncate text-xs text-slate-500 dark:text-slate-400">
       <Lucide.Layers3 size={13} aria-hidden="true" />
-      {incident.categoryName || 'Phản ánh đô thị'}
+      {incident.categoryName || 'Sự vụ đô thị'}
     </p>
   </Link>
 );
@@ -326,7 +331,7 @@ export const PublicMapPreview = ({ compact = false }) => {
     return (
       <>
         <PublicMapPreviewStyles />
-        <aside className="public-map-preview public-overview-panel relative overflow-hidden rounded-[28px] border p-4 shadow-[0_18px_48px_rgba(15,23,42,0.10)] backdrop-blur sm:p-5" aria-label="Tổng quan dữ liệu phản ánh công khai">
+        <aside className="public-map-preview public-overview-panel relative overflow-hidden rounded-[28px] border p-4 shadow-[0_18px_48px_rgba(15,23,42,0.10)] backdrop-blur sm:p-5" aria-label="Tổng quan dữ liệu sự vụ công khai">
           <div className="public-overview-divider flex items-center justify-between gap-4 border-b border-slate-100 pb-4 dark:border-white/10">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
@@ -366,13 +371,14 @@ export const PublicMapPreview = ({ compact = false }) => {
                       <Popup minWidth={220} maxWidth={270}>
                         <div className="space-y-2 font-sans">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-blue-600">
-                            {group.items.length > 1 ? `${group.items.length} phản ánh tại điểm này` : getStatusLabel(primaryIncident.status)}
+                            {group.items.length > 1 ? `${group.items.length} sự vụ tại điểm này` : getStatusLabel(primaryIncident.status)}
                           </p>
                           <h3 className="text-sm font-semibold leading-5 text-slate-950">
                             {primaryIncident.title}
                           </h3>
                           <Link
-                            to={`/community/feed/${primaryIncident.feedbackId}`}
+                            to={`/community/feed/${primaryIncident.incidentId}`}
+                            state={getIncidentDetailState(primaryIncident)}
                             className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700"
                           >
                             Xem chi tiết
@@ -437,8 +443,9 @@ export const PublicMapPreview = ({ compact = false }) => {
                 ) : recentItems.length > 0 ? (
                   recentItems.map((incident) => (
                     <Link
-                      key={incident.feedbackId}
-                      to={`/community/feed/${incident.feedbackId}`}
+                      key={incident.incidentId}
+                      to={`/community/feed/${incident.incidentId}`}
+                      state={getIncidentDetailState(incident)}
                       className="public-overview-item block rounded-2xl border border-slate-100 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.045]"
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -449,11 +456,11 @@ export const PublicMapPreview = ({ compact = false }) => {
                         <Lucide.ChevronRight size={14} className="text-slate-300" aria-hidden="true" />
                       </div>
                       <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-slate-900 dark:text-white">
-                        {incident.title || 'Phản ánh đô thị'}
+                        {incident.title || 'Sự vụ đô thị'}
                       </h3>
                       <p className="mt-2 flex items-center gap-1.5 truncate text-[11px] text-slate-400">
                         <Lucide.Layers3 size={12} aria-hidden="true" />
-                        {incident.categoryName || 'Phản ánh đô thị'}
+                        {incident.categoryName || 'Sự vụ đô thị'}
                       </p>
                     </Link>
                   ))
@@ -500,24 +507,24 @@ export const PublicMapPreview = ({ compact = false }) => {
             style={{ color: theme === 'dark' ? '#7dd3fc' : '#1d4ed8' }}
           >
             <Lucide.MapPinned size={15} aria-hidden="true" />
-            Bản đồ phản ánh công khai
+            Bản đồ sự vụ công khai
           </span>
           <h2
             id={compact ? undefined : 'public-tools-title'}
             className={`${compact ? 'mt-1 text-lg sm:text-xl' : 'mt-2 text-2xl sm:text-3xl'} font-semibold tracking-[-0.025em]`}
             style={{ color: theme === 'dark' ? '#f8fafc' : '#0f172a' }}
           >
-            {compact ? 'Bản đồ phản ánh gần đây' : 'Khám phá vấn đề đô thị theo từng khu vực'}
+            {compact ? 'Bản đồ sự vụ gần đây' : 'Khám phá vấn đề đô thị theo từng khu vực'}
           </h2>
           <p
             className={`${compact ? 'mt-1 text-xs leading-5' : 'mt-2 max-w-2xl text-sm leading-6'}`}
             style={{ color: theme === 'dark' ? '#a8b7cc' : '#475569' }}
           >
-            {compact ? 'Chọn marker để xem phản ánh và mở chi tiết.' : 'Chọn marker để xem phản ánh, theo dõi trạng thái và mở chi tiết ngay trên bảng tin cộng đồng.'}
+            {compact ? 'Chọn marker để xem sự vụ và mở chi tiết.' : 'Chọn marker để xem sự vụ, theo dõi trạng thái và mở chi tiết ngay trên bảng tin cộng đồng.'}
           </p>
         </div>
 
-        <div className={`${compact ? 'hidden' : 'flex'} flex-wrap items-center gap-2`} aria-label="Lọc nhanh phản ánh trên bản đồ">
+        <div className={`${compact ? 'hidden' : 'flex'} flex-wrap items-center gap-2`} aria-label="Lọc nhanh sự vụ trên bản đồ">
           {[
             [FILTERS.ALL, 'Tất cả', validIncidents.length],
             [FILTERS.PROCESSING, 'Đang xử lý', processingIncidents.length],
@@ -568,20 +575,21 @@ export const PublicMapPreview = ({ compact = false }) => {
                     <div className="space-y-3 font-sans">
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-blue-600">
-                          {group.items.length > 1 ? `${group.items.length} phản ánh tại điểm này` : getStatusLabel(primaryIncident.status)}
+                          {group.items.length > 1 ? `${group.items.length} sự vụ tại điểm này` : getStatusLabel(primaryIncident.status)}
                         </p>
                         <h3 className="mt-1 text-sm font-semibold leading-5 text-slate-950">
                           {primaryIncident.title}
                         </h3>
                       </div>
                       <p className="text-xs leading-5 text-slate-500">
-                        {primaryIncident.categoryName || 'Phản ánh đô thị'}
+                        {primaryIncident.categoryName || 'Sự vụ đô thị'}
                       </p>
                       <Link
-                        to={`/community/feed/${primaryIncident.feedbackId}`}
+                        to={`/community/feed/${primaryIncident.incidentId}`}
+                        state={getIncidentDetailState(primaryIncident)}
                         className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700"
                       >
-                        Xem chi tiết phản ánh
+                        Xem chi tiết sự vụ
                         <Lucide.ArrowUpRight size={13} aria-hidden="true" />
                       </Link>
                     </div>
@@ -606,7 +614,7 @@ export const PublicMapPreview = ({ compact = false }) => {
           </Link>
         </div>
 
-        <aside className={`public-map-preview__aside flex flex-col ${compact ? 'min-h-[360px] p-4 sm:min-h-[420px]' : 'min-h-[440px] p-5 sm:p-6 lg:min-h-[520px]'}`} aria-label="Phản ánh gần đây trên bản đồ">
+        <aside className={`public-map-preview__aside flex flex-col ${compact ? 'min-h-[360px] p-4 sm:min-h-[420px]' : 'min-h-[440px] p-5 sm:p-6 lg:min-h-[520px]'}`} aria-label="Sự vụ gần đây trên bản đồ">
           <div className={`grid grid-cols-3 ${compact ? 'gap-2' : 'gap-2.5'}`}>
             <Metric label="Có tọa độ" value={loading ? '—' : validIncidents.length} />
             <Metric label="Đang xử lý" value={loading ? '—' : processingIncidents.length} tone="amber" />
@@ -616,7 +624,7 @@ export const PublicMapPreview = ({ compact = false }) => {
           <div className={`${compact ? 'mt-4' : 'mt-6'} flex items-center justify-between gap-3`}>
             <div>
               <h3 className="text-base font-semibold text-slate-950 dark:text-white">Gần đây trên bản đồ</h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Chọn một phản ánh để xem đầy đủ nội dung.</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Chọn một sự vụ để xem đầy đủ nội dung.</p>
             </div>
             <Lucide.Radio size={17} className="text-blue-600 dark:text-blue-300" aria-hidden="true" />
           </div>
@@ -650,12 +658,12 @@ export const PublicMapPreview = ({ compact = false }) => {
               </div>
             ) : recentItems.length > 0 ? (
               recentItems.map((incident) => (
-                <IncidentListItem key={incident.feedbackId} incident={incident} />
+                <IncidentListItem key={incident.incidentId} incident={incident} />
               ))
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-6 text-center dark:border-white/15 dark:bg-white/[0.035]">
                 <Lucide.MapPinOff size={22} className="mx-auto text-slate-400" aria-hidden="true" />
-                <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Chưa có phản ánh phù hợp</p>
+                <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Chưa có sự vụ phù hợp</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Thử chọn một bộ lọc khác hoặc mở bản đồ đầy đủ.</p>
               </div>
             )}
