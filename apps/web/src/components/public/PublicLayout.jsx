@@ -53,6 +53,30 @@ export const PublicThemeStyles = () => (
       background-image: none !important;
     }
 
+    /* Public community pages use the same clean content canvas as the
+       authenticated resident view. Keep LandingPage marketing gradients intact. */
+    html:not([data-theme="dark"]) .public-page.public-community-shell {
+      background: #f6f8fb !important;
+      background-image: none !important;
+    }
+
+    html:not([data-theme="dark"]) .public-page.public-community-shell main,
+    html:not([data-theme="dark"]) .public-page.public-community-shell .public-community-content {
+      background: transparent !important;
+      background-image: none !important;
+    }
+
+    html[data-theme="dark"] .public-page.public-community-shell {
+      background: #050d1b !important;
+      background-image: none !important;
+    }
+
+    html[data-theme="dark"] .public-page.public-community-shell main,
+    html[data-theme="dark"] .public-page.public-community-shell .public-community-content {
+      background: transparent !important;
+      background-image: none !important;
+    }
+
     html[data-theme="dark"] .public-page {
       --public-page-bg: #050d1b;
       --public-surface: rgba(12, 27, 50, 0.92);
@@ -385,8 +409,8 @@ export const PublicThemeStyles = () => (
   `}</style>
 );
 
-export const PublicLayout = ({ children }) => (
-  <div className="public-page min-h-screen overflow-x-clip text-slate-900">
+export const PublicLayout = ({ children, className = '' }) => (
+  <div className={`public-page min-h-screen overflow-x-clip text-slate-900 ${className}`.trim()}>
     <PublicThemeStyles />
     <PublicHeader />
     <div className="relative z-0">{children}</div>

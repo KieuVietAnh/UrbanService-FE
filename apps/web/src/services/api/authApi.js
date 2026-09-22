@@ -36,7 +36,10 @@ const saveUserSession = (response) => {
   const userPayload = response?.user ?? response?.data?.user ?? payload;
   const token = extractToken(response);
   const refreshToken = extractRefreshToken(response);
-  const normalizedRole = normalizeRole(userPayload?.role);
+  const responseCode = response?.code ?? payload?.code ?? null;
+  const normalizedRole = normalizeRole(
+    userPayload?.role || (responseCode === 'EMAIL_NOT_VERIFIED' ? 'SERVICEUSER' : undefined)
+  );
 
   const sessionUser = {
     userId: userPayload?.userId ?? userPayload?.id,
@@ -60,6 +63,7 @@ const saveUserSession = (response) => {
     token,
     refreshToken,
     user: sessionUser,
+    code: responseCode,
   };
 };
 
@@ -81,6 +85,11 @@ export const authApi = {
 
   async requestForgotPasswordOtp(email) {
     await sharedAuthApi.sendForgotPasswordOtp(email);
+    return { success: true };
+  },
+
+  async verifyForgotPasswordOtp(email, otp) {
+    await sharedAuthApi.verifyForgotPasswordOtp(email, otp);
     return { success: true };
   },
 

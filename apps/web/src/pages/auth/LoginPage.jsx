@@ -1,5 +1,5 @@
 // src/pages/auth/LoginPage.jsx
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Link,
   useLocation,
@@ -16,6 +16,7 @@ import { getRoleEntryPath } from '../../utils/roleMap';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
+const FORGOT_OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 const getAuthErrorMessage = (err, mode = 'login') => {
   const status = err?.status ?? err?.response?.status;
@@ -152,8 +153,20 @@ export const LoginPage = () => {
   const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
   const [forgotError, setForgotError] = useState('');
   const [forgotMessage, setForgotMessage] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotResendCountdown, setForgotResendCountdown] = useState(0);
   const [forgotLoading, setForgotLoading] = useState(false);
   const forgotOtpRefs = useRef([]);
+
+  useEffect(() => {
+    if (forgotResendCountdown <= 0) return undefined;
+
+    const timer = window.setInterval(() => {
+      setForgotResendCountdown((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [forgotResendCountdown]);
 
   const resolveRedirect = (role) => (
     getSafeInternalPath(searchParams.get('redirect')) ||
@@ -187,8 +200,8 @@ export const LoginPage = () => {
     try {
       const user = await login(normalizedEmail, password);
 
-      if (!user?.isVerified) {
-        navigate('/verify-email');
+      if (user?.authCode === 'EMAIL_NOT_VERIFIED' || !user?.isVerified) {
+        navigate('/verify-email', { replace: true });
         return;
       }
 
@@ -217,6 +230,8 @@ export const LoginPage = () => {
     setShowForgotConfirmPassword(false);
     setForgotError('');
     setForgotMessage('');
+    setForgotSuccess(false);
+    setForgotResendCountdown(0);
   };
 
   const closeForgotPassword = () => {
@@ -229,6 +244,8 @@ export const LoginPage = () => {
     setShowForgotConfirmPassword(false);
     setForgotError('');
     setForgotMessage('');
+    setForgotSuccess(false);
+    setForgotResendCountdown(0);
   };
 
 
@@ -291,7 +308,8 @@ export const LoginPage = () => {
       setForgotLoading(true);
       try {
         await authApi.requestForgotPasswordOtp(normalizedEmail);
-        setForgotStep('reset');
+        setForgotStep('verify');
+        setForgotResendCountdown(FORGOT_OTP_RESEND_COOLDOWN_SECONDS);
         setForgotMessage('Nếu email hợp lệ, mã OTP đã được gửi. Mã có hiệu lực trong 5 phút.');
       } catch {
         setForgotError('Không thể gửi mã OTP. Vui lòng thử lại.');
@@ -304,6 +322,21 @@ export const LoginPage = () => {
     const normalizedOtp = forgotOtp.trim();
     if (!/^\d{6}$/.test(normalizedOtp)) {
       setForgotError('Mã OTP phải gồm đúng 6 chữ số.');
+      return;
+    }
+
+    if (forgotStep === 'verify') {
+      setForgotLoading(true);
+      try {
+        await authApi.verifyForgotPasswordOtp(normalizedEmail, normalizedOtp);
+        setForgotStep('reset');
+        setForgotMessage('');
+      } catch (verifyError) {
+        const apiMessage = verifyError?.response?.data?.msg;
+        setForgotError(apiMessage || 'Mã OTP không đúng hoặc đã hết hạn. Vui lòng kiểm tra và thử lại.');
+      } finally {
+        setForgotLoading(false);
+      }
       return;
     }
 
@@ -330,7 +363,9 @@ export const LoginPage = () => {
         forgotPassword
       );
       setEmail(normalizedEmail);
-      setForgotMessage('Đổi mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.');
+      setForgotStep('success');
+      setForgotMessage('');
+      setForgotSuccess(true);
       setForgotOtp('');
       setForgotPassword('');
       setForgotConfirmPassword('');
@@ -456,11 +491,25 @@ export const LoginPage = () => {
             {forgotMode ? 'Khôi phục tài khoản UrbanMind' : 'Cổng tài khoản UrbanMind'}
           </span>
           <h1 id="auth-page-title" className={`auth-login-title font-bold leading-tight tracking-[-0.035em] text-slate-950 dark:text-white ${forgotMode ? 'mt-4 text-[28px]' : 'mt-5 text-[30px]'}`}>
-            {forgotMode ? 'Đặt lại mật khẩu' : 'Chào mừng bạn trở lại'}
+            {forgotMode
+              ? forgotSuccess
+                ? 'Đổi mật khẩu thành công'
+                : forgotStep === 'request'
+                  ? 'Quên mật khẩu'
+                  : forgotStep === 'verify'
+                    ? 'Xác thực mã OTP'
+                    : 'Tạo mật khẩu mới'
+              : 'Chào mừng bạn trở lại'}
           </h1>
           <p className="auth-login-description mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
             {forgotMode
-              ? 'Xác minh email bằng mã OTP rồi tạo mật khẩu mới cho tài khoản của bạn.'
+              ? (forgotSuccess
+                ? 'Mật khẩu của bạn đã được cập nhật. Hãy quay lại đăng nhập bằng mật khẩu mới.'
+                : forgotStep === 'request'
+                  ? 'Nhập email tài khoản để nhận mã xác thực.'
+                  : forgotStep === 'verify'
+                    ? 'Nhập mã OTP 6 chữ số đã được gửi tới email của bạn.'
+                    : 'Tạo mật khẩu mới sau khi mã OTP đã được xác thực.')
               : 'Đăng nhập để theo dõi phản ánh, cập nhật tiến độ và tham gia trao đổi cùng cộng đồng.'}
           </p>
         </header>
@@ -582,19 +631,50 @@ export const LoginPage = () => {
         ) : null}
 
         {forgotMode ? (
+          forgotSuccess ? (
+            <section className="relative z-10 mt-6 text-center" aria-live="polite">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300">
+                <Lucide.CircleCheckBig size={32} aria-hidden="true" />
+              </div>
+              <h2 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
+                Mật khẩu đã được cập nhật
+              </h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Bạn có thể đăng nhập lại bằng mật khẩu mới vừa tạo.
+              </p>
+              <button
+                type="button"
+                onClick={closeForgotPassword}
+                className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
+              >
+                <Lucide.ArrowLeft size={17} aria-hidden="true" />
+                Quay lại đăng nhập
+              </button>
+            </section>
+          ) : (
           <section className="relative z-10 mt-5" aria-labelledby="forgot-password-title">
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/55">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
-                {forgotStep === 'request' ? <Lucide.Mail size={17} aria-hidden="true" /> : <Lucide.ShieldCheck size={17} aria-hidden="true" />}
+                {forgotStep === 'request'
+                  ? <Lucide.Mail size={17} aria-hidden="true" />
+                  : forgotStep === 'verify'
+                    ? <Lucide.ShieldCheck size={17} aria-hidden="true" />
+                    : <Lucide.KeyRound size={17} aria-hidden="true" />}
               </span>
               <div className="min-w-0">
                 <h2 id="forgot-password-title" className="text-sm font-bold text-slate-900 dark:text-white">
-                  {forgotStep === 'request' ? 'Nhận mã xác thực' : 'Nhập OTP và mật khẩu mới'}
+                  {forgotStep === 'request'
+                    ? 'Nhận mã xác thực'
+                    : forgotStep === 'verify'
+                      ? 'Xác thực OTP'
+                      : 'Đặt mật khẩu mới'}
                 </h2>
                 <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
                   {forgotStep === 'request'
                     ? 'UrbanMind sẽ gửi mã OTP đến email đã đăng ký.'
-                    : `OTP gồm 6 chữ số · Mật khẩu tối thiểu ${MIN_PASSWORD_LENGTH} ký tự.`}
+                    : forgotStep === 'verify'
+                      ? 'OTP gồm đúng 6 chữ số · hiệu lực 5 phút · tối đa 5 lần nhập sai.'
+                      : `Mật khẩu mới phải có tối thiểu ${MIN_PASSWORD_LENGTH} ký tự.`}
                 </p>
               </div>
             </div>
@@ -630,10 +710,13 @@ export const LoginPage = () => {
                       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Email xác minh</p>
                       <p className="mt-0.5 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{forgotEmail}</p>
                     </div>
-                    <button type="button" onClick={() => { setForgotStep('request'); setForgotOtp(''); setForgotPassword(''); setForgotConfirmPassword(''); setForgotMessage(''); setForgotError(''); }}
-                      className="shrink-0 text-xs font-semibold text-blue-700 hover:underline dark:text-blue-300">Đổi email</button>
+                    {forgotStep === 'verify' ? (
+                      <button type="button" onClick={() => { setForgotStep('request'); setForgotOtp(''); setForgotPassword(''); setForgotConfirmPassword(''); setForgotMessage(''); setForgotError(''); setForgotResendCountdown(0); }}
+                        className="shrink-0 text-xs font-semibold text-blue-700 hover:underline dark:text-blue-300">Đổi email</button>
+                    ) : null}
                   </div>
 
+                  {forgotStep === 'verify' ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Mã OTP</label>
@@ -677,7 +760,9 @@ export const LoginPage = () => {
                       ))}
                     </div>
                   </div>
+                  ) : null}
 
+                  {forgotStep === 'reset' ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <label htmlFor="forgot-new-password" className="text-xs font-semibold text-slate-700 dark:text-slate-300">Mật khẩu mới</label>
@@ -714,17 +799,46 @@ export const LoginPage = () => {
                       </div>
                     </div>
                   </div>
+                  ) : null}
                 </>
               )}
 
               <button type="submit" disabled={forgotLoading} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
-                {forgotLoading ? <><span className="loading loading-spinner loading-sm" aria-hidden="true" />Đang xử lý...</> : forgotStep === 'request' ? <>Gửi mã OTP<Lucide.Send size={16} aria-hidden="true" /></> : <>Đổi mật khẩu<Lucide.Check size={16} aria-hidden="true" /></>}
+                {forgotLoading
+                  ? <><span className="loading loading-spinner loading-sm" aria-hidden="true" />Đang xử lý...</>
+                  : forgotStep === 'request'
+                    ? <>Gửi mã OTP<Lucide.Send size={16} aria-hidden="true" /></>
+                    : forgotStep === 'verify'
+                      ? <>Xác thực OTP<Lucide.ShieldCheck size={16} aria-hidden="true" /></>
+                      : <>Đổi mật khẩu<Lucide.Check size={16} aria-hidden="true" /></>}
               </button>
 
-              {forgotStep === 'reset' ? (
-                <button type="button" onClick={() => { setForgotStep('request'); setForgotOtp(''); setForgotPassword(''); setForgotConfirmPassword(''); setForgotMessage(''); setForgotError(''); }}
-                  className="w-full text-center text-xs font-semibold text-blue-700 hover:underline dark:text-blue-300">
-                  Gửi lại mã OTP
+              {forgotStep === 'verify' ? (
+                <button
+                  type="button"
+                  disabled={forgotLoading || forgotResendCountdown > 0}
+                  onClick={async () => {
+                    if (forgotLoading || forgotResendCountdown > 0) return;
+                    setForgotLoading(true);
+                    setForgotError('');
+                    setForgotMessage('');
+                    try {
+                      await authApi.requestForgotPasswordOtp(forgotEmail.trim());
+                      setForgotOtp('');
+                      setForgotResendCountdown(FORGOT_OTP_RESEND_COOLDOWN_SECONDS);
+                      setForgotMessage('Nếu email hợp lệ, mã OTP mới đã được gửi.');
+                    } catch (resendError) {
+                      const apiMessage = resendError?.response?.data?.msg;
+                      setForgotError(apiMessage || 'Không thể gửi lại mã OTP. Vui lòng thử lại.');
+                    } finally {
+                      setForgotLoading(false);
+                    }
+                  }}
+                  className="w-full text-center text-xs font-semibold text-blue-700 hover:underline disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline dark:text-blue-300 dark:disabled:text-slate-500"
+                >
+                  {forgotResendCountdown > 0
+                    ? `Gửi lại mã sau ${forgotResendCountdown}s`
+                    : 'Gửi lại mã OTP'}
                 </button>
               ) : null}
             </form>
@@ -733,6 +847,7 @@ export const LoginPage = () => {
               <Lucide.ArrowLeft size={16} aria-hidden="true" />Quay lại đăng nhập
             </button>
           </section>
+          )
         ) : null}
 
         {!forgotMode ? (
