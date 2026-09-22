@@ -183,7 +183,7 @@ export const AuthProvider = ({ children }) => {
       setSessionExpired(false);
       setTokenRevision((current) => current + 1);
       setUser(updatedUser);
-      return updatedUser;
+      return { ...updatedUser, authCode: res?.code || null };
     } finally {
       setLoading(false);
     }
