@@ -684,19 +684,14 @@ const TicketListSkeleton = () => (
 export const TicketListPage = () => {
   const pageRootRef = useRef(null);
   const filtersSectionRef = useRef(null);
+  const listSectionRef = useRef(null);
+  const listScrollTimerRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [restoredContext] = useState(() => {
     const storedContext = readTicketListReturnContext();
     const restoreTicketId = location.state?.restoreTicketId;
-    const isSameListHistoryEntry = Boolean(
-      storedContext?.locationKey
-      && location.key
-      && storedContext.locationKey === location.key
-    );
-
-    if (!restoreTicketId && !isSameListHistoryEntry) return null;
 
     if (!restoreTicketId) return storedContext;
 
@@ -706,7 +701,6 @@ export const TicketListPage = () => {
       pendingRestore: true,
     };
   });
-  const shouldRestoreListContext = Boolean(restoredContext?.pendingRestore);
   const restoreContextRef = useRef(restoredContext);
   const [cachedTickets] = useState(() => (
     readSessionArray(TICKET_LIST_SNAPSHOT_STORAGE_KEY)
@@ -755,17 +749,6 @@ export const TicketListPage = () => {
   const previewRequestedIdsRef = useRef(new Set());
   const deferredSearch = useDeferredValue(search);
   const pageSize = 6;
-
-  useEffect(() => {
-    if (shouldRestoreListContext) return;
-
-    try {
-      window.sessionStorage.removeItem(TICKET_LIST_RETURN_STORAGE_KEY);
-    } catch {
-      // Storage can be unavailable in private mode.
-    }
-    restoreContextRef.current = null;
-  }, [shouldRestoreListContext]);
 
   const loadTickets = useCallback(async () => {
     const hasCachedTickets = cachedTickets.length > 0;
@@ -1114,7 +1097,6 @@ export const TicketListPage = () => {
   const handleOpenTicket = (ticketId) => {
     writeTicketListReturnContext({
       from: currentListPath,
-      locationKey: location.key,
       scrollY: document.querySelector('[data-dashboard-scroll-container]')?.scrollTop || 0,
       ticketId: String(ticketId),
       page: safeCurrentPage,
@@ -1154,16 +1136,51 @@ export const TicketListPage = () => {
     restoreContextRef.current = null;
   };
 
+  const requestListScrollAfterFilter = () => {
+    if (listScrollTimerRef.current !== null) {
+      window.clearTimeout(listScrollTimerRef.current);
+    }
+
+    listScrollTimerRef.current = window.setTimeout(() => {
+      const target = listSectionRef.current;
+      const scrollContainer = document.querySelector(
+        '[data-dashboard-scroll-container]'
+      );
+
+      if (!target || !scrollContainer) return;
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const targetTop = Math.max(
+        0,
+        scrollContainer.scrollTop + targetRect.top - containerRect.top - 18
+      );
+
+      scrollContainer.scrollTo({
+        top: targetTop,
+        left: 0,
+        behavior: 'smooth',
+      });
+    }, 90);
+  };
 
   const handleSummaryFilter = (nextStatus) => {
     cancelPendingReturnRestore();
+    requestListScrollAfterFilter();
     setStatus(nextStatus);
     setOpenMenu(null);
     setCurrentPage(1);
   };
 
+  useEffect(() => () => {
+    if (listScrollTimerRef.current !== null) {
+      window.clearTimeout(listScrollTimerRef.current);
+    }
+  }, []);
+
   const clearFilters = () => {
     cancelPendingReturnRestore();
+    requestListScrollAfterFilter();
     setSearch('');
     setStatus('');
     setCategoryId('');
@@ -1426,7 +1443,8 @@ export const TicketListPage = () => {
                     options={categoryOptions}
                     onChange={(nextValue) => {
                       cancelPendingReturnRestore();
-                                        setCategoryId(nextValue);
+                      requestListScrollAfterFilter();
+                      setCategoryId(nextValue);
                       setCurrentPage(1);
                     }}
                     icon={Lucide.Tags}
@@ -1440,7 +1458,8 @@ export const TicketListPage = () => {
                     options={STATUS_OPTIONS}
                     onChange={(nextValue) => {
                       cancelPendingReturnRestore();
-                                        setStatus(nextValue);
+                      requestListScrollAfterFilter();
+                      setStatus(nextValue);
                       setCurrentPage(1);
                     }}
                     icon={Lucide.ListFilter}
@@ -1454,7 +1473,8 @@ export const TicketListPage = () => {
                     options={SORT_OPTIONS}
                     onChange={(nextValue) => {
                       cancelPendingReturnRestore();
-                                        setSortKey(nextValue);
+                      requestListScrollAfterFilter();
+                      setSortKey(nextValue);
                       setCurrentPage(1);
                     }}
                     icon={Lucide.ArrowUpDown}
@@ -1485,7 +1505,7 @@ export const TicketListPage = () => {
               <h2 id="ticket-list-title" className="sr-only">Danh sách phản ánh</h2>
 
               <div className="relative">
-                <div className="citizen-ticket-results-shell scroll-mt-28">
+                <div ref={listSectionRef} className="citizen-ticket-results-shell scroll-mt-28">
               {loading ? (
                 <div className="citizen-ticket-panel overflow-hidden rounded-[24px] border">
                   <TicketListSkeleton />
@@ -1692,7 +1712,7 @@ export const TicketListPage = () => {
             </section>
           </div>
 
-          <aside className="space-y-5 self-start" aria-label="Thông tin hỗ trợ phản ánh">
+          <aside className="h-full space-y-5 self-stretch" aria-label="Thông tin hỗ trợ phản ánh">
             <section className="citizen-ticket-side-card citizen-ticket-side-visual relative min-h-[198px] overflow-hidden rounded-[24px] border">
               <img
                 src={ticketSideArt}
@@ -1714,6 +1734,7 @@ export const TicketListPage = () => {
               </div>
             </section>
 
+            <div className="space-y-5 xl:sticky xl:top-[88px]">
             {summary.awaitingReview > 0 ? (
               <section className="citizen-ticket-side-card overflow-hidden rounded-[24px] border" aria-labelledby="ticket-attention-title">
                 <div className="p-5 pb-4">
@@ -1843,6 +1864,7 @@ export const TicketListPage = () => {
                 <p className="mt-4 text-sm text-[var(--public-muted)]">Chưa có cập nhật mới.</p>
               )}
             </section>
+            </div>
           </aside>
         </div>
       </main>

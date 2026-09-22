@@ -19,10 +19,12 @@ import {
 const AI_DOCK_STORAGE_KEY = 'urbanmind-ai-dock-position';
 const AI_FEEDBACK_DRAFT_STORAGE_PREFIX = 'urbanmind:ai-feedback-draft';
 const AI_ACTIVE_CONVERSATION_STORAGE_PREFIX = 'urbanmind:ai-active-conversation';
+const AI_SYNC_EVENT_STORAGE_PREFIX = 'urbanmind:ai-sync-event';
 const AI_BUTTON_SIZE = 56;
 const AI_MIN_TOP = 96;
 const AI_CITIZEN_BOTTOM_GAP = 112;
 const AI_DRAG_THRESHOLD = 6;
+const AI_SYNC_INTERVAL_MS = 5000;
 
 const DRAFT_STEPS = {
   IDLE: 'idle',
@@ -90,12 +92,33 @@ const getAiConversationId = (payload) => (
   null
 );
 
-const normalizeAiMessage = (message, index = 0) => ({
-  id: message?.messageId || message?.id || `${message?.createdAt || Date.now()}-${index}`,
-  sender: String(message?.senderType || message?.sender || '').toLowerCase().includes('user') ? 'user' : 'ai',
-  text: getAiMessageText(message),
-  createdAt: message?.createdAt,
-});
+const normalizeAiMessage = (message, index = 0) => {
+  const rawSender = String(
+    message?.senderType ||
+    message?.sender ||
+    message?.role ||
+    message?.messageType ||
+    message?.type ||
+    ''
+  ).toLowerCase();
+  const text = getAiMessageText(message);
+  const normalizedText = String(text || '').trim().toLowerCase();
+  const hidden = (
+    rawSender.includes('system') ||
+    rawSender.includes('safety') ||
+    rawSender.includes('moderation') ||
+    normalizedText === 'user safety: safe' ||
+    normalizedText.startsWith('user safety:')
+  );
+
+  return {
+    id: message?.messageId || message?.id || `${message?.createdAt || Date.now()}-${index}`,
+    sender: rawSender.includes('user') ? 'user' : 'ai',
+    text,
+    createdAt: message?.createdAt,
+    hidden,
+  };
+};
 
 const dedupeAiConversations = (items) => {
   const byConversationId = new Map();
@@ -437,6 +460,23 @@ export const CitizenAiCopilot = () => {
   const pendingAiConversationKeysRef = useRef(new Set());
   const draftStorageKey = `${AI_FEEDBACK_DRAFT_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
   const activeConversationStorageKey = `${AI_ACTIVE_CONVERSATION_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
+  const aiSyncEventStorageKey = `${AI_SYNC_EVENT_STORAGE_PREFIX}:${user?.userId || 'anonymous'}`;
+
+  const announceAiSync = useCallback((reason = 'changed') => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      window.localStorage.setItem(
+        aiSyncEventStorageKey,
+        JSON.stringify({
+          reason,
+          at: Date.now(),
+        })
+      );
+    } catch (error) {
+      console.warn('Unable to announce AI conversation sync', error);
+    }
+  }, [aiSyncEventStorageKey]);
 
   useEffect(() => {
     if (routeFeedbackId) {
@@ -648,7 +688,7 @@ const getAiDockTop = (dock) => {
             setChatMessages(
               (Array.isArray(messages) ? messages : [])
                 .map(normalizeAiMessage)
-                .filter((message) => message.text)
+                .filter((message) => message.text && !message.hidden)
             );
           } catch (error) {
             console.warn('Unable to resume active AI conversation', error);
@@ -675,6 +715,139 @@ const getAiDockTop = (dock) => {
     loadConversations();
     loadStaffTickets();
   }, [chatOpen, loadConversations, loadStaffTickets]);
+
+  useEffect(() => {
+    if (!chatOpen || activeSupportChannel !== 'ai') return undefined;
+
+    let cancelled = false;
+    let syncInFlight = false;
+
+    const getConversationSignature = (conversation) => (
+      conversation
+        ? [
+            String(conversation?.conversationId ?? conversation?.id ?? ''),
+            conversation?.title || '',
+            conversation?.lastMessage || '',
+            conversation?.lastMessageAt || conversation?.updatedAt || '',
+            Number(conversation?.messageCount) || 0,
+          ].join('|')
+        : ''
+    );
+
+    const syncAiSilently = async ({ forceMessages = false } = {}) => {
+      if (cancelled || syncInFlight) return;
+
+      syncInFlight = true;
+
+      try {
+        const nextConversations = dedupeAiConversations(
+          await toolsApi.getAiConversations()
+        );
+
+        const activeId = activeConversationIdRef.current;
+        let activeConversationChanged = false;
+
+        setConversations((current) => {
+          const currentSignature = JSON.stringify(
+            current.map(getConversationSignature)
+          );
+          const nextSignature = JSON.stringify(
+            nextConversations.map(getConversationSignature)
+          );
+
+          if (activeId != null) {
+            const currentActive = current.find((item) => (
+              String(item?.conversationId ?? item?.id) === String(activeId)
+            ));
+            const nextActive = nextConversations.find((item) => (
+              String(item?.conversationId ?? item?.id) === String(activeId)
+            ));
+            activeConversationChanged = (
+              getConversationSignature(currentActive) !==
+              getConversationSignature(nextActive)
+            );
+          }
+
+          return currentSignature === nextSignature
+            ? current
+            : nextConversations;
+        });
+
+        const canRefreshMessages =
+          activeId != null &&
+          draftStep === DRAFT_STEPS.IDLE &&
+          !pendingAiConversationKeysRef.current.has(String(activeId));
+
+        if (canRefreshMessages && (forceMessages || activeConversationChanged)) {
+          const nextMessages = (
+            await toolsApi.getAiConversationMessages(activeId)
+          )
+            .map(normalizeAiMessage)
+            .filter((message) => message.text && !message.hidden);
+
+          if (!cancelled) {
+            setChatMessages((current) => {
+              const currentSignature = JSON.stringify(
+                current.map((message) => [
+                  String(message?.id ?? ''),
+                  message?.sender || '',
+                  message?.text || '',
+                  message?.createdAt || '',
+                ])
+              );
+              const nextSignature = JSON.stringify(
+                nextMessages.map((message) => [
+                  String(message?.id ?? ''),
+                  message?.sender || '',
+                  message?.text || '',
+                  message?.createdAt || '',
+                ])
+              );
+
+              return currentSignature === nextSignature
+                ? current
+                : nextMessages;
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('Unable to silently sync AI conversations', error);
+      } finally {
+        syncInFlight = false;
+      }
+    };
+
+    const intervalId = window.setInterval(
+      () => syncAiSilently(),
+      AI_SYNC_INTERVAL_MS
+    );
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncAiSilently({ forceMessages: true });
+      }
+    };
+
+    const handleStorageSync = (event) => {
+      if (event.key !== aiSyncEventStorageKey || !event.newValue) return;
+      syncAiSilently({ forceMessages: true });
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('storage', handleStorageSync);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('storage', handleStorageSync);
+    };
+  }, [
+    activeSupportChannel,
+    aiSyncEventStorageKey,
+    chatOpen,
+    draftStep,
+  ]);
 
   useEffect(() => {
     if (!chatOpen || activeSupportChannel !== 'ai') return undefined;
@@ -808,7 +981,7 @@ const selectConversation = async (conversationId) => {
     setMessagesLoading(true);
     try {
       const messages = await toolsApi.getAiConversationMessages(conversationId);
-      setChatMessages(messages.map(normalizeAiMessage).filter((message) => message.text));
+      setChatMessages(messages.map(normalizeAiMessage).filter((message) => message.text && !message.hidden));
     } catch {
   setChatMessages((current) => [
     ...current,
@@ -853,6 +1026,7 @@ const selectConversation = async (conversationId) => {
         String(item?.conversationId ?? item?.id) !== conversationKey
       ));
       setConversations(remaining);
+      announceAiSync('conversation-deleted');
 
       const isActiveConversation = String(activeConversationIdRef.current ?? '') === conversationKey;
       if (isActiveConversation) {
@@ -1081,7 +1255,53 @@ const selectConversation = async (conversationId) => {
     }
 
     if (DRAFT_INTENT_REGEX.test(userMsg)) {
-      startDraftFlow();
+      pendingAiConversationKeysRef.current.add(requestedConversationKey);
+      setPendingAiConversationKeys([...pendingAiConversationKeysRef.current]);
+
+      try {
+        const payload = {
+          conversationId: requestedConversationId ?? null,
+          message: userMsg,
+          ...(requestedConversationId == null && routeFeedbackId ? { feedbackId: routeFeedbackId } : {}),
+        };
+        const response = await toolsApi.getAiChatReply(payload);
+        const nextConversationId = getAiConversationId(response);
+
+        if (nextConversationId != null) {
+          setNewConversationMode(false);
+          activeConversationIdRef.current = nextConversationId;
+          setActiveConversationId(nextConversationId);
+
+          try {
+            window.localStorage.setItem(
+              activeConversationStorageKey,
+              String(nextConversationId)
+            );
+          } catch (error) {
+            console.warn('Unable to persist active AI conversation', error);
+          }
+        }
+
+        // Keep the guided feedback flow deterministic on the FE, but make
+        // sure the first intent message has already created/resumed a real
+        // backend conversation before entering that flow.
+        startDraftFlow();
+        loadConversations();
+        announceAiSync('conversation-created');
+      } catch (error) {
+        setChatMessages((current) => [
+          ...current,
+          {
+            sender: 'ai',
+            text: error?.message
+              || 'Chưa thể lưu hội thoại AI mới. Vui lòng thử lại để đảm bảo đoạn chat được giữ lại.',
+          },
+        ]);
+      } finally {
+        pendingAiConversationKeysRef.current.delete(requestedConversationKey);
+        setPendingAiConversationKeys([...pendingAiConversationKeysRef.current]);
+      }
+
       return;
     }
 
@@ -1140,6 +1360,7 @@ const selectConversation = async (conversationId) => {
         ]);
       }
       loadConversations();
+      announceAiSync('message-sent');
     } catch (error) {
       if (isRequestConversationStillActive()) {
         setChatMessages((current) => [
