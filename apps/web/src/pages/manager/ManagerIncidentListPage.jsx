@@ -8,7 +8,6 @@ import { ManagerListRefreshIndicator, ManagerPageHeader } from '../../components
 
 const PAGE_SIZE = 10;
 const SMART_SEARCH_PAGE_SIZE = 100;
-const SMART_SEARCH_MAX_ITEMS = 1000;
 
 const INCIDENT_LIST_SNAPSHOT_KEY_BASE = 'urbanservice-management-incident-list-snapshot-v2';
 const INCIDENT_RETURN_STORAGE_KEY_BASE = 'urbanservice-management-incident-return-v2';
@@ -560,7 +559,6 @@ export const IncidentManagement = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [refreshError, setRefreshError] = useState('');
-  const [searchTruncated, setSearchTruncated] = useState(false);
 
   const updateFilters = useCallback((patch) => {
     const next = new URLSearchParams(searchParams);
@@ -650,7 +648,6 @@ export const IncidentManagement = () => {
           return rightTime - leftTime;
         });
 
-        setSearchTruncated(false);
         const totalItems = matched.length;
         const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
         const safePageNumber = Math.min(pageNumber, totalResultPages);
@@ -703,7 +700,6 @@ export const IncidentManagement = () => {
           return rightTime - leftTime;
         });
 
-        setSearchTruncated(false);
         const totalItems = matchedCategory.length;
         const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
         const safePageNumber = Math.min(pageNumber, totalResultPages);
@@ -761,8 +757,6 @@ export const IncidentManagement = () => {
           const rightTime = new Date(right?.updatedAt ?? right?.createdAt ?? 0).getTime() || 0;
           return rightTime - leftTime;
         });
-
-        setSearchTruncated(false);
         const totalItems = matched.length;
         const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
         const safePageNumber = Math.min(pageNumber, totalResultPages);
@@ -806,17 +800,11 @@ export const IncidentManagement = () => {
           collected.push(...normalizedPage.items);
           totalPages = normalizedPage.pagination.totalPages;
           requestedPage += 1;
-        } while (
-          requestedPage <= totalPages &&
-          collected.length < SMART_SEARCH_MAX_ITEMS
-        );
+        } while (requestedPage <= totalPages);
 
-        const reachedSearchLimit = collected.length >= SMART_SEARCH_MAX_ITEMS && requestedPage <= totalPages;
         const matched = collected.filter((incident) =>
           matchesSmartSearch(incident, normalizedSearch)
         );
-
-        setSearchTruncated(reachedSearchLimit);
 
         const totalItems = matched.length;
         const totalResultPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
@@ -835,7 +823,6 @@ export const IncidentManagement = () => {
           hasNextPage: safePageNumber < totalResultPages,
         });
       } else {
-        setSearchTruncated(false);
         const response = await incidentManagementApi.getIncidents({
           pageNumber,
           pageSize: PAGE_SIZE,
@@ -863,7 +850,6 @@ export const IncidentManagement = () => {
       } else {
         setError(message);
         setIncidents([]);
-        setSearchTruncated(false);
       }
     } finally {
       if (requestId === requestIdRef.current) {
@@ -1069,12 +1055,6 @@ export const IncidentManagement = () => {
                   <span className="manager-active-filter-chip">
                     <Lucide.MapPin size={13} aria-hidden="true" />
                     {getOptionName(selectedArea)}
-                  </span>
-                ) : null}
-                {searchTruncated ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20" title={`Tìm kiếm cục bộ đang giới hạn ${SMART_SEARCH_MAX_ITEMS.toLocaleString('vi-VN')} sự vụ đầu tiên theo bộ lọc hiện tại.`}>
-                    <Lucide.AlertTriangle size={13} aria-hidden="true" />
-                    Tìm trong {SMART_SEARCH_MAX_ITEMS.toLocaleString('vi-VN')} sự vụ đầu tiên
                   </span>
                 ) : null}
               </div>

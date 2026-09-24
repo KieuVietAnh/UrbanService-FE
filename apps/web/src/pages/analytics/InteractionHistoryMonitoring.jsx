@@ -492,6 +492,7 @@ export const InteractionHistoryMonitoring = () => {
       );
 
       let hydratedItems = [...firstItems];
+      let failedPageCount = 0;
       const batchSize = 3;
 
       for (let offset = 0; offset < remainingPages.length; offset += batchSize) {
@@ -509,7 +510,10 @@ export const InteractionHistoryMonitoring = () => {
         );
 
         const nextItems = pageResults.flatMap((result) => {
-          if (result.status !== 'fulfilled') return [];
+          if (result.status !== 'fulfilled') {
+            failedPageCount += 1;
+            return [];
+          }
           const value = result.value;
           return Array.isArray(value?.items)
             ? value.items
@@ -539,6 +543,10 @@ export const InteractionHistoryMonitoring = () => {
               document.querySelector('[data-dashboard-scroll-container]')?.scrollTop || 0,
           });
         }
+      }
+
+      if (requestId === requestIdRef.current && failedPageCount > 0) {
+        setError(`Không thể tải đầy đủ ${failedPageCount} trang phản ánh. Kết quả tìm kiếm và bộ lọc hiện tại có thể chưa đầy đủ; hãy bấm Làm mới để thử lại.`);
       }
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
