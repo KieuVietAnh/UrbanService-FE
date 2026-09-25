@@ -9,8 +9,7 @@ import {
 } from '../../config/mapConfig';
 import ConfiguredMapTileLayer from './ConfiguredMapTileLayer';
 import * as Lucide from 'lucide-react';
-import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
-import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
+import { createIncidentMarkerIcon } from './incidentMarkerIcon';
 
 const DEFAULT_CENTER = [10.776530, 106.700981];
 const DEFAULT_ZOOM = 14;
@@ -21,13 +20,6 @@ const REVERSE_GEOCODING_CACHE_PREFIX = 'urbanmind:location-reverse:';
 let lastNominatimRequestAt = 0;
 
 
-const defaultIcon = new L.Icon({
-  iconUrl: markerIconUrl,
-  shadowUrl: markerShadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34]
-});
 
 function isValidCoordinate(value, min, max) {
   return typeof value === 'number' && isFinite(value) && value >= min && value <= max;
@@ -136,15 +128,20 @@ function normalizeBoundaryGeoJson(boundaryGeoJson) {
 function getBoundaryLayerKey(boundaryGeoJson) {
   if (!boundaryGeoJson) return 'no-boundary';
 
-  if (boundaryGeoJson.type === 'FeatureCollection') {
-    return `feature-collection-${boundaryGeoJson.features?.length || 0}`;
+  const serialized = (() => {
+    try {
+      return JSON.stringify(boundaryGeoJson);
+    } catch {
+      return String(boundaryGeoJson?.type || 'boundary');
+    }
+  })();
+
+  let hash = 0;
+  for (let index = 0; index < serialized.length; index += 1) {
+    hash = ((hash << 5) - hash + serialized.charCodeAt(index)) | 0;
   }
 
-  if (boundaryGeoJson.type === 'Feature') {
-    return `feature-${boundaryGeoJson.geometry?.type || 'unknown'}`;
-  }
-
-  return boundaryGeoJson.type || 'boundary';
+  return `${boundaryGeoJson.type || 'boundary'}-${serialized.length}-${Math.abs(hash)}`;
 }
 
 function isPointOnSegment(lng, lat, start, end) {
@@ -246,7 +243,7 @@ export async function reverseGeocodeApproximateAddress(lat, lng, boundaryName = 
   const cached = readReverseGeocodingCache(cacheKey);
 
   if (cached) {
-    return formatApproximateAddress(cached, boundaryName, numericLat, numericLng);
+    return formatApproximateAddress(cached, boundaryName);
   }
 
   try {
@@ -272,12 +269,57 @@ export async function reverseGeocodeApproximateAddress(lat, lng, boundaryName = 
 
     const payload = await response.json();
     writeReverseGeocodingCache(cacheKey, payload);
-    return formatApproximateAddress(payload, boundaryName, numericLat, numericLng);
+    return formatApproximateAddress(payload, boundaryName);
   } catch (reverseError) {
-    console.warn('Reverse geocoding unavailable', reverseError);
-    return boundaryName
-      ? `${boundaryName} (vị trí gần đúng)`
-      : 'Vị trí đã được xác định trên bản đồ';
+    console.warn('Primary reverse geocoding unavailable, trying fallback', reverseError);
+
+    try {
+      const fallbackParams = new URLSearchParams({
+        lat: String(numericLat),
+        lon: String(numericLng),
+        lang: 'vi',
+      });
+      const fallbackResponse = await fetch(
+        `https://photon.komoot.io/reverse?${fallbackParams.toString()}`,
+        { headers: { Accept: 'application/json' } }
+      );
+      if (!fallbackResponse.ok) {
+        throw new Error(
+          `Fallback reverse geocoding failed with status ${fallbackResponse.status}`,
+          { cause: reverseError }
+        );
+      }
+
+      const fallbackPayload = await fallbackResponse.json();
+      const feature = fallbackPayload?.features?.[0];
+      const properties = feature?.properties || {};
+      const fallbackResult = {
+        display_name: [
+          properties.name,
+          properties.street,
+          properties.district,
+          properties.city,
+          properties.state,
+          properties.country,
+        ].filter(Boolean).join(', '),
+        address: {
+          road: properties.street,
+          neighbourhood: properties.name,
+          suburb: properties.district,
+          city_district: properties.district,
+          city: properties.city,
+          state: properties.state,
+          country: properties.country,
+        },
+      };
+
+      return formatApproximateAddress(fallbackResult, boundaryName);
+    } catch (fallbackError) {
+      console.warn('Reverse geocoding fallback unavailable', fallbackError);
+      return boundaryName
+        ? `${boundaryName} (vị trí gần đúng)`
+        : 'Vị trí đã được xác định trên bản đồ';
+    }
   }
 }
 
@@ -361,7 +403,7 @@ async function waitForNominatimRateLimit() {
   lastNominatimRequestAt = Date.now();
 }
 
-function formatApproximateAddress(result, boundaryName, lat, lng) {
+function formatApproximateAddress(result, boundaryName) {
   if (!result || typeof result !== 'object') {
     return boundaryName
       ? `${boundaryName} (vị trí gần đúng)`
@@ -388,7 +430,7 @@ function formatApproximateAddress(result, boundaryName, lat, lng) {
     return `${streetParts.join(' ')}, ${boundaryName}`;
   }
 
-  return `${boundaryName} · ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  return `${boundaryName} (vị trí gần đúng)`;
 }
 
 function MapAutoCenter({ center }) {
@@ -402,11 +444,11 @@ function MapAutoCenter({ center }) {
   return null;
 }
 
-function MapBoundaryAutoFit({ boundaryGeoJson }) {
+function MapBoundaryAutoFit({ boundaryGeoJson, selectedPosition }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!boundaryGeoJson) return;
+    if (!boundaryGeoJson || selectedPosition) return;
 
     const boundaryLayer = L.geoJSON(boundaryGeoJson);
     const bounds = boundaryLayer.getBounds();
@@ -415,11 +457,11 @@ function MapBoundaryAutoFit({ boundaryGeoJson }) {
 
     map.fitBounds(bounds, {
       animate: true,
-      duration: 0.8,
+      duration: 0.45,
       padding: [36, 36],
       maxZoom: DEFAULT_ZOOM
     });
-  }, [boundaryGeoJson, map]);
+  }, [boundaryGeoJson, map, selectedPosition]);
 
   return null;
 }
@@ -436,12 +478,69 @@ function LocationSelector({ readonly, onSelect }) {
   return null;
 }
 
+function SelectedLocationPopup({
+  readonly,
+  onClearLocation,
+  selectedAddress,
+  boundaryName,
+}) {
+  const map = useMap();
+
+  const handleClear = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent?.stopImmediatePropagation?.();
+
+    map.closePopup();
+
+    if (typeof onClearLocation === 'function') {
+      onClearLocation();
+    }
+  };
+
+  return (
+    <div className="relative max-w-[240px] pr-7 text-xs leading-5 text-slate-700">
+      {!readonly && typeof onClearLocation === 'function' ? (
+        <button
+          type="button"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={handleClear}
+          className="absolute -right-1 -top-1 z-[1000] inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition hover:bg-red-50 hover:text-red-600"
+          aria-label="Bỏ chọn vị trí"
+          title="Bỏ chọn vị trí"
+        >
+          <Lucide.X size={15} aria-hidden="true" />
+        </button>
+      ) : null}
+      <strong className="block text-slate-900">
+        {readonly ? 'Vị trí phản ánh' : 'Vị trí đã chọn'}
+      </strong>
+      <span>
+        {selectedAddress || (
+          boundaryName
+            ? `${boundaryName} (vị trí gần đúng)`
+            : 'Địa chỉ gần đúng đang được xác định'
+        )}
+      </span>
+    </div>
+  );
+}
+
 export const LocationPicker = ({
   latitude = null,
   longitude = null,
   initialLatitude = DEFAULT_CENTER[0],
   initialLongitude = DEFAULT_CENTER[1],
   onSelectLocation,
+  onClearLocation,
+  selectedAddress = '',
   readonly = false,
   markers = [],
   boundaryGeoJson = null,
@@ -505,8 +604,21 @@ export const LocationPicker = ({
     if (selectedPosition) {
       return [selectedPosition.lat, selectedPosition.lng];
     }
+
+    if (areaBoundary) {
+      try {
+        const bounds = L.geoJSON(areaBoundary).getBounds();
+        if (bounds.isValid()) {
+          const boundaryCenter = bounds.getCenter();
+          return [boundaryCenter.lat, boundaryCenter.lng];
+        }
+      } catch {
+        // Fall back to configured initial center.
+      }
+    }
+
     return [initialLatitude, initialLongitude];
-  }, [selectedPosition, initialLatitude, initialLongitude]);
+  }, [selectedPosition, areaBoundary, initialLatitude, initialLongitude]);
 
   const reverseGeocodeLocation = (lat, lng) => (
     reverseGeocodeApproximateAddress(lat, lng, boundaryName)
@@ -515,15 +627,6 @@ export const LocationPicker = ({
   const updateSelection = (lat, lng, message = null) => {
     if (!isValidLocation(lat, lng)) {
       setError('Tọa độ không hợp lệ. Vui lòng chọn lại.');
-      return false;
-    }
-
-    if (boundaryGeoJson && !isLocationInsideBoundaryGeoJson(lat, lng, boundaryGeoJson)) {
-      setError(
-        boundaryName
-          ? `Vị trí này không thuộc ${boundaryName}. Vui lòng chọn lại vị trí trong khu vực đã chọn.`
-          : 'Vị trí này nằm ngoài khu vực đã chọn. Vui lòng chọn lại.'
-      );
       return false;
     }
 
@@ -549,18 +652,6 @@ export const LocationPicker = ({
       return false;
     }
 
-    if (
-      boundaryGeoJson &&
-      !isLocationInsideBoundaryGeoJson(lat, lng, boundaryGeoJson)
-    ) {
-      setError(
-        boundaryName
-          ? `Vị trí này không thuộc ${boundaryName}. Vui lòng chọn lại vị trí trong khu vực đã chọn.`
-          : 'Vị trí này nằm ngoài khu vực đã chọn. Vui lòng chọn lại.'
-      );
-      return false;
-    }
-
     setStatus('Đang xác định địa chỉ gần đúng...');
     const approximateAddress = await reverseGeocodeLocation(lat, lng);
     const selected = updateSelection(lat, lng, approximateAddress);
@@ -568,6 +659,182 @@ export const LocationPicker = ({
       setStatus('Đã xác định vị trí và địa chỉ gần đúng.');
     }
     return selected;
+  };
+
+  const searchAddressWithFallback = async (query, viewbox) => {
+    const contextualQuery = boundaryName
+      ? `${query}, ${boundaryName}, Hồ Chí Minh, Việt Nam`
+      : `${query}, Hồ Chí Minh, Việt Nam`;
+
+    const primaryParams = new URLSearchParams({
+      q: contextualQuery,
+      format: 'jsonv2',
+      addressdetails: '1',
+      limit: '10',
+      countrycodes: 'vn',
+      'accept-language': 'vi',
+    });
+
+    if (viewbox) {
+      primaryParams.set('viewbox', viewbox);
+    }
+
+    try {
+      await waitForNominatimRateLimit();
+      const response = await fetch(
+        `${GEOCODING_ENDPOINT}?${primaryParams.toString()}`,
+        { headers: { Accept: 'application/json' } }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Geocoding request failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+      if (Array.isArray(payload) && payload.length > 0) {
+        return payload;
+      }
+
+      throw new Error('Primary geocoding returned no results');
+    } catch (primaryError) {
+      console.warn('Primary geocoding unavailable, trying ArcGIS suggestions', primaryError);
+
+      let locationBias = '';
+
+      if (viewbox) {
+        const [west, north, east, south] = viewbox.split(',').map(Number);
+        if ([west, north, east, south].every(Number.isFinite)) {
+          const centerLng = (west + east) / 2;
+          const centerLat = (north + south) / 2;
+          locationBias = `${centerLng},${centerLat}`;
+        }
+      }
+
+      const suggestParams = new URLSearchParams({
+        f: 'json',
+        text: query,
+        maxSuggestions: '10',
+        countryCode: 'VNM',
+      });
+
+      if (locationBias) {
+        suggestParams.set('location', locationBias);
+        suggestParams.set('distance', '12000');
+      }
+
+      const suggestResponse = await fetch(
+        `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/suggest?${suggestParams.toString()}`,
+        { headers: { Accept: 'application/json' } }
+      );
+
+      if (!suggestResponse.ok) {
+        throw new Error(
+          `Fallback suggestion search failed with status ${suggestResponse.status}`,
+          { cause: primaryError }
+        );
+      }
+
+      const suggestionPayload = await suggestResponse.json();
+      const suggestions = Array.isArray(suggestionPayload?.suggestions)
+        ? suggestionPayload.suggestions.slice(0, 8)
+        : [];
+
+      const resolveSuggestion = async (suggestion, index) => {
+        const candidateParams = new URLSearchParams({
+          f: 'json',
+          singleLine: suggestion?.text || query,
+          maxLocations: '1',
+          outFields: 'Match_addr,Addr_type,PlaceName,Type',
+          countryCode: 'VNM',
+        });
+
+        if (suggestion?.magicKey) {
+          candidateParams.set('magicKey', suggestion.magicKey);
+        }
+        if (locationBias) {
+          candidateParams.set('location', locationBias);
+        }
+        // Keep the selected ward only as a location bias. The user may
+        // intentionally choose an address in a neighboring ward; the parent
+        // form will reconcile the area before accepting the location.
+
+        const candidateResponse = await fetch(
+          `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?${candidateParams.toString()}`,
+          { headers: { Accept: 'application/json' } }
+        );
+
+        if (!candidateResponse.ok) return null;
+
+        const candidatePayload = await candidateResponse.json();
+        const candidate = candidatePayload?.candidates?.[0];
+        const lat = Number(candidate?.location?.y);
+        const lon = Number(candidate?.location?.x);
+
+        if (!isValidLocation(lat, lon)) return null;
+
+        return {
+          place_id: `arcgis-${index}-${lat}-${lon}`,
+          lat,
+          lon,
+          display_name: candidate?.address || suggestion?.text || query,
+          address: {
+            road: candidate?.attributes?.Match_addr || candidate?.address,
+            neighbourhood: boundaryName || undefined,
+            city: 'Hồ Chí Minh',
+            country: 'Việt Nam',
+          },
+        };
+      };
+
+      if (suggestions.length > 0) {
+        const resolved = await Promise.all(
+          suggestions.map((suggestion, index) => resolveSuggestion(suggestion, index))
+        );
+        const usable = resolved.filter(Boolean);
+        if (usable.length > 0) return usable;
+      }
+
+      const fallbackParams = new URLSearchParams({
+        f: 'json',
+        singleLine: contextualQuery,
+        maxLocations: '10',
+        outFields: 'Match_addr,Addr_type,PlaceName,Type',
+        countryCode: 'VNM',
+      });
+
+      if (locationBias) fallbackParams.set('location', locationBias);
+      // Do not constrain fallback candidates to the selected ward.
+
+      const fallbackResponse = await fetch(
+        `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?${fallbackParams.toString()}`,
+        { headers: { Accept: 'application/json' } }
+      );
+
+      if (!fallbackResponse.ok) {
+        throw new Error(
+          `Fallback geocoding failed with status ${fallbackResponse.status}`,
+          { cause: primaryError }
+        );
+      }
+
+      const fallbackPayload = await fallbackResponse.json();
+      const candidates = Array.isArray(fallbackPayload?.candidates)
+        ? fallbackPayload.candidates
+        : [];
+
+      return candidates.map((candidate, index) => ({
+        place_id: `arcgis-fallback-${index}-${candidate?.location?.y}-${candidate?.location?.x}`,
+        lat: candidate?.location?.y,
+        lon: candidate?.location?.x,
+        display_name: candidate?.address || contextualQuery,
+        address: {
+          road: candidate?.attributes?.Match_addr || candidate?.address,
+          neighbourhood: boundaryName || undefined,
+          city: 'Hồ Chí Minh',
+          country: 'Việt Nam',
+        },
+      }));
+    }
   };
 
   const handleAddressSearch = async (event) => {
@@ -586,43 +853,26 @@ export const LocationPicker = ({
     setAddressSearchMessage('');
 
     const viewbox = getBoundaryViewbox(areaBoundary);
-    const cacheKey = JSON.stringify({ query: query.toLowerCase(), viewbox: viewbox || '' });
+    const cacheKey = JSON.stringify({
+      version: 2,
+      query: query.toLowerCase(),
+      boundaryName: boundaryName || '',
+      viewbox: viewbox || '',
+    });
     const cachedResults = readGeocodingCache(cacheKey);
 
     try {
       let results = cachedResults;
 
       if (!results) {
-        const params = new URLSearchParams({
-          q: query,
-          format: 'jsonv2',
-          addressdetails: '1',
-          limit: '5',
-          countrycodes: 'vn',
-          'accept-language': 'vi',
-        });
-
-        if (viewbox) {
-          params.set('viewbox', viewbox);
-          params.set('bounded', '1');
-        }
-
-        await waitForNominatimRateLimit();
-
-        const response = await fetch(`${GEOCODING_ENDPOINT}?${params.toString()}`, {
-          headers: { Accept: 'application/json' },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Geocoding request failed with status ${response.status}`);
-        }
-
-        const payload = await response.json();
-        results = Array.isArray(payload) ? payload : [];
+        results = await searchAddressWithFallback(query, viewbox);
         writeGeocodingCache(cacheKey, results);
       }
 
-      const normalizedResults = results
+      const normalizedResults = [];
+      const seenResults = new Set();
+
+      results
         .map((result) => ({
           id: result.place_id,
           lat: Number(result.lat),
@@ -631,20 +881,23 @@ export const LocationPicker = ({
           address: result.address || {},
         }))
         .filter((result) => isValidLocation(result.lat, result.lng))
-        .filter((result) => (
-          !boundaryGeoJson ||
-          isLocationInsideBoundaryGeoJson(result.lat, result.lng, boundaryGeoJson)
-        ))
-        .filter((result) => (
-          !boundaryName ||
-          doesSearchResultMatchBoundaryName(result, boundaryName)
-        ));
+        .forEach((result) => {
+          const key = [
+            normalizeSearchText(result.displayName),
+            result.lat.toFixed(5),
+            result.lng.toFixed(5),
+          ].join('|');
+
+          if (seenResults.has(key)) return;
+          seenResults.add(key);
+          normalizedResults.push(result);
+        });
 
       setAddressResults(normalizedResults);
       setAddressSearchMessage(
         normalizedResults.length > 0
-          ? `Tìm thấy ${normalizedResults.length} vị trí phù hợp${boundaryName ? ` trong ${boundaryName}` : ''}.`
-          : `Không tìm thấy địa chỉ phù hợp${boundaryName ? ` trong ${boundaryName}` : ''}. Hãy thử nhập rõ số nhà, tên đường.`
+          ? `Tìm thấy ${normalizedResults.length} vị trí phù hợp. Hệ thống sẽ kiểm tra khu vực khi bạn chọn.`
+          : 'Không tìm thấy địa chỉ phù hợp. Hãy thử nhập thêm tên đường, số nhà hoặc tên khu vực.'
       );
     } catch (searchError) {
       console.warn('Address search unavailable', searchError);
@@ -657,13 +910,6 @@ export const LocationPicker = ({
 
   const handleAddressResultSelect = (result) => {
     if (!result) return;
-
-    if (boundaryName && !doesSearchResultMatchBoundaryName(result, boundaryName)) {
-      setError(
-        `Địa chỉ này không thuộc ${boundaryName}. Vui lòng chọn kết quả đúng khu vực đã chọn.`
-      );
-      return;
-    }
 
     const selected = updateSelection(result.lat, result.lng, result.displayName);
     if (!selected) return;
@@ -769,9 +1015,6 @@ export const LocationPicker = ({
                     <span className="block text-sm font-semibold leading-5 text-slate-800 dark:text-slate-100">
                       {result.displayName}
                     </span>
-                    <span className="mt-0.5 block text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                      {result.lat.toFixed(6)}, {result.lng.toFixed(6)}
-                    </span>
                   </span>
                 </button>
               ))}
@@ -779,7 +1022,7 @@ export const LocationPicker = ({
           ) : null}
 
           <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">
-            Tìm kiếm địa chỉ © OpenStreetMap contributors
+            Tìm theo số nhà, tên đường, hẻm hoặc địa điểm trong khu vực đã chọn
           </p>
         </div>
       ) : null}
@@ -793,8 +1036,11 @@ export const LocationPicker = ({
           zoomControl={true}
         >
           <ConfiguredMapTileLayer />
-          <MapAutoCenter center={center} />
-          <MapBoundaryAutoFit boundaryGeoJson={areaBoundary} />
+          <MapAutoCenter center={selectedPosition || !areaBoundary ? center : null} />
+          <MapBoundaryAutoFit
+            boundaryGeoJson={areaBoundary}
+            selectedPosition={selectedPosition}
+          />
           {areaBoundary ? (
             <GeoJSON
               key={boundaryLayerKey}
@@ -824,24 +1070,41 @@ export const LocationPicker = ({
               <Marker
                 key={`marker-${marker.feedbackId || marker.id || index}`}
                 position={[marker.latitude, marker.longitude]}
-                icon={defaultIcon}
+                icon={createIncidentMarkerIcon(marker.status || 'inprogress', { size: 28 })}
               >
                 <Popup>
                   <div className="text-xs font-bold text-slate-900">
                     {marker.title || marker.locationText || 'Ticket'}
                   </div>
                   <div className="text-[10px] text-slate-600">
-                    {marker.locationText || `Vị trí: ${marker.latitude.toFixed(6)}, ${marker.longitude.toFixed(6)}`}
+                    {marker.locationText || 'Vị trí phản ánh'}
                   </div>
                 </Popup>
               </Marker>
             );
           })}
           {selectedPosition && (
-            <Marker position={[selectedPosition.lat, selectedPosition.lng]} icon={defaultIcon}>
-              <Popup>
-                {readonly ? 'Vị trí vé' : 'Vị trí đã chọn'}<br />
-                {selectedPosition.lat.toFixed(6)}, {selectedPosition.lng.toFixed(6)}
+            <Marker
+              position={[selectedPosition.lat, selectedPosition.lng]}
+              icon={createIncidentMarkerIcon('inprogress', { size: 30, focused: true })}
+            >
+              <Popup
+                closeButton={readonly}
+                closeOnClick={false}
+                autoClose={false}
+              >
+                <SelectedLocationPopup
+                  readonly={readonly}
+                  onClearLocation={() => {
+                    setStatus('');
+                    setError('');
+                    setAddressResults([]);
+                    setAddressSearchMessage('');
+                    onClearLocation?.();
+                  }}
+                  selectedAddress={selectedAddress}
+                  boundaryName={boundaryName}
+                />
               </Popup>
             </Marker>
           )}
@@ -860,8 +1123,9 @@ export const LocationPicker = ({
             </span>
           </div>
           {selectedPosition ? (
-            <div className="text-[11px] font-bold text-slate-700">
-              Vĩ độ: {selectedPosition.lat.toFixed(6)} • Kinh độ: {selectedPosition.lng.toFixed(6)}
+            <div className="flex items-start gap-2 text-[11px] font-semibold leading-5 text-slate-700 dark:text-slate-300">
+              <Lucide.MapPin size={13} className="mt-0.5 shrink-0 text-blue-600" aria-hidden="true" />
+              <span>{selectedAddress || (boundaryName ? `${boundaryName} (vị trí gần đúng)` : 'Đã chọn vị trí trên bản đồ')}</span>
             </div>
           ) : (
             <div className="text-[11px] text-slate-500 font-semibold">
@@ -875,6 +1139,12 @@ export const LocationPicker = ({
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
+          {!readonly && selectedPosition && typeof onClearLocation === 'function' ? (
+            <button type="button" onClick={() => { onClearLocation(); setStatus(''); setError(''); setAddressResults([]); setAddressSearchMessage(''); }}
+              className="btn btn-sm rounded-xl border border-slate-200 bg-white font-bold text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              <Lucide.X size={14} aria-hidden="true" /> Bỏ chọn vị trí
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleUseCurrentLocation}

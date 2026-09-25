@@ -29,6 +29,10 @@ export const authApi = {
     return axiosClient.post('/api/auth/forgot-password/send-otp', { email });
   },
 
+  verifyForgotPasswordOtp(email, otp) {
+    return axiosClient.post('/api/auth/forgot-password/verify-otp', { email, otp });
+  },
+
   resetForgottenPassword(email, otp, newPassword) {
     return axiosClient.post('/api/auth/forgot-password/reset', {
       email,

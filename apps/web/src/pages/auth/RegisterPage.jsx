@@ -459,9 +459,7 @@ export const RegisterPage = () => {
       nextErrors.email = 'Địa chỉ email không đúng định dạng.';
     }
 
-    if (!normalizedPhone) {
-      nextErrors.phone = 'Vui lòng nhập số điện thoại.';
-    } else if (!PHONE_PATTERN.test(normalizedPhone)) {
+    if (normalizedPhone && !PHONE_PATTERN.test(normalizedPhone)) {
       nextErrors.phone = 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.';
     }
 
@@ -540,21 +538,13 @@ export const RegisterPage = () => {
         let otpDelivery;
         if (emailChanged) {
           window.sessionStorage.removeItem(previousSessionKey);
-          try {
-            await sendOtp();
-            const sentAt = Date.now();
-            const nextSessionKey = getOtpSessionKey(updatedUser, normalizedValues.email);
-            window.sessionStorage.setItem(nextSessionKey, JSON.stringify({
-              sentAt,
-              email: updatedUser?.email || normalizedValues.email,
-            }));
-            otpDelivery = { status: 'sent', sentAt };
-          } catch (otpError) {
-            otpDelivery = {
-              status: 'failed',
-              error: getOtpDeliveryError(otpError),
-            };
-          }
+          const sentAt = Date.now();
+          const nextSessionKey = getOtpSessionKey(updatedUser, normalizedValues.email);
+          window.sessionStorage.setItem(nextSessionKey, JSON.stringify({
+            sentAt,
+            email: updatedUser?.email || normalizedValues.email,
+          }));
+          otpDelivery = { status: 'sent', sentAt };
         }
 
         navigate('/verify-email', {
@@ -764,7 +754,7 @@ export const RegisterPage = () => {
 
           <div className="space-y-1.5">
             <label htmlFor="register-phone" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Số điện thoại <span className="text-red-500" aria-hidden="true">*</span>
+              Số điện thoại <span className="ml-1 text-[11px] font-medium text-slate-400">(không bắt buộc)</span>
             </label>
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">

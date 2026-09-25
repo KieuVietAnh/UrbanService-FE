@@ -153,7 +153,6 @@ const LoginRoute = ({ isAuthenticated, fallbackPath }) => {
   return <Navigate to={redirect} replace />;
 };
 
-
 const SystemStaffLegacyRouteRedirect = () => {
   const { pathname } = useLocation();
   const destination = getSystemStaffLegacyRouteRedirect(pathname) || '/dashboard';
@@ -171,8 +170,8 @@ export const AppRoutes = () => {
     isAuthenticated ? (
       <DashboardLayout>{page}</DashboardLayout>
     ) : (
-      <PublicLayout>
-        <div className="mx-auto w-full max-w-[1440px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
+      <PublicLayout className="public-community-shell">
+        <div className="public-community-content mx-auto w-full max-w-[1440px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
           {page}
         </div>
       </PublicLayout>

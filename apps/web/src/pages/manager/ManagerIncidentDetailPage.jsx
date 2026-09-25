@@ -170,6 +170,8 @@ const SEVERITY_OPTIONS = [
   ['Low', 'Thấp'], ['Medium', 'Trung bình'], ['High', 'Cao'], ['Critical', 'Khẩn cấp'],
 ];
 
+const CANDIDATE_PAGE_SIZE = 100;
+
 const TAB_ITEMS = [
   { id: 'reports', label: 'Phản ánh', icon: Lucide.MessagesSquare },
   { id: 'subscribers', label: 'Người theo dõi', icon: Lucide.Users },
@@ -508,6 +510,7 @@ export const IncidentDetailPage = () => {
   const resolutionRequestIdRef = useRef(0);
   const timelineRequestIdRef = useRef(0);
   const feedbackRequestIdRef = useRef(0);
+  const mergeRequestIdRef = useRef(0);
   const reportDetailsRef = useRef({});
 
   const [incident, setIncident] = useState(() => location.state?.incident || null);
@@ -535,6 +538,8 @@ export const IncidentDetailPage = () => {
   const [feedbackCategoryFilter, setFeedbackCategoryFilter] = useState('');
   const [feedbackStatusFilter, setFeedbackStatusFilter] = useState('');
   const [feedbackCandidates, setFeedbackCandidates] = useState([]);
+  const [feedbackPageNumber, setFeedbackPageNumber] = useState(1);
+  const [feedbackHasMore, setFeedbackHasMore] = useState(false);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
   const [linkingFeedbackId, setLinkingFeedbackId] = useState('');
@@ -552,8 +557,11 @@ export const IncidentDetailPage = () => {
   const [assigneeLoading, setAssigneeLoading] = useState(false);
   const [selectedAssigneeId, setSelectedAssigneeId] = useState('');
   const [mergeCandidates, setMergeCandidates] = useState([]);
+  const [mergePageNumber, setMergePageNumber] = useState(1);
+  const [mergeHasMore, setMergeHasMore] = useState(false);
   const [mergeMode, setMergeMode] = useState('into-current');
   const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergeLoadingMore, setMergeLoadingMore] = useState(false);
   const [mergeSearch, setMergeSearch] = useState('');
   const [mergeSameAreaOnly, setMergeSameAreaOnly] = useState(false);
   const [mergeSameCategoryOnly, setMergeSameCategoryOnly] = useState(false);
@@ -901,14 +909,39 @@ export const IncidentDetailPage = () => {
     setTimelineLoading(true);
     setTimelineError('');
     try {
-      const response = await incidentManagementApi.getIncidentTimeline(incidentId, {
+      const firstResponse = await incidentManagementApi.getIncidentTimeline(incidentId, {
         pageNumber: 1,
         pageSize: 50,
       });
       if (requestId !== timelineRequestIdRef.current) return;
-      setTimeline(normalizeCollection(response));
+
+      const totalPages = Math.max(1, Number(firstResponse?.totalPages) || 1);
+      const remainingResults = totalPages > 1
+        ? await Promise.allSettled(
+            Array.from({ length: totalPages - 1 }, (_, index) => (
+              incidentManagementApi.getIncidentTimeline(incidentId, {
+                pageNumber: index + 2,
+                pageSize: 50,
+              })
+            )),
+          )
+        : [];
+      if (requestId !== timelineRequestIdRef.current) return;
+
+      const fulfilledResponses = remainingResults
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+      const failedPageCount = remainingResults.length - fulfilledResponses.length;
+
+      setTimeline([
+        ...normalizeCollection(firstResponse),
+        ...fulfilledResponses.flatMap(normalizeCollection),
+      ]);
       setTimelineVisibleCount(6);
       setTimelineLoaded(true);
+      if (failedPageCount > 0) {
+        setTimelineError(`Không thể tải đầy đủ ${failedPageCount} trang lịch sử. Các sự kiện đã tải vẫn được giữ lại.`);
+      }
     } catch (timelineLoadError) {
       if (requestId !== timelineRequestIdRef.current) return;
       setTimelineError(extractApiErrorMessage(timelineLoadError, 'Không thể tải lịch sử hoạt động.'));
@@ -929,18 +962,37 @@ export const IncidentDetailPage = () => {
     }
   }, [activeTab, loadTimeline, timelineLoaded, timelineLoading]);
 
-  const loadFeedbackCandidates = useCallback(async () => {
+  const loadFeedbackCandidates = useCallback(async ({ pageNumber = 1, append = false } = {}) => {
     const requestId = ++feedbackRequestIdRef.current;
     setFeedbackLoading(true);
     setFeedbackError('');
     try {
       const response = await managementFeedbackApi.getFeedbacks({
-        PageNumber: 1,
-        PageSize: 100,
+        PageNumber: pageNumber,
+        PageSize: CANDIDATE_PAGE_SIZE,
         Search: feedbackSearch.trim(),
       });
       if (requestId !== feedbackRequestIdRef.current) return;
-      setFeedbackCandidates(normalizeCollection(response));
+
+      const nextItems = normalizeCollection(response);
+      setFeedbackCandidates((current) => {
+        if (!append) return nextItems;
+
+        const byId = new Map();
+        [...current, ...nextItems].forEach((item) => {
+          const id = String(getFeedbackId(item) || '');
+          if (id) byId.set(id, item);
+        });
+        return [...byId.values()];
+      });
+
+      const payload = getPayload(response);
+      const totalPages = Math.max(1, Number(payload?.totalPages) || 1);
+      const hasNextPage = typeof payload?.hasNextPage === 'boolean'
+        ? payload.hasNextPage
+        : pageNumber < totalPages;
+      setFeedbackPageNumber(pageNumber);
+      setFeedbackHasMore(hasNextPage);
     } catch (candidateError) {
       if (requestId !== feedbackRequestIdRef.current) return;
       setFeedbackError(extractApiErrorMessage(candidateError, 'Không thể tải danh sách phản ánh.'));
@@ -951,7 +1003,11 @@ export const IncidentDetailPage = () => {
 
   useEffect(() => {
     if (!linkModalOpen) return undefined;
-    const timer = window.setTimeout(() => { void loadFeedbackCandidates(); }, 250);
+    const timer = window.setTimeout(() => {
+      setFeedbackPageNumber(1);
+      setFeedbackHasMore(false);
+      void loadFeedbackCandidates({ pageNumber: 1, append: false });
+    }, 250);
     return () => window.clearTimeout(timer);
   }, [linkModalOpen, loadFeedbackCandidates]);
 
@@ -1154,32 +1210,67 @@ export const IncidentDetailPage = () => {
     }
   }, [incident, incidentId, refreshAfterAction, selectedAssigneeId, structureActionsLocked]);
 
-  const loadMergeCandidates = useCallback(async ({ search = '', sameAreaOnly = false, sameCategoryOnly = false } = {}) => {
+  const loadMergeCandidates = useCallback(async ({
+    search = '',
+    sameAreaOnly = false,
+    sameCategoryOnly = false,
+    pageNumber = 1,
+    append = false,
+  } = {}) => {
+    const requestId = ++mergeRequestIdRef.current;
     const areaId = incident?.areaId ?? incident?.area?.areaId ?? incident?.area?.id;
     const categoryId = incident?.categoryId ?? incident?.category?.categoryId ?? incident?.category?.id;
 
-    setMergeLoading(true);
+    if (append) setMergeLoadingMore(true);
+    else setMergeLoading(true);
     setActionError('');
     try {
       const response = await incidentManagementApi.getIncidents({
-        pageNumber: 1,
-        pageSize: 100,
+        pageNumber,
+        pageSize: CANDIDATE_PAGE_SIZE,
         includeMerged: false,
         search: search.trim() || undefined,
         areaId: sameAreaOnly && areaId ? areaId : undefined,
         categoryId: sameCategoryOnly && categoryId ? categoryId : undefined,
       });
-      const items = normalizeCollection(response).filter((item) => String(item?.incidentId ?? item?.id) !== String(incidentId));
-      setMergeCandidates(items);
-      setSelectedMergeIncidentId((current) => items.some((item) => String(item?.incidentId ?? item?.id) === String(current)) ? current : '');
-      setSelectedMergeIncidentIds((current) => current.filter((currentId) => items.some((item) => String(item?.incidentId ?? item?.id) === String(currentId))));
+      if (requestId !== mergeRequestIdRef.current) return;
+
+      const nextItems = normalizeCollection(response).filter((item) => String(item?.incidentId ?? item?.id) !== String(incidentId));
+      setMergeCandidates((current) => {
+        if (!append) return nextItems;
+
+        const byId = new Map();
+        [...current, ...nextItems].forEach((item) => {
+          const id = String(item?.incidentId ?? item?.id ?? '');
+          if (id) byId.set(id, item);
+        });
+        return [...byId.values()];
+      });
+
+      const totalPages = Math.max(1, Number(response?.totalPages) || 1);
+      const hasNextPage = typeof response?.hasNextPage === 'boolean'
+        ? response.hasNextPage
+        : pageNumber < totalPages;
+      setMergePageNumber(pageNumber);
+      setMergeHasMore(hasNextPage);
+
+      if (!append) {
+        setSelectedMergeIncidentId((current) => nextItems.some((item) => String(item?.incidentId ?? item?.id) === String(current)) ? current : '');
+        setSelectedMergeIncidentIds((current) => current.filter((currentId) => nextItems.some((item) => String(item?.incidentId ?? item?.id) === String(currentId))));
+      }
     } catch (mergeLoadError) {
+      if (requestId !== mergeRequestIdRef.current) return;
       setActionError(localizeIncidentApiError(extractApiErrorMessage(mergeLoadError, 'Không thể tải danh sách sự vụ để gộp.'), 'Không thể tải danh sách sự vụ để gộp.'));
-      setMergeCandidates([]);
-      setSelectedMergeIncidentId('');
-      setSelectedMergeIncidentIds([]);
+      if (!append) {
+        setMergeCandidates([]);
+        setSelectedMergeIncidentId('');
+        setSelectedMergeIncidentIds([]);
+      }
     } finally {
-      setMergeLoading(false);
+      if (requestId === mergeRequestIdRef.current) {
+        setMergeLoading(false);
+        setMergeLoadingMore(false);
+      }
     }
   }, [incident, incidentId]);
 
@@ -1194,16 +1285,22 @@ export const IncidentDetailPage = () => {
     setMergeSameAreaOnly(false);
     setMergeSameCategoryOnly(false);
     setMergeCandidates([]);
+    setMergePageNumber(1);
+    setMergeHasMore(false);
     setMergeModalOpen(true);
   }, [mergeActionLocked]);
 
   useEffect(() => {
     if (!mergeModalOpen) return undefined;
     const timer = window.setTimeout(() => {
+      setMergePageNumber(1);
+      setMergeHasMore(false);
       loadMergeCandidates({
         search: mergeSearch,
         sameAreaOnly: mergeSameAreaOnly,
         sameCategoryOnly: mergeSameCategoryOnly,
+        pageNumber: 1,
+        append: false,
       });
     }, 250);
     return () => window.clearTimeout(timer);
@@ -2345,6 +2442,25 @@ export const IncidentDetailPage = () => {
                     setSelectedMergeIncidentId(String(id));
                   }}
                 /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{item?.title ?? item?.summary ?? 'Sự vụ chưa có tiêu đề'}</p>{mergeLocked ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">Đã qua giai đoạn gộp</span> : null}</div><p className="mt-1 text-xs text-slate-500">{formatIncidentId(id)} · {item?.areaName ?? item?.wardName ?? 'Chưa rõ khu vực'} · {item?.categoryName ?? 'Chưa phân loại'}</p></div><Badge value={item?.status} type="status" /></label>; })}</div>
+              {mergeHasMore ? (
+                <div className="mt-3 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => loadMergeCandidates({
+                      search: mergeSearch,
+                      sameAreaOnly: mergeSameAreaOnly,
+                      sameCategoryOnly: mergeSameCategoryOnly,
+                      pageNumber: mergePageNumber + 1,
+                      append: true,
+                    })}
+                    disabled={mergeLoading || mergeLoadingMore}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    {mergeLoadingMore ? <Lucide.LoaderCircle size={14} className="animate-spin" /> : <Lucide.Plus size={14} />}
+                    {mergeLoadingMore ? 'Đang tải thêm...' : 'Tải thêm sự vụ'}
+                  </button>
+                </div>
+              ) : null}
               <label className="mt-4 block">
                 <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Lý do gộp <span className="font-normal text-slate-400">(không bắt buộc)</span></span>
                 <textarea value={mergeReason} onChange={(event) => setMergeReason(event.target.value)} rows={3} placeholder="Ví dụ: Hai sự vụ phản ánh cùng một vấn đề tại cùng khu vực." className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-4 focus:ring-amber-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-amber-950/30" />
@@ -2437,7 +2553,20 @@ export const IncidentDetailPage = () => {
                   })}
                 </div>
               )}
-              {feedbackLoading && feedbackCandidates.length > 0 ? (
+              {feedbackHasMore && feedbackCandidates.length > 0 ? (
+                <div className="border-t border-slate-100 px-5 py-3 text-center sm:px-6 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => loadFeedbackCandidates({ pageNumber: feedbackPageNumber + 1, append: true })}
+                    disabled={feedbackLoading}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    {feedbackLoading ? <Lucide.LoaderCircle size={14} className="animate-spin" /> : <Lucide.Plus size={14} />}
+                    {feedbackLoading ? 'Đang tải thêm...' : 'Tải thêm phản ánh'}
+                  </button>
+                </div>
+              ) : null}
+              {feedbackLoading && feedbackCandidates.length > 0 && !feedbackHasMore ? (
                 <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 px-5 py-2.5 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-950/95">
                   <ManagerListRefreshIndicator visible label="Đang cập nhật danh sách" />
                 </div>

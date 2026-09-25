@@ -29,6 +29,8 @@ const COMMUNITY_RETURN_STORAGE_KEY = 'urbanmind-community-feed-return';
 const COMMUNITY_FEED_PAGE_SIZE = 10;
 const COMMUNITY_PREVIEW_CONCURRENCY = 3;
 const COMMUNITY_FEED_BACKGROUND_REFRESH_MS = 30 * 1000;
+const COMMUNITY_SEARCH_PAGE_SIZE = 50;
+const COMMUNITY_SEARCH_DEBOUNCE_MS = 300;
 
 const mapWithConcurrency = async (items, limit, mapper) => {
   const results = new Array(items.length);
@@ -103,24 +105,6 @@ const getAreaName = (item) => (
   item?.areaName || item?.wardName || item?.districtName || 'Chưa xác định khu vực'
 );
 
-const CATEGORY_LABELS = {
-  'garbage collection': 'Thu gom rác',
-  'waste management': 'Quản lý chất thải',
-  'road maintenance': 'Bảo trì đường bộ',
-  'street lighting': 'Chiếu sáng đô thị',
-  drainage: 'Thoát nước',
-  'water supply': 'Cấp nước',
-  'public safety': 'An toàn công cộng',
-};
-
-const getCategoryLabel = (item) => {
-  const rawCategory = item?.categoryName || item?.category?.name || '';
-  const normalizedCategory = String(rawCategory)
-    .trim()
-    .toLocaleLowerCase('en-US');
-
-  return CATEGORY_LABELS[normalizedCategory] || rawCategory;
-};
 
 const coalesceIncidentFeedItems = (feedItems = []) => {
   const unique = new Map();
@@ -296,6 +280,10 @@ export default function CommunityFeed({
     if (resetScroll && initialQuery) return initialQuery;
     return initialCache?.query || initialQuery || '';
   });
+  const [searchItems, setSearchItems] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const searchSessionRef = useRef(0);
+
   const [highlightedIncidentId, setHighlightedIncidentId] = useState(
     restoredContext?.incidentId || restoredContext?.feedbackId || null
   );
@@ -339,12 +327,16 @@ export default function CommunityFeed({
 
   const requestFeedPage = useCallback(async (
     pageNumber,
-    { force = false } = {}
+    { force = false, search = '' } = {}
   ) => {
+    const normalizedSearch = String(search || '').trim();
     const response = await getCommunityFeed(
       {
         PageNumber: pageNumber,
-        PageSize: COMMUNITY_FEED_PAGE_SIZE,
+        PageSize: normalizedSearch
+          ? COMMUNITY_SEARCH_PAGE_SIZE
+          : COMMUNITY_FEED_PAGE_SIZE,
+        ...(normalizedSearch ? { Search: normalizedSearch } : {}),
       },
       { force }
     );
@@ -435,6 +427,76 @@ export default function CommunityFeed({
       return patch ? { ...item, ...patch } : item;
     }));
   }, []);
+
+  useEffect(() => {
+    const normalizedSearch = query.trim();
+    const sessionId = searchSessionRef.current + 1;
+    searchSessionRef.current = sessionId;
+
+    if (!normalizedSearch) {
+      setSearchItems([]);
+      setSearching(false);
+      return undefined;
+    }
+
+    setSearching(true);
+    setError('');
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const firstPage = await requestFeedPage(1, {
+          search: normalizedSearch,
+        });
+        const pageResults = [firstPage];
+
+        for (
+          let pageNumber = 2;
+          pageNumber <= firstPage.totalPages;
+          pageNumber += 1
+        ) {
+          pageResults.push(
+            await requestFeedPage(pageNumber, {
+              search: normalizedSearch,
+            })
+          );
+        }
+
+        if (
+          !isMountedRef.current ||
+          sessionId !== searchSessionRef.current
+        ) {
+          return;
+        }
+
+        setSearchItems(
+          coalesceIncidentFeedItems(
+            pageResults.flatMap((result) => result.items)
+          )
+        );
+      } catch (searchError) {
+        if (sessionId !== searchSessionRef.current) return;
+
+        console.error('CommunityFeed search error', searchError);
+        setSearchItems([]);
+        setError(
+          searchError?.response?.data?.message ||
+          searchError?.message ||
+          'Không thể tìm kiếm trên toàn bộ bảng tin.'
+        );
+      } finally {
+        if (
+          isMountedRef.current &&
+          sessionId === searchSessionRef.current
+        ) {
+          setSearching(false);
+        }
+      }
+    }, COMMUNITY_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [query, requestFeedPage]);
 
   const loadFeedSnapshot = useCallback(async ({
     background = false,
@@ -840,7 +902,10 @@ export default function CommunityFeed({
     setEngagementVersion((version) => version + 1);
   }), []);
 
-  const itemsWithLiveEngagement = items.map((item) => {
+  const normalizedQuery = query.trim().toLocaleLowerCase('vi-VN');
+  const sourceItems = normalizedQuery ? searchItems : items;
+
+  const applyLiveEngagement = (item) => {
     const incidentId = getCommunityIncidentId(item);
     const engagement = getCommunityIncidentEngagementState(incidentId);
     if (!engagement) return item;
@@ -863,7 +928,9 @@ export default function CommunityFeed({
         ? { isSubscribedByCurrentUser: engagement.isSubscribedByCurrentUser }
         : {}),
     };
-  });
+  };
+
+  const itemsWithLiveEngagement = sourceItems.map(applyLiveEngagement);
 
   const tabItems = tab === 'Processing'
     ? itemsWithLiveEngagement.filter((item) => (
@@ -875,23 +942,7 @@ export default function CommunityFeed({
         ))
       : itemsWithLiveEngagement;
 
-  const normalizedQuery = query.trim().toLocaleLowerCase('vi-VN');
-  const searchedItems = normalizedQuery
-    ? tabItems.filter((item) => {
-        const searchable = [
-          item?.title,
-          item?.description,
-          getCategoryLabel(item),
-          getAreaName(item),
-          item?.userName,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLocaleLowerCase('vi-VN');
-
-        return searchable.includes(normalizedQuery);
-      })
-    : tabItems;
+  const searchedItems = tabItems;
 
   const sortedItems = [...searchedItems].sort((left, right) => {
     if (tab === 'Trending') {
@@ -909,12 +960,14 @@ export default function CommunityFeed({
     0,
     page * COMMUNITY_FEED_PAGE_SIZE
   );
-  const hasMore = (
-    visibleItems.length < sortedItems.length ||
-    loadedServerPage < totalPages
-  );
+  const hasMore = normalizedQuery
+    ? visibleItems.length < sortedItems.length
+    : (
+        visibleItems.length < sortedItems.length ||
+        loadedServerPage < totalPages
+      );
 
-  const trendingItems = [...itemsWithLiveEngagement]
+  const trendingItems = items.map(applyLiveEngagement)
     .sort((left, right) => (
       getSupportCount(right) + getCommentCount(right)
     ) - (
@@ -1005,6 +1058,8 @@ export default function CommunityFeed({
       setPage((currentPage) => currentPage + 1);
       return;
     }
+
+    if (normalizedQuery) return;
 
     loadNextServerPage();
   };
@@ -1122,7 +1177,7 @@ export default function CommunityFeed({
                   placeholder="Tìm kiếm sự việc, khu vực, vấn đề..."
                   className="input input-bordered h-9 w-full rounded-xl border-[var(--public-border)] bg-[var(--public-surface-strong)] pl-10 text-sm text-[var(--public-title)] placeholder:text-[var(--public-muted)] focus:border-blue-400 focus:outline-none"
                 />
-                {refreshing ? (
+                {refreshing || searching ? (
                   <span className="loading loading-spinner loading-xs absolute right-3.5 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-300" aria-hidden="true" />
                 ) : null}
               </label>
@@ -1170,7 +1225,7 @@ export default function CommunityFeed({
             </div>
           ) : null}
 
-          {!initialLoading && visibleItems.length === 0 && !error ? (
+          {!initialLoading && !searching && visibleItems.length === 0 && !error ? (
             <div className="rounded-[20px] border border-[var(--public-border)] bg-[var(--public-surface)] px-6 py-12 text-center shadow-sm">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
                 <Lucide.Newspaper size={25} aria-hidden="true" />
@@ -1209,7 +1264,7 @@ export default function CommunityFeed({
             </div>
           ) : null}
 
-          {items.length > 0 && hasMore ? (
+          {(normalizedQuery ? searchItems.length > 0 : items.length > 0) && hasMore ? (
             <div className="flex justify-center py-2">
               <button
                 type="button"

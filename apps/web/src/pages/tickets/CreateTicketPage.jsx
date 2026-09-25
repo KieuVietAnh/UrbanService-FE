@@ -116,6 +116,7 @@ export const CreateTicketPage = () => {
   const [aiImageUrls, setAiImageUrls] = useState([]);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [pendingExit, setPendingExit] = useState(null);
+  const [pendingAreaChange, setPendingAreaChange] = useState(null);
   const draftHydratedRef = useRef(false);
   const draftSaveTimerRef = useRef(null);
   const aiAttachmentsHydratedRef = useRef(false);
@@ -388,6 +389,50 @@ export const CreateTicketPage = () => {
   );
 
   const selectedAreaBoundaryGeoJson = getAreaBoundaryGeoJson(selectedArea);
+
+  const normalizeAreaLookupText = (value) => (
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('vi-VN')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+
+  const findAreaFromAddressText = (address) => {
+    const normalizedAddress = normalizeAreaLookupText(address);
+    if (!normalizedAddress) return null;
+
+    return (
+      areas.find((area) => {
+        const normalizedName = normalizeAreaLookupText(getAreaName(area));
+        if (!normalizedName) return false;
+
+        const compactName = normalizedName.replace(/^phuong\s+/, '').trim();
+        return (
+          normalizedAddress.includes(normalizedName) ||
+          (compactName.length >= 4 && normalizedAddress.includes(compactName))
+        );
+      }) || null
+    );
+  };
+
+  const findAreaForCoordinates = (lat, lng) => (
+    areas.find((area) => {
+      const boundary = getAreaBoundaryGeoJson(area);
+      return (
+        boundary &&
+        isLocationInsideBoundaryGeoJson(Number(lat), Number(lng), boundary)
+      );
+    }) || null
+  );
+
+  const resolveAreaForLocation = (lat, lng, address) => (
+    findAreaFromAddressText(address) ||
+    findAreaForCoordinates(lat, lng)
+  );
+
   const isSelectedLocationInsideArea = useMemo(() => {
     if (latitude == null || longitude == null) return false;
     if (!selectedAreaBoundaryGeoJson) return true;
@@ -398,6 +443,27 @@ export const CreateTicketPage = () => {
       selectedAreaBoundaryGeoJson
     );
   }, [latitude, longitude, selectedAreaBoundaryGeoJson]);
+
+  const resolvedSelectedLocationArea = (
+    latitude == null || longitude == null
+      ? null
+      : resolveAreaForLocation(latitude, longitude, locationText)
+  );
+
+  const selectedLocationMatchesArea = useMemo(() => {
+    if (!selectedArea || !resolvedSelectedLocationArea) {
+      return isSelectedLocationInsideArea;
+    }
+
+    return (
+      String(getAreaId(selectedArea)) ===
+      String(getAreaId(resolvedSelectedLocationArea))
+    );
+  }, [
+    isSelectedLocationInsideArea,
+    resolvedSelectedLocationArea,
+    selectedArea,
+  ]);
 
   useEffect(() => {
     if (
@@ -478,7 +544,7 @@ export const CreateTicketPage = () => {
       areaId &&
       latitude != null &&
       longitude != null &&
-      isSelectedLocationInsideArea
+      selectedLocationMatchesArea
     ),
     3: Boolean(
       attachments.length > 0 &&
@@ -491,7 +557,7 @@ export const CreateTicketPage = () => {
       areaId &&
       latitude != null &&
       longitude != null &&
-      isSelectedLocationInsideArea &&
+      selectedLocationMatchesArea &&
       attachments.length > 0 &&
       attachments.length <= MAX_ATTACHMENT_COUNT &&
       totalAttachmentSize <= MAX_TOTAL_ATTACHMENT_SIZE_BYTES
@@ -502,7 +568,7 @@ export const CreateTicketPage = () => {
     description,
     latitude,
     longitude,
-    isSelectedLocationInsideArea,
+    selectedLocationMatchesArea,
     title,
     totalAttachmentSize,
   ]);
@@ -525,10 +591,14 @@ export const CreateTicketPage = () => {
       }
       if (latitude == null || longitude == null) {
         errors.location = 'Vui lòng tìm địa chỉ hoặc đánh dấu vị trí cụ thể trên bản đồ.';
-      } else if (!isSelectedLocationInsideArea) {
-        errors.location = selectedArea
-          ? `Vị trí đã chọn không thuộc ${getAreaName(selectedArea)}. Vui lòng chọn lại vị trí trong khu vực này.`
-          : 'Vị trí đã chọn không thuộc khu vực đã chọn. Vui lòng chọn lại.';
+      } else if (!selectedLocationMatchesArea) {
+        errors.location = (
+          selectedArea && resolvedSelectedLocationArea
+            ? `Địa chỉ đã chọn thuộc ${getAreaName(resolvedSelectedLocationArea)}, không thuộc ${getAreaName(selectedArea)}.`
+            : selectedArea
+              ? `Vị trí đã chọn không thuộc ${getAreaName(selectedArea)}. Vui lòng chọn lại vị trí trong khu vực này.`
+              : 'Vị trí đã chọn không thuộc khu vực đã chọn. Vui lòng chọn lại.'
+        );
       }
     }
 
@@ -642,7 +712,7 @@ export const CreateTicketPage = () => {
 
       const destination = new URL(anchor.href, window.location.href);
       if (destination.origin !== window.location.origin) return;
-      if (`${destination.pathname}${destination.search}${destination.hash}` === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+      if (destination.pathname === window.location.pathname && destination.search === window.location.search) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -833,7 +903,47 @@ export const CreateTicketPage = () => {
     goToStep(2);
   };
 
+  const applyResolvedLocation = (lat, lng, address, area = selectedArea) => {
+    setLatitude(lat);
+    setLongitude(lng);
+    setLocationText(
+      address ||
+      (area
+        ? `${getAreaName(area)} (vị trí gần đúng)`
+        : 'Vị trí đã được xác định trên bản đồ')
+    );
+    clearFieldError('location');
+    clearFieldError('areaId');
+    setSubmitError('');
+  };
+
   const handleLocationSelect = async (lat, lng, address) => {
+    const resolvedArea = resolveAreaForLocation(lat, lng, address);
+    const selectedAreaId = String(getAreaId(selectedArea) || '');
+    const resolvedAreaId = String(getAreaId(resolvedArea) || '');
+
+    if (
+      selectedArea &&
+      resolvedArea &&
+      selectedAreaId &&
+      resolvedAreaId &&
+      selectedAreaId !== resolvedAreaId
+    ) {
+      setPendingAreaChange({
+        lat,
+        lng,
+        address,
+        fromArea: selectedArea,
+        toArea: resolvedArea,
+      });
+      setFieldErrors((current) => ({
+        ...current,
+        location: '',
+      }));
+      setSubmitError('');
+      return;
+    }
+
     if (
       selectedAreaBoundaryGeoJson &&
       !isLocationInsideBoundaryGeoJson(lat, lng, selectedAreaBoundaryGeoJson)
@@ -841,21 +951,48 @@ export const CreateTicketPage = () => {
       setFieldErrors((current) => ({
         ...current,
         location: selectedArea
-          ? `Vị trí này không thuộc ${getAreaName(selectedArea)}. Vui lòng chọn lại vị trí trong khu vực đã chọn.`
-          : 'Vị trí này nằm ngoài khu vực đã chọn. Vui lòng chọn lại.',
+          ? `Vị trí này nằm ngoài ${getAreaName(selectedArea)} và chưa xác định được khu vực phù hợp trong hệ thống.`
+          : 'Vị trí này nằm ngoài khu vực đã chọn.',
       }));
-      setSubmitError('Vị trí không hợp lệ với khu vực đã chọn.');
+      setSubmitError('Vị trí chưa khớp với khu vực đã chọn.');
       return;
     }
 
-    setLatitude(lat);
-    setLongitude(lng);
-    setLocationText(
-      address ||
-      (selectedArea
-        ? `${getAreaName(selectedArea)} (vị trí gần đúng)`
-        : 'Vị trí đã được xác định trên bản đồ')
-    );
+    applyResolvedLocation(lat, lng, address, selectedArea);
+  };
+
+  const confirmAreaChangeForLocation = () => {
+    if (!pendingAreaChange?.toArea) return;
+
+    const { lat, lng, address, toArea } = pendingAreaChange;
+    setAreaId(String(getAreaId(toArea)));
+    applyResolvedLocation(lat, lng, address, toArea);
+    setPendingAreaChange(null);
+  };
+
+  const keepCurrentAreaForLocation = () => {
+    if (!pendingAreaChange) return;
+
+    const currentAreaName = pendingAreaChange.fromArea
+      ? getAreaName(pendingAreaChange.fromArea)
+      : 'khu vực hiện tại';
+    const detectedAreaName = pendingAreaChange.toArea
+      ? getAreaName(pendingAreaChange.toArea)
+      : 'khu vực khác';
+
+    setFieldErrors((current) => ({
+      ...current,
+      location: `Địa chỉ đã chọn thuộc ${detectedAreaName}, không thuộc ${currentAreaName}. Vui lòng chọn vị trí khác trong ${currentAreaName}.`,
+    }));
+    setSubmitError('Địa chỉ không thuộc khu vực đang chọn.');
+    setPendingAreaChange(null);
+  };
+
+  const handleClearLocation = () => {
+    setLatitude(null);
+    setLongitude(null);
+    setLocationText('');
+    setPendingAreaChange(null);
     clearFieldError('location');
     setSubmitError('');
   };
@@ -1413,6 +1550,7 @@ export const CreateTicketPage = () => {
                         setLatitude(null);
                         setLongitude(null);
                         setLocationText('');
+                        setPendingAreaChange(null);
                         clearFieldError('areaId');
                         clearFieldError('location');
                       }}
@@ -1480,6 +1618,8 @@ export const CreateTicketPage = () => {
                       latitude={latitude}
                       longitude={longitude}
                       onSelectLocation={handleLocationSelect}
+                      onClearLocation={handleClearLocation}
+                      selectedAddress={locationText}
                       boundaryGeoJson={selectedAreaBoundaryGeoJson}
                       boundaryName={selectedArea ? getAreaName(selectedArea) : ''}
                     />
@@ -1512,7 +1652,7 @@ export const CreateTicketPage = () => {
                   ref={attachmentFieldRef}
                   tabIndex={-1}
                   aria-invalid={Boolean(fieldErrors.attachments)}
-                  className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed bg-base-200/30 dark:border-slate-700 dark:bg-slate-950/70 p-5 text-center outline-none transition hover:bg-blue-50/60 dark:hover:bg-blue-500/5 ${
+                  className={`group relative flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed bg-base-200/30 dark:border-slate-700 dark:bg-slate-950/70 p-4 text-center outline-none transition hover:bg-blue-50/60 dark:hover:bg-blue-500/5 ${
                     fieldErrors.attachments
                       ? 'border-error ring-2 ring-error/15'
                       : 'border-base-300 hover:border-blue-400'
@@ -1526,20 +1666,14 @@ export const CreateTicketPage = () => {
                     className="sr-only"
                     aria-describedby="evidence-upload-rules"
                   />
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300" aria-hidden="true">
-                    <Lucide.UploadCloud size={23} />
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300" aria-hidden="true">
+                    <Lucide.UploadCloud size={20} />
                   </span>
-                  <strong className="mt-4 text-sm font-semibold">
+                  <strong className="mt-3 text-sm font-semibold">
                     Chọn hình ảnh hoặc video
                   </strong>
-                  <span
-                    id="evidence-upload-rules"
-                    className="mt-1 text-xs leading-5 text-base-content/45"
-                  >
-                    Tối đa {MAX_ATTACHMENT_COUNT} tệp · Ảnh tối đa {formatFileSize(MAX_IMAGE_SIZE_BYTES)} · Video tối đa {formatFileSize(MAX_VIDEO_SIZE_BYTES)}
-                  </span>
-                  <span className="mt-0.5 text-xs leading-5 text-base-content/40">
-                    Tổng dung lượng không quá {formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.
+                  <span id="evidence-upload-rules" className="mt-1 text-xs leading-5 text-base-content/45">
+                    Tối đa {MAX_ATTACHMENT_COUNT} tệp · Ảnh {formatFileSize(MAX_IMAGE_SIZE_BYTES)} · Video {formatFileSize(MAX_VIDEO_SIZE_BYTES)} · Tổng {formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}
                   </span>
                 </label>
 
@@ -1863,6 +1997,51 @@ export const CreateTicketPage = () => {
 
       </section>
         </div>
+
+      {pendingAreaChange && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[99997] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm" role="presentation">
+              <section
+                className="w-full max-w-md rounded-[24px] border border-white/60 bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)] dark:border-base-300 dark:bg-base-100"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="location-area-change-title"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300" aria-hidden="true">
+                  <Lucide.MapPinned size={22} />
+                </span>
+                <h2 id="location-area-change-title" className="mt-4 text-xl font-semibold tracking-tight">
+                  Địa chỉ thuộc khu vực khác
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-base-content/60">
+                  Vị trí bạn vừa chọn thuộc <strong>{getAreaName(pendingAreaChange.toArea)}</strong>,
+                  khác với <strong>{getAreaName(pendingAreaChange.fromArea)}</strong> đang chọn.
+                </p>
+                <p className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs leading-5 text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/8 dark:text-blue-200">
+                  Nếu đổi khu vực, hệ thống sẽ giữ nguyên địa chỉ vừa chọn và cập nhật bản đồ theo khu vực mới.
+                </p>
+                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={keepCurrentAreaForLocation}
+                    className="inline-flex h-11 items-center justify-center rounded-xl border border-base-300 bg-base-100 px-4 text-sm font-semibold transition hover:border-blue-200 hover:text-blue-700"
+                  >
+                    Giữ {getAreaName(pendingAreaChange.fromArea)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmAreaChangeForLocation}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+                  >
+                    Đổi sang {getAreaName(pendingAreaChange.toArea)}
+                    <Lucide.ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
 
       {showLeaveDialog && typeof document !== 'undefined'
         ? createPortal(
