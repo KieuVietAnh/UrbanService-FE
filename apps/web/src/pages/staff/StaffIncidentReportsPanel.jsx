@@ -148,9 +148,9 @@ export default function StaffIncidentReportsPanel({ incident, capability }) {
     return (
       <div id="incident-panel-reports" role="tabpanel" aria-labelledby="incident-tab-reports" tabIndex={0} className="focus-visible:outline-none">
         <EmptyState
-          icon={Lucide.ServerOff}
-          title="Chưa có API hỗ trợ danh sách phản ánh"
-          description="Backend hiện chưa cung cấp danh sách phản ánh thuộc sự vụ này."
+          icon={Lucide.MessagesSquare}
+          title="Danh sách phản ánh chưa khả dụng"
+          description="Chưa thể tải các phản ánh thuộc sự vụ này."
         />
       </div>
     );
@@ -168,8 +168,7 @@ export default function StaffIncidentReportsPanel({ incident, capability }) {
     );
   }
 
-  const visibleCount = hasReportedCount ? reportedCount : reports.length;
-  const hasPartialEmbeddedList = hasReportedCount && reportedCount !== reports.length;
+  const visibleCount = reports.length;
 
   return (
     <div
@@ -187,12 +186,6 @@ export default function StaffIncidentReportsPanel({ incident, capability }) {
           Một sự vụ có thể được nhiều người dân phản ánh. Mỗi phản ánh vẫn được lưu giữ và cung cấp thêm thông tin cho quá trình xử lý.
         </p>
       </aside>
-
-      {hasPartialEmbeddedList ? (
-        <aside className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-100" role="note">
-          Backend ghi nhận {reportedCount.toLocaleString('vi-VN')} phản ánh nhưng response hiện chỉ cung cấp {reports.length.toLocaleString('vi-VN')} mục. Danh sách dưới đây chỉ hiển thị dữ liệu đã nhận được.
-        </aside>
-      ) : null}
 
       <section className="admin-panel overflow-hidden" aria-labelledby="incident-reports-title">
         <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/65 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 dark:border-slate-800 dark:bg-slate-950/25">

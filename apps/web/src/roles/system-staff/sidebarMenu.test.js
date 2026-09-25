@@ -13,7 +13,6 @@ test('sidebar Staff chỉ hiển thị các chức năng thuộc quyền sở h�
     '/staff/coordinators',
     '/notifications',
     '/profile',
-    '/settings',
   ]);
 
   const removedPaths = ['/staff/queue', '/staff/duplicates', '/tickets/assign/:id', '/staff/provider-candidates-checker'];
@@ -22,8 +21,8 @@ test('sidebar Staff chỉ hiển thị các chức năng thuộc quyền sở h�
 
 test('sidebar Staff có đủ ba nhóm công việc, phối hợp và tài khoản', () => {
   assert.deepEqual(systemStaffSidebarSections.map((section) => section.title), ['Công việc', 'Phối hợp', 'Tài khoản']);
-  assert.deepEqual(systemStaffSidebarSections[0].items.map((item) => item.label), ['Dashboard', 'Sự vụ của tôi', 'Phản ánh']);
-  assert.deepEqual(systemStaffSidebarSections[2].items.map((item) => item.label), ['Thông báo', 'Hồ sơ', 'Cài đặt']);
+  assert.deepEqual(systemStaffSidebarSections[0].items.map((item) => item.label), ['Tổng quan', 'Sự vụ của tôi', 'Phản ánh']);
+  assert.deepEqual(systemStaffSidebarSections[2].items.map((item) => item.label), ['Thông báo', 'Hồ sơ']);
 });
 
 test('menu Sự vụ và Phản ánh vẫn active trên route con hợp lệ', () => {

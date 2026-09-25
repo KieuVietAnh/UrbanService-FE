@@ -200,7 +200,7 @@ function CurrentProvider({ assignment }) {
 
       <p className="mt-4 flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
         <Lucide.LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        Backend quy định mỗi sự vụ chỉ có một đơn vị xử lý và không hỗ trợ thay đổi đơn vị.
+        Mỗi sự vụ chỉ có một đơn vị xử lý và không thể thay đổi sau khi phân công.
       </p>
     </div>
   );
@@ -431,7 +431,7 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         note: assignmentNote,
       });
       if (!createdAssignment || !sameIdentifier(createdAssignment?.incidentId, incidentId)) {
-        throw new Error('Backend trả về dữ liệu phân công không thuộc sự vụ đang mở.');
+        throw new Error('Dữ liệu phân công không thuộc sự vụ đang mở.');
       }
 
       let activeAssignment = createdAssignment;
@@ -442,7 +442,7 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         );
       }
       if (!activeAssignment || !sameIdentifier(activeAssignment?.incidentId, incidentId)) {
-        throw new Error('Backend chưa xác nhận trạng thái bắt đầu xử lý của đơn vị.');
+        throw new Error('Chưa thể xác nhận trạng thái bắt đầu xử lý của đơn vị.');
       }
 
       setAssignment(activeAssignment);
@@ -498,7 +498,7 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
         note: 'Staff xác nhận tự xử lý sự vụ.',
       });
       if (!updatedIncident || !sameIdentifier(updatedIncident?.incidentId, incidentId)) {
-        throw new Error('Backend chưa xác nhận trạng thái bắt đầu xử lý.');
+        throw new Error('Chưa thể xác nhận trạng thái bắt đầu xử lý.');
       }
       setDirectDialogOpen(false);
       setState(PROVIDER_STATE.DIRECT);
@@ -525,14 +525,14 @@ export default function StaffIncidentProviderSection({ incident, onIncidentUpdat
       description: 'Chỉ Staff đang phụ trách mới có thể chọn đơn vị cho sự vụ ở trạng thái xử lý phù hợp.',
     },
     [PROVIDER_STATE.API_UNAVAILABLE]: {
-      icon: Lucide.ServerOff,
-      title: 'Chưa có API hỗ trợ tìm đơn vị xử lý cho sự vụ',
-      description: 'API đơn vị xử lý hiện chưa khả dụng trên môi trường đang sử dụng.',
+      icon: Lucide.Building2,
+      title: 'Danh sách đơn vị xử lý chưa khả dụng',
+      description: 'Chưa thể tải các đơn vị xử lý phù hợp lúc này.',
     },
     [PROVIDER_STATE.ERROR]: {
       icon: Lucide.TriangleAlert,
       title: 'Không thể tải danh sách đơn vị xử lý',
-      description: message.text || 'Đã xảy ra lỗi khi kết nối với máy chủ.',
+      description: message.text || 'Không thể tải danh sách đơn vị xử lý.',
       action: (
         <Button type="button" variant="outline" size="sm" onClick={retry}>
           <Lucide.RefreshCw size={16} aria-hidden="true" />

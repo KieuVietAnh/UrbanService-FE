@@ -152,7 +152,7 @@ export default function StaffIncidentProcessingPanel({ incident, onIncidentUpdat
           </span>
           <div className="min-w-0">
             <h2 id="incident-processing-progress-title" className="admin-section-title">Bạn đang ở đâu trong flow?</h2>
-            <p className="admin-section-description mt-1">Các mốc tổng quát được xác định từ trạng thái backend; từng bước chi tiết nằm ngay bên dưới.</p>
+            <p className="admin-section-description mt-1">Các mốc tổng quát được xác định từ trạng thái sự vụ; từng bước chi tiết nằm ngay bên dưới.</p>
           </div>
         </header>
         <div className="p-5 sm:p-6">

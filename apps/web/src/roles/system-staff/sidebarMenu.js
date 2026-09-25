@@ -13,7 +13,6 @@ const menuItems = [
   { name: 'Danh Bạ Đơn Vị Xử Lý', label: 'Danh bạ đơn vị xử lý', path: '/staff/coordinators', icon: 'Users', activePatterns: ['/staff/coordinators'] },
   { name: 'Thông Báo', label: 'Thông báo', path: '/notifications', icon: 'Bell', activePatterns: ['/notifications'] },
   { name: 'Hồ Sơ', label: 'Hồ sơ', path: '/profile', icon: 'User', activePatterns: ['/profile'] },
-  { name: 'Cài Đặt', label: 'Cài đặt', path: '/settings', icon: 'Settings', activePatterns: ['/settings'] },
 ];
 
 export const systemStaffSidebarSections = [
@@ -30,7 +29,7 @@ export const systemStaffSidebarSections = [
   {
     id: 'system',
     title: 'Tài khoản',
-    items: menuItems.filter((item) => ['Thông Báo', 'Hồ Sơ', 'Cài Đặt'].includes(item.name)),
+    items: menuItems.filter((item) => ['Thông Báo', 'Hồ Sơ'].includes(item.name)),
   },
 ];
 

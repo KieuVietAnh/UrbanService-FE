@@ -1,0 +1,12 @@
+arearesponsible
+clientfacing
+longrunning
+expirationcontrolled
+coloronly
+reportlevel
+selfmerge
+manager-toarea
+Descript the overview
+if could
+help user has
+Feedbacks belonging

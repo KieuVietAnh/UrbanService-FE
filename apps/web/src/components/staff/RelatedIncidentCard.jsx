@@ -70,13 +70,7 @@ export default function RelatedIncidentCard({ incidentId }) {
   if (state === STAFF_INCIDENT_DETAIL_STATE.LOADING) return <RelatedIncidentLoading />;
 
   if (state === STAFF_INCIDENT_DETAIL_STATE.API_UNAVAILABLE) {
-    return (
-      <RelatedIncidentNotice
-        icon={Lucide.ServerOff}
-        title="Chưa có API hỗ trợ liên kết phản ánh với sự vụ"
-        description="Backend hiện chưa cung cấp thông tin sự vụ liên quan cho phản ánh này."
-      />
-    );
+    return null;
   }
 
   if (state === STAFF_INCIDENT_DETAIL_STATE.NOT_FOUND) {

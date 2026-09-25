@@ -440,7 +440,7 @@ export default function StaffIncidentEvidencePanel({
 
         {state === STAFF_INCIDENT_EVIDENCE_STATE.API_UNAVAILABLE ? (
           <div className="p-5 sm:p-6">
-            <OperationalState icon={Lucide.ServerOff} title="Chưa có API hỗ trợ minh chứng xử lý cho sự vụ" description="Backend hiện chưa cung cấp contract phù hợp để đọc và tải minh chứng ở cấp sự vụ." />
+            <OperationalState icon={Lucide.FileQuestion} title="Minh chứng xử lý chưa khả dụng" description="Chưa thể tải hoặc bổ sung minh chứng cho sự vụ này." />
           </div>
         ) : null}
 
@@ -477,7 +477,7 @@ export default function StaffIncidentEvidencePanel({
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white" aria-hidden="true"><Lucide.Upload size={16} /></span>
                   <div>
                     <h3 className="text-sm font-black text-slate-950 dark:text-white">Thêm minh chứng</h3>
-                    <p id="incident-evidence-upload-help" className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Backend chưa công bố giới hạn loại tệp, dung lượng hoặc số lượng. Chỉ chọn tệp phù hợp với nội dung xử lý.</p>
+                    <p id="incident-evidence-upload-help" className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Chỉ chọn các tệp phù hợp với nội dung xử lý.</p>
                   </div>
                 </div>
 
@@ -541,12 +541,6 @@ export default function StaffIncidentEvidencePanel({
                       Xóa toàn bộ minh chứng cũ
                     </Button>
                   ) : null}
-                  {!evidenceCapability.deleteOneAvailable ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                      <Lucide.LockKeyhole size={13} aria-hidden="true" />
-                      Backend chưa hỗ trợ xóa riêng từng minh chứng
-                    </span>
-                  ) : null}
                 </div>
               </div>
 
@@ -579,7 +573,7 @@ export default function StaffIncidentEvidencePanel({
       >
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-950 dark:border-rose-900 dark:bg-rose-950/25 dark:text-rose-100">
           <p className="font-black">{documents.length.toLocaleString('vi-VN')} minh chứng sẽ bị xóa.</p>
-          <p className="mt-1">Backend hiện chỉ hỗ trợ xóa toàn bộ, không hỗ trợ xóa riêng từng tệp. Thao tác này không thể hoàn tác.</p>
+          <p className="mt-1">Toàn bộ minh chứng đã lưu sẽ bị xóa và thao tác này không thể hoàn tác.</p>
         </div>
       </StaffIncidentActionDialog>
     </>

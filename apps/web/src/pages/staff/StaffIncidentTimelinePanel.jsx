@@ -47,19 +47,19 @@ function TimelineSkeleton() {
 function TimelineState({ state, onRetry }) {
   const content = {
     [STAFF_INCIDENT_TIMELINE_STATE.API_UNAVAILABLE]: {
-      icon: Lucide.ServerOff,
-      title: 'Chưa có API hỗ trợ dòng thời gian sự vụ',
-      description: 'Backend hiện chưa cung cấp nguồn dữ liệu dòng thời gian ở cấp sự vụ.',
+      icon: Lucide.History,
+      title: 'Dòng thời gian chưa khả dụng',
+      description: 'Chưa thể tải lịch sử hoạt động của sự vụ này.',
     },
     [STAFF_INCIDENT_TIMELINE_STATE.EMPTY]: {
       icon: Lucide.History,
       title: 'Chưa có hoạt động nào',
-      description: 'Các hoạt động của sự vụ sẽ xuất hiện tại đây khi được backend ghi nhận.',
+      description: 'Các hoạt động của sự vụ sẽ xuất hiện tại đây khi có dữ liệu.',
     },
     [STAFF_INCIDENT_TIMELINE_STATE.ERROR]: {
       icon: Lucide.TriangleAlert,
       title: 'Không thể tải dòng thời gian',
-      description: 'Đã xảy ra lỗi khi kết nối với máy chủ. Vui lòng thử lại.',
+      description: 'Không thể tải dòng thời gian. Vui lòng thử lại.',
       action: (
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           <Lucide.RefreshCw size={16} aria-hidden="true" />
