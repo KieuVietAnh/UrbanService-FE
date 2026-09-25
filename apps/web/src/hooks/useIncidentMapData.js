@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCommunityFeed } from '../services/api/feedApi';
 import { signalrService } from '../services/socket/signalrService';
+
+const COMMUNITY_MAP_PAGE_SIZE = 100;
+const COMMUNITY_MAP_FETCH_CONCURRENCY = 3;
+const COMMUNITY_MAP_BACKGROUND_REFRESH_MS = 30 * 1000;
 
 const isValidCoordinate = (value, min, max) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 const isValidLocation = (latitude, longitude) => isValidCoordinate(latitude, -90, 90) && isValidCoordinate(longitude, -180, 180);
@@ -11,7 +15,6 @@ const parseCoordinatesFromLocationText = (locationText) => {
   if (!match) return { latitude: NaN, longitude: NaN };
   return { latitude: Number(match[1]), longitude: Number(match[2]) };
 };
-
 
 const normalizeIncident = (ticket) => {
   const parsedLocation = parseCoordinatesFromLocationText(ticket?.locationText);
@@ -50,25 +53,75 @@ const mergeByIncidentId = (...collections) => {
   return [...merged.values()];
 };
 
+const getPageMeta = (response, fallbackPageNumber = 1) => ({
+  items: unwrapItems(response),
+  pageNumber: Math.max(1, Number(response?.pageNumber ?? response?.data?.pageNumber) || fallbackPageNumber),
+  totalPages: Math.max(1, Number(response?.totalPages ?? response?.data?.totalPages) || 1),
+});
+
+const fetchAllCommunityMapIncidents = async () => {
+  const firstResponse = await getCommunityFeed(
+    { PageNumber: 1, PageSize: COMMUNITY_MAP_PAGE_SIZE },
+    { force: true },
+  );
+  const firstPage = getPageMeta(firstResponse, 1);
+
+  if (firstPage.totalPages <= 1) {
+    return { items: firstPage.items, partial: false };
+  }
+
+  const items = [...firstPage.items];
+  let partial = false;
+
+  for (let startPage = 2; startPage <= firstPage.totalPages; startPage += COMMUNITY_MAP_FETCH_CONCURRENCY) {
+    const pageNumbers = Array.from(
+      { length: Math.min(COMMUNITY_MAP_FETCH_CONCURRENCY, firstPage.totalPages - startPage + 1) },
+      (_, index) => startPage + index,
+    );
+
+    const results = await Promise.allSettled(
+      pageNumbers.map((pageNumber) => getCommunityFeed(
+        { PageNumber: pageNumber, PageSize: COMMUNITY_MAP_PAGE_SIZE },
+        { force: true },
+      )),
+    );
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        items.push(...getPageMeta(result.value, pageNumbers[index]).items);
+      } else {
+        partial = true;
+      }
+    });
+  }
+
+  return { items, partial };
+};
+
 export function useIncidentMapData() {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const refreshInFlightRef = useRef(false);
 
   const loadIncidents = useCallback(async ({ silent = false } = {}) => {
+    if (refreshInFlightRef.current) return;
+
+    refreshInFlightRef.current = true;
     if (!silent) setLoading(true);
     setError('');
 
     try {
-      const publicResponse = await getCommunityFeed(
-        { PageNumber: 1, PageSize: 100 },
-        { force: true },
-      );
-      setIncidents(mergeByIncidentId(unwrapItems(publicResponse)));
+      const result = await fetchAllCommunityMapIncidents();
+      setIncidents(mergeByIncidentId(result.items));
+      if (result.partial) {
+        setError('Một phần dữ liệu bản đồ chưa tải được. Một số sự vụ có thể tạm thời chưa hiển thị.');
+      }
     } catch (err) {
       setError(err?.message || 'Không thể tải dữ liệu bản đồ sự cố.');
       if (!silent) setIncidents([]);
     } finally {
+      refreshInFlightRef.current = false;
       if (!silent) setLoading(false);
     }
   }, []);
@@ -85,7 +138,10 @@ export function useIncidentMapData() {
 
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', handleVisibility);
-    const intervalId = window.setInterval(refresh, 30000);
+    const intervalId = window.setInterval(
+      refresh,
+      COMMUNITY_MAP_BACKGROUND_REFRESH_MS,
+    );
 
     signalrService.start();
     const events = [

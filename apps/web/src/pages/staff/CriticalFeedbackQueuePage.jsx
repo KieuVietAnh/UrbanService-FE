@@ -6,6 +6,7 @@ import { managementFeedbackApi } from '../../services/api/managementFeedbackApi'
 import { toolsApi } from '@urbanmind/shared-api';
 import Badge from '../../components/design-system/Badge';
 import Button from '../../components/design-system/Button';
+import { fetchAllAiReviewedPages } from '../manager/managerReportReviewUtils';
 
 const URGENCY_OPTIONS = ['High', 'Urgent'];
 
@@ -45,6 +46,8 @@ export const CriticalFeedbackQueuePage = () => {
   const [feedbacks, setFeedbacks] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [loadWarning, setLoadWarning] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [urgencyFilter, setUrgencyFilter] = useState('');
@@ -53,12 +56,20 @@ export const CriticalFeedbackQueuePage = () => {
     const loadQueue = async () => {
       try {
         setLoading(true);
-        const [queueResponse, categoriesResponse] = await Promise.all([
-          managementFeedbackApi.getAiReviewedFeedbacks({ pageSize: 100 }),
+        setLoadError('');
+        setLoadWarning('');
+        const [queueResult, categoriesResponse] = await Promise.all([
+          fetchAllAiReviewedPages(
+            ({ pageNumber, pageSize }) => managementFeedbackApi.getAiReviewedFeedbackPage({ pageNumber, pageSize }),
+            { pageSize: 100 },
+          ),
           toolsApi.getCategories().catch(() => []),
         ]);
 
-        const normalizedQueue = Array.isArray(queueResponse) ? queueResponse : [];
+        const normalizedQueue = Array.isArray(queueResult?.items) ? queueResult.items : [];
+        if (queueResult?.partial) {
+          setLoadWarning('Một số trang phản ánh AI chưa tải được. Danh sách hiện tại có thể chưa đầy đủ; hãy tải lại trang để thử lại.');
+        }
         const criticalOnly = normalizedQueue.filter((item) => {
           const urgency = `${item?.urgencyLevel || item?.analysisResult?.urgencyLevel || item?.urgency || ''}`.trim();
           return urgency === 'High' || urgency === 'Urgent' || urgency === 'Critical';
@@ -68,6 +79,7 @@ export const CriticalFeedbackQueuePage = () => {
         setCategories(Array.isArray(categoriesResponse) ? categoriesResponse : []);
       } catch (error) {
         console.error('Failed to load critical feedback queue', error);
+        setLoadError(error?.message || 'Không thể tải hàng chờ phản ánh khẩn cấp.');
         setFeedbacks([]);
         setCategories([]);
       } finally {
@@ -154,6 +166,16 @@ export const CriticalFeedbackQueuePage = () => {
           </label>
         </div>
       </section>
+
+      {loadError ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          {loadError}
+        </div>
+      ) : loadWarning ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+          {loadWarning}
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="admin-panel p-10 text-center">

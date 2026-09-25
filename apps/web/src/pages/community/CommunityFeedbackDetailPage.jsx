@@ -22,6 +22,27 @@ import {
   translateResidentCategory,
 } from '../../components/community/communityPresentation.js';
 
+const COMMUNITY_COMMENT_PAGE_SIZE = 50;
+
+const normalizeCommentPage = (page, fallbackPage = 1) => ({
+  items: Array.isArray(page?.items) ? page.items : [],
+  pageNumber: Math.max(1, Number(page?.pageNumber) || fallbackPage),
+  totalPages: Math.max(1, Number(page?.totalPages) || 1),
+});
+
+const mergeComments = (current = [], incoming = []) => {
+  const merged = new Map();
+  [...current, ...incoming].forEach((comment, index) => {
+    const key = String(
+      comment?.commentId
+      ?? comment?.id
+      ?? `${comment?.createdAt || 'unknown'}:${comment?.userName || comment?.authorName || 'anonymous'}:${index}`
+    );
+    merged.set(key, comment);
+  });
+  return [...merged.values()];
+};
+
 const STATUS_ICONS = {
   new: Lucide.Inbox,
   verified: Lucide.BadgeCheck,
@@ -292,6 +313,10 @@ export const CommunityFeedbackDetailPage = () => {
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState('');
   const [commentNotice, setCommentNotice] = useState('');
+  const [commentLoadWarning, setCommentLoadWarning] = useState('');
+  const [commentPage, setCommentPage] = useState(1);
+  const [commentTotalPages, setCommentTotalPages] = useState(1);
+  const [commentsLoadingMore, setCommentsLoadingMore] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -332,20 +357,26 @@ export const CommunityFeedbackDetailPage = () => {
         .finally(() => {
           if (active) setResolutionLoading(false);
         });
-
+      setCommentLoadWarning('');
+      setCommentPage(1);
+      setCommentTotalPages(1);
       getCommunityIncidentComments(incidentId, {
         pageNumber: 1,
-        pageSize: 50,
+        pageSize: COMMUNITY_COMMENT_PAGE_SIZE,
         signal: controller.signal,
       })
-        .then((commentPage) => {
+        .then((commentResponse) => {
           if (!active) return;
-          setIncidentComments(Array.isArray(commentPage?.items) ? commentPage.items : []);
+          const normalizedPage = normalizeCommentPage(commentResponse, 1);
+          setIncidentComments(normalizedPage.items);
+          setCommentPage(normalizedPage.pageNumber);
+          setCommentTotalPages(normalizedPage.totalPages);
         })
         .catch((loadError) => {
           if (!active || controller.signal.aborted) return;
           console.error('Community incident comments failed to load', loadError);
           setIncidentComments([]);
+          setCommentLoadWarning('Chưa thể tải bình luận của sự vụ.');
         });
 
       getCommunityIncidentReports(incidentId, { signal: controller.signal })
@@ -495,6 +526,29 @@ export const CommunityFeedbackDetailPage = () => {
     }
   };
 
+  const handleLoadMoreComments = async () => {
+    if (commentsLoadingMore || commentPage >= commentTotalPages) return;
+
+    const nextPage = commentPage + 1;
+    setCommentsLoadingMore(true);
+    setCommentLoadWarning('');
+    try {
+      const commentResponse = await getCommunityIncidentComments(incidentId, {
+        pageNumber: nextPage,
+        pageSize: COMMUNITY_COMMENT_PAGE_SIZE,
+      });
+      const normalizedPage = normalizeCommentPage(commentResponse, nextPage);
+      setIncidentComments((current) => mergeComments(current, normalizedPage.items));
+      setCommentPage(normalizedPage.pageNumber);
+      setCommentTotalPages(normalizedPage.totalPages);
+    } catch (loadError) {
+      console.error('Community incident comments failed to load more', loadError);
+      setCommentLoadWarning('Chưa thể tải thêm bình luận. Vui lòng thử lại.');
+    } finally {
+      setCommentsLoadingMore(false);
+    }
+  };
+
   const handleIncidentCommentSubmit = async (event) => {
     event.preventDefault();
     const content = commentInput.trim();
@@ -522,7 +576,7 @@ export const CommunityFeedbackDetailPage = () => {
             createdAt: nowIso,
             userName: user?.fullName || user?.name || 'Bạn',
           };
-      setIncidentComments((current) => [...current, optimisticComment]);
+      setIncidentComments((current) => mergeComments(current, [optimisticComment]));
       setIncident((current) => current
         ? { ...current, commentCount: Math.max(0, Number(current.commentCount) || 0) + 1 }
         : current);
@@ -931,6 +985,13 @@ export const CommunityFeedbackDetailPage = () => {
                 {commentNotice ? <p className="mt-2 text-xs font-medium text-emerald-600">{commentNotice}</p> : null}
               </form>
 
+              {commentLoadWarning ? (
+                <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium leading-5 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200" role="status">
+                  <Lucide.TriangleAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{commentLoadWarning}</span>
+                </div>
+              ) : null}
+
               {incidentComments.length > 0 ? (
                 <div className="mt-5 divide-y divide-slate-200/80 border-t border-slate-200/80 dark:divide-slate-800 dark:border-slate-800">
                   {incidentComments.map((comment, index) => {
@@ -967,6 +1028,20 @@ export const CommunityFeedbackDetailPage = () => {
                   <p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-slate-400">Hãy chia sẻ thêm thông tin nếu bạn biết điều gì hữu ích về sự vụ này.</p>
                 </div>
               )}
+
+              {incidentComments.length > 0 && commentPage < commentTotalPages ? (
+                <div className="mt-4 flex justify-center border-t border-slate-200/80 pt-4 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={handleLoadMoreComments}
+                    disabled={commentsLoadingMore}
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500/60"
+                  >
+                    {commentsLoadingMore ? <Lucide.LoaderCircle size={15} className="animate-spin" /> : <Lucide.ChevronDown size={15} />}
+                    {commentsLoadingMore ? 'Đang tải bình luận' : 'Tải thêm bình luận'}
+                  </button>
+                </div>
+              ) : null}
             </section>
           </div>
 

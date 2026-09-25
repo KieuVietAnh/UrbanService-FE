@@ -7,6 +7,7 @@ import { managementTypes } from '@urbanmind/shared-types';
 import { signalrService } from '../../services/socket/signalrService';
 import { ticketApi, toolsApi } from '@urbanmind/shared-api';
 import * as Lucide from 'lucide-react';
+import { fetchAllAiReviewedPages } from '../manager/managerReportReviewUtils';
 
 const normalizePriority = (value = '') => {
   const normalized = `${value || ''}`.trim().toLowerCase();
@@ -153,8 +154,14 @@ export const AIReviewDetail = () => {
 
     const loadQueue = async () => {
       try {
-        const res = await managementFeedbackApi.getAiReviewedFeedbacks({ pageSize: 50 });
-        const normalized = Array.isArray(res) ? res : [];
+        const result = await fetchAllAiReviewedPages(
+          ({ pageNumber, pageSize }) => managementFeedbackApi.getAiReviewedFeedbackPage({ pageNumber, pageSize }),
+          { pageSize: 100 },
+        );
+        const normalized = Array.isArray(result?.items) ? result.items : [];
+        if (result?.partial) {
+          console.warn('AI review queue only loaded partially; some backend pages failed.');
+        }
         setTickets(normalized);
         mergeAiQueueCache({ tickets: normalized });
         if (normalized.length > 0) {
