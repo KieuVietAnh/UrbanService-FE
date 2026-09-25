@@ -185,9 +185,9 @@ export function StaffIncidentListState({ state, hasActiveFilters = false, onRetr
 
   const stateContent = {
     [STAFF_INCIDENT_LIST_STATE.API_UNAVAILABLE]: {
-      icon: Lucide.ServerOff,
-      title: 'Chưa có API hỗ trợ danh sách sự vụ',
-      description: 'Giao diện đã sẵn sàng nhưng backend hiện chưa cung cấp API phù hợp để tải danh sách sự vụ của Staff.',
+      icon: Lucide.ClipboardList,
+      title: 'Chưa thể tải danh sách sự vụ',
+      description: 'Dữ liệu sự vụ hiện chưa khả dụng. Vui lòng quay lại sau.',
     },
     [STAFF_INCIDENT_LIST_STATE.ERROR]: {
       icon: Lucide.TriangleAlert,
@@ -195,8 +195,8 @@ export function StaffIncidentListState({ state, hasActiveFilters = false, onRetr
       description: scopeUnavailable === 'missing-user'
         ? 'Không xác định được tài khoản Staff hiện tại để lọc phạm vi công việc.'
         : scopeUnavailable === 'scope-mismatch'
-          ? 'Backend trả về sự vụ ngoài phạm vi Staff hiện tại nên danh sách đã được ẩn để tránh xử lý nhầm.'
-          : 'Đã xảy ra lỗi khi kết nối với máy chủ. Vui lòng thử lại.',
+          ? 'Danh sách có sự vụ ngoài phạm vi của bạn nên đã được ẩn để tránh xử lý nhầm.'
+          : 'Không thể tải dữ liệu sự vụ. Vui lòng thử lại.',
       action: scopeUnavailable ? null : (
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           <Lucide.RefreshCw size={16} aria-hidden="true" />
@@ -277,7 +277,7 @@ function IncidentList({ incidents, totalItems }) {
           </span>
           <div>
             <h2 id="staff-incident-list-title" className="text-sm font-black text-slate-900 dark:text-slate-100">Danh sách sự vụ</h2>
-            <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">Danh sách được lọc và phân trang trực tiếp từ backend.</p>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">Danh sách được lọc và phân trang theo dữ liệu mới nhất.</p>
           </div>
         </div>
         <span className="inline-flex w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200">
@@ -585,7 +585,6 @@ export default function StaffIncidentListPage() {
   }), [assignedStaffUserId, filters, pageNumber, pageSize]);
 
   const {
-    capability,
     error,
     incidents,
     pagination,
@@ -859,11 +858,6 @@ export default function StaffIncidentListPage() {
         )}
       </section>
 
-      {!capability.assignedToCurrentStaff ? (
-        <aside className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100" role="note">
-          Backend chưa hỗ trợ lọc chính xác sự vụ được giao cho Staff hiện tại. Dữ liệu có thể bao gồm các sự vụ ngoài phạm vi của bạn.
-        </aside>
-      ) : null}
     </article>
   );
 }

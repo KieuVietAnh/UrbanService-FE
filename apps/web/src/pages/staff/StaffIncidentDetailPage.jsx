@@ -259,7 +259,7 @@ function IncidentSlaContent({ onRetry, sla, state }) {
         </span>
         <div>
           <p className="text-sm font-bold text-slate-800 dark:text-slate-100">SLA chưa được khởi tạo</p>
-          <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">Backend chưa có bản ghi SLA cho riêng sự vụ này.</p>
+          <p className="mt-1.5 text-sm leading-6 text-slate-500 dark:text-slate-400">Sự vụ này hiện chưa có thông tin thời hạn xử lý.</p>
         </div>
       </div>
     );
@@ -272,7 +272,7 @@ function IncidentSlaContent({ onRetry, sla, state }) {
           <Lucide.CircleAlert className="mt-0.5 shrink-0 text-rose-700 dark:text-rose-300" size={18} aria-hidden="true" />
           <div>
             <p className="text-sm font-bold text-rose-950 dark:text-rose-100">Không thể tải SLA sự vụ</p>
-            <p className="mt-1 text-sm leading-6 text-rose-800/80 dark:text-rose-200/80">Đã xảy ra lỗi khi đọc trạng thái SLA từ backend.</p>
+            <p className="mt-1 text-sm leading-6 text-rose-800/80 dark:text-rose-200/80">Không thể tải trạng thái SLA lúc này. Vui lòng thử lại.</p>
           </div>
         </div>
         <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
@@ -351,14 +351,14 @@ function IncidentDetailSkeleton() {
 function IncidentDetailState({ state, onRetry }) {
   const content = {
     [STAFF_INCIDENT_DETAIL_STATE.API_UNAVAILABLE]: {
-      icon: Lucide.ServerOff,
-      title: 'Chưa có API hỗ trợ chi tiết sự vụ',
-      description: 'Backend hiện chưa cung cấp dữ liệu chi tiết cho sự vụ này.',
+      icon: Lucide.FileQuestion,
+      title: 'Chi tiết sự vụ chưa khả dụng',
+      description: 'Không thể tải thông tin sự vụ lúc này.',
     },
     [STAFF_INCIDENT_DETAIL_STATE.ERROR]: {
       icon: Lucide.TriangleAlert,
       title: 'Không thể tải chi tiết sự vụ',
-      description: 'Đã xảy ra lỗi khi kết nối với máy chủ. Vui lòng thử lại.',
+      description: 'Không thể tải thông tin sự vụ. Vui lòng thử lại.',
       action: (
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
           <Lucide.RefreshCw size={16} aria-hidden="true" />

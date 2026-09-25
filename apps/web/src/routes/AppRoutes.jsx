@@ -301,9 +301,13 @@ export const AppRoutes = () => {
       } />
       <Route path="/settings" element={
         <ProtectedRoute>
-          <DashboardLayout>
-            <SettingsPage />
-          </DashboardLayout>
+          {currentRole === APP_ROLES.SYSTEM_STAFF ? (
+            <Navigate to="/dashboard" replace />
+          ) : (
+            <DashboardLayout>
+              <SettingsPage />
+            </DashboardLayout>
+          )}
         </ProtectedRoute>
       } />
       <Route path="/area-alerts" element={

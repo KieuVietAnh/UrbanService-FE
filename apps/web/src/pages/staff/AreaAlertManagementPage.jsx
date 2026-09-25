@@ -145,7 +145,7 @@ export default function AreaAlertManagementPage() {
         <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
           <ManagerSectionHeader
             title="Cảnh báo vừa tạo"
-            description="Backend hiện chưa có API danh sách cảnh báo quản trị; khu vực này chỉ hiển thị các cảnh báo tạo trong phiên hiện tại."
+            description="Theo dõi các cảnh báo vừa được tạo trong phiên làm việc hiện tại."
             icon={Lucide.History}
           />
         </div>

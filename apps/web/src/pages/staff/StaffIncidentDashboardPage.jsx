@@ -141,9 +141,9 @@ function DashboardSkeleton() {
 function DashboardState({ state, onRetry }) {
   const content = {
     [STAFF_INCIDENT_DASHBOARD_STATE.API_UNAVAILABLE]: {
-      icon: Lucide.ServerOff,
-      title: 'Chưa có API hỗ trợ tổng quan sự vụ',
-      description: 'Backend hiện chưa cung cấp API phù hợp để tải công việc sự vụ của nhân viên.',
+      icon: Lucide.ClipboardList,
+      title: 'Chưa thể tải tổng quan sự vụ',
+      description: 'Dữ liệu công việc hiện chưa khả dụng. Vui lòng quay lại sau.',
     },
     [STAFF_INCIDENT_DASHBOARD_STATE.SCOPE_UNAVAILABLE]: {
       icon: Lucide.ShieldAlert,
@@ -228,7 +228,7 @@ function SlaKpiStrip({ failedCount, metrics, requestedCount }) {
           </span>
           <div>
             <h2 id="staff-dashboard-sla-title" className="admin-section-title">SLA theo sự vụ</h2>
-            <p className="admin-section-description mt-1">Tính từ trạng thái SLA backend của các sự vụ đang được giao cho bạn.</p>
+            <p className="admin-section-description mt-1">Theo dõi thời hạn xử lý của các sự vụ đang được giao cho bạn.</p>
           </div>
         </div>
         <span className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-800 dark:bg-blue-950/45 dark:text-blue-200">

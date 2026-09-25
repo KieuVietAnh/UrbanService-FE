@@ -1,0 +1,168 @@
+{
+  "input": "C:\\Users\\richdesu\\Downloads\\Report7_FinalProjectReport.docx",
+  "fonts_by_char_count": {},
+  "direct_run_formatting_runs": 5820,
+  "direct_paragraph_formatting_paragraphs": 4119,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 3,
+      "text": "CAPSTONE PROJECT REPORT",
+      "style": "Normal"
+    },
+    {
+      "para_index": 4,
+      "text": "Urban Service Interaction and Feedback Ecosystem",
+      "style": "Normal"
+    },
+    {
+      "para_index": 5,
+      "text": "Capstone Project Document",
+      "style": "Normal"
+    },
+    {
+      "para_index": 10,
+      "text": "Table of Contents",
+      "style": "Normal"
+    },
+    {
+      "para_index": 182,
+      "text": "Main actors",
+      "style": "Normal"
+    },
+    {
+      "para_index": 188,
+      "text": "Key Features",
+      "style": "Normal"
+    },
+    {
+      "para_index": 193,
+      "text": "Pros",
+      "style": "Normal"
+    },
+    {
+      "para_index": 198,
+      "text": "Cons / Limitations",
+      "style": "Normal"
+    },
+    {
+      "para_index": 209,
+      "text": "Main Actors",
+      "style": "Normal"
+    },
+    {
+      "para_index": 214,
+      "text": "Key Features",
+      "style": "Normal"
+    },
+    {
+      "para_index": 220,
+      "text": "Pros",
+      "style": "Normal"
+    },
+    {
+      "para_index": 226,
+      "text": "Cons / Limitations",
+      "style": "Normal"
+    },
+    {
+      "para_index": 239,
+      "text": "Main Actors",
+      "style": "Normal"
+    },
+    {
+      "para_index": 244,
+      "text": "Key Features",
+      "style": "Normal"
+    },
+    {
+      "para_index": 245,
+      "text": "Multi-channel Ticket Collection",
+      "style": "Normal"
+    },
+    {
+      "para_index": 247,
+      "text": "Ticket Assignment & Workflow",
+      "style": "Normal"
+    },
+    {
+      "para_index": 249,
+      "text": "Conversation Management",
+      "style": "Normal"
+    },
+    {
+      "para_index": 251,
+      "text": "Analytics & Reporting",
+      "style": "Normal"
+    },
+    {
+      "para_index": 257,
+      "text": "Pros",
+      "style": "Normal"
+    },
+    {
+      "para_index": 264,
+      "text": "Cons / Limitations",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 2,
+        "text": "",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "text": "CAPSTONE PROJECT REPORT",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "text": "Urban Service Interaction and Feedback Ecosystem",
+        "style": "Normal"
+      },
+      {
+        "para_index": 6,
+        "text": "",
+        "style": "Normal"
+      },
+      {
+        "para_index": 10,
+        "text": "Table of Contents",
+        "style": "Normal"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 3,
+        "run_text": "CAPSTONE PROJECT REPORT",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "run_text": "Urban Service Interaction and Feedback Ecosystem",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "run_text": "Capstone Project Document",
+        "style": "Normal"
+      },
+      {
+        "para_index": 7,
+        "run_text": "\u2013 Ho Chi Minh City, September 2026 \u2013",
+        "style": "Normal"
+      },
+      {
+        "para_index": 10,
+        "run_text": "Table of Contents",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}

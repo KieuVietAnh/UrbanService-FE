@@ -374,7 +374,7 @@ export default function StaffIncidentProgressSection({
         || !sameIdentifier(updatedAssignment?.incidentId, incidentId)
         || positiveIdentifier(updatedAssignment?.providerAssignmentId) !== assignmentId
         || normalizeKey(updatedAssignment?.reportStatus) !== 'inprogress') {
-        throw new Error('Backend không trả về trạng thái phân công đơn vị hợp lệ sau khi cập nhật.');
+        throw new Error('Không thể xác nhận trạng thái phân công đơn vị sau khi cập nhật.');
       }
 
       onAssignmentUpdated?.(updatedAssignment);
@@ -439,7 +439,7 @@ export default function StaffIncidentProgressSection({
         payload,
       );
       if (positiveIdentifier(created?.providerAssignmentId) !== assignmentId) {
-        throw new Error('Backend trả về nhật ký không thuộc đơn vị xử lý đang mở.');
+        throw new Error('Nhật ký liên hệ không thuộc đơn vị xử lý đang mở.');
       }
 
       setLogs((current) => [
@@ -475,26 +475,7 @@ export default function StaffIncidentProgressSection({
     }
   };
 
-  if (!capability.available) {
-    return (
-      <section className="admin-panel p-6" aria-labelledby="incident-provider-progress-title">
-        <h2 id="incident-provider-progress-title" className="admin-section-title">Tiến độ xử lý</h2>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Chưa có API hỗ trợ tiến độ xử lý ở cấp sự vụ</p>
-      </section>
-    );
-  }
-
-  if (!relationshipValid) {
-    return (
-      <section className="admin-panel p-6" aria-labelledby="incident-provider-progress-title">
-        <h2 id="incident-provider-progress-title" className="admin-section-title">Tiến độ xử lý</h2>
-        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-950 dark:border-rose-900 dark:bg-rose-950/25 dark:text-rose-100" role="alert">
-          <Lucide.Link2Off className="mt-0.5 shrink-0" size={18} aria-hidden="true" />
-          <p className="text-sm font-semibold leading-6">Chưa có API hỗ trợ tiến độ xử lý ở cấp sự vụ</p>
-        </div>
-      </section>
-    );
-  }
+  if (!capability.available || !relationshipValid) return null;
 
   return (
     <section className="admin-panel overflow-hidden" aria-labelledby="incident-provider-progress-title">
@@ -532,7 +513,7 @@ export default function StaffIncidentProgressSection({
               <Lucide.PlayCircle className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" size={19} aria-hidden="true" />
               <div className="min-w-0">
                 <h3 className="text-sm font-black text-amber-950 dark:text-amber-100">Đơn vị đã sẵn sàng nhận xử lý</h3>
-                <p className="mt-1 text-sm leading-6 text-amber-900/80 dark:text-amber-100/75">Thao tác này cập nhật phân công đơn vị sang Đang xử lý; backend sẽ đồng bộ trạng thái sự vụ.</p>
+                <p className="mt-1 text-sm leading-6 text-amber-900/80 dark:text-amber-100/75">Thao tác này chuyển phân công đơn vị và sự vụ sang trạng thái Đang xử lý.</p>
               </div>
             </div>
             <Button
@@ -638,7 +619,7 @@ export default function StaffIncidentProgressSection({
         open={statusDialogOpen}
         busy={statusSubmitting}
         title="Bắt đầu xử lý sự vụ này?"
-        description="Phân công đơn vị sẽ chuyển sang Đang xử lý. Backend sẽ đồng bộ trạng thái của sự vụ và các phản ánh liên quan."
+        description="Phân công đơn vị, sự vụ và các phản ánh liên quan sẽ chuyển sang trạng thái xử lý tương ứng."
         confirmLabel="Xác nhận bắt đầu"
         icon={Lucide.Play}
         onClose={() => {

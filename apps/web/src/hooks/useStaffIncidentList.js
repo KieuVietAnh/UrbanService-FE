@@ -116,7 +116,6 @@ export function useStaffIncidentList(params, { enabled = true } = {}) {
   }, [loadIncidents]);
 
   return {
-    capability,
     ...snapshot,
     retry: loadIncidents,
   };

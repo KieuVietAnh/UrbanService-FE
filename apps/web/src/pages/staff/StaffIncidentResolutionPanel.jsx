@@ -627,7 +627,7 @@ export default function StaffIncidentResolutionPanel({
       return 'Bạn không phải Staff đang phụ trách sự vụ này. Bạn vẫn có thể xem minh chứng và lịch sử kết quả.';
     }
     if (submittedStatus && submittedStatus === currentStatus) {
-      return 'Kết quả vừa gửi đang được cập nhật. Vui lòng chờ trạng thái mới nhất từ backend.';
+      return 'Kết quả vừa gửi đang được cập nhật. Vui lòng chờ trạng thái mới nhất.';
     }
     if (currentStatus === 'assigned') {
       return 'Hãy bắt đầu xử lý sự vụ trước khi gửi kết quả.';
@@ -687,8 +687,7 @@ export default function StaffIncidentResolutionPanel({
             <div className="min-w-0">
               <Badge intent="danger">Cần xử lý lại</Badge>
               <h2 id="manager-rework-request-title" className="mt-3 text-base font-black text-amber-950 dark:text-amber-100">Yêu cầu từ Manager</h2>
-              <p className="mt-2 text-sm font-bold leading-6 text-amber-950 dark:text-amber-100">Chưa có API hỗ trợ nội dung yêu cầu xử lý lại</p>
-              <p className="mt-1 text-sm leading-6 text-amber-800 dark:text-amber-200">Backend đã trả trạng thái cần xử lý lại nhưng chưa cung cấp lý do, người yêu cầu hoặc thời gian duyệt ở cấp Incident.</p>
+              <p className="mt-2 text-sm leading-6 text-amber-800 dark:text-amber-200">Sự vụ cần được cập nhật kết quả trước khi gửi lại cho Manager duyệt.</p>
             </div>
           </div>
         </section>
@@ -716,7 +715,7 @@ export default function StaffIncidentResolutionPanel({
         </header>
 
         {state === RESOLUTION_STATE.API_UNAVAILABLE ? (
-          <div className="p-5 sm:p-6"><OperationalState icon={Lucide.ServerOff} title="Chưa có API hỗ trợ gửi kết quả ở cấp sự vụ" description="Backend hiện chưa cung cấp API phù hợp để gửi kết quả xử lý Incident." /></div>
+          <div className="p-5 sm:p-6"><OperationalState icon={Lucide.ClipboardList} title="Chức năng gửi kết quả chưa khả dụng" description="Chưa thể gửi kết quả xử lý cho sự vụ này." /></div>
         ) : null}
         {state === RESOLUTION_STATE.LOADING ? <ResolutionSkeleton /> : null}
         {state === RESOLUTION_STATE.ERROR ? (
@@ -809,13 +808,13 @@ export default function StaffIncidentResolutionPanel({
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950/55 dark:text-amber-300" aria-hidden="true"><Lucide.History size={20} /></span>
           <div className="min-w-0 flex-1">
             <h2 id="incident-resolution-history-title" className="admin-section-title">{readOnly ? 'Kết quả đã nhận' : currentStatus === 'needrework' ? 'Kết quả đã gửi trước đó' : 'Lịch sử gửi kết quả'}</h2>
-            <p className="admin-section-description mt-1">{readOnly ? 'Khu vực này chỉ dùng để xem các kết quả đã gửi và minh chứng đi kèm. Mọi thao tác xử lý được thực hiện trong tab Xử lý.' : 'Các lần gửi được backend lưu ở cấp Incident và luôn được giữ lại để đối chiếu.'}</p>
+            <p className="admin-section-description mt-1">{readOnly ? 'Khu vực này chỉ dùng để xem các kết quả đã gửi và minh chứng đi kèm. Mọi thao tác xử lý được thực hiện trong tab Xử lý.' : 'Các lần gửi luôn được giữ lại để đối chiếu.'}</p>
           </div>
           {state === RESOLUTION_STATE.READY ? <Badge intent="neutral">{resolutions.length.toLocaleString('vi-VN')} kết quả</Badge> : null}
         </header>
         {state === RESOLUTION_STATE.LOADING ? <ResolutionSkeleton /> : null}
         {state === RESOLUTION_STATE.API_UNAVAILABLE ? (
-          <div className="p-5 sm:p-6"><OperationalState icon={Lucide.ServerOff} title="Chưa có API hỗ trợ lịch sử kết quả ở cấp sự vụ" /></div>
+          <div className="p-5 sm:p-6"><OperationalState icon={Lucide.History} title="Lịch sử kết quả chưa khả dụng" /></div>
         ) : null}
         {state === RESOLUTION_STATE.ERROR ? (
           <div className="p-5 sm:p-6"><OperationalState icon={Lucide.CircleAlert} title="Không thể tải lịch sử kết quả" description={historyError} tone="danger" action={<Button type="button" variant="outline" size="sm" onClick={() => setRefreshVersion((current) => current + 1)}><Lucide.RefreshCw size={16} aria-hidden="true" />Thử lại</Button>} /></div>
