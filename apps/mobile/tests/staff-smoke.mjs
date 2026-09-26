@@ -94,16 +94,11 @@ const completionDocuments = new Map([[504, [{ ...reworkOldEvidence }]]]);
 const submittedResolutions = new Map([[approvalIncident.incidentId, [{ resolutionId: 601, incidentId: approvalIncident.incidentId, providerAssignmentId: 502, createdByStaffUserId: staff.userId, createdByStaffUserName: staff.fullName, resolutionSummary: 'Đã kiểm tra và khắc phục cụm đèn tín hiệu.', actionTaken: 'Thay bộ điều khiển và kiểm tra chu kỳ.', resultNote: 'Đang chờ Manager duyệt.', status: 'Submitted', resolvedAt: '2026-09-01T04:00:00Z', completionDocuments: [] }]]]);
 submittedResolutions.set(staleSubmittedIncident.incidentId, [{ resolutionId: 603, incidentId: staleSubmittedIncident.incidentId, providerAssignmentId: null, createdByStaffUserId: staff.userId, createdByStaffUserName: staff.fullName, resolutionSummary: 'Kết quả đã nhận, đang chờ đồng bộ trạng thái.', status: 'Submitted', resolvedAt: '2026-09-01T04:00:00Z', completionDocuments: [] }]);
 submittedResolutions.set(reworkIncident.incidentId, [{ resolutionId: 604, incidentId: reworkIncident.incidentId, providerAssignmentId: 504, createdByStaffUserId: staff.userId, createdByStaffUserName: staff.fullName, resolutionSummary: 'Đã kiểm tra nắp hố ga và bổ sung cảnh báo tạm thời.', actionTaken: 'Đặt biển cảnh báo và ghi nhận kích thước nắp hố ga.', resultNote: 'Manager yêu cầu bổ sung ảnh sau khi thay nắp.', status: 'NeedRework', resolvedAt: '2026-09-01T04:10:00Z', completionDocuments: [{ ...reworkOldEvidence }] }]);
-const reportSlaStatuses = new Map([
-  [reportOne.feedbackId, {
-    feedbackId: reportOne.feedbackId, feedbackSlaId: 901, status: 'Active', serverTime: '2026-09-01T05:00:00Z', startedAt: createdAt,
+const incidentSlaStatuses = new Map([
+  [incident.incidentId, {
+    incidentId: incident.incidentId, incidentSlaId: 901, status: 'Active', serverTime: '2026-09-01T05:00:00Z', startedAt: createdAt,
     responseStatus: 'Met', responseDueAt: '2026-08-30T10:30:00Z', responseRemainingSeconds: 0, responseProgressPercent: 100, isResponseWarning: false, isResponseBreached: false,
     resolutionStatus: 'Warning', resolutionDueAt: '2026-09-01T06:30:00Z', resolutionRemainingSeconds: 5400, resolutionProgressPercent: 78, isResolutionWarning: true, isResolutionBreached: false,
-  }],
-  [reportTwo.feedbackId, {
-    feedbackId: reportTwo.feedbackId, feedbackSlaId: 902, status: 'Active', serverTime: '2026-09-01T05:00:00Z', startedAt: reportTwo.createdAt,
-    responseStatus: 'Met', responseDueAt: '2026-08-30T14:15:00Z', responseRemainingSeconds: 0, responseProgressPercent: 100, isResponseWarning: false, isResponseBreached: false,
-    resolutionStatus: 'Active', resolutionDueAt: '2026-09-02T12:15:00Z', resolutionRemainingSeconds: 112500, resolutionProgressPercent: 35, isResolutionWarning: false, isResolutionBreached: false,
   }],
 ]);
 const executionWrites = [];
@@ -318,10 +313,10 @@ await context.route('**/api/**', async (route) => {
   } else if (/^\/api\/management\/feedbacks\/[^/]+$/.test(path) && method === 'GET') {
     data = reports.find((item) => item.feedbackId === path.split('/')[4]);
     if (!data) return route.fulfill({ status: 404, json: { message: 'Không tìm thấy Report.' } });
-  } else if (/^\/api\/slas\/feedback\/[^/]+\/status$/.test(path) && method === 'GET') {
-    const feedbackId = decodeURIComponent(path.split('/')[4]);
-    data = reportSlaStatuses.get(feedbackId);
-    if (!data) return route.fulfill({ status: 404, json: { message: 'Report chưa có SLA đang áp dụng.' } });
+  } else if (/^\/api\/slas\/incident\/[^/]+\/status$/.test(path) && method === 'GET') {
+    const incidentId = decodeURIComponent(path.split('/')[4]);
+    data = incidentSlaStatuses.get(incidentId);
+    if (!data) return route.fulfill({ status: 404, json: { message: 'Sự vụ chưa có SLA đang áp dụng.' } });
   } else if (/^\/api\/feedbacks\/[^/]+\/messages$/.test(path)) {
     if (method === 'POST') {
       if (rejectNextMessage) { rejectNextMessage = false; return route.fulfill({ status: 503, json: { message: 'Không gửi được ghi chú. Vui lòng thử lại.' } }); }
@@ -478,14 +473,14 @@ async function login() {
 try {
   await go('/');
   await login();
-  await page.getByText('Xin chào, Nguyễn Minh Anh.', { exact: true }).waitFor();
+  await page.getByText('Chào Anh', { exact: true }).waitFor();
   assert.match(page.url(), /staff\/home/);
-  for (const label of ['được giao', 'đang xử lý', 'cần làm lại', 'chờ duyệt']) await page.getByLabel('Xem sự vụ ' + label, { exact: true }).getByText(/^\d+$/).waitFor();
+  for (const label of ['mới được giao', 'đang xử lý', 'cần xử lý lại', 'chờ duyệt']) await page.getByLabel('Xem sự vụ ' + label, { exact: true }).getByText(/^\d+$/).waitFor();
   for (const status of statusCycle) assert.ok(requests.some((item) => item.path === '/api/management/incidents' && item.query.AssignedStaffUserId === staff.userId && item.query.Status === status), 'Personal metric must request ' + status);
   await noManagerControls();
   await scrollCapture('01-home', 'Tổng quan công việc cá nhân', 'Tổng quan', 3);
 
-  for (const [status, label] of [['Assigned', 'được giao'], ['InProgress', 'đang xử lý'], ['NeedRework', 'cần làm lại'], ['SubmittedForApproval', 'chờ duyệt']]) {
+  for (const [status, label] of [['Assigned', 'mới được giao'], ['InProgress', 'đang xử lý'], ['NeedRework', 'cần xử lý lại'], ['SubmittedForApproval', 'chờ duyệt']]) {
     await go('/staff/home');
     await page.getByLabel('Xem sự vụ ' + label, { exact: true }).click();
     await page.waitForURL(new RegExp('status=' + status));
@@ -555,35 +550,34 @@ try {
   await noManagerControls();
   await scrollCapture('09-incident-overview', 'Chi tiết sự vụ · Tổng quan', 'Chi tiết sự vụ', 4);
 
-  await page.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
-  await page.getByRole('button', { name: 'Xác nhận bắt đầu xử lý', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Bắt đầu xử lý', exact: true }).click();
+  await page.getByRole('radio', { name: 'Tự xử lý', exact: true }).click();
+  await page.getByRole('button', { name: 'Xác nhận bắt đầu tự xử lý', exact: true }).waitFor();
   await scrollCapture('09-start-confirm', 'Xác nhận bắt đầu xử lý sự vụ', 'Xử lý sự vụ', 3);
   rejectNextIncidentStart = true;
-  await page.getByRole('button', { name: 'Xác nhận bắt đầu xử lý', exact: true }).click();
-  await page.getByText('Hồ sơ vừa được cập nhật. Hãy làm mới để xem trạng thái mới nhất.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Xác nhận bắt đầu tự xử lý', exact: true }).click();
+  await page.getByText(/Hồ sơ vừa được cập nhật\. Hãy làm mới để xem trạng thái mới nhất\./).waitFor();
   assert.equal(incident.status, 'Assigned', 'A rejected transition must leave the Incident assigned');
   await scrollCapture('09-start-conflict', 'Bắt đầu xử lý xung đột · Có thể thử lại', 'Trạng thái xử lý', 3);
-  await page.getByRole('button', { name: 'Bắt đầu xử lý', exact: true }).click();
-  await page.getByRole('button', { name: 'Xác nhận bắt đầu xử lý', exact: true }).click();
-  await page.getByText('Đã bắt đầu xử lý sự vụ. Bạn có thể cập nhật đơn vị, minh chứng và kết quả.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Xác nhận bắt đầu tự xử lý', exact: true }).click();
+  await page.getByText('Đã bắt đầu tự xử lý. Bạn có thể xem bước minh chứng rồi tiếp tục gửi kết quả.', { exact: true }).waitFor();
   assert.equal(incident.status, 'InProgress');
   assert.equal(incident.processingStartedAt, '2026-09-01T05:05:00Z');
   assert.equal(executionWrites.filter((item) => item.path === '/api/management/incidents/' + incident.incidentId + '/status').length, 2, 'The fixture must exercise one rejected and one accepted start request');
   await scrollCapture('09-started', 'Sự vụ đã chuyển sang đang xử lý', 'Xử lý sự vụ', 3);
 
+  await page.getByRole('link', { name: 'Chi tiết sự vụ', exact: true }).click();
   await page.getByRole('tab', { name: 'Reports (2)', exact: true }).click();
   await page.getByText('Nguồn phản ánh', { exact: true }).waitFor();
   await page.getByText('AI đề xuất, Manager xác nhận', { exact: true }).waitFor();
   await page.getByText('91%', { exact: true }).waitFor();
-  await page.getByText('SLA theo từng Report', { exact: true }).waitFor();
+  await page.getByText('SLA của sự vụ', { exact: true }).waitFor();
   await page.getByText('Có chỉ tiêu sắp đến hạn', { exact: true }).waitFor();
   await page.getByText('Hoàn thành đúng hạn', { exact: true }).first().waitFor();
   assert.equal(await page.getByText('Còn dưới 1 phút', { exact: true }).count(), 0, 'Completed SLA targets must not look like a running countdown');
   await page.getByText('Còn 1 giờ 30 phút', { exact: true }).waitFor();
-  await page.getByText('Đang theo dõi', { exact: true }).last().waitFor();
-  assert.ok(requests.some((item) => item.path === '/api/slas/feedback/' + reportOne.feedbackId + '/status' && item.method === 'GET'));
-  assert.ok(requests.some((item) => item.path === '/api/slas/feedback/' + reportTwo.feedbackId + '/status' && item.method === 'GET'));
-  await scrollCapture('10-incident-reports', 'Chi tiết sự vụ · Hai Report, liên kết và SLA riêng', 'Chi tiết sự vụ', 6);
+  assert.ok(requests.some((item) => item.path === '/api/slas/incident/' + incident.incidentId + '/status' && item.method === 'GET'));
+  await scrollCapture('10-incident-reports', 'Chi tiết sự vụ · Hai Report và SLA sự vụ', 'Chi tiết sự vụ', 6);
   await page.getByRole('link', { name: 'Xem chi tiết Report', exact: true }).nth(0).click();
   await page.getByText('Chi tiết Report', { exact: true }).waitFor();
   await noManagerControls();
@@ -601,7 +595,7 @@ try {
   await scrollCapture('13-incident-timeline', 'Chi tiết sự vụ · Lịch sử', 'Chi tiết sự vụ', 3);
 
   await go('/staff/incidents/' + reworkIncident.incidentId);
-  await page.getByText(reworkIncident.title, { exact: true }).waitFor();
+  await page.getByRole('heading', { name: reworkIncident.title, exact: true }).waitFor();
   await scrollCapture('14-incident-rework', 'Sự vụ cần xử lý lại · Hiển thị giới hạn API', 'Chi tiết sự vụ', 3);
   await page.getByRole('tab', { name: 'Reports (0)', exact: true }).click();
   await page.getByText('Chưa có phản ánh liên quan.', { exact: true }).waitFor();
@@ -659,8 +653,7 @@ try {
 
   // Execute work against an Incident with no embedded Report: no feedback-to-
   // provider inference may be necessary for any of these actions.
-  await go('/staff/incidents/' + workingIncident.incidentId);
-  await page.getByRole('link', { name: 'Đơn vị xử lý & liên hệ', exact: true }).click();
+  await go('/staff/incidents/' + workingIncident.incidentId + '/provider');
   await page.getByRole('radio', { name: 'Chọn đơn vị: ' + providerCandidates[0].providerName, exact: true }).waitFor();
   await scrollCapture('29-provider-candidates', 'Đơn vị phù hợp với sự vụ', 'Xử lý sự vụ', 3);
   await page.getByLabel('Tìm đơn vị xử lý', { exact: true }).fill('thoát nước');
@@ -893,7 +886,7 @@ try {
   const incidentStatusRequests = requests.filter((item) => /^\/api\/management\/incidents\/[^/]+\/status$/.test(item.path));
   assert.equal(incidentStatusRequests.length, 2, 'Start processing must cover a 409 retry and a successful transition');
   assert.ok(incidentStatusRequests.every((item) => item.method === 'PATCH'), 'Incident status uses the Swagger PATCH contract only');
-  assert.ok(requests.every((item) => !item.path.startsWith('/api/slas/incident/')), 'SLA must remain scoped to each Report, never inferred from an Incident');
+  assert.equal(requests.some((item) => item.path.startsWith('/api/slas/feedback/')), false, 'Removed per-Report SLA endpoints must never be called');
   assert.equal(requests.some((item) => item.path.startsWith('/api/management/feedbacks/') && !['GET', 'OPTIONS'].includes(item.method)), false, 'Incident execution must never mutate legacy Feedback workflows');
   assert.ok(requests.filter((item) => item.path === '/api/management/incidents').every((item) => item.query.AssignedStaffUserId === staff.userId), 'Every incident list request must remain scoped');
   assert.deepEqual(unmocked, [], 'All API traffic must use explicit fixtures');
@@ -905,7 +898,7 @@ try {
     // Alternate profile runs must never replace the primary all-screen ZIP.
     if (!compatibility) await createStaffArchive(output);
   }
-  console.log('PASS: personal dashboard, Incident filters/pagination/detail tabs, per-Report SLA, Assigned -> InProgress retry, readonly Reports/context return, chat/recovery, notifications/profile/guards; Incident provider assignment, contacts/status, multipart evidence, initial resolution plus NeedRework resubmission/history, 204/403/409/503 handling and readonly ownership/status restrictions.');
+  console.log('PASS: personal dashboard, Incident filters/pagination/detail tabs, Incident SLA, Assigned -> InProgress retry, readonly Reports/context return, chat/recovery, notifications/profile/guards; Incident provider assignment, contacts/status, multipart evidence, initial resolution plus NeedRework resubmission/history, 204/403/409/503 handling and readonly ownership/status restrictions.');
   console.log('Profile: ' + profile.name + '; viewport: ' + viewport.width + 'x' + viewport.height + '; text scale: ' + profile.textScale + '; screenshots: ' + manifest.length + '; intercepted API requests: ' + requests.length + '; geometry checks: ' + geometryChecks.length);
 } catch (error) {
   console.error('PAGE:', page.url());

@@ -28,6 +28,10 @@ export type ExecutionStep = {
   state: ExecutionStepState;
 };
 
+export const firstRouteParam = (value: string | string[] | undefined): string => (
+  (Array.isArray(value) ? value[0] : value || '').trim()
+);
+
 export const emptyExecutionDraft = (): ExecutionDraft => ({
   mode: null,
   activeStep: null,

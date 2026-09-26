@@ -21,7 +21,7 @@ const resolver = registerHooks({ resolve(specifier, context, nextResolve) {
 const { staffApi, staffKeys } = await import('../src/features/staff/staff-api.ts');
 const { executionApi, executionKeys } = await import('../src/features/staff/staff-execution-api.ts');
 const { buildEvidenceFormData, canEditIncidentExecution, canStartIncidentProcessing, canSubmitIncidentResolution, incidentResolutionSubmissionMode, normalizeIncidentResolution, normalizeCompletionEvidence } = await import('../src/features/staff/staff-execution-models.ts');
-const { buildExecutionSteps, currentExecutionStep, parseExecutionDraft, resolveExecutionMode } = await import('../src/features/staff/staff-execution-flow-models.ts');
+const { buildExecutionSteps, currentExecutionStep, firstRouteParam, parseExecutionDraft, resolveExecutionMode } = await import('../src/features/staff/staff-execution-flow-models.ts');
 const { profileApi } = await import('../src/features/profile/api/profile-api.ts');
 resolver.deregister();
 
@@ -422,6 +422,18 @@ test('guided execution flow resumes backend progress and preserves an explicit s
   const draft = parseExecutionDraft(JSON.stringify({ mode: 'direct', activeStep: 'resolution', evidenceSkipped: true, resolutionSummary: 'Đã xử lý' }));
   assert.equal(draft.mode, 'direct'); assert.equal(draft.activeStep, 'resolution'); assert.equal(draft.evidenceSkipped, true);
   assert.equal(parseExecutionDraft('{bad').mode, null);
+});
+
+test('execution bootstrap accepts Expo scalar and array route params without an endless disabled query', () => {
+  assert.equal(firstRouteParam(' incident-1 '), 'incident-1');
+  assert.equal(firstRouteParam([' incident-2 ', 'ignored']), 'incident-2');
+  assert.equal(firstRouteParam(undefined), '');
+
+  const source = readFileSync(new URL('../src/features/staff/components/staff-execution-flow-screen.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const bootstrapReady = Boolean\(id && userId\)/);
+  assert.match(source, /const queryPending = bootstrapReady &&/);
+  assert.match(source, /setTimeout\([\s\S]*?1800/);
+  assert.match(source, /bootstrapError/);
 });
 
 test('execution read APIs use Incident/assignment routes, encode identity and accept assignment 204 only as no assignment', async () => {

@@ -1,17 +1,3 @@
-export type StaffSlaReportInput = {
-  id: string;
-  title?: string;
-  status?: string;
-  linkStatus?: string;
-};
-
-export type StaffSlaReportTarget = {
-  feedbackId: string;
-  title: string;
-  feedbackStatus: string;
-  linkStatus: string;
-};
-
 export type StaffSlaMetric = {
   status: string;
   dueAt: string;
@@ -21,9 +7,9 @@ export type StaffSlaMetric = {
   breached: boolean;
 };
 
-export type StaffFeedbackSlaStatus = {
-  feedbackId: string;
-  feedbackSlaId: number | null;
+export type StaffIncidentSlaStatus = {
+  incidentId: string;
+  incidentSlaId: number | null;
   status: string;
   serverTime: string;
   startedAt: string;
@@ -62,43 +48,11 @@ const progressPercent = (value: unknown) => {
   return number === null ? null : Math.min(100, Math.max(0, number));
 };
 
-const inactiveLinkStatuses = new Set(['unlinked', 'inactive', 'removed', 'rejected']);
-
-/**
- * IncidentDetailDto.reports is a list of feedback links. Keep each feedback as
- * its own SLA target and omit only links the backend explicitly marks inactive.
- */
-export function normalizeReportSlaTargets(
-  reports: readonly StaffSlaReportInput[],
-): StaffSlaReportTarget[] {
-  const seen = new Set<string>();
-  const targets: StaffSlaReportTarget[] = [];
-
-  for (const report of reports) {
-    const feedbackId = asText(report.id);
-    const identity = feedbackId.toLowerCase();
-    const linkStatus = asText(report.linkStatus);
-    if (!feedbackId || seen.has(identity) || inactiveLinkStatuses.has(normalizedKey(linkStatus))) {
-      continue;
-    }
-
-    seen.add(identity);
-    targets.push({
-      feedbackId,
-      title: asText(report.title) || 'Report chưa có tiêu đề',
-      feedbackStatus: asText(report.status),
-      linkStatus,
-    });
-  }
-
-  return targets;
-}
-
 /** Normalize the exact SlaStatusDto fields returned by GET .../status. */
-export function normalizeFeedbackSlaStatus(
+export function normalizeIncidentSlaStatus(
   value: unknown,
-  expectedFeedbackId: string,
-): StaffFeedbackSlaStatus | null {
+  expectedIncidentId: string,
+): StaffIncidentSlaStatus | null {
   if (value === null || value === undefined || value === '') return null;
   const wrapped = asRecord(value);
   const sourceValue = wrapped.data ?? wrapped.result ?? value;
@@ -108,15 +62,15 @@ export function normalizeFeedbackSlaStatus(
     throw new Error('Máy chủ trả về trạng thái SLA không hợp lệ.');
   }
 
-  const feedbackId = asText(source.feedbackId) || expectedFeedbackId.trim();
-  if (!feedbackId || feedbackId.toLowerCase() !== expectedFeedbackId.trim().toLowerCase()) {
-    throw new Error('Trạng thái SLA không thuộc Report đang xem.');
+  const incidentId = asText(source.incidentId) || expectedIncidentId.trim();
+  if (!incidentId || incidentId.toLowerCase() !== expectedIncidentId.trim().toLowerCase()) {
+    throw new Error('Trạng thái SLA không thuộc sự vụ đang xem.');
   }
 
-  const feedbackSlaId = finiteNumber(source.feedbackSlaId);
+  const incidentSlaId = finiteNumber(source.incidentSlaId);
   return {
-    feedbackId,
-    feedbackSlaId: feedbackSlaId === null ? null : Math.trunc(feedbackSlaId),
+    incidentId,
+    incidentSlaId: incidentSlaId === null ? null : Math.trunc(incidentSlaId),
     status: asText(source.status),
     serverTime: asText(source.serverTime),
     startedAt: asText(source.startedAt),

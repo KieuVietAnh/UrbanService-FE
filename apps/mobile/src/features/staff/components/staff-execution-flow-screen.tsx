@@ -13,7 +13,7 @@ import { staffApi, staffError, staffKeys } from '../staff-api';
 import { executionApi, executionKeys } from '../staff-execution-api';
 import {
   buildExecutionSteps, currentExecutionStep, emptyExecutionDraft, executionDraftKey,
-  parseExecutionDraft, resolveExecutionMode, type ExecutionDraft, type ExecutionMode,
+  firstRouteParam, parseExecutionDraft, resolveExecutionMode, type ExecutionDraft, type ExecutionMode,
   type ExecutionStepId,
 } from '../staff-execution-flow-models';
 import {
@@ -76,7 +76,7 @@ function CandidateCard({ item, selected, disabled, onPress }: {
 }) {
   return <Pressable
     accessibilityRole="radio"
-    accessibilityLabel={`Chọn ${item.providerName || item.coordinatorName}`}
+    accessibilityLabel={`Chọn đơn vị: ${item.providerName || item.coordinatorName}`}
     accessibilityState={{ checked: selected, disabled }}
     disabled={disabled}
     onPress={onPress}
@@ -128,14 +128,29 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [submittedStatus, setSubmittedStatus] = useState('');
+  const bootstrapReady = Boolean(id && userId);
+  const bootstrapError = !id
+    ? new Error('Không đọc được mã sự vụ từ liên kết. Hãy quay lại chi tiết sự vụ và mở lại flow xử lý.')
+    : !userId
+      ? new Error('Không xác định được phiên nhân viên. Vui lòng đăng nhập lại.')
+      : null;
 
   const incidentKey = staffKeys.incident(userId, id);
   const assignmentKey = executionKeys.assignment(userId, id);
-  const incident = useQuery({ queryKey: incidentKey, queryFn: ({ signal }) => staffApi.incident(id, signal), enabled: !!id && !!userId, retry: 1 });
+  const incident = useQuery({ queryKey: incidentKey, queryFn: ({ signal }) => staffApi.incident(id, signal), enabled: bootstrapReady, retry: 1 });
   const readable = incident.isSuccess && !incident.error;
   const assignment = useQuery({ queryKey: assignmentKey, queryFn: ({ signal }) => executionApi.assignment(id, signal), enabled: readable, retry: 1 });
   const assignmentId = assignment.data?.providerAssignmentId || 0;
-  const mode = resolveExecutionMode({ hasAssignment: !!assignment.data, status: incident.data?.status || '', draftMode: draft.mode });
+  const routeMode: ExecutionMode | null = initialStep === 'provider'
+    ? 'provider'
+    : initialStep === 'start'
+      ? 'direct'
+      : null;
+  const mode = resolveExecutionMode({
+    hasAssignment: !!assignment.data,
+    status: incident.data?.status || '',
+    draftMode: draft.mode || routeMode,
+  });
   const canEdit = !!incident.data && canEditIncidentExecution(incident.data, userId);
   const candidates = useQuery({
     queryKey: executionKeys.candidates(userId, id),
@@ -180,15 +195,30 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
 
   useEffect(() => {
     let active = true;
+    let settled = false;
     setHydrated(false);
     setDraft(emptyExecutionDraft());
     setViewStep(initialStep || null);
+    const timeout = setTimeout(() => {
+      if (!active || settled) return;
+      settled = true;
+      setDraft(emptyExecutionDraft());
+      setHydrated(true);
+    }, 1800);
     void AsyncStorage.getItem(storageKey).then((value) => {
-      if (!active) return;
+      if (!active || settled) return;
+      settled = true;
+      clearTimeout(timeout);
       setDraft(parseExecutionDraft(value));
       setHydrated(true);
-    }).catch(() => { if (active) setHydrated(true); });
-    return () => { active = false; };
+    }).catch(() => {
+      if (!active || settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      setDraft(emptyExecutionDraft());
+      setHydrated(true);
+    });
+    return () => { active = false; clearTimeout(timeout); };
   }, [storageKey, initialStep]);
 
   useEffect(() => {
@@ -381,13 +411,13 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   const selectedCandidate = candidates.data?.find((item) => item.coordinatorId === draft.selectedCoordinator);
   const validContactTime = localContactTime(draft.contactedAt) !== null;
   const readonly = readable && !canEdit;
-  const queryPending = incident.isPending || (readable && assignment.isPending) || !hydrated;
+  const queryPending = bootstrapReady && (incident.isPending || (readable && assignment.isPending) || !hydrated);
 
   return <>
     <Stack.Screen options={{ title: currentStatus === 'needrework' ? 'Xử lý lại sự vụ' : 'Xử lý sự vụ' }} />
     <StaffScrollView ref={scroll} refreshControl={<RefreshControl refreshing={incident.isRefetching || assignment.isRefetching || contacts.isRefetching || evidence.isRefetching || history.isRefetching} onRefresh={() => { if (!operation.current) void refresh(); }} />}>
       <BackLink href={(`/(staff)/staff/incidents/${encodeURIComponent(id)}`) as Href} label="Chi tiết sự vụ" />
-      <QueryState pending={queryPending} error={incident.error || assignment.error} retry={() => { void refresh(); }} />
+      <QueryState pending={queryPending} error={bootstrapError || incident.error || assignment.error} retry={() => { void refresh(); }} />
       {readable && hydrated && incident.data && <>
         <PageHeading eyebrow={recordCode(id, true)} title={incident.data.title} accessory={<Status value={incident.data.status} />} description={currentStatus === 'needrework' ? 'Bổ sung phần Manager yêu cầu và gửi lại trong cùng một luồng.' : 'Hoàn thành lần lượt từng bước; tiến độ được lưu khi bạn rời màn hình.'} />
         {error ? <Notice error>{error}</Notice> : null}
@@ -512,10 +542,11 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
 }
 
 export function StaffExecutionFlowScreen({ initialStep }: { initialStep?: ExecutionStepId } = {}) {
-  const params = useLocalSearchParams<{ id?: string; step?: string }>();
-  const id = typeof params.id === 'string' ? params.id : '';
+  const params = useLocalSearchParams<{ id?: string | string[]; step?: string | string[] }>();
+  const id = firstRouteParam(params.id);
+  const step = firstRouteParam(params.step);
   const userId = useAuthStore((state) => state.user?.id || '');
-  const routeStep = ['provider', 'start', 'contact', 'evidence', 'resolution'].includes(params.step || '')
-    ? params.step as ExecutionStepId : undefined;
+  const routeStep = ['provider', 'start', 'contact', 'evidence', 'resolution'].includes(step)
+    ? step as ExecutionStepId : undefined;
   return <FlowWorkspace key={`${userId}:${id}`} id={id} userId={userId} initialStep={routeStep || initialStep} />;
 }
