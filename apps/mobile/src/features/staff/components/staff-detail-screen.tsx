@@ -10,7 +10,7 @@ import { buildExecutionSteps, executionDraftKey, parseExecutionDraft, resolveExe
 import { sameIncident } from '../staff-execution-models';
 import { asText, formatConfidence, formatDate, linkMethodLabel, linkRoleLabel, normalizeKey, priorityLabel, recordCode, severityLabel, type StaffRecord } from '../staff-models';
 import { BackLink, Button, colors, Label, NavigationRow, Notice, PageHeading, Pagination, panelStyle, QueryState, Section, Segments, Severity, Status } from './staff-ui';
-import { StaffReportSlaSection } from './staff-report-sla-section';
+import { StaffIncidentSlaSection } from './staff-report-sla-section';
 import { StaffExecutionProgress } from './staff-execution-progress';
 import { StaffScrollView } from './staff-scroll-view';
 
@@ -59,7 +59,7 @@ function IncidentReports({ item, userId }: { item: StaffRecord; userId: string }
         {report.id ? <BackLink href={('/(staff)/staff/feedbacks/' + encodeURIComponent(report.id) + '?fromIncidentId=' + encodeURIComponent(item.id)) as Href} label="Xem chi tiết Report" forward /> : <Label muted size={13}>Chưa thể mở chi tiết: response thiếu mã phản ánh.</Label>}
       </View>)}
     </Section>
-    <StaffReportSlaSection userId={userId} incidentId={item.id} reports={item.reports} />
+    <StaffIncidentSlaSection userId={userId} incidentId={item.id} />
   </>;
 }
 
@@ -128,7 +128,7 @@ function IncidentOverview({ item, userId }: { item: StaffRecord; userId: string 
       {!sameIncident(item.assignedStaffUserId, userId) && <Notice>Sự vụ này chưa được xác nhận là đang phân công cho bạn.</Notice>}
       {normalizeKey(item.status) === 'needrework' && <Notice>Manager đã yêu cầu xử lý lại. Hãy bổ sung minh chứng cần thiết và gửi một kết quả mới; các lần gửi trước vẫn được giữ trong lịch sử.</Notice>}
       <ExecutionOverview item={item} userId={userId} />
-      <Label muted size={12}>SLA được tính riêng cho từng Report và hiển thị trong tab Reports. Hạn dự kiến của sự vụ không được dùng để tự suy ra cảnh báo hay vi phạm SLA.</Label>
+      <Label muted size={12}>SLA được backend tính cho sự vụ và hiển thị trong tab Reports. Hạn dự kiến không được dùng để tự suy ra cảnh báo hay vi phạm SLA.</Label>
     </Section>
   </>;
 }
@@ -170,7 +170,7 @@ export function StaffDetailScreen({ incident = false }: { incident?: boolean }) 
           <Section title="Thông tin Report"><View style={panelStyle}><Metadata rows={[
             ['Người phản ánh', item.reporter], ['Vị trí', item.location], ['Phường / Khu vực', item.areaName], ['Danh mục', item.category], ['Ngày gửi', formatDate(item.createdAt)],
           ]} /></View></Section>
-          <StaffReportSlaSection userId={userId} incidentId={item.incidentId || `report-${item.id}`} reports={[{ id: item.id, title: item.title, status: item.status }]} />
+          <StaffIncidentSlaSection userId={userId} incidentId={item.incidentId || ''} />
           <Attachments key={id} item={item} />
           {(item.summary || item.confidence !== null) && <Section title="Thông tin AI"><View style={panelStyle}><Label size={14}>{item.summary || 'Chưa có tóm tắt.'}</Label><Label muted size={13}>Độ tin cậy: {formatConfidence(item.confidence)}</Label><Label muted size={12}>Kết quả tham khảo, không thay thế quyết định của Manager.</Label></View></Section>}
           <NavigationRow href={('/(staff)/staff/feedbacks/' + encodeURIComponent(id) + '/chat') as Href} label="Trao đổi với người dân / Ghi chú nội bộ" icon="chat" primary />

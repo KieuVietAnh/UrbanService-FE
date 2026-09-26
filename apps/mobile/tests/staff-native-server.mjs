@@ -149,8 +149,8 @@ function createFixtures(origin, requireOtp) {
     ]],
   ]);
   const slaStatuses = new Map([
-    [reportOne.feedbackId, {
-      feedbackId: reportOne.feedbackId, feedbackSlaId: 901, status: 'Active',
+    [incident.incidentId, {
+      incidentId: incident.incidentId, incidentSlaId: 901, status: 'Active',
       responseStatus: 'Completed', resolutionStatus: 'Warning',
       serverTime: '2026-09-01T05:00:00Z', startedAt: createdAt,
       responseDueAt: '2026-08-30T10:30:00Z', resolutionDueAt: '2026-09-01T06:30:00Z',
@@ -158,17 +158,6 @@ function createFixtures(origin, requireOtp) {
       responseRemainingSeconds: 0, resolutionRemainingSeconds: 5400,
       responseProgressPercent: 100, resolutionProgressPercent: 87.5,
       isResponseWarning: false, isResolutionWarning: true,
-      isResponseBreached: false, isResolutionBreached: false,
-    }],
-    [reportTwo.feedbackId, {
-      feedbackId: reportTwo.feedbackId, feedbackSlaId: 902, status: 'Active',
-      responseStatus: 'Completed', resolutionStatus: 'Running',
-      serverTime: '2026-09-01T05:00:00Z', startedAt: '2026-08-30T12:15:00Z',
-      responseDueAt: '2026-08-30T14:15:00Z', resolutionDueAt: '2026-09-02T08:00:00Z',
-      responseRemainingMinutes: 0, resolutionRemainingMinutes: 1620,
-      responseRemainingSeconds: 0, resolutionRemainingSeconds: 97200,
-      responseProgressPercent: 100, resolutionProgressPercent: 45,
-      isResponseWarning: false, isResolutionWarning: false,
       isResponseBreached: false, isResolutionBreached: false,
     }],
   ]);
@@ -417,8 +406,8 @@ export function createStaffNativeServer({ requireOtp = false, quiet = false } = 
       }
       const reportRoute = path.match(/^\/api\/management\/feedbacks\/([^/]+)$/);
       if (reportRoute && method === 'GET') return send(state.reports.find((item) => item.feedbackId === reportRoute[1]) || fail(404, 'Không tìm thấy Report.'));
-      const slaStatusRoute = path.match(/^\/api\/slas\/feedback\/([^/]+)\/status$/);
-      if (slaStatusRoute && method === 'GET') return send(state.slaStatuses.get(slaStatusRoute[1]) || fail(404, 'Report chưa có dữ liệu SLA kiểm thử.'));
+      const slaStatusRoute = path.match(/^\/api\/slas\/incident\/([^/]+)\/status$/);
+      if (slaStatusRoute && method === 'GET') return send(state.slaStatuses.get(slaStatusRoute[1]) || fail(404, 'Sự vụ chưa có dữ liệu SLA kiểm thử.'));
       const messageRoute = path.match(/^\/api\/feedbacks\/([^/]+)\/messages$/);
       if (messageRoute) {
         const messages = state.messages.get(messageRoute[1]) || fail(404, 'Không tìm thấy Report.');
@@ -553,11 +542,9 @@ async function selfTest() {
     await request(`${reworkAssignmentPath}/completion-documents`, 'DELETE', undefined, 409);
     await request(`${reworkPath}/resolutions`, 'POST', { resolutionSummary: 'Gửi lại trùng.' }, 409);
     const reports = await request('/api/management/feedbacks'); check(reports.totalItems, 2);
-    const warningSla = await request(`/api/slas/feedback/${reports.items[0].feedbackId}/status`);
-    check(warningSla.feedbackId, reports.items[0].feedbackId); check(warningSla.isResolutionWarning, true); check(warningSla.resolutionRemainingSeconds, 5400);
-    const healthySla = await request(`/api/slas/feedback/${reports.items[1].feedbackId}/status`);
-    check(healthySla.feedbackId, reports.items[1].feedbackId); check(healthySla.isResolutionWarning, false); check(healthySla.resolutionRemainingSeconds, 97200);
-    await request('/api/slas/feedback/00000000-0000-4000-8000-000000000000/status', 'GET', undefined, 404);
+    const warningSla = await request(`/api/slas/incident/${primaryId}/status`);
+    check(warningSla.incidentId, primaryId); check(warningSla.isResolutionWarning, true); check(warningSla.resolutionRemainingSeconds, 5400);
+    await request('/api/slas/incident/00000000-0000-4000-8000-000000000000/status', 'GET', undefined, 404);
     const messagePath = `/api/feedbacks/${reports.items[0].feedbackId}/messages`;
     const publicMessage = await request(messagePath, 'POST', { messageText: 'Tin nhắn công khai kiểm thử.', isInternal: false });
     const internalMessage = await request(messagePath, 'POST', { messageText: 'Ghi chú nội bộ kiểm thử.', isInternal: true });
@@ -567,7 +554,7 @@ async function selfTest() {
     await request('/api/notifications/1/read', 'PATCH', undefined, 204);
     await request('/api/notifications/read-all', 'PATCH', undefined, 204);
     check((await request('/api/notifications?isRead=false')).totalItems, 0);
-    console.log(`Native fixture self-test passed: ${assertions} assertions; login/OTP, token refresh, Staff profile role guard, scoped lists, Incident start, per-Report SLA, provider/contact/status, multipart evidence, NeedRework clear/replace/history, resolution/rework, chat and notifications.`);
+    console.log(`Native fixture self-test passed: ${assertions} assertions; login/OTP, token refresh, Staff profile role guard, scoped lists, Incident SLA, Incident start, provider/contact/status, multipart evidence, NeedRework clear/replace/history, resolution/rework, chat and notifications.`);
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

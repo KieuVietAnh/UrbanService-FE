@@ -9,9 +9,29 @@ import { getStaffLineHeight, STAFF_FIXED_CHROME_MAX_FONT_SCALE } from '../staff-
 import { formatDate, priorityLabel, recordCode, severityLabel, statusLabel, type StaffPage, type StaffRecord } from '../staff-models';
 
 // Staff-only tokens: preserve UrbanMind's identity without changing Resident UI.
-export const colors = { ...rawColors, background: '#F4F6FA', muted: '#586779', border: '#E0E5EE' };
-export const contentStyle = { padding: 20, paddingBottom: 32, gap: 24, width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const };
-export const panelStyle = { padding: 18, gap: 14, backgroundColor: colors.surface, borderRadius: 18, borderCurve: 'continuous' as const, borderWidth: 1, borderColor: colors.border };
+export const colors = {
+  ...rawColors,
+  background: '#F5F7FB',
+  surfaceMuted: '#F8FAFD',
+  muted: '#566579',
+  border: '#E3E8F0',
+  inkSoft: '#24344A',
+};
+export const contentStyle = { padding: 20, paddingBottom: 36, gap: 22, width: '100%' as const, maxWidth: 760, alignSelf: 'center' as const };
+export const panelStyle = {
+  padding: 18,
+  gap: 14,
+  backgroundColor: colors.surface,
+  borderRadius: 20,
+  borderCurve: 'continuous' as const,
+  borderWidth: 1,
+  borderColor: colors.border,
+  shadowColor: '#17345F',
+  shadowOffset: { width: 0, height: 5 },
+  shadowOpacity: 0.055,
+  shadowRadius: 12,
+  elevation: 2,
+};
 function StaffHeaderTitle({ children, tintColor }: { children: string; tintColor?: string }) {
   return <Text
     accessibilityRole="header"
@@ -33,7 +53,7 @@ export function Label({ children, muted = false, size = 15, bold = false, style,
   return <Text selectable allowFontScaling={allowFontScaling} maxFontSizeMultiplier={maxFontSizeMultiplier} {...props} style={[{ minWidth: 0, flexShrink: 1, color: muted ? colors.muted : colors.text, fontSize: size, lineHeight, fontFamily: bold ? 'Geist-SemiBold' : 'Geist-Regular' }, style]}>{children}</Text>;
 }
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <View style={{ gap: 14, minWidth: 0 }}><Label accessibilityRole="header" size={18} bold>{title}</Label>{children}</View>;
+  return <View style={{ gap: 14, minWidth: 0 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><View style={{ width: 4, height: 20, borderRadius: 3, backgroundColor: colors.primary }} /><Label accessibilityRole="header" size={18} bold style={{ color: colors.inkSoft }}>{title}</Label></View>{children}</View>;
 }
 
 export function PageHeading({ eyebrow, title, description, accessory }: { eyebrow?: string; title: string; description?: string; accessory?: React.ReactNode }) {
@@ -110,9 +130,14 @@ export function Notice({ children, error = false }: { children: React.ReactNode;
   return <View accessibilityRole={error ? 'alert' : undefined} style={{ padding: 16, borderRadius: 12, borderLeftWidth: 3, borderLeftColor: error ? colors.redDark : colors.primary, backgroundColor: error ? colors.redLight : colors.primarySoft }}><Label style={{ color: error ? colors.redDark : colors.primaryDark }} size={14}>{children}</Label></View>;
 }
 export function QueryState({ pending, error, empty, retry }: { pending?: boolean; error?: unknown; empty?: string | false; retry: () => void }) {
-  if (pending) return <View style={{ padding: 32, gap: 12 }}><ActivityIndicator size="large" color={colors.primary} /><Label muted style={{ textAlign: 'center' }}>Đang tải dữ liệu…</Label></View>;
+  if (pending) return <View accessibilityRole="progressbar" accessibilityLabel="Đang tải dữ liệu" style={{ ...panelStyle, padding: 18, gap: 12, backgroundColor: colors.surfaceMuted }}>
+    <View style={{ width: '42%', height: 12, borderRadius: 6, backgroundColor: colors.primaryMuted }} />
+    <View style={{ width: '88%', height: 10, borderRadius: 5, backgroundColor: colors.border }} />
+    <View style={{ width: '68%', height: 10, borderRadius: 5, backgroundColor: colors.borderLight }} />
+    <Label muted size={12}>Đang tải dữ liệu…</Label>
+  </View>;
   if (error) return <View style={{ gap: 12 }}><Notice error>{staffError(error)}</Notice><Button label="Thử lại" onPress={retry} secondary /></View>;
-  if (empty) return <View style={{ padding: 28, gap: 10, alignItems: 'center' }}><StaffIcon name="incidents" size={32} color={colors.muted} /><Label muted style={{ textAlign: 'center' }}>{empty}</Label></View>;
+  if (empty) return <View style={{ ...panelStyle, padding: 26, gap: 10, alignItems: 'center', backgroundColor: colors.surfaceMuted, borderStyle: 'dashed', shadowOpacity: 0, elevation: 0 }}><View style={{ width: 48, height: 48, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft }}><StaffIcon name="incidents" size={25} color={colors.primary} /></View><Label muted style={{ textAlign: 'center' }}>{empty}</Label></View>;
   return null;
 }
 export function Status({ value }: { value: string }) {
@@ -132,7 +157,8 @@ export function Severity({ value }: { value: string }) {
 export function RecordCard({ item, incident = false, chat = false }: { item: StaffRecord; incident?: boolean; chat?: boolean }) {
   const href = `/(staff)/staff/${incident ? 'incidents' : 'feedbacks'}/${encodeURIComponent(item.id)}${chat ? '/chat' : ''}` as Href;
   const [pressed, setPressed] = useState(false);
-  return <Link href={href} asChild><Pressable accessibilityRole="button" accessibilityLabel={`${chat ? 'Trao đổi: ' : ''}${item.title}`} onPressIn={() => setPressed(true)} onPressOut={() => setPressed(false)} style={{ ...panelStyle, borderColor: pressed ? colors.primary : colors.border, backgroundColor: pressed ? colors.primarySoft : colors.surface }}>
+  const accent = ({ info: colors.primary, warning: colors.amberDark, danger: colors.redDark, success: colors.emeraldDark, neutral: colors.borderStrong } as const)[getStatusIntent(item.status)] || colors.borderStrong;
+  return <Link href={href} asChild><Pressable accessibilityRole="button" accessibilityLabel={`${chat ? 'Trao đổi: ' : ''}${item.title}`} onPressIn={() => setPressed(true)} onPressOut={() => setPressed(false)} style={{ ...panelStyle, borderColor: pressed ? colors.primary : colors.border, borderLeftWidth: 4, borderLeftColor: accent, backgroundColor: pressed ? colors.primarySoft : colors.surface }}>
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}><Label size={12} muted bold>{recordCode(item.id, incident)}</Label><Status value={item.status} /></View>
     <Label bold size={17}>{item.title}</Label>
     {incident && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}><Severity value={item.severity} /><Label muted size={12}>{item.reportCount !== null ? `${item.reportCount} phản ánh` : 'Chưa có số phản ánh'}</Label></View>}

@@ -26,11 +26,12 @@ export default function StaffTabs() {
     headerShown: false,
     tabBarActiveTintColor: colors.primary,
     tabBarInactiveTintColor: colors.muted,
+    tabBarActiveBackgroundColor: colors.primarySoft,
     tabBarAllowFontScaling: true,
     tabBarLabelPosition: 'below-icon',
     tabBarHideOnKeyboard: true,
-    tabBarItemStyle: { minWidth: 48, minHeight: 48, paddingHorizontal: 2, paddingTop: 3 },
-    tabBarStyle: { height, paddingTop: 5, paddingBottom: insets.bottom + 5, paddingHorizontal: 0, borderTopColor: colors.border, backgroundColor: colors.surface, elevation: 0 },
+    tabBarItemStyle: { minWidth: 48, minHeight: 48, marginHorizontal: 2, marginVertical: 4, paddingHorizontal: 2, paddingTop: 3, borderRadius: 14, overflow: 'hidden' },
+    tabBarStyle: { height, paddingTop: 3, paddingBottom: insets.bottom + 3, paddingHorizontal: 4, borderTopColor: colors.border, backgroundColor: colors.surface, shadowColor: '#17345F', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10 },
     tabBarLabel: ({ color }) => <Text allowFontScaling maxFontSizeMultiplier={layout.labelFontScale} numberOfLines={2} style={{ width: '100%', minWidth: 0, textAlign: 'center', color, fontFamily: 'Geist-Medium', fontSize: 11, lineHeight: layout.labelLineHeight }}>{labels[route.name] || route.name}</Text>,
   })}>
     <Tabs.Screen name="home" options={{ title: labels.home, tabBarAccessibilityLabel: labels.home, tabBarIcon: ({ color, size }) => <StaffIcon name="home" color={color} size={size} /> }} />

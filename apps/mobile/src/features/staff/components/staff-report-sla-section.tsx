@@ -1,35 +1,25 @@
-import React, { useMemo } from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import { staffError } from '../staff-api';
+import React from 'react';
+import { View } from 'react-native';
 import {
   formatSlaRemaining,
-  normalizeReportSlaTargets,
   slaStatusLabel,
-  type StaffFeedbackSlaStatus,
+  type StaffIncidentSlaStatus,
   type StaffSlaMetric,
-  type StaffSlaReportInput,
-  type StaffSlaReportTarget,
 } from '../staff-sla-models';
-import { useStaffReportSlaQueries } from '../staff-sla-query';
+import { useStaffIncidentSlaQuery } from '../staff-sla-query';
 import {
-  Button,
   Label,
   Notice,
+  QueryState,
   Section,
   colors,
   panelStyle,
 } from './staff-ui';
 
-type StaffReportSlaSectionProps = {
+type StaffIncidentSlaSectionProps = {
   userId: string;
   incidentId: string;
-  reports: readonly StaffSlaReportInput[];
 };
-
-type QueryResult = ReturnType<typeof useStaffReportSlaQueries>[number];
-
-const reportCode = (feedbackId: string) =>
-  `UM-${feedbackId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 
 const formatDueAt = (value: string) => {
   if (!value || Number.isNaN(Date.parse(value))) return 'Chưa có thời hạn';
@@ -42,7 +32,7 @@ const formatDueAt = (value: string) => {
   });
 };
 
-function SlaBadge({ data }: { data: StaffFeedbackSlaStatus }) {
+function SlaBadge({ data }: { data: StaffIncidentSlaStatus }) {
   const breached = data.response.breached || data.resolution.breached;
   const warning = data.response.warning || data.resolution.warning;
   const backgroundColor = breached
@@ -103,61 +93,33 @@ function MetricProgress({ metric }: { metric: StaffSlaMetric }) {
   </View>;
 }
 
-function ReportHeader({ report }: { report: StaffSlaReportTarget }) {
-  return <View style={{ gap: 4, minWidth: 0 }}>
-    <Label muted bold size={12}>{reportCode(report.feedbackId)}</Label>
-    <Label bold size={16}>{report.title}</Label>
-    {report.feedbackStatus ? <Label muted size={12}>Report: {report.feedbackStatus}</Label> : null}
-  </View>;
-}
-
-function ReportSlaCard({ report, query }: { report: StaffSlaReportTarget; query: QueryResult }) {
-  return <View style={{ ...panelStyle, gap: 16 }}>
-    <ReportHeader report={report} />
-    {query.isPending ? <View accessibilityLabel="Đang tải SLA của Report" style={{ minHeight: 72, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-      <ActivityIndicator color={colors.primary} />
-      <Label muted size={13}>Đang tải SLA…</Label>
-    </View> : query.error ? <View style={{ gap: 12 }}>
-      <Notice error>{staffError(query.error)}</Notice>
-      <Button secondary label="Tải lại SLA Report" onPress={() => { void query.refetch(); }} />
-    </View> : !query.data ? <Notice>Report này chưa có SLA đang áp dụng.</Notice> : <>
-      <SlaBadge data={query.data} />
-      <View style={{ gap: 10 }}>
-        <Label bold size={14}>Phản hồi lần đầu</Label>
-        <MetricProgress metric={query.data.response} />
-      </View>
-      <View style={{ height: 1, backgroundColor: colors.borderLight }} />
-      <View style={{ gap: 10 }}>
-        <Label bold size={14}>Hoàn thành xử lý</Label>
-        <MetricProgress metric={query.data.resolution} />
-      </View>
-      {query.isFetching ? <Label muted size={12}>Đang cập nhật dữ liệu SLA…</Label> : null}
-    </>}
-  </View>;
-}
-
-/**
- * Read-only SLA panel for an Incident's embedded Reports. Integrate it inside
- * the Incident overview/reports tab; do not label these values as Incident SLA.
- */
-export function StaffReportSlaSection({
+export function StaffIncidentSlaSection({
   userId,
   incidentId,
-  reports,
-}: StaffReportSlaSectionProps) {
-  const targets = useMemo(() => normalizeReportSlaTargets(reports), [reports]);
-  const queries = useStaffReportSlaQueries({ userId, incidentId, reports: targets });
+}: StaffIncidentSlaSectionProps) {
+  const query = useStaffIncidentSlaQuery({ userId, incidentId });
+  const retry = () => { void query.refetch(); };
 
-  return <Section title="SLA theo từng Report">
+  return <Section title="SLA của sự vụ">
     <Label muted size={13}>
-      Mỗi Report có đồng hồ SLA riêng do backend tính toán; thời hạn dưới đây không phải SLA tổng hợp của sự vụ.
+      Mốc phản hồi và hoàn thành được backend tính cho toàn bộ sự vụ.
     </Label>
-    {!userId.trim() || !incidentId.trim() ? <Notice error>Không xác định được phạm vi Staff hoặc sự vụ để tải SLA.</Notice> : targets.length === 0 ? <View style={{ ...panelStyle, alignItems: 'center' }}>
-      <Label muted style={{ textAlign: 'center' }}>Sự vụ chưa có Report đang liên kết để hiển thị SLA.</Label>
-    </View> : targets.map((report, index) => <ReportSlaCard
-      key={report.feedbackId}
-      report={report}
-      query={queries[index]}
-    />)}
+    {!userId.trim() ? <Notice error>Không xác định được phiên Staff để tải SLA.</Notice> : !incidentId.trim() ? <Notice>Report này chưa được liên kết với sự vụ nên chưa có SLA sự vụ.</Notice> : <>
+      <QueryState pending={query.isPending} error={query.error} retry={retry} />
+      {!query.isPending && !query.error && !query.data ? <Notice>Sự vụ này chưa có SLA đang áp dụng.</Notice> : null}
+      {query.data ? <View style={{ ...panelStyle, gap: 16 }}>
+        <SlaBadge data={query.data} />
+        <View style={{ gap: 10 }}>
+          <Label bold size={14}>Phản hồi lần đầu</Label>
+          <MetricProgress metric={query.data.response} />
+        </View>
+        <View style={{ height: 1, backgroundColor: colors.borderLight }} />
+        <View style={{ gap: 10 }}>
+          <Label bold size={14}>Hoàn thành xử lý</Label>
+          <MetricProgress metric={query.data.resolution} />
+        </View>
+        {query.isFetching ? <Label muted size={12}>Đang cập nhật dữ liệu SLA…</Label> : null}
+      </View> : null}
+    </>}
   </Section>;
 }

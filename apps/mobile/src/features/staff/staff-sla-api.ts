@@ -1,34 +1,32 @@
 import { slaApi } from '@urbanmind/shared-api';
 import {
   isSlaNotFoundError,
-  normalizeFeedbackSlaStatus,
-  type StaffFeedbackSlaStatus,
+  normalizeIncidentSlaStatus,
+  type StaffIncidentSlaStatus,
 } from './staff-sla-models';
 
 export const staffSlaKeys = {
   all: (userId: string) => ['staff', userId, 'sla'] as const,
   incident: (userId: string, incidentId: string) =>
     ['staff', userId, 'sla', 'incident', incidentId] as const,
-  report: (userId: string, incidentId: string, feedbackId: string) =>
-    ['staff', userId, 'sla', 'incident', incidentId, 'report', feedbackId] as const,
 };
 
 export const staffSlaApi = {
-  async reportStatus(
-    feedbackId: string,
+  async incidentStatus(
+    incidentId: string,
     signal?: AbortSignal,
-  ): Promise<StaffFeedbackSlaStatus | null> {
-    const id = feedbackId.trim();
-    if (!id) throw new Error('Thiếu mã Report để tải SLA.');
+  ): Promise<StaffIncidentSlaStatus | null> {
+    const id = incidentId.trim();
+    if (!id) throw new Error('Thiếu mã sự vụ để tải SLA.');
 
     try {
-      const response = await slaApi.getFeedbackSlaStatus(
+      const response = await slaApi.getIncidentSlaStatus(
         encodeURIComponent(id),
         { signal },
       );
-      return normalizeFeedbackSlaStatus(response, id);
+      return normalizeIncidentSlaStatus(response, id);
     } catch (error) {
-      // A linked Report can legitimately have no SLA yet. Other failures stay
+      // An Incident can legitimately have no SLA yet. Other failures stay
       // visible so authentication, authorization and network errors are not hidden.
       if (isSlaNotFoundError(error)) return null;
       throw error;
