@@ -7,7 +7,11 @@ import { fontSizes, fonts } from '@/theme/typography';
 
 const { width: W } = Dimensions.get('window');
 const HORIZONTAL = 20;
-const ACTION_WIDTH = (W - HORIZONTAL * 2 - 28) / 4;
+const ACTION_COLUMNS = W >= 600 ? 5 : 3;
+const ACTION_WIDTH = Math.max(
+  44,
+  (W - HORIZONTAL * 2 - 28 - 14 * (ACTION_COLUMNS - 1)) / ACTION_COLUMNS,
+);
 
 export const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
@@ -426,12 +430,14 @@ export const styles = StyleSheet.create({
   },
 
   quickActionsPanel: {
-    minHeight: 132,
+    minHeight: 236,
     borderRadius: radius['3xl'],
     backgroundColor: colors.surface,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'stretch',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 14,
     paddingHorizontal: spacing['3.5'],
     paddingVertical: spacing['4'],
     borderWidth: 1,
@@ -444,6 +450,7 @@ export const styles = StyleSheet.create({
   },
   actionItem: {
     width: ACTION_WIDTH,
+    minHeight: 92,
   },
   actionPressable: {
     flex: 1,

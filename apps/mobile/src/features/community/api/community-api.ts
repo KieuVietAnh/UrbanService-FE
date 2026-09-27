@@ -1,228 +1,191 @@
 import { axiosClient, toolsApi } from '@urbanmind/shared-api';
-import type { CommunityFeedItem, CommunityFeedParams, CommunityFeedResponse } from '../types/community.types';
+import type {
+  CommunityIncidentParams,
+  CommunityIncidentResponse,
+  IncidentComment,
+  PublicIncidentDetail,
+  PublicIncidentEvent,
+  PublicIncidentItem,
+  PublicIncidentMedia,
+  PublicIncidentResolution,
+} from '../types/community.types';
 
-type ApiRecord = Record<string, unknown>;
+type ApiRecord = Record<string, any>;
 
-const isApiRecord = (value: unknown): value is ApiRecord =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const asRecord = (value: unknown): ApiRecord =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as ApiRecord : {};
+
+const unwrap = (response: unknown): any => {
+  const record = asRecord(response);
+  return record.data ?? response;
+};
 
 const resolveMediaUrl = (value: unknown) => {
-  if (!value || typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:')) {
-    return trimmed;
-  }
-  if (trimmed.startsWith('/')) {
-    return `${axiosClient.defaults.baseURL || 'https://api.urbanservice.me'}${trimmed}`;
-  }
-  return `${axiosClient.defaults.baseURL || 'https://api.urbanservice.me'}/${trimmed}`;
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const url = value.trim();
+  if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url;
+  const baseUrl = axiosClient.defaults.baseURL || 'https://api.urbanservice.me';
+  return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
 };
 
-const normalizeAttachment = (attachment: unknown) => {
-  if (typeof attachment === 'string') {
-    return { fileUrl: resolveMediaUrl(attachment), url: resolveMediaUrl(attachment) };
-  }
-
-  const record = isApiRecord(attachment) ? attachment : {};
-  const rawUrl = record.fileUrl || record.url || record.path || record.attachmentUrl || record.displayUrl || '';
-  const url = resolveMediaUrl(rawUrl);
+const normalizeMedia = (value: unknown): PublicIncidentMedia => {
+  const media = asRecord(value);
   return {
-    ...record,
-    attachmentId: record.attachmentId || record.attachmentID || record.feedbackAttachmentId || record.fileId || record.id || null,
-    fileUrl: url,
-    url,
+    ...media,
+    incidentMediaId: media.incidentMediaId ?? media.id,
+    fileUrl: resolveMediaUrl(media.fileUrl ?? media.url ?? media.path),
+    thumbnailUrl: resolveMediaUrl(media.thumbnailUrl ?? media.coverImageThumbnailUrl),
+    mediaType: media.mediaType ?? media.type,
   };
 };
 
-const normalizeFeedItem = (item: unknown): CommunityFeedItem => {
-  const record = isApiRecord(item) ? item : {};
-  const user = isApiRecord(record.user) ? record.user : {};
-  const id = record.feedbackId ?? record.id ?? record.feedbackID ?? null;
-  const title = record.title ?? record.subject ?? '';
-  const description = record.description ?? record.content ?? record.message ?? '';
-  const locationText = record.locationText ?? record.address ?? record.location ?? '';
-  const attachments = Array.isArray(record.attachments)
-    ? record.attachments.map(normalizeAttachment)
-    : Array.isArray(record.attachmentList)
-      ? record.attachmentList.map(normalizeAttachment)
-      : [];
-
-  const imageCandidates = [
-    ...(Array.isArray(record.imageUrls) ? record.imageUrls : []),
-    ...(Array.isArray(record.images) ? record.images : []),
-    ...(Array.isArray(record.mediaUrls) ? record.mediaUrls : []),
-    ...(Array.isArray(record.attachments) ? record.attachments : []),
-    ...(Array.isArray(record.attachmentList) ? record.attachmentList : []),
-  ];
-
-  const firstImage = imageCandidates[0];
-  const firstImageRecord = isApiRecord(firstImage) ? firstImage : {};
-
-  const imageUrl = resolveMediaUrl(
-    attachments[0]?.fileUrl ||
-    record.imageUrl ||
-    record.coverImageUrl ||
-    record.thumbnailUrl ||
-    record.mediaUrl ||
-    record.attachmentUrl ||
-    (typeof firstImage === 'string' ? firstImage : firstImageRecord.fileUrl || firstImageRecord.url || firstImageRecord.path || '') ||
-    ''
+const normalizeIncident = (value: unknown): PublicIncidentItem => {
+  const incident = asRecord(value);
+  const incidentId = String(incident.incidentId ?? incident.id ?? '');
+  const media = Array.isArray(incident.media) ? incident.media.map(normalizeMedia) : [];
+  const coverImageUrl = resolveMediaUrl(
+    incident.coverImageUrl ?? incident.coverImageThumbnailUrl ?? media[0]?.thumbnailUrl ?? media[0]?.fileUrl
   );
 
   return {
-    ...record,
-    id,
-    feedbackId: id,
-    title,
-    description,
-    locationText,
-    authorName: record.authorName ?? record.userName ?? record.createdByName ?? record.displayName ?? record.fullName ?? user.userName ?? user.fullName ?? user.name ?? '',
-    createdAt: record.createdAt ?? record.created_at ?? record.updatedAt ?? null,
-    attachments,
-    imageUrl,
-    supportCount: Number(record.supportCount ?? record.supports ?? record.likeCount ?? record.upvotes ?? 0),
-    commentCount: Number(record.commentCount ?? record.commentsCount ?? record.comment_count ?? (Array.isArray(record.comments) ? record.comments.length : 0)),
-    isSupported: Boolean(record.isSupported ?? record.supported ?? record.isLiked ?? false),
-    latitude: record.latitude ?? record.lat ?? null,
-    longitude: record.longitude ?? record.lng ?? record.lon ?? null,
-  } as CommunityFeedItem;
-};
-
-const normalizeFeedPayload = (value: unknown): CommunityFeedResponse => {
-  const valueRecord = isApiRecord(value) ? value : null;
-  const unwrappedValue = valueRecord && isApiRecord(valueRecord.data)
-    ? valueRecord.data
-    : value;
-
-  if (Array.isArray(unwrappedValue)) {
-    return {
-      items: unwrappedValue.map(normalizeFeedItem),
-      pageNumber: 1,
-      pageSize: unwrappedValue.length,
-      totalItems: unwrappedValue.length,
-      totalPages: 1,
-    };
-  }
-
-  if (!isApiRecord(unwrappedValue)) {
-    return {
-      items: [],
-      pageNumber: 1,
-      pageSize: 0,
-      totalItems: 0,
-      totalPages: 1,
-    };
-  }
-
-  const items = Array.isArray(unwrappedValue.items)
-    ? unwrappedValue.items
-    : Array.isArray(unwrappedValue.data)
-      ? unwrappedValue.data
-      : Array.isArray(unwrappedValue.content)
-        ? unwrappedValue.content
-        : Array.isArray(unwrappedValue.feedbacks)
-          ? unwrappedValue.feedbacks
-          : Array.isArray(unwrappedValue.results)
-            ? unwrappedValue.results
-            : [];
-
-  const pageNumber = Number(unwrappedValue.pageNumber ?? unwrappedValue.page ?? 1);
-  const pageSize = Number(unwrappedValue.pageSize ?? unwrappedValue.size ?? items.length);
-  const totalItems = Number(unwrappedValue.totalItems ?? unwrappedValue.totalCount ?? unwrappedValue.count ?? items.length);
-  const totalPages = Number(
-    unwrappedValue.totalPages ?? unwrappedValue.pageCount ?? (pageSize > 0 ? Math.ceil(totalItems / pageSize) : 1)
-  );
-
-  return {
-    items: items.map(normalizeFeedItem),
-    pageNumber: Number.isFinite(pageNumber) ? pageNumber : 1,
-    pageSize: Number.isFinite(pageSize) ? pageSize : items.length,
-    totalItems: Number.isFinite(totalItems) ? totalItems : items.length,
-    totalPages: Number.isFinite(totalPages) && totalPages > 0 ? totalPages : 1,
+    ...incident,
+    incidentId,
+    id: incidentId,
+    areaId: incident.areaId ?? null,
+    areaName: incident.areaName ?? '',
+    categoryId: incident.categoryId ?? null,
+    categoryName: incident.categoryName ?? '',
+    title: incident.title ?? '',
+    description: incident.description ?? '',
+    locationText: incident.locationText ?? '',
+    latitude: incident.latitude ?? null,
+    longitude: incident.longitude ?? null,
+    reportCount: Number(incident.reportCount ?? 0),
+    subscriberCount: Number(incident.subscriberCount ?? 0),
+    commentCount: Number(incident.commentCount ?? 0),
+    supportCount: Number(incident.supportCount ?? 0),
+    isSubscribedByCurrentUser: Boolean(incident.isSubscribedByCurrentUser),
+    isSupportedByCurrentUser: Boolean(incident.isSupportedByCurrentUser),
+    coverImageUrl,
+    coverImageThumbnailUrl: resolveMediaUrl(incident.coverImageThumbnailUrl),
+    imageUrl: coverImageUrl,
+    media,
   };
 };
 
-const normalizeFeedParams = (params: CommunityFeedParams = {}) => {
-  const normalized: Record<string, string | number> = {};
-  const pageNumber = Number(params?.pageNumber ?? 1);
-  const pageSize = Number(params?.pageSize ?? 10);
-  const status = params?.status;
-  const categoryId = params?.categoryId;
-  const search = params?.search;
-
-  if (Number.isFinite(pageNumber) && pageNumber > 0) {
-    normalized.PageNumber = pageNumber;
-  }
-
-  if (Number.isFinite(pageSize) && pageSize > 0) {
-    normalized.PageSize = pageSize;
-  }
-
-  if (typeof status === 'string' && status.trim()) {
-    normalized.Status = status.trim();
-  }
-
-  if (categoryId !== undefined && categoryId !== null && categoryId !== '') {
-    normalized.CategoryId = categoryId;
-  }
-
-  if (typeof search === 'string' && search.trim()) {
-    normalized.Search = search.trim();
-  }
-
-  return normalized;
+const normalizePage = (response: unknown): CommunityIncidentResponse => {
+  const payload = unwrap(response);
+  const record = asRecord(payload);
+  const rawItems = Array.isArray(payload) ? payload : Array.isArray(record.items) ? record.items : [];
+  const items = rawItems.map(normalizeIncident).filter((item) => Boolean(item.incidentId));
+  return {
+    items,
+    pageNumber: Number(record.pageNumber ?? 1),
+    pageSize: Number(record.pageSize ?? items.length),
+    totalItems: Number(record.totalItems ?? items.length),
+    totalPages: Number(record.totalPages ?? 1),
+    hasPreviousPage: Boolean(record.hasPreviousPage),
+    hasNextPage: Boolean(record.hasNextPage),
+  };
 };
 
-const resolveFeedItemImages = async (item: CommunityFeedItem) => {
-  if (item?.imageUrl || !item?.feedbackId) return item;
-
-  const attachmentCount = Number(item?.attachmentCount ?? item?.attachments?.length ?? 0);
-  if (!attachmentCount) return item;
-
-  try {
-    const response = await axiosClient.get(`/api/user/feedbacks/feed/${encodeURIComponent(item.feedbackId)}`);
-    const detail = response?.data && typeof response.data === 'object' ? response.data : response;
-    return normalizeFeedItem(detail);
-  } catch {
-    return item;
-  }
-};
+const normalizeParams = (params: CommunityIncidentParams = {}) => ({
+  PageNumber: params.pageNumber ?? 1,
+  PageSize: params.pageSize ?? 12,
+  ...(params.areaId ? { AreaId: params.areaId } : {}),
+  ...(params.categoryId ? { CategoryId: params.categoryId } : {}),
+  ...(params.status ? { Status: params.status } : {}),
+  ...(params.search?.trim() ? { Search: params.search.trim() } : {}),
+  ...(params.sort ? { Sort: params.sort } : {}),
+});
 
 export const communityApi = {
   async getAreas() {
     return toolsApi.getAreas({}, { throwOnError: true });
   },
 
-  async getFeed(params: CommunityFeedParams = {}) {
-    const normalizedParams = normalizeFeedParams(params);
-    const response = await axiosClient.get('/api/user/feedbacks/feed', {
-      params: normalizedParams,
-    });
-
-    const payload = normalizeFeedPayload(response);
-    const itemsWithImages = await Promise.all(payload.items.map(resolveFeedItemImages));
-
-    return {
-      ...payload,
-      items: itemsWithImages,
-    };
+  async getCategories() {
+    return toolsApi.getCategories();
   },
 
-  async getFeedDetail(feedbackId: string) {
-    if (!feedbackId) {
-      throw new Error('Feedback ID is required.');
+  async getFeed(params: CommunityIncidentParams = {}) {
+    return normalizePage(await axiosClient.get('/api/public/incidents', { params: normalizeParams(params) }));
+  },
+
+  async getFeedDetail(incidentId: string): Promise<PublicIncidentDetail> {
+    if (!incidentId) throw new Error('Incident ID is required.');
+    return normalizeIncident(
+      unwrap(await axiosClient.get(`/api/public/incidents/${encodeURIComponent(incidentId)}`))
+    ) as PublicIncidentDetail;
+  },
+
+  async getResolution(incidentId: string): Promise<PublicIncidentResolution | null> {
+    try {
+      const payload = unwrap(await axiosClient.get(`/api/public/incidents/${encodeURIComponent(incidentId)}/resolution`));
+      const resolution = asRecord(payload);
+      return Object.keys(resolution).length ? {
+        ...resolution,
+        completionDocuments: Array.isArray(resolution.completionDocuments)
+          ? resolution.completionDocuments.map((document: unknown) => {
+              const item = asRecord(document);
+              return {
+                ...item,
+                fileUrl: resolveMediaUrl(item.fileUrl ?? item.url),
+                thumbnailUrl: resolveMediaUrl(item.thumbnailUrl),
+              };
+            })
+          : [],
+      } : null;
+    } catch (error: any) {
+      if (error?.response?.status === 404) return null;
+      throw error;
     }
+  },
 
-    const response = await axiosClient.get(
-      `/api/user/feedbacks/feed/${encodeURIComponent(feedbackId)}`
-    );
+  async getTimeline(incidentId: string): Promise<PublicIncidentEvent[]> {
+    const payload = unwrap(await axiosClient.get(
+      `/api/public/incidents/${encodeURIComponent(incidentId)}/timeline`,
+      { params: { pageNumber: 1, pageSize: 50 } }
+    ));
+    const items = Array.isArray(payload) ? payload : asRecord(payload).items;
+    return Array.isArray(items) ? items : [];
+  },
 
-    const detail = response?.data && typeof response.data === 'object'
-      ? response.data
-      : response;
+  async getComments(incidentId: string): Promise<IncidentComment[]> {
+    const payload = unwrap(await axiosClient.get(
+      `/api/public/incidents/${encodeURIComponent(incidentId)}/comments`,
+      { params: { pageNumber: 1, pageSize: 50 } }
+    ));
+    const items = Array.isArray(payload) ? payload : asRecord(payload).items;
+    return (Array.isArray(items) ? items : []).map((value: unknown, index: number) => {
+      const item = asRecord(value);
+      return {
+        ...item,
+        id: String(item.incidentCommentId ?? item.commentId ?? item.id ?? index),
+        content: String(item.content ?? item.text ?? ''),
+        createdAt: String(item.createdAt ?? ''),
+      };
+    });
+  },
 
-    return normalizeFeedItem(detail);
+  async addComment(incidentId: string, content: string) {
+    return unwrap(await axiosClient.post(`/api/user/incidents/${encodeURIComponent(incidentId)}/comments`, { content }));
+  },
+
+  support(incidentId: string) {
+    return axiosClient.post(`/api/user/incidents/${encodeURIComponent(incidentId)}/support`);
+  },
+
+  unsupport(incidentId: string) {
+    return axiosClient.delete(`/api/user/incidents/${encodeURIComponent(incidentId)}/support`);
+  },
+
+  subscribe(incidentId: string) {
+    return axiosClient.post(`/api/user/incidents/${encodeURIComponent(incidentId)}/subscribe`);
+  },
+
+  unsubscribe(incidentId: string) {
+    return axiosClient.delete(`/api/user/incidents/${encodeURIComponent(incidentId)}/subscribe`);
   },
 };
 

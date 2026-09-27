@@ -32,13 +32,16 @@ import { AppErrorState } from '@/components/shared';
 import { AppEmptyState } from '@/components/shared';
 import { useToast } from '@/components/shared';
 import { feedbackApi, reportingKeys } from '@/features/reporting/api';
+import {
+  getResidentStage,
+  getResidentStageIndex,
+  getResidentStatusLabel,
+  isApprovedPublicResult,
+} from '@/features/resident-status';
 // Feedback chat moved to its own screen: /tickets/[id]/chat
 import { semantics } from '@/theme/semantics';
-import { managementTypes } from '@urbanmind/shared-types';
 import { axiosClient } from '@urbanmind/shared-api';
 import TicketLocationMap from './ticket-location-map';
-
-const TICKET_STATUS = managementTypes.feedbackStatus;
 
 const resolveMediaUrl = (value: any) => {
   if (!value || typeof value !== 'string') return null;
@@ -98,38 +101,24 @@ const getTicketAttachmentCandidates = (ticket: any) => {
   ].filter(Boolean);
 };
 
-const normalizeStatusKey = (status: string | undefined | null) =>
-  String(status ?? '').trim().replace(/[_\s]+/g, '').toUpperCase();
-
 const getStepStatus = (
   stepKey: string,
   currentStatus: string
 ): 'done' | 'active' | 'pending' => {
-  const ORDER = [
-    'SUBMITTED',
-    'AI_REVIEWED',
-    'VERIFIED',
-    'ASSIGNED',
-    'IN_PROGRESS',
-    'RESOLVED',
-    'SUBMITTED_FOR_APPROVAL',
-    'APPROVED',
-    'CLOSED',
-  ];
-  const normalizedCurrent = normalizeStatusKey(currentStatus);
-  const normalizedStep = normalizeStatusKey(stepKey);
-  const currentIdx = ORDER.indexOf(normalizedCurrent);
-  const stepIdx = ORDER.indexOf(normalizedStep);
+  const ORDER = ['submitted', 'received', 'processing', 'reviewing', 'completed'];
+  const currentIdx = getResidentStageIndex(currentStatus);
+  const stepIdx = ORDER.indexOf(stepKey);
   if (stepIdx < currentIdx) return 'done';
   if (stepIdx === currentIdx) return 'active';
   return 'pending';
 };
 
 const TIMELINE_STEPS = [
-  { key: 'SUBMITTED', label: 'Đã nhận', desc: 'Phản ánh của bạn đã được tiếp nhận.' },
-  { key: 'ASSIGNED', label: 'Đã phân công', desc: 'Đơn vị chuyên trách đã nhận nhiệm vụ.' },
-  { key: 'IN_PROGRESS', label: 'Đang xử lý', desc: 'Lực lượng chức năng đang tiến hành xử lý.' },
-  { key: 'RESOLVED', label: 'Đã xử lý', desc: 'Vấn đề đã được khắc phục hoàn tất.' },
+  { key: 'submitted', label: 'Đã gửi', desc: 'Phản ánh đã được gửi lên hệ thống.' },
+  { key: 'received', label: 'Đã tiếp nhận', desc: 'Phản ánh đã được tiếp nhận để kiểm tra.' },
+  { key: 'processing', label: 'Đang xử lý', desc: 'Đơn vị phụ trách đang xử lý sự vụ.' },
+  { key: 'reviewing', label: 'Đang kiểm tra kết quả', desc: 'Kết quả đang được kiểm tra trước khi công bố.' },
+  { key: 'completed', label: 'Hoàn thành', desc: 'Kết quả xử lý đã được phê duyệt.' },
 ];
 
 interface CommentItem {
@@ -188,6 +177,12 @@ export default function TicketDetailScreen() {
     refetchInterval: 6000,
   });
 
+  const { data: resolutions = [], isLoading: resolutionsLoading } = useQuery({
+    queryKey: reportingKeys.resolutions(feedbackId),
+    queryFn: () => feedbackApi.getResolutions(feedbackId),
+    enabled: Boolean(feedbackId) && isApprovedPublicResult(ticket?.status),
+  });
+
   // The detail contract already includes comments. Reuse the polled detail response
   // instead of issuing a second GET to the same endpoint on every interval.
   const comments = useMemo<CommentItem[]>(() => {
@@ -224,7 +219,6 @@ export default function TicketDetailScreen() {
     : 'Chưa có bình luận';
 
   const status = ticket?.status ?? 'SUBMITTED';
-  const normalizedStatus = normalizeStatusKey(status);
   const createdAt = ticket?.createdAt
     ? new Date(ticket.createdAt).toLocaleString('vi-VN')
     : '';
@@ -250,11 +244,13 @@ export default function TicketDetailScreen() {
     .map(getAttachmentUrl)
     .filter((uri): uri is string => Boolean(uri));
   const histories: any[] = ticket?.statusHistories ?? [];
-
-  const isResolvedOrApproval =
-    normalizedStatus === normalizeStatusKey(TICKET_STATUS.RESOLVED) ||
-    normalizedStatus === normalizeStatusKey(TICKET_STATUS.SUBMITTED_FOR_APPROVAL) ||
-    normalizedStatus === normalizeStatusKey(TICKET_STATUS.APPROVED);
+  const latestResolution = Array.isArray(resolutions) && resolutions.length
+    ? [...resolutions].sort((a: any, b: any) => new Date(b?.resolvedAt ?? b?.createdAt ?? 0).getTime() - new Date(a?.resolvedAt ?? a?.createdAt ?? 0).getTime())[0]
+    : null;
+  const resolutionDocuments = Array.isArray(latestResolution?.completionDocuments)
+    ? latestResolution.completionDocuments.map(getAttachmentUrl).filter((value: string | null): value is string => Boolean(value))
+    : [];
+  const canReview = isApprovedPublicResult(status) && Boolean(latestResolution);
 
   if (isLoading) {
     return (
@@ -316,7 +312,7 @@ export default function TicketDetailScreen() {
               <Text style={styles.titleText}>{ticket?.title ?? '—'}</Text>
             </View>
             <View style={styles.heroBadgeStack}>
-              <AppBadge status={status} size="md" />
+              <AppBadge status={status} label={getResidentStatusLabel(status)} size="md" />
             </View>
           </View>
 
@@ -361,17 +357,18 @@ export default function TicketDetailScreen() {
                 {TIMELINE_STEPS.map((step, i) => {
                   const stepStatus = getStepStatus(step.key, status);
                   const histEntry = histories.find(
-                    (h: any) => normalizeStatusKey(h.status) === normalizeStatusKey(step.key)
+                    (h: any) => getResidentStage(h.status ?? h.newStatus) === step.key
                   );
-                  const ts = histEntry?.createdAt
-                    ? new Date(histEntry.createdAt).toLocaleString('vi-VN')
+                  const historyTime = histEntry?.createdAt ?? histEntry?.changedAt;
+                  const ts = historyTime
+                    ? new Date(historyTime).toLocaleString('vi-VN')
                     : undefined;
 
                   return (
                     <TimelineStep
                       key={step.key}
                       title={step.label}
-                      description={stepStatus !== 'pending' ? (histEntry?.note ?? step.desc) : step.desc}
+                      description={step.desc}
                       timestamp={ts}
                       status={stepStatus}
                       isLast={i === TIMELINE_STEPS.length - 1}
@@ -386,7 +383,7 @@ export default function TicketDetailScreen() {
             <AppCard shadow="sm">
               <View style={styles.cardContent}>
                 <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardHeaderTitle}>Đơn vị xử lý</Text>
+                  <Text style={styles.cardHeaderTitle}>Đơn vị tiếp nhận</Text>
                   <View style={styles.trustBadge}>
                     <Icon name="check-circle" size={12} color="#10B981" />
                     <Text style={styles.trustBadgeText}>Đang xử lý</Text>
@@ -400,11 +397,8 @@ export default function TicketDetailScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.assignedUnitName}>{ticket.assignment.operatorName}</Text>
-                    {ticket.assignment.staffName && (
-                      <Text style={styles.assignedUnitStaff}>Cán bộ: {ticket.assignment.staffName}</Text>
-                    )}
                     <Text style={styles.assignedUnitStatus}>
-                      {status === 'IN_PROGRESS' ? '🟢 Đang xử lý' : status === 'ASSIGNED' ? '🟡 Vừa nhận công việc' : '⚪ Chờ xử lý'}
+                      {getResidentStatusLabel(status)}
                     </Text>
                   </View>
                 </View>
@@ -492,6 +486,39 @@ export default function TicketDetailScreen() {
             </AppCard>
           )}
 
+          {isApprovedPublicResult(status) && (
+            <AppCard shadow="sm">
+              <View style={styles.cardContent}>
+                <View style={styles.resolutionHeader}>
+                  <View style={styles.resolutionIcon}><Icon name="check-circle" size={20} color="#047857" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.resolutionTitle}>Kết quả xử lý đã được duyệt</Text>
+                    <Text style={styles.resolutionSubtitle}>Thông tin công khai dành cho người gửi phản ánh</Text>
+                  </View>
+                </View>
+                {resolutionsLoading ? <SkeletonCard /> : latestResolution ? (
+                  <>
+                    {latestResolution.resolutionSummary ? <Text style={styles.resolutionSummary}>{latestResolution.resolutionSummary}</Text> : null}
+                    {latestResolution.actionTaken ? <Text style={styles.resolutionAction}>Biện pháp thực hiện: {latestResolution.actionTaken}</Text> : null}
+                    {latestResolution.resultNote ? <Text style={styles.resolutionAction}>{latestResolution.resultNote}</Text> : null}
+                    {latestResolution.resolvedAt ? <Text style={styles.resolutionTime}>Hoàn tất lúc {new Date(latestResolution.resolvedAt).toLocaleString('vi-VN')}</Text> : null}
+                    {resolutionDocuments.length > 0 ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.resolutionGallery}>
+                        {resolutionDocuments.map((uri: string, index: number) => (
+                          <Pressable key={`${uri}-${index}`} onPress={() => setSelectedImage(uri)}>
+                            <Image source={{ uri }} style={styles.resolutionImage} />
+                          </Pressable>
+                        ))}
+                      </ScrollView>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.descriptionText}>Kết quả đang được đồng bộ. Vui lòng kéo xuống để làm mới.</Text>
+                )}
+              </View>
+            </AppCard>
+          )}
+
           <AppCard shadow="sm">
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
@@ -503,9 +530,9 @@ export default function TicketDetailScreen() {
                   <View key={`${history?.id ?? index}-${history?.createdAt ?? index}`} style={styles.activityRow}>
                     <View style={styles.activityDot} />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.activityTitle}>{history?.status ?? 'Cập nhật'}</Text>
-                      <Text style={styles.activityNote}>{history?.note ?? 'Cập nhật hệ thống'}</Text>
-                      <Text style={styles.activityTime}>{history?.createdAt ? new Date(history.createdAt).toLocaleString('vi-VN') : '—'}</Text>
+                      <Text style={styles.activityTitle}>{getResidentStatusLabel(history?.status ?? history?.newStatus)}</Text>
+                      <Text style={styles.activityNote}>Trạng thái xử lý phản ánh đã được cập nhật.</Text>
+                      <Text style={styles.activityTime}>{history?.createdAt || history?.changedAt ? new Date(history.createdAt ?? history.changedAt).toLocaleString('vi-VN') : '—'}</Text>
                     </View>
                   </View>
                 )) : (
@@ -515,7 +542,7 @@ export default function TicketDetailScreen() {
             </View>
           </AppCard>
 
-          <AppCard shadow="sm">
+          {ticket?.incidentId ? <AppCard shadow="sm">
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardHeaderTitle}>Thảo luận cộng đồng</Text>
@@ -532,7 +559,7 @@ export default function TicketDetailScreen() {
                     variant="outline"
                     size="sm"
                     fullWidth
-                    onPress={() => router.push(`/(resident)/community/${feedbackId}` as any)}
+                    onPress={() => router.push(`/(resident)/community/${ticket.incidentId}` as any)}
                     leftIcon={<Icon name="message-circle" size={16} color={semantics.text.brand} style={{ marginRight: spacing['1.5'] }} />}
                   >
                     Mở thảo luận
@@ -540,7 +567,7 @@ export default function TicketDetailScreen() {
                 </View>
               </View>
             </View>
-          </AppCard>
+          </AppCard> : null}
 
 
         </View>
@@ -560,7 +587,7 @@ export default function TicketDetailScreen() {
           </AppButton>
         </View>
 
-        {isResolvedOrApproval && (
+        {canReview && (
           <View style={{ flex: 1 }}>
             <AppButton
               variant="primary"
@@ -1147,6 +1174,60 @@ const styles = StyleSheet.create({
   },
   activityList: {
     gap: spacing['2.5'],
+  },
+  resolutionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['3'],
+    marginBottom: spacing['3'],
+  },
+  resolutionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radius['md'],
+    backgroundColor: '#D1FAE5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resolutionTitle: {
+    fontFamily: fonts.bold,
+    fontSize: fontSizes['sm'],
+    color: '#047857',
+  },
+  resolutionSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes['2xs'],
+    color: semantics.text.muted,
+    marginTop: spacing['0.5'],
+  },
+  resolutionSummary: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes['sm'],
+    lineHeight: 22,
+    color: semantics.text.primary,
+  },
+  resolutionAction: {
+    fontFamily: fonts.medium,
+    fontSize: fontSizes['xs'],
+    lineHeight: 19,
+    color: semantics.text.primary,
+    marginTop: spacing['2'],
+  },
+  resolutionTime: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes['2xs'],
+    color: semantics.text.muted,
+    marginTop: spacing['2.5'],
+  },
+  resolutionGallery: {
+    gap: spacing['2.5'],
+    paddingTop: spacing['3'],
+  },
+  resolutionImage: {
+    width: 150,
+    height: 108,
+    borderRadius: radius['control'],
+    backgroundColor: semantics.bg.surfaceSubtle,
   },
   activityRow: {
     flexDirection: 'row',

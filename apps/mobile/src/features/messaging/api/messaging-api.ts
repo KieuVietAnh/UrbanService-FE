@@ -52,6 +52,21 @@ export const messagingApi = {
     return toolsApi.getAiChatReply(payload);
   },
 
+  async deleteAiConversation(conversationId: string) {
+    return toolsApi.deleteAiConversation(conversationId);
+  },
+
+  async createAiFeedbackDraft(payload: {
+    reflection: string;
+    location?: string;
+    latitude?: number;
+    longitude?: number;
+    imageUrls?: string[];
+    base64Images?: string[];
+  }) {
+    return toolsApi.createAiFeedbackDraft(payload);
+  },
+
   async getFeedbackMessages(feedbackId: string): Promise<ChatMessage[]> {
     const response = await axiosClient.get(`/api/feedbacks/${feedbackId}/messages`, {
       params: { includeInternal: false },

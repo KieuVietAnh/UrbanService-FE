@@ -14,7 +14,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  useDerivedValue,
   interpolateColor,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -182,6 +181,7 @@ export default function ResidentLayout() {
     normalizedPath === '/create-feedback-wizard' ||
     normalizedPath.startsWith('/create-feedback') ||
     normalizedPath.startsWith('/ai') ||
+    normalizedPath.startsWith('/area-alerts') ||
     normalizedPath.includes('/chat') ||
     normalizedPath.startsWith('/community/') ||
     normalizedPath.startsWith('/support/select-feedback');

@@ -22,8 +22,8 @@ import { AppHeader } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { AppButton } from '@/components/ui';
 import { BottomSheet } from '@/components/shared';
-import { feedbackApi } from '@/features/reporting/api';
 import { communityApi, communityKeys } from '@/features/community/api';
+import { getResidentStatusLabel } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
 
 const DEFAULT_REGION = {
@@ -38,9 +38,9 @@ const OVERLAP = 22; // how much each item overlaps the previous
 
 const getAreaId = (area: any) => String(area?.areaId ?? area?.id ?? '');
 const getAreaName = (area: any) => area?.areaName ?? area?.name ?? area?.displayName ?? 'Khu vực chưa xác định';
-const getFeedbackId = (item: any) => String(item?.feedbackId ?? item?.id ?? item?.ticketId ?? '');
-const getFeedbackTitle = (item: any) => item?.title ?? item?.subject ?? item?.name ?? 'Phản ánh chưa có tiêu đề';
-const getFeedbackAddress = (item: any) => item?.locationText ?? item?.address ?? item?.areaName ?? 'Vị trí không xác định';
+const getIncidentId = (item: any) => String(item?.incidentId ?? item?.id ?? '');
+const getIncidentTitle = (item: any) => item?.title ?? item?.name ?? 'Sự vụ chưa có tiêu đề';
+const getIncidentAddress = (item: any) => item?.locationText ?? item?.areaName ?? 'Vị trí không xác định';
 const getCreatedAt = (item: any) => item?.createdAt ?? item?.createdDate ?? item?.createdAtUtc ?? item?.createdOn ?? '';
 
 const normalizeBoundary = (boundaryGeoJson: any) => {
@@ -109,6 +109,9 @@ export default function CommunityMapNative() {
   const insets = useSafeAreaInsets();
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [areaModalOpen, setAreaModalOpen] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
   const [selectedFeedback, setSelectedFeedback] = useState<any | null>(null);
   const [selectedMarker, setSelectedMarker] = useState<any | null>(null);
@@ -136,6 +139,13 @@ export default function CommunityMapNative() {
     [areas, selectedAreaId]
   );
 
+  const { data: categories = [] } = useQuery<any[]>({
+    queryKey: communityKeys.categories(),
+    queryFn: () => communityApi.getCategories(),
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+
   const PAGE_SIZE = 20;
 
   const {
@@ -145,9 +155,19 @@ export default function CommunityMapNative() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: communityKeys.mapFeed(),
+    queryKey: communityKeys.mapFeed({
+      areaId: selectedAreaId || undefined,
+      categoryId: selectedCategoryId || undefined,
+      status: selectedStatus || undefined,
+    }),
     queryFn: async ({ pageParam = 1 }: { pageParam?: number }) => {
-      return await communityApi.getFeed({ pageNumber: pageParam, pageSize: PAGE_SIZE });
+      return await communityApi.getFeed({
+        pageNumber: pageParam,
+        pageSize: PAGE_SIZE,
+        areaId: selectedAreaId || undefined,
+        categoryId: selectedCategoryId || undefined,
+        status: selectedStatus || undefined,
+      });
     },
     initialPageParam: 1,
     getNextPageParam: (lastPage: any) => {
@@ -175,7 +195,7 @@ export default function CommunityMapNative() {
       )
       .map((item: any) => ({
         ...item,
-        id: getFeedbackId(item),
+        id: getIncidentId(item),
         latitude: Number(item.latitude),
         longitude: Number(item.longitude),
       }));
@@ -186,7 +206,7 @@ export default function CommunityMapNative() {
     });
 
     if (selectedMarker && selectedMarker.id) {
-      const markerId = getFeedbackId(selectedMarker);
+      const markerId = getIncidentId(selectedMarker);
       const exists = filtered.some((item: any) => item.id === markerId);
       if (!exists && Number.isFinite(Number(selectedMarker.latitude)) && Number.isFinite(Number(selectedMarker.longitude))) {
         filtered.push({
@@ -262,8 +282,8 @@ export default function CommunityMapNative() {
     if (viewableItems && viewableItems.length > 0) {
       const first = viewableItems[0];
       if (first && first.item) {
-        const id = getFeedbackId(first.item);
-        if (!selectedFeedback || getFeedbackId(selectedFeedback) !== id) {
+        const id = getIncidentId(first.item);
+        if (!selectedFeedback || getIncidentId(selectedFeedback) !== id) {
           setSelectedFeedback(first.item);
         }
       }
@@ -353,17 +373,17 @@ export default function CommunityMapNative() {
 
   const handleSupport = async () => {
     if (!selectedIncident) return;
-    const feedbackId = selectedIncident.id;
-    if (!feedbackId) return;
+    const incidentId = getIncidentId(selectedIncident);
+    if (!incidentId) return;
 
     setSupportLoading(true);
     try {
-      await feedbackApi.support(feedbackId);
+      await communityApi.support(incidentId);
       setSelectedIncident((current: any) =>
         current
           ? {
               ...current,
-              isSupported: true,
+              isSupportedByCurrentUser: true,
               supportCount: Math.max(0, Number(current.supportCount ?? 0) + 1),
             }
           : current
@@ -376,13 +396,13 @@ export default function CommunityMapNative() {
   };
 
   const supportDisabled = Boolean(
-    selectedIncident?.isSupported ?? selectedIncident?.supported ?? false
+    selectedIncident?.isSupportedByCurrentUser ?? false
   );
 
   const goToDetail = (item: any) => {
     if (!item) return;
     setSelectedIncident(null);
-    const id = item.feedbackId ?? item.id ?? item.ticketId;
+    const id = item.incidentId ?? item.id;
     if (!id) return;
     router.push({
       pathname: '/community/[id]',
@@ -472,6 +492,13 @@ export default function CommunityMapNative() {
                 {areasFetchError?.message ?? 'Không tải được danh sách khu vực. Vui lòng kiểm tra đăng nhập hoặc thử lại.'}
               </Text>
             ) : null}
+            <Pressable style={styles.filterSummary} onPress={() => setFilterModalOpen(true)}>
+              <Icon name="sliders" size={15} color={colors.primary} />
+              <Text style={styles.filterSummaryText} numberOfLines={1}>
+                {selectedCategoryId || selectedStatus ? 'Đang áp dụng bộ lọc' : 'Danh mục và trạng thái'}
+              </Text>
+              <Icon name="chevron-right" size={15} color={colors.muted} />
+            </Pressable>
           </AppCard>
         </View>
 
@@ -479,7 +506,7 @@ export default function CommunityMapNative() {
           <Pressable
             style={[styles.feedbackExplorerButton, { bottom: 88 + insets.bottom }]}
             onPress={handleOpenFeedbackExplorer}
-            accessibilityLabel="Danh sách phản ánh"
+            accessibilityLabel="Danh sách sự vụ"
           >
             <Icon name="list" size={20} color={colors.primary} />
           </Pressable>
@@ -586,6 +613,62 @@ export default function CommunityMapNative() {
           </View>
         </Modal>
 
+        <Modal visible={filterModalOpen} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalPane}>
+              <Text style={styles.modalTitle}>Lọc sự vụ trên bản đồ</Text>
+              <Text style={styles.filterSectionLabel}>Trạng thái công khai</Text>
+              <View style={styles.filterChipGrid}>
+                {[
+                  { value: '', label: 'Tất cả' },
+                  { value: 'InProgress', label: 'Đang xử lý' },
+                  { value: 'SubmittedForApproval', label: 'Đang kiểm tra' },
+                  { value: 'Approved', label: 'Hoàn thành' },
+                  { value: 'Closed', label: 'Đã đóng' },
+                ].map((option) => (
+                  <Pressable
+                    key={option.value}
+                    style={[styles.filterChip, selectedStatus === option.value && styles.filterChipActive]}
+                    onPress={() => setSelectedStatus(option.value)}
+                  >
+                    <Text style={[styles.filterChipText, selectedStatus === option.value && styles.filterChipTextActive]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.filterSectionLabel}>Danh mục</Text>
+              <ScrollView style={styles.modalList} contentContainerStyle={styles.filterChipGrid}>
+                <Pressable
+                  style={[styles.filterChip, !selectedCategoryId && styles.filterChipActive]}
+                  onPress={() => setSelectedCategoryId('')}
+                >
+                  <Text style={[styles.filterChipText, !selectedCategoryId && styles.filterChipTextActive]}>Tất cả</Text>
+                </Pressable>
+                {categories.map((category: any) => {
+                  const categoryId = String(category.categoryId ?? category.id ?? '');
+                  const selected = categoryId === selectedCategoryId;
+                  return (
+                    <Pressable
+                      key={categoryId}
+                      style={[styles.filterChip, selected && styles.filterChipActive]}
+                      onPress={() => setSelectedCategoryId(categoryId)}
+                    >
+                      <Text style={[styles.filterChipText, selected && styles.filterChipTextActive]}>
+                        {String(category.categoryName ?? category.name ?? 'Danh mục')}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <AppButton variant="primary" size="md" onPress={() => setFilterModalOpen(false)}>
+                Xem kết quả
+              </AppButton>
+            </View>
+          </View>
+        </Modal>
+
         <BottomSheet
           visible={feedbackListVisible}
           onClose={handleCloseFeedbackExplorer}
@@ -593,11 +676,11 @@ export default function CommunityMapNative() {
         >
           <View style={styles.sheetContent}>
             <View style={styles.listHeader}>
-              <Text style={styles.sheetTitle}>Feedback Explorer</Text>
+              <Text style={styles.sheetTitle}>Danh sách sự vụ</Text>
             </View>
             <FlatList
               data={feedbackItems}
-              keyExtractor={(item: any) => getFeedbackId(item)}
+              keyExtractor={(item: any) => getIncidentId(item)}
               contentContainerStyle={[styles.feedbackListContent, { paddingTop: 8 }]}
               style={styles.feedbackList}
               showsVerticalScrollIndicator={false}
@@ -615,7 +698,7 @@ export default function CommunityMapNative() {
               onEndReachedThreshold={0.5}
               
               renderItem={({ item, index }: { item: any; index: number }) => {
-                const id = getFeedbackId(item);
+                const id = getIncidentId(item);
                 const selected = selectedFeedback?.id === id;
                 return (
                   <View
@@ -628,14 +711,14 @@ export default function CommunityMapNative() {
                     <Pressable onPress={() => handleSelectFeedback(item)} pressRetentionOffset={{ top: 2, left: 2, right: 2, bottom: 2 }}>
                       <View style={styles.feedbackItemHeader}>
                         <Text style={styles.feedbackItemTitle} numberOfLines={2}>
-                          {getFeedbackTitle(item)}
+                          {getIncidentTitle(item)}
                         </Text>
                         <View style={styles.feedbackPriorityBadge}>
                           <Text style={styles.feedbackPriorityText}>{String(item.priority ?? 'N/A')}</Text>
                         </View>
                       </View>
                       <Text style={styles.feedbackItemMetaText} numberOfLines={1}>
-                        {getAreaName(item.area ?? { areaName: item.areaName ?? item.area ?? '' })} • {String(item.status ?? 'Pending').toUpperCase()}
+                        {getAreaName(item.area ?? { areaName: item.areaName ?? item.area ?? '' })} • {getResidentStatusLabel(item.status)}
                       </Text>
                     </Pressable>
                   </View>
@@ -656,10 +739,10 @@ export default function CommunityMapNative() {
           {selectedIncident ? (
             <View style={styles.sheetContent}>
               <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>{getFeedbackTitle(selectedIncident)}</Text>
+                <Text style={styles.sheetTitle}>{getIncidentTitle(selectedIncident)}</Text>
                 <View style={styles.sheetBadgeRow}>
                   <View style={styles.badgePill}>
-                    <Text style={styles.badgeText}>{String(selectedIncident.status ?? 'Chờ xử lý').toUpperCase()}</Text>
+                    <Text style={styles.badgeText}>{getResidentStatusLabel(selectedIncident.status)}</Text>
                   </View>
                   <View style={[styles.badgePill, styles.priorityBadgePill]}>
                     <Text style={styles.badgeText}>{String(selectedIncident.priority ?? 'Normal')}</Text>
@@ -668,7 +751,7 @@ export default function CommunityMapNative() {
               </View>
               <View style={styles.sheetMetaRow}>
                 <Icon name="map-pin" size={14} color={colors.primary} />
-                <Text style={styles.sheetMetaText}>{getFeedbackAddress(selectedIncident)}</Text>
+                <Text style={styles.sheetMetaText}>{getIncidentAddress(selectedIncident)}</Text>
               </View>
               <View style={styles.sheetMetaRow}>
                 <Icon name="layers" size={14} color={colors.muted} />
@@ -766,6 +849,22 @@ const styles = StyleSheet.create({
     color: '#B91C1C',
     fontFamily: 'Geist-Regular',
   },
+  filterSummary: {
+    minHeight: 40,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+  },
+  filterSummaryText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'Geist-Medium',
+    color: '#334155',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.35)',
@@ -813,6 +912,38 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontFamily: 'Geist-SemiBold',
   },
+  filterSectionLabel: {
+    marginTop: 4,
+    marginBottom: 10,
+    fontSize: 12,
+    fontFamily: 'Geist-SemiBold',
+    color: '#64748B',
+    textTransform: 'uppercase',
+  },
+  filterChipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 14,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  filterChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EFF6FF',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontFamily: 'Geist-Medium',
+    color: '#475569',
+  },
+  filterChipTextActive: { color: colors.primary },
   clusterText: {
     color: '#FFFFFF',
     fontWeight: '700',

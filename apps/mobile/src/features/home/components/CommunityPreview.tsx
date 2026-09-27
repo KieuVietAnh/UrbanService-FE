@@ -59,9 +59,9 @@ export function CommunityPreview({ router }: Props) {
           <View style={styles.communityBodyRow}>
             <View style={styles.communityMiniList}>
               {items.slice(0, 2).map((item, index) => {
-                const id = item.feedbackId ?? item.id;
-                const attachment = item.attachments?.find((value) => value?.fileUrl || value?.url);
-                const imageUrl = item.imageUrl || attachment?.fileUrl || attachment?.url;
+                const id = item.incidentId ?? item.id;
+                const media = item.media?.find((value) => value?.fileUrl || value?.thumbnailUrl);
+                const imageUrl = item.imageUrl || media?.thumbnailUrl || media?.fileUrl;
                 return (
                   <Animated.View key={id ?? index} entering={FadeInDown.delay(index * 70).springify().damping(18)}>
                     <Pressable

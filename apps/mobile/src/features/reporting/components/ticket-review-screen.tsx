@@ -3,10 +3,10 @@ import React, { useState } from 'react';
 import { radius } from '@/theme/radius';
 import { spacing } from '@/theme/spacing';
 import { fontSizes, fonts } from '@/theme/typography';
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
@@ -14,6 +14,7 @@ import { AppButton } from '@/components/ui';
 import { AppTextArea } from '@/components/shared';
 import { useToast } from '@/components/shared';
 import { feedbackApi, reportingKeys } from '@/features/reporting/api';
+import { isApprovedPublicResult } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
 
 const STARS = [1, 2, 3, 4, 5];
@@ -33,6 +34,17 @@ export default function ReviewScreen() {
   const [isSatisfied, setIsSatisfied] = useState<boolean | null>(null);
   const [comment, setComment] = useState('');
 
+  const { data: feedback } = useQuery({
+    queryKey: reportingKeys.detail(id ?? ''),
+    queryFn: () => feedbackApi.getById(id ?? ''),
+    enabled: Boolean(id),
+  });
+  const { data: resolutions = [] } = useQuery({
+    queryKey: reportingKeys.resolutions(id ?? ''),
+    queryFn: () => feedbackApi.getResolutions(id ?? ''),
+    enabled: Boolean(id) && isApprovedPublicResult(feedback?.status),
+  });
+
   const submitMutation = useMutation({
     mutationFn: () =>
       feedbackApi.submitReview(id!, rating, isSatisfied ?? true, comment.trim()),
@@ -44,13 +56,14 @@ export default function ReviewScreen() {
     onError: () => toast.error('Gửi đánh giá thất bại'),
   });
 
-  const canSubmit = rating > 0 && isSatisfied !== null;
+  const resultAvailable = isApprovedPublicResult(feedback?.status) && Array.isArray(resolutions) && resolutions.length > 0;
+  const canSubmit = resultAvailable && rating > 0 && isSatisfied !== null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AppHeader showBack title="Đánh giá kết quả xử lý" />
 
-      <View style={styles.body}>
+      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <View style={styles.successCard}>
           <View style={styles.illustrationWrap}>
             <Icon name="check-circle" size={60} color="#10B981" />
@@ -70,6 +83,12 @@ export default function ReviewScreen() {
         </View>
 
         <View style={styles.ratingCard}>
+          {!resultAvailable ? (
+            <View style={styles.pendingNotice}>
+              <Icon name="clock" size={16} color="#92400E" />
+              <Text style={styles.pendingNoticeText}>Bạn có thể đánh giá sau khi kết quả xử lý được phê duyệt và công bố.</Text>
+            </View>
+          ) : null}
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitle}>Đánh giá chất lượng xử lý</Text>
             <View style={styles.liveBadge}>
@@ -165,7 +184,7 @@ export default function ReviewScreen() {
             <Text style={styles.skipText}>Bỏ qua</Text>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -173,10 +192,28 @@ export default function ReviewScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   body: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: spacing['6'],
     paddingTop: spacing['5'],
     paddingBottom: 30,
+  },
+  pendingNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing['2'],
+    borderRadius: radius['control'],
+    padding: spacing['3'],
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    marginBottom: spacing['3'],
+  },
+  pendingNoticeText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: fontSizes['xs'],
+    lineHeight: 18,
+    color: '#92400E',
   },
   successCard: {
     backgroundColor: colors.surface,

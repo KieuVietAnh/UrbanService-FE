@@ -1,71 +1,100 @@
-export interface CommunityFeedParams {
+export interface CommunityIncidentParams {
   pageNumber?: number;
   pageSize?: number;
   search?: string;
   status?: string;
   categoryId?: string | number;
+  areaId?: string | number;
+  sort?: string;
 }
 
-export interface CommunityFeedResponse {
-  items: CommunityFeedItem[];
+export interface CommunityIncidentResponse {
+  items: PublicIncidentItem[];
   pageNumber: number;
   pageSize: number;
   totalItems: number;
   totalPages: number;
+  hasPreviousPage?: boolean;
+  hasNextPage?: boolean;
 }
 
-export interface CommunityFeedItem {
-  feedbackId?: string;
-  id?: string;
-  authorName?: string;
-  userName?: string;
-  status?: string;
+export interface PublicIncidentMedia {
+  incidentMediaId?: string | number;
+  fileUrl?: string;
+  thumbnailUrl?: string;
+  mediaType?: string;
+}
+
+export interface PublicIncidentItem {
+  incidentId: string;
+  id: string;
+  areaId?: number | null;
+  areaName?: string;
+  categoryId?: number | null;
   categoryName?: string;
-  attachments?: Array<{ fileUrl?: string; url?: string; attachmentId?: unknown } | null>;
-  imageUrl?: string;
   title?: string;
   description?: string;
   locationText?: string;
-  code?: string;
-  feedbackCode?: string;
-  supportCount?: number;
-  commentCount?: number;
-  isSupported?: boolean;
-  createdAt?: string | null;
-  attachmentCount?: number;
   latitude?: number | null;
   longitude?: number | null;
+  priority?: string;
+  severity?: string;
+  status?: string;
+  reportCount?: number;
+  subscriberCount?: number;
+  commentCount?: number;
+  supportCount?: number;
+  isSubscribedByCurrentUser?: boolean;
+  isSupportedByCurrentUser?: boolean;
+  engagementScore?: number;
+  coverImageUrl?: string;
+  coverImageThumbnailUrl?: string;
+  imageUrl?: string;
+  media?: PublicIncidentMedia[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
-export interface CommunityFeedCardProps {
-  item: CommunityFeedItem;
-  onPress: () => void;
-  onCommentPress: () => void;
+export interface PublicIncidentDetail extends PublicIncidentItem {
+  dueDate?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
 }
 
-export interface CommentItem {
+export interface PublicIncidentResolution {
+  resolutionSummary?: string;
+  actionTaken?: string;
+  resolvedAt?: string;
+  completionDocuments?: Array<{
+    documentId?: string | number;
+    fileUrl?: string;
+    thumbnailUrl?: string;
+    documentType?: string;
+  }>;
+}
+
+export interface PublicIncidentEvent {
+  incidentEventId?: string | number;
+  eventType?: string;
+  createdAt?: string;
+}
+
+export interface IncidentComment {
+  incidentCommentId?: string;
+  commentId?: string;
   id: string;
-  senderName: string;
+  authorName?: string;
+  userName?: string;
   content: string;
   createdAt: string;
 }
 
-export type RawComment = {
-  commentId?: string | number;
-  id?: string | number;
-  authorName?: string;
-  userName?: string;
-  userFullName?: string;
-  content?: string;
-  text?: string;
-  createdAt?: string;
-};
-
-export interface CommunityFeedbackDetail extends CommunityFeedItem {
-  comments?: RawComment[];
-  commentList?: RawComment[];
+export interface CommunityIncidentCardProps {
+  item: PublicIncidentItem;
+  onPress: () => void;
+  onCommentPress: () => void;
 }
 
 export type CommunityFeedCache = {
-  items?: CommunityFeedItem[];
+  items?: PublicIncidentItem[];
 };

@@ -4,12 +4,14 @@ type ProfileUpdateInput = {
   fullName: string;
   phone?: string;
   phoneNumber?: string;
+  address?: string;
 };
 
 type MobileProfile = Record<string, unknown> & {
   fullName?: string;
   email?: string;
   phone?: string;
+  address?: string;
   role?: string;
 };
 

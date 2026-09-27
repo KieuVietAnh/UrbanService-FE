@@ -3,14 +3,20 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
+  Pressable,
   RefreshControl,
   StyleSheet,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -34,6 +40,16 @@ import type { AiMessage } from '../types/messaging.types';
 import { messagingApi, messagingKeys } from '../api';
 
 type ApiRecord = Record<string, unknown>;
+
+type DraftImage = {
+  uri: string;
+  name: string;
+  type: string;
+  size?: number;
+  base64?: string | null;
+};
+
+const DRAFT_STORAGE_KEY = 'urbanmind:create-ticket-draft:mobile';
 
 const isApiRecord = (value: unknown): value is ApiRecord =>
   value !== null &&
@@ -172,6 +188,12 @@ export default function AiConversationDetailScreen() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [draftImage, setDraftImage] = useState<DraftImage | null>(null);
+  const [draftLocation, setDraftLocation] = useState<{
+    label: string;
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   const listRef =
     useRef<FlatList<AiMessage> | null>(null);
@@ -396,6 +418,105 @@ export default function AiConversationDetailScreen() {
     },
   });
 
+  const chooseDraftImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      toast.error('Vui lòng cho phép truy cập thư viện ảnh.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      quality: 0.8,
+      base64: true,
+    });
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset) return;
+    setDraftImage({
+      uri: asset.uri,
+      name: asset.fileName || `ai-evidence-${Date.now()}.jpg`,
+      type: asset.mimeType || 'image/jpeg',
+      size: asset.fileSize,
+      base64: asset.base64,
+    });
+  };
+
+  const chooseDraftLocation = async () => {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (permission.status !== 'granted') {
+      toast.error('Vui lòng cho phép truy cập vị trí.');
+      return;
+    }
+    try {
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude, longitude } = position.coords;
+      const results = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
+      const address = results[0];
+      const label = address
+        ? [address.name, address.street, address.district, address.city]
+            .filter(Boolean)
+            .filter((part, index, values) => values.indexOf(part) === index)
+            .join(', ')
+        : `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      setDraftLocation({ label: label || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`, latitude, longitude });
+      toast.success('Đã thêm vị trí hiện tại.');
+    } catch {
+      toast.error('Không thể lấy vị trí hiện tại. Vui lòng thử lại.');
+    }
+  };
+
+  const draftMutation = useMutation({
+    mutationFn: async () => {
+      const reflection = messages
+        .filter((message) => message.sender === 'user')
+        .map((message) => message.content.trim())
+        .filter(Boolean)
+        .join('\n');
+      if (!reflection) {
+        throw new Error('EMPTY_REFLECTION');
+      }
+      return messagingApi.createAiFeedbackDraft({
+        reflection,
+        location: draftLocation?.label,
+        latitude: draftLocation?.latitude,
+        longitude: draftLocation?.longitude,
+        base64Images: draftImage?.base64 ? [draftImage.base64] : undefined,
+      });
+    },
+    onSuccess: async (response) => {
+      const outer = isApiRecord(response) ? response : {};
+      const result = isApiRecord(outer.data) ? outer.data : outer;
+      await AsyncStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({
+        title: String(result.title ?? ''),
+        description: String(result.description ?? result.summary ?? ''),
+        locationText: String(result.location ?? draftLocation?.label ?? ''),
+        latitude: result.latitude ?? draftLocation?.latitude ?? null,
+        longitude: result.longitude ?? draftLocation?.longitude ?? null,
+        priority: String(result.urgencyLevel ?? 'Medium'),
+        suggestedCategory: String(result.suggestedCategory ?? ''),
+        attachments: draftImage ? [{
+          uri: draftImage.uri,
+          name: draftImage.name,
+          type: draftImage.type,
+          size: draftImage.size,
+        }] : [],
+        source: 'ai-assistant',
+        savedAt: new Date().toISOString(),
+      }));
+      toast.success('AI đã tạo bản nháp. Hãy kiểm tra trước khi gửi.');
+      router.push('/(resident)/create-feedback');
+    },
+    onError: (error) => {
+      if (error instanceof Error && error.message === 'EMPTY_REFLECTION') {
+        toast.error('Hãy mô tả sự việc cho AI trước khi tạo phản ánh.');
+        return;
+      }
+      toast.error('Không thể tạo bản nháp phản ánh từ AI. Vui lòng thử lại.');
+    },
+  });
+
   const handleSend = async (
     text: string,
   ) => {
@@ -491,6 +612,16 @@ export default function AiConversationDetailScreen() {
           showBack
           title="Trợ lý AI"
           subtitle="Câu chuyện của bạn"
+          rightAction={(
+            <Pressable
+              style={styles.headerAction}
+              onPress={() => router.push('/(resident)/ai' as never)}
+              accessibilityRole="button"
+              accessibilityLabel="Mở lịch sử trò chuyện"
+            >
+              <Icon name="clock" size={19} color={semantics.text.primary} />
+            </Pressable>
+          )}
         />
 
         {isError &&
@@ -509,6 +640,47 @@ export default function AiConversationDetailScreen() {
                   styles.composerContainer
                 }
               >
+                <View style={styles.draftTools}>
+                  {draftImage ? (
+                    <View style={styles.draftImageWrap}>
+                      <Image source={{ uri: draftImage.uri }} style={styles.draftImage} />
+                      <Pressable
+                        style={styles.removeDraftImage}
+                        onPress={() => setDraftImage(null)}
+                        accessibilityLabel="Bỏ ảnh"
+                      >
+                        <Icon name="x" size={12} color={semantics.text.inverse} />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <Pressable style={styles.toolButton} onPress={chooseDraftImage}>
+                    <Icon name="image" size={16} color={semantics.text.brand} />
+                    <Text style={styles.toolButtonText}>{draftImage ? 'Đổi ảnh' : 'Thêm ảnh'}</Text>
+                  </Pressable>
+                  <Pressable style={styles.toolButton} onPress={chooseDraftLocation}>
+                    <Icon name="map-pin" size={16} color={semantics.text.brand} />
+                    <Text style={styles.toolButtonText} numberOfLines={1}>
+                      {draftLocation ? 'Đã có GPS' : 'Thêm GPS'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.createDraftButton, draftMutation.isPending && styles.disabledButton]}
+                    onPress={() => draftMutation.mutate()}
+                    disabled={draftMutation.isPending}
+                  >
+                    {draftMutation.isPending ? (
+                      <ActivityIndicator size="small" color={semantics.text.inverse} />
+                    ) : (
+                      <Icon name="file-plus" size={16} color={semantics.text.inverse} />
+                    )}
+                    <Text style={styles.createDraftText}>Tạo phản ánh</Text>
+                  </Pressable>
+                </View>
+                {draftLocation ? (
+                  <Text style={styles.locationSummary} numberOfLines={1}>
+                    {draftLocation.label}
+                  </Text>
+                ) : null}
                 <View
                   style={
                     styles.composerWrap
@@ -656,6 +828,83 @@ const styles = StyleSheet.create({
       semantics.border.default,
     backgroundColor:
       semantics.bg.surface,
+  },
+
+  headerAction: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: semantics.bg.surfaceSubtle,
+  },
+
+  draftTools: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+
+  toolButton: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: semantics.border.default,
+    backgroundColor: semantics.bg.surface,
+  },
+
+  toolButtonText: {
+    fontFamily: 'Geist-Medium',
+    fontSize: 11,
+    color: semantics.text.brand,
+  },
+
+  createDraftButton: {
+    minHeight: 36,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: semantics.bg.primary,
+  },
+
+  createDraftText: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 11,
+    color: semantics.text.inverse,
+  },
+
+  disabledButton: { opacity: 0.6 },
+
+  locationSummary: {
+    marginTop: 6,
+    paddingHorizontal: 14,
+    fontSize: 11,
+    color: semantics.text.muted,
+  },
+
+  draftImageWrap: { position: 'relative' },
+  draftImage: { width: 36, height: 36, borderRadius: 9 },
+  removeDraftImage: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 17,
+    height: 17,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#DC2626',
   },
 
   chatBody: {

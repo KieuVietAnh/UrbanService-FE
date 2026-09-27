@@ -49,4 +49,16 @@ export const QUICK_ACTIONS: QuickAction[] = [
     textColor: '#0F172A',
     subColor: '#6D28D9',
   },
+  {
+    id: 'alerts',
+    icon: 'alert-triangle',
+    label: 'Cảnh báo khu vực',
+    sub: 'Theo dõi nơi quan tâm',
+    href: '/(resident)/area-alerts',
+    accent: '#DC2626',
+    bg: '#FEF2F2',
+    iconBg: '#FEE2E2',
+    textColor: '#0F172A',
+    subColor: '#B91C1C',
+  },
 ];

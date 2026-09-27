@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { getRoleLabel, managementTypes } from '@urbanmind/shared-types';
+import { getRoleLabel } from '@urbanmind/shared-types';
 import { AppButton, AppInput, Text } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
 import { AppErrorState } from '@/components/shared';
@@ -21,6 +21,7 @@ import { feedbackApi, reportingKeys, type FeedbackFilters } from '@/features/rep
 import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 import { profileApi, profileKeys } from '../api';
+import { getResidentStage } from '@/features/resident-status';
 
 const PROFILE_FEEDBACK_FILTERS: FeedbackFilters = {
   pageSize: 100,
@@ -76,6 +77,7 @@ export default function ProfileScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
 
   const userId = user?.id || '';
 
@@ -88,27 +90,7 @@ export default function ProfileScreen() {
     isRefetching,
   } = useQuery({
     queryKey: profileKeys.detail(),
-    queryFn: async () => {
-      const formatError = (err: any) => {
-        try {
-          if (!err) return null;
-          if (typeof err === 'string') return err;
-          if (err?.message) return err.message;
-          return JSON.stringify(err);
-        } catch (_) {
-          return String(err);
-        }
-      };
-
-      try {
-        return await profileApi.getProfile();
-      } catch (e) {
-        if (__DEV__) {
-          console.debug('[userProfile] fetch failed, returning null', { error: formatError(e) });
-        }
-        return null;
-      }
-    },
+    queryFn: profileApi.getProfile,
     enabled: Boolean(userId),
     retry: false,
   });
@@ -144,6 +126,8 @@ export default function ProfileScreen() {
   const fullName = activeProfile?.fullName || 'Cư dân';
   const email = activeProfile?.email || '';
   const phone = activeProfile?.phone || '';
+  const addressValue = (activeProfile as Record<string, unknown> | null | undefined)?.address;
+  const address = typeof addressValue === 'string' ? addressValue : '';
   const roleLabel = getRoleLabel(activeProfile?.role) || 'Cư dân';
 
   const initials = fullName
@@ -160,42 +144,13 @@ export default function ProfileScreen() {
     ? myFeedbacksData.length
     : myFeedbacksData?.totalItems || feedbackItems.length;
 
-  const normalizeStatus = (status?: string) => String(status ?? '').trim().toLowerCase();
-  const isSubmittedStatus = (status?: string) => {
-    const value = normalizeStatus(status);
-    return [
-      managementTypes.feedbackStatus.SUBMITTED.toLowerCase(),
-      managementTypes.feedbackStatus.VERIFIED.toLowerCase(),
-      'submitted',
-      'submittedforapproval',
-      'verified',
-    ].includes(value);
-  };
-  const isProcessingStatus = (status?: string) => {
-    const value = normalizeStatus(status);
-    return [
-      managementTypes.feedbackStatus.ASSIGNED.toLowerCase(),
-      managementTypes.feedbackStatus.IN_PROGRESS.toLowerCase(),
-      managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL.toLowerCase(),
-      managementTypes.feedbackStatus.NEED_REWORK.toLowerCase(),
-      'assigned',
-      'inprogress',
-      'in_progress',
-      'submittedforapproval',
-      'needrework',
-    ].includes(value);
-  };
-  const isResolvedStatus = (status?: string) => {
-    const value = normalizeStatus(status);
-    return [
-      managementTypes.feedbackStatus.RESOLVED.toLowerCase(),
-      managementTypes.feedbackStatus.APPROVED.toLowerCase(),
-      managementTypes.feedbackStatus.CLOSED.toLowerCase(),
-      'resolved',
-      'approved',
-      'closed',
-    ].includes(value);
-  };
+  const isSubmittedStatus = (status?: string) => getResidentStage(status) === 'submitted';
+  const isProcessingStatus = (status?: string) => [
+    'received',
+    'processing',
+    'reviewing',
+  ].includes(getResidentStage(status));
+  const isResolvedStatus = (status?: string) => getResidentStage(status) === 'completed';
 
   const submittedCount = feedbackItems.filter((item: any) => isSubmittedStatus(item?.status)).length;
   const processingCount = feedbackItems.filter((item: any) => isProcessingStatus(item?.status)).length;
@@ -204,6 +159,7 @@ export default function ProfileScreen() {
   const handleOpenEdit = () => {
     setEditName(fullName);
     setEditPhone(phone);
+    setEditAddress(address);
     setEditModalVisible(true);
   };
 
@@ -219,6 +175,7 @@ export default function ProfileScreen() {
     updateProfileMutation.mutate({
       fullName: editName.trim(),
       phone: editPhone.trim(),
+      address: editAddress.trim(),
     });
   };
 
@@ -316,6 +273,12 @@ export default function ProfileScreen() {
                       <View style={styles.infoRow}>
                         <Icon name="mail" size={13} color="#64748B" />
                         <Text style={styles.infoText}>{email}</Text>
+                      </View>
+                    ) : null}
+                    {address ? (
+                      <View style={styles.infoRow}>
+                        <Icon name="map-pin" size={13} color="#64748B" />
+                        <Text style={styles.infoText} numberOfLines={2}>{address}</Text>
                       </View>
                     ) : null}
                   </View>
@@ -417,6 +380,14 @@ export default function ProfileScreen() {
               onChangeText={setEditPhone}
               leftIcon="phone"
               keyboardType="phone-pad"
+            />
+
+            <AppInput
+              label="Địa chỉ"
+              value={editAddress}
+              onChangeText={setEditAddress}
+              leftIcon="map-pin"
+              placeholder="Nhập địa chỉ liên hệ"
             />
 
             <View style={styles.modalActions}>

@@ -121,7 +121,7 @@ export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
   const items = nearby;
   const detailQueries = useQueries({
     queries: items.slice(0, 5).map((item) => {
-      const id = item.feedbackId ?? item.id;
+      const id = item.incidentId ?? item.id;
       return {
         queryKey: communityKeys.detail(String(id ?? '')),
         queryFn: () => communityApi.getFeedDetail(String(id)),
@@ -160,7 +160,7 @@ export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
             const mergedItem = detail ? ({ ...item, ...detail } as TicketLike) : item;
             return (
               <FeaturedIncidentCard
-                key={item.feedbackId ?? item.id ?? `community-${index}`}
+                key={item.incidentId ?? item.id ?? `community-${index}`}
                 item={mergedItem}
                 index={index}
                 router={router}
@@ -176,7 +176,7 @@ export function FeaturedIncidents({ nearbyLoading, nearby, router }: Props) {
 function FeaturedIncidentCard({ item, index, router }: { item: TicketLike; index: number; router: RouterLike }) {
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const id = item.feedbackId ?? item.id;
+  const id = item.incidentId ?? item.id;
   const images = getIncidentImages(item);
 
   return (
