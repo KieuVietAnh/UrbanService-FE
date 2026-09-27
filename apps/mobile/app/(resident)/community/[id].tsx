@@ -1,670 +1,322 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager, View, ScrollView, Pressable, Image, StyleSheet, TextInput, Platform, RefreshControl, Modal } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAwareComposerLayout } from '@/components/layouts';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui';
-import { AppCard } from '@/components/ui';
-import { AppHeader } from '@/components/ui';
-import { AppButton } from '@/components/ui';
-import { TicketStatusBadge } from '@/components/ui';
-import { SkeletonCard } from '@/components/shared';
-import { AppErrorState } from '@/components/shared';
-import { AppEmptyState } from '@/components/shared';
-import { useToast } from '@/components/shared';
+
+import { KeyboardAwareComposerLayout } from '@/components/layouts';
+import { AppBadge, AppButton, AppCard, AppHeader, Text } from '@/components/ui';
+import { AppEmptyState, AppErrorState, SkeletonCard, useToast } from '@/components/shared';
 import { communityApi, communityKeys } from '@/features/community/api';
-import { feedbackApi } from '@/features/reporting/api';
+import type { CommunityFeedCache, PublicIncidentDetail } from '@/features/community/types';
+import { getResidentStatusLabel, getResidentStage } from '@/features/resident-status';
+import TicketLocationMap from '@/features/reporting/components/ticket-location-map';
 import { semantics } from '@/theme/semantics';
-import type {
-  CommentItem,
-  CommunityFeedbackDetail,
-  CommunityFeedCache,
-  RawComment,
-} from '@/features/community/types';
+
+const formatDate = (value?: string | null) => value
+  ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })
+  : '';
+
+const publicEventLabel = (eventType?: string) => {
+  const key = String(eventType ?? '').replace(/[_\s-]+/g, '').toLowerCase();
+  if (key.includes('close') || key.includes('approved') || key.includes('complete')) return 'Hoàn thành';
+  if (key.includes('resolution') || key.includes('approval') || key.includes('review')) return 'Đang kiểm tra kết quả';
+  if (key.includes('progress') || key.includes('rework') || key.includes('process')) return 'Đang xử lý';
+  if (key.includes('assign') || key.includes('verify') || key.includes('receive')) return 'Đã tiếp nhận';
+  return 'Đã ghi nhận';
+};
 
 export default function CommunityDetailScreen() {
-  const { id, focusComment, autoFocusComment } = useLocalSearchParams<{ id: string; focusComment?: string; autoFocusComment?: string }>();
+  const { id, autoFocusComment } = useLocalSearchParams<{ id?: string; autoFocusComment?: string }>();
+  const incidentId = typeof id === 'string' ? id : '';
   const toast = useToast();
-  const commentInputRef = useRef<TextInput | null>(null);
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const [focusPending, setFocusPending] = useState(false);
-  const [composerLayoutReady, setComposerLayoutReady] = useState(false);
-  const [inputAttached, setInputAttached] = useState(false);
-
-  const normalizeFlag = (value?: string) => {
-    if (!value) return false;
-    const normalized = String(value).trim().toLowerCase();
-    return normalized === '1' || normalized === 'true';
-  };
-
-  const shouldFocusComposer = normalizeFlag(focusComment) || normalizeFlag(autoFocusComment);
-
-  const debugLog = (...args: Array<unknown>) => {
-    if (__DEV__) {
-      console.log('[CommunityDetailScreen]', ...args);
-    }
-  };
-
-  const focusComposer = () => {
-    const textInput = commentInputRef.current;
-    debugLog('focusComposer() called, has input ref:', Boolean(textInput), textInput, {
-      composerLayoutReady,
-      inputAttached,
-      focusPending,
-    });
-    if (!textInput) {
-      return false;
-    }
-
-    textInput.focus();
-    debugLog('commentInputRef.focus() invoked');
-    setFocusPending(false);
-    return true;
-  };
-
-  useEffect(() => {
-    debugLog('route params', { id, focusComment, autoFocusComment, shouldFocusComposer });
-  }, [id, focusComment, autoFocusComment, shouldFocusComposer]);
-
-  useEffect(() => {
-    if (!shouldFocusComposer) return;
-    debugLog('shouldFocusComposer true; pending focus');
-    setFocusPending(true);
-  }, [shouldFocusComposer]);
-
-  useEffect(() => {
-    if (!focusPending || !composerLayoutReady || !inputAttached) return;
-    debugLog('focusPending, composerLayoutReady, and inputAttached; attempting focus', { inputRef: commentInputRef.current });
-
-    const raf = requestAnimationFrame(() => {
-      const task = InteractionManager.runAfterInteractions(() => {
-        debugLog('interaction complete, attempting focus', { inputRef: commentInputRef.current });
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-        if (focusComposer()) {
-          debugLog('focusComposer succeeded from pending flow');
-          setFocusPending(false);
-        } else {
-          debugLog('focusComposer failed from pending flow, will retry on next layout');
-        }
-      });
-      return () => task.cancel();
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [focusPending, composerLayoutReady, inputAttached]);
   const queryClient = useQueryClient();
-  const feedbackId = id || '';
+  const inputRef = useRef<TextInput | null>(null);
+  const [comment, setComment] = useState('');
 
-  const [commentInput, setCommentInput] = useState('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-
-  const {
-    data: item,
-    isLoading,
-    isError,
-    refetch,
-    isRefetching,
-  } = useQuery<CommunityFeedbackDetail | null>({
-    queryKey: communityKeys.detail(feedbackId),
-    queryFn: () => communityApi.getFeedDetail(feedbackId),
-    enabled: Boolean(feedbackId),
+  const detailQuery = useQuery({
+    queryKey: communityKeys.detail(incidentId),
+    queryFn: () => communityApi.getFeedDetail(incidentId),
+    enabled: Boolean(incidentId),
+  });
+  const resolutionQuery = useQuery({
+    queryKey: communityKeys.resolution(incidentId),
+    queryFn: () => communityApi.getResolution(incidentId),
+    enabled: Boolean(incidentId) && getResidentStage(detailQuery.data?.status) === 'completed',
+  });
+  const timelineQuery = useQuery({
+    queryKey: communityKeys.timeline(incidentId),
+    queryFn: () => communityApi.getTimeline(incidentId),
+    enabled: Boolean(incidentId),
+  });
+  const commentsQuery = useQuery({
+    queryKey: communityKeys.comments(incidentId),
+    queryFn: () => communityApi.getComments(incidentId),
+    enabled: Boolean(incidentId),
   });
 
-  const comments = useMemo<CommentItem[]>(() => {
-    if (!item) return [];
-    const rawComments: RawComment[] = Array.isArray(item.comments)
-      ? item.comments
-      : Array.isArray(item.commentList)
-        ? item.commentList
-        : [];
+  const incident = detailQuery.data;
+  const resolution = resolutionQuery.data;
+  const comments = commentsQuery.data ?? [];
+  const timeline = timelineQuery.data ?? [];
 
-    return rawComments.map((c, index) => ({
-      id: String(c.commentId ?? c.id ?? `comment-${feedbackId}-${index}`),
-      senderName: String(c.authorName ?? c.userName ?? c.userFullName ?? 'Cộng đồng'),
-      content: String(c.content ?? c.text ?? ''),
-      createdAt: String(c.createdAt ?? ''),
-    }));
-  }, [item]);
+  useEffect(() => {
+    if (autoFocusComment === '1' || autoFocusComment === 'true') {
+      const timer = setTimeout(() => inputRef.current?.focus(), 350);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocusComment]);
+
+  const syncDetail = (patch: Partial<PublicIncidentDetail>) => {
+    queryClient.setQueryData<PublicIncidentDetail>(communityKeys.detail(incidentId), (current) => current ? { ...current, ...patch } : current);
+    queryClient.setQueriesData<CommunityFeedCache>({ queryKey: communityKeys.feeds() }, (current) => {
+      if (!current?.items) return current;
+      return {
+        ...current,
+        items: current.items.map((item) => item.incidentId === incidentId ? { ...item, ...patch } : item),
+      };
+    });
+  };
 
   const supportMutation = useMutation({
     mutationFn: async () => {
-      if (item?.isSupported) {
-        await feedbackApi.unsupport(feedbackId);
-        return { supported: false };
-      }
-      await feedbackApi.support(feedbackId);
-      return { supported: true };
+      if (incident?.isSupportedByCurrentUser) await communityApi.unsupport(incidentId);
+      else await communityApi.support(incidentId);
+      return !incident?.isSupportedByCurrentUser;
     },
-    onSuccess: (result) => {
-      queryClient.setQueriesData<CommunityFeedCache>({
-        queryKey: communityKeys.feeds(),
-      }, (data) => {
-        if (!data || !Array.isArray(data.items)) return data;
-        return {
-          ...data,
-          items: data.items.map((feedItem) => {
-            const itemId = String(feedItem.feedbackId ?? feedItem.id ?? '');
-            if (itemId !== feedbackId) return feedItem;
-            return {
-              ...feedItem,
-              isSupported: result.supported,
-              supportCount: Math.max(0, Number(feedItem.supportCount ?? 0) + (result.supported ? 1 : -1)),
-            };
-          }),
-        };
+    onSuccess: (supported) => {
+      syncDetail({
+        isSupportedByCurrentUser: supported,
+        supportCount: Math.max(0, Number(incident?.supportCount ?? 0) + (supported ? 1 : -1)),
       });
-
-      queryClient.setQueryData<CommunityFeedbackDetail | null>(communityKeys.detail(feedbackId), (prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          isSupported: result.supported,
-          supportCount: Math.max(0, Number(prev.supportCount ?? 0) + (result.supported ? 1 : -1)),
-        };
-      });
-      toast.success(result.supported ? 'Đã ủng hộ phản ánh' : 'Đã bỏ ủng hộ');
     },
-    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể cập nhật hỗ trợ'),
+    onError: () => toast.error('Không thể cập nhật lượt đồng tình.'),
   });
 
-  const addCommentMutation = useMutation({
-    mutationFn: (content: string) => feedbackApi.addComment(feedbackId, content),
+  const subscribeMutation = useMutation({
+    mutationFn: async () => {
+      if (incident?.isSubscribedByCurrentUser) await communityApi.unsubscribe(incidentId);
+      else await communityApi.subscribe(incidentId);
+      return !incident?.isSubscribedByCurrentUser;
+    },
+    onSuccess: (subscribed) => {
+      syncDetail({
+        isSubscribedByCurrentUser: subscribed,
+        subscriberCount: Math.max(0, Number(incident?.subscriberCount ?? 0) + (subscribed ? 1 : -1)),
+      });
+      toast.success(subscribed ? 'Đã theo dõi sự vụ.' : 'Đã dừng theo dõi sự vụ.');
+    },
+    onError: () => toast.error('Không thể cập nhật theo dõi.'),
+  });
+
+  const commentMutation = useMutation({
+    mutationFn: () => communityApi.addComment(incidentId, comment.trim()),
     onSuccess: async () => {
-      setCommentInput('');
-      await queryClient.invalidateQueries({ queryKey: communityKeys.detail(feedbackId) });
-      toast.success('Đã gửi bình luận');
-      // Auto-scroll to latest comment
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 300);
+      setComment('');
+      await queryClient.invalidateQueries({ queryKey: communityKeys.comments(incidentId) });
+      await queryClient.invalidateQueries({ queryKey: communityKeys.detail(incidentId) });
+      toast.success('Đã gửi bình luận.');
     },
-    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Không thể gửi bình luận'),
+    onError: () => toast.error('Không thể gửi bình luận.'),
   });
 
-  const attachments = item?.attachments?.filter((attachment): attachment is { fileUrl: string } => Boolean(attachment?.fileUrl)) ?? [];
+  const gallery = useMemo(() => {
+    const incidentMedia = incident?.media?.map((item) => item.fileUrl || item.thumbnailUrl).filter(Boolean) ?? [];
+    const completionMedia = resolution?.completionDocuments?.map((item) => item.fileUrl || item.thumbnailUrl).filter(Boolean) ?? [];
+    return [...incidentMedia, ...completionMedia] as string[];
+  }, [incident?.media, resolution?.completionDocuments]);
 
-  const handleComposerLayout = () => {
-    debugLog('composer layout event', {
-      shouldFocusComposer,
-      focusPending,
-      composerLayoutReady,
-      inputRef: commentInputRef.current,
-    });
-    setComposerLayoutReady(true);
-    if (shouldFocusComposer && !focusPending) {
-      setFocusPending(true);
-    }
-  };
-
-  if (isLoading) {
+  if (detailQuery.isLoading) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <AppHeader showBack title="Chi tiết cộng đồng" />
-        <ScrollView contentContainerStyle={{ padding: 20, gap: 12 }}>
-          <SkeletonCard />
-          <SkeletonCard />
-        </ScrollView>
+        <AppHeader showBack title="Chi tiết sự vụ" />
+        <ScrollView contentContainerStyle={styles.loading}><SkeletonCard /><SkeletonCard /></ScrollView>
       </SafeAreaView>
     );
   }
 
-  if (isError && !isLoading) {
+  if (detailQuery.isError || !incident) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <AppHeader showBack title="Chi tiết cộng đồng" />
-        <AppErrorState onRetry={refetch}>Không thể tải thông tin phản ánh</AppErrorState>
+        <AppHeader showBack title="Chi tiết sự vụ" />
+        <AppErrorState onRetry={detailQuery.refetch}>Không thể tải sự vụ cộng đồng.</AppErrorState>
       </SafeAreaView>
     );
   }
 
-  const authorName = item?.authorName || item?.userName || 'Cộng đồng UrbanService';
-  const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : '';
-  const evidenceImages = attachments.map((attachment) => attachment.fileUrl).filter(Boolean) as string[];
+  const latitude = Number(incident.latitude ?? 0);
+  const longitude = Number(incident.longitude ?? 0);
+  const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: semantics.bg.app }} edges={['top']}>
-      <AppHeader showBack title="Chi tiết cộng đồng" />
-
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <AppHeader showBack title="Chi tiết sự vụ" />
       <KeyboardAwareComposerLayout
         composer={
-          <View style={styles.composerHost}>
-            <View
-              style={styles.composer}
-              onLayout={handleComposerLayout}
+          <View style={styles.composer}>
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              value={comment}
+              onChangeText={setComment}
+              placeholder="Thêm bình luận công khai..."
+              placeholderTextColor={semantics.text.lightMuted}
+              multiline
+            />
+            <Pressable
+              style={[styles.send, (!comment.trim() || commentMutation.isPending) && styles.sendDisabled]}
+              disabled={!comment.trim() || commentMutation.isPending}
+              onPress={() => commentMutation.mutate()}
             >
-              <TextInput
-                ref={(node) => {
-                  commentInputRef.current = node;
-                  setInputAttached(Boolean(node));
-                  debugLog('TextInput ref attached', node);
-                }}
-                style={styles.input}
-                placeholder="Viết bình luận..."
-                value={commentInput}
-                onChangeText={setCommentInput}
-                multiline
-                placeholderTextColor={semantics.text.lightMuted}
-                autoFocus={shouldFocusComposer}
-                onLayout={() => debugLog('TextInput onLayout', { inputRef: commentInputRef.current })}
-              />
-              <Pressable
-                onPress={() => commentInput.trim() && addCommentMutation.mutate(commentInput.trim())}
-                disabled={!commentInput.trim() || addCommentMutation.isPending}
-                style={[styles.sendButton, (!commentInput.trim() || addCommentMutation.isPending) && styles.sendButtonDisabled]}
-              >
-                <Icon name="send" size={18} color="#FFFFFF" />
-              </Pressable>
-            </View>
+              <Icon name="send" size={18} color="#FFFFFF" />
+            </Pressable>
           </View>
         }
       >
-        <View style={{ flex: 1 }}>
-          <ScrollView
-            ref={scrollViewRef}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-            scrollEnabled={true}
-            nestedScrollEnabled={true}
-            keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() => {
-              setTimeout(() => {
-                scrollViewRef.current?.scrollToEnd({ animated: true });
-              }, 80);
-            }}
-            refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={semantics.text.brand} />}
-          >
-        <AppCard shadow="sm" className="mt-4 mx-4">
-          <View style={styles.heroTop}>
-            <View style={styles.heroBadgeRow}>
-              <View style={styles.avatarBadge}>
-                <Text className="text-sm font-sans-semibold text-white">{authorName.charAt(0).toUpperCase()}</Text>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          refreshControl={<RefreshControl refreshing={detailQuery.isRefetching} onRefresh={detailQuery.refetch} />}
+        >
+          <View style={styles.hero}>
+            <View style={styles.statusRow}>
+              <AppBadge status={incident.status} label={getResidentStatusLabel(incident.status)} />
+              {incident.categoryName ? <Text style={styles.category}>{incident.categoryName}</Text> : null}
+            </View>
+            <Text style={styles.title}>{incident.title || 'Sự vụ cộng đồng'}</Text>
+            <Text style={styles.description}>{incident.description || 'Chưa có mô tả công khai.'}</Text>
+            <View style={styles.metaRow}><Icon name="map-pin" size={14} color={semantics.text.muted} /><Text style={styles.meta}>{incident.locationText || incident.areaName || 'Chưa xác định vị trí'}</Text></View>
+            <View style={styles.metaRow}><Icon name="clock" size={14} color={semantics.text.muted} /><Text style={styles.meta}>{formatDate(incident.createdAt)}</Text></View>
+            {incident.imageUrl ? <Image source={{ uri: incident.imageUrl }} style={styles.cover} /> : null}
+            <View style={styles.actions}>
+              <AppButton
+                size="sm"
+                variant={incident.isSupportedByCurrentUser ? 'primary' : 'outline'}
+                onPress={() => supportMutation.mutate()}
+                loading={supportMutation.isPending}
+                leftIcon={<Icon name="thumbs-up" size={14} color={incident.isSupportedByCurrentUser ? '#FFFFFF' : semantics.text.brand} />}
+              >
+                {incident.supportCount ?? 0} đồng tình
+              </AppButton>
+              <AppButton
+                size="sm"
+                variant={incident.isSubscribedByCurrentUser ? 'primary' : 'outline'}
+                onPress={() => subscribeMutation.mutate()}
+                loading={subscribeMutation.isPending}
+                leftIcon={<Icon name="bell" size={14} color={incident.isSubscribedByCurrentUser ? '#FFFFFF' : semantics.text.brand} />}
+              >
+                {incident.isSubscribedByCurrentUser ? 'Đang theo dõi' : 'Theo dõi'}
+              </AppButton>
+            </View>
+          </View>
+
+          {hasCoordinates ? (
+            <AppCard shadow="sm" style={styles.card}>
+              <Text style={styles.sectionTitle}>Vị trí công khai</Text>
+              <View style={styles.mapWrap}>
+                <TicketLocationMap
+                  style={styles.map}
+                  latitude={latitude}
+                  longitude={longitude}
+                  initialRegion={{ latitude, longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }}
+                />
               </View>
+            </AppCard>
+          ) : null}
 
-              <View style={styles.heroInfo}>
-                <Text className="text-sm font-sans-semibold text-text">{authorName}</Text>
-                <Text className="text-2xs text-text-muted mt-1">{createdAt}</Text>
-              </View>
-
-              <TicketStatusBadge status={item?.status ?? 'SUBMITTED'} size="sm" />
-            </View>
-
-            <View style={styles.heroTitleRow}>
-              <Text className="text-xl font-sans-bold text-text">{item?.title ?? 'Không có tiêu đề'}</Text>
-            </View>
-
-            <Text className="text-sm text-text-muted mt-3">{item?.description ?? 'Không có mô tả.'}</Text>
-
-            {evidenceImages[0] ? (
-              <Image source={{ uri: evidenceImages[0] }} style={styles.heroImage} resizeMode="cover" />
-            ) : null}
-
-            <View style={styles.tagRow}>
-              {item?.categoryName ? (
-                <View style={styles.tagPill}>
-                  <Text className="text-2xs font-sans-semibold text-primary">{item.categoryName}</Text>
-                </View>
-              ) : null}
-              <View style={styles.tagPillAlt}>
-                <Icon name="map-pin" size={12} color={semantics.text.muted} />
-                <Text className="text-2xs text-text-muted" numberOfLines={1} style={styles.tagText}>
-                  {item?.locationText ?? 'Vị trí chưa xác định'}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </AppCard>
-
-        <AppCard shadow="sm" className="mx-4 mt-4">
-          <View style={styles.supportSection}>
-            <View>
-              <Text className="text-2xs font-sans-semibold text-text-muted">Ủng hộ</Text>
-              <Text className="text-xl font-sans-bold text-text mt-2">{item?.supportCount ?? 0}</Text>
-            </View>
-            <View>
-              <Text className="text-2xs font-sans-semibold text-text-muted">Bình luận</Text>
-              <Text className="text-xl font-sans-bold text-text mt-2">{item?.commentCount ?? 0}</Text>
-            </View>
-            <AppButton
-              variant={item?.isSupported ? 'primary' : 'outline'}
-              size="sm"
-              onPress={() => supportMutation.mutate()}
-              loading={supportMutation.isPending}
-              leftIcon={<Icon name="thumbs-up" size={14} color={item?.isSupported ? '#FFFFFF' : semantics.text.brand} />}
-            >
-              {item?.isSupported ? 'Đã ủng hộ' : 'Ủng hộ'}
-            </AppButton>
-          </View>
-        </AppCard>
-
-        {evidenceImages.length > 0 && (
-          <View style={styles.section}>
-            <Text className="text-xs font-sans-semibold text-text-muted uppercase tracking-[0.3px] mb-3">Bằng chứng</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
-              {evidenceImages.map((uri, index) => (
-                <Pressable key={index} onPress={() => setSelectedImage(uri ?? null)} style={styles.galleryCard}>
-                  <Image source={{ uri }} style={styles.galleryImage} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        <View style={styles.commentSection}>
-          <View style={styles.commentFilterRow}>
-            <Text style={styles.filterTitle}>Tất cả bình luận</Text>
-            
-
-          </View>
-
-          {comments.length === 0 ? (
-            <AppEmptyState icon={<Icon name="message-circle" size={36} color={semantics.text.lightMuted} />}>
-              Chưa có bình luận nào cho phản ánh này.
-            </AppEmptyState>
-          ) : (
-            comments.map((comment) => (
-              <View key={comment.id} style={styles.commentFeedCard}>
-                <View style={styles.commentRow}>
-                  <View style={styles.avatarWrap}>
-                    <Text style={styles.avatarText}>{String(comment.senderName || 'C').charAt(0).toUpperCase()}</Text>
-                  </View>
-
-                  <View style={styles.commentBody}>
-                    <View style={styles.commentMetaRow}>
-                      <Text style={styles.commentAuthorName}>{comment.senderName || 'Cộng đồng'}</Text>
-                      <Text style={styles.commentTimeText}>
-                        {comment.createdAt ? new Date(comment.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.commentText}>{comment.content}</Text>
-                  </View>
+          <AppCard shadow="sm" style={styles.card}>
+            <Text style={styles.sectionTitle}>Tiến độ công khai</Text>
+            {timelineQuery.isLoading ? <SkeletonCard /> : timeline.length ? timeline.map((event, index) => (
+              <View key={String(event.incidentEventId ?? index)} style={styles.timelineRow}>
+                <View style={styles.timelineDot} />
+                <View style={styles.timelineBody}>
+                  <Text style={styles.timelineTitle}>{publicEventLabel(event.eventType)}</Text>
+                  <Text style={styles.timelineTime}>{formatDate(event.createdAt)}</Text>
                 </View>
               </View>
-            ))
-          )}
-        </View>
-      </ScrollView>
-        </View>
+            )) : (
+              <Text style={styles.muted}>Sự vụ đã được ghi nhận. Tiến độ mới sẽ xuất hiện tại đây.</Text>
+            )}
+          </AppCard>
+
+          {resolution ? (
+            <AppCard shadow="sm" style={styles.card}>
+              <View style={styles.resolutionHeader}><Icon name="check-circle" size={20} color="#059669" /><Text style={styles.resolutionTitle}>Kết quả đã được duyệt</Text></View>
+              {resolution.resolutionSummary ? <Text style={styles.resolutionText}>{resolution.resolutionSummary}</Text> : null}
+              {resolution.actionTaken ? <Text style={styles.resolutionAction}>Biện pháp: {resolution.actionTaken}</Text> : null}
+              {resolution.resolvedAt ? <Text style={styles.timelineTime}>Hoàn tất: {formatDate(resolution.resolvedAt)}</Text> : null}
+            </AppCard>
+          ) : null}
+
+          {gallery.length ? (
+            <View style={styles.gallerySection}>
+              <Text style={styles.sectionTitle}>Hình ảnh công khai</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
+                {gallery.map((uri, index) => <Image key={`${uri}-${index}`} source={{ uri }} style={styles.galleryImage} />)}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <View style={styles.commentsSection}>
+            <Text style={styles.sectionTitle}>Bình luận cộng đồng ({comments.length})</Text>
+            {commentsQuery.isLoading ? <SkeletonCard /> : comments.length ? comments.map((item) => (
+              <View key={item.id} style={styles.commentCard}>
+                <View style={styles.commentIcon}><Icon name="user" size={14} color={semantics.text.brand} /></View>
+                <View style={styles.commentBody}>
+                  <Text style={styles.commentAuthor}>Thành viên cộng đồng</Text>
+                  <Text style={styles.commentText}>{item.content}</Text>
+                  <Text style={styles.timelineTime}>{formatDate(item.createdAt)}</Text>
+                </View>
+              </View>
+            )) : (
+              <AppEmptyState icon={<Icon name="message-circle" size={34} color={semantics.text.lightMuted} />}>Chưa có bình luận công khai.</AppEmptyState>
+            )}
+          </View>
+        </ScrollView>
       </KeyboardAwareComposerLayout>
-
-      <Modal visible={Boolean(selectedImage)} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <Pressable onPress={() => setSelectedImage(null)} style={styles.modalClose} hitSlop={12}>
-            <Icon name="x" size={24} color="#FFFFFF" />
-          </Pressable>
-          {selectedImage ? <Image source={{ uri: selectedImage }} style={styles.fullImage} resizeMode="contain" /> : null}
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: semantics.bg.app },
-  hero: {
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    backgroundColor: semantics.bg.surface,
-  },
-  title: {
-    fontFamily: 'Geist-Bold',
-    fontSize: 22,
-    color: semantics.text.primary,
-    marginBottom: 8,
-  },
-  description: {
-    fontFamily: 'Geist-Regular',
-    fontSize: 14,
-    color: semantics.text.primary,
-    lineHeight: 22,
-    marginBottom: 10,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  metaText: {
-    fontFamily: 'Geist-Regular',
-    fontSize: 13,
-    color: semantics.text.muted,
-    flex: 1,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 6,
-  },
-  scrollContent: {
-    paddingBottom: 20,
-  },
-  heroTop: {
-    padding: 20,
-    backgroundColor: semantics.bg.surface,
-  },
-  heroBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatarBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: semantics.bg.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroInfo: {
-    flex: 1,
-    marginLeft: 6,
-  },
-  heroTitleRow: {
-    marginTop: 16,
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: semantics.bg.primarySoft,
-  },
-  supportCount: {
-    fontFamily: 'Geist-Medium',
-    fontSize: 13,
-    color: semantics.text.muted,
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginTop: 18,
-  },
-  sectionTitle: {
-    fontFamily: 'Geist-SemiBold',
-    fontSize: 12,
-    color: semantics.text.lightMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 10,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 18,
-    flexWrap: 'wrap',
-  },
-  tagPill: {
-    borderRadius: 999,
-    backgroundColor: semantics.bg.primarySoft,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  tagPillAlt: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    backgroundColor: semantics.bg.surfaceSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  tagText: {
-    maxWidth: 180,
-  },
-  supportSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    padding: 20,
-    backgroundColor: semantics.bg.surface,
-  },
-  heroImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 16,
-    marginTop: 14,
-    backgroundColor: semantics.bg.surfaceSubtle,
-  },
-  gallery: {
-    gap: 10,
-    paddingVertical: 2,
-  },
-  galleryCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  galleryImage: {
-    width: 180,
-    height: 120,
-    backgroundColor: semantics.bg.surfaceSubtle,
-  },
-  commentSection: {
-    paddingHorizontal: 0,
-    marginTop: 18,
-    paddingBottom: 8,
-  },
-  commentFilterRow: {
-    paddingHorizontal:30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  filterTitle: {
-    fontFamily: 'Geist-Bold',
-    fontSize: 16,
-    color: semantics.text.primary,
-  },
-  commentFeedCard: {
-    backgroundColor: semantics.bg.surface,
-    borderBottomWidth: 0.2,
-    borderBottomColor: semantics.border.default,
-    paddingVertical: 18,
-    paddingHorizontal: 30,
-  },
-  commentRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  avatarWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    overflow: 'hidden',
-    backgroundColor: semantics.bg.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: semantics.border.light,
-  },
-  avatarText: {
-    fontFamily: 'Geist-SemiBold',
-    fontSize: 13,
-    color: semantics.text.primary,
-  },
-  commentBody: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  commentMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  commentAuthorName: {
-    fontFamily: 'Geist-Bold',
-    fontSize: 13,
-    color: semantics.text.primary,
-  },
-  commentTimeText: {
-    fontFamily: 'Geist-Regular',
-    fontSize: 11,
-    color: semantics.text.muted,
-  },
-  commentText: {
-    fontFamily: 'Geist-Regular',
-    fontSize: 14,
-    lineHeight: 22,
-    color: semantics.text.primary,
-  },
-  composerHost: {
-    width: '100%',
-    borderTopWidth: 1,
-    borderTopColor: semantics.border.default,
-    backgroundColor: semantics.bg.surface,
-  },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  input: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 100,
-    backgroundColor: semantics.bg.surfaceSubtle,
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontFamily: 'Geist-Regular',
-    fontSize: 14,
-    color: semantics.text.primary,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: semantics.bg.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: semantics.text.lightMuted,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalClose: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 1,
-  },
-  fullImage: {
-    width: '100%',
-    height: '70%',
-  },
+  loading: { padding: 20, gap: 12 },
+  scroll: { paddingBottom: 24 },
+  hero: { padding: 20, backgroundColor: semantics.bg.surface, borderBottomWidth: 1, borderBottomColor: semantics.border.default },
+  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  category: { fontFamily: 'Geist-SemiBold', fontSize: 12, color: semantics.text.brand, flexShrink: 1 },
+  title: { fontFamily: 'Geist-Bold', fontSize: 24, lineHeight: 31, color: semantics.text.primary, marginTop: 14 },
+  description: { fontFamily: 'Geist-Regular', fontSize: 14, lineHeight: 22, color: semantics.text.primary, marginTop: 10 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 9 },
+  meta: { flex: 1, fontFamily: 'Geist-Regular', fontSize: 12, color: semantics.text.muted },
+  cover: { width: '100%', height: 190, borderRadius: 18, marginTop: 16, backgroundColor: semantics.bg.surfaceSubtle },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 16, flexWrap: 'wrap' },
+  card: { marginHorizontal: 16, marginTop: 14, padding: 16 },
+  sectionTitle: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: semantics.text.primary, marginBottom: 12 },
+  mapWrap: { height: 170, borderRadius: 16, overflow: 'hidden' },
+  map: { width: '100%', height: 170 },
+  timelineRow: { flexDirection: 'row', gap: 12, paddingVertical: 9 },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: semantics.bg.primary, marginTop: 4 },
+  timelineBody: { flex: 1 },
+  timelineTitle: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: semantics.text.primary },
+  timelineTime: { fontFamily: 'Geist-Regular', fontSize: 11, color: semantics.text.muted, marginTop: 3 },
+  muted: { fontFamily: 'Geist-Regular', fontSize: 13, lineHeight: 20, color: semantics.text.muted },
+  resolutionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  resolutionTitle: { fontFamily: 'Geist-Bold', fontSize: 15, color: '#047857' },
+  resolutionText: { fontFamily: 'Geist-Regular', fontSize: 14, lineHeight: 22, color: semantics.text.primary },
+  resolutionAction: { fontFamily: 'Geist-Medium', fontSize: 13, lineHeight: 20, color: semantics.text.primary, marginTop: 8 },
+  gallerySection: { marginTop: 16 },
+  gallery: { gap: 10, paddingHorizontal: 16 },
+  galleryImage: { width: 180, height: 122, borderRadius: 16, backgroundColor: semantics.bg.surfaceSubtle },
+  commentsSection: { paddingHorizontal: 16, marginTop: 20 },
+  commentCard: { flexDirection: 'row', gap: 11, backgroundColor: semantics.bg.surface, borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: semantics.border.default },
+  commentIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: semantics.bg.primarySoft },
+  commentBody: { flex: 1 },
+  commentAuthor: { fontFamily: 'Geist-SemiBold', fontSize: 12, color: semantics.text.primary },
+  commentText: { fontFamily: 'Geist-Regular', fontSize: 14, lineHeight: 20, color: semantics.text.primary, marginTop: 4 },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: semantics.bg.surface, borderTopWidth: 1, borderTopColor: semantics.border.default },
+  input: { flex: 1, minHeight: 44, maxHeight: 100, borderRadius: 22, paddingHorizontal: 15, paddingVertical: 10, backgroundColor: semantics.bg.surfaceSubtle, color: semantics.text.primary, fontFamily: 'Geist-Regular', fontSize: 14 },
+  send: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: semantics.bg.primary },
+  sendDisabled: { opacity: 0.45 },
 });

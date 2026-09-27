@@ -14,11 +14,6 @@ export const feedbackApi = {
   getAreas: () => toolsApi.getAreas(),
   getCategories: () => toolsApi.getCategories(),
 
-  /** Existing AI classification and duplicate-check contracts */
-  classify: (title: string, description: string) => toolsApi.aiClassify(title, description),
-  checkDuplicates: (categoryId: number, latitude: number, longitude: number) =>
-    toolsApi.checkDuplicates(categoryId, latitude, longitude),
-
   /** List feedbacks with filters, search, pagination */
   async list(filters: FeedbackFilters = {}) {
     const params: Record<string, string | number> = {
@@ -36,6 +31,11 @@ export const feedbackApi = {
   /** Get a single feedback by ID with full details + attachments */
   async getById(feedbackId: string) {
     return ticketApi.getTicketById(feedbackId, CITIZEN_OPTS);
+  },
+
+  /** Approved/public resolution history for the current resident's feedback. */
+  async getResolutions(feedbackId: string) {
+    return ticketApi.getResolutions(feedbackId, CITIZEN_OPTS);
   },
 
   /** Create new feedback (multipart with images) */

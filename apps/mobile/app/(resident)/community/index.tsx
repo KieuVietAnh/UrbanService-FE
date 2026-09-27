@@ -10,24 +10,45 @@ import { SkeletonCard } from '@/components/shared';
 import { AppEmptyState } from '@/components/shared';
 import { CommunityFeedCard } from '@/features/community';
 import { communityApi, communityKeys } from '@/features/community/api';
-import type { CommunityFeedItem } from '@/features/community/types';
+import type { PublicIncidentItem } from '@/features/community/types';
+import { getResidentStage } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
 
 const FILTERS = [
-  { key: 'latest', label: 'Mới nhất' },
-  { key: 'resolved', label: 'Đã xử lý' },
+  { key: '', label: 'Tất cả' },
+  { key: 'InProgress', label: 'Đang xử lý' },
+  { key: 'SubmittedForApproval', label: 'Đang kiểm tra' },
+  { key: 'Approved', label: 'Hoàn thành' },
+  { key: 'Closed', label: 'Đã đóng' },
 ];
+
+const getId = (value: any, ...keys: string[]) => String(keys.map((key) => value?.[key]).find(Boolean) ?? '');
+const getName = (value: any, ...keys: string[]) => String(keys.map((key) => value?.[key]).find(Boolean) ?? '');
 
 export default function CommunityFeedScreen() {
   const router = useRouter();
-  const [activeFilter, setActiveFilter] = useState('latest');
+  const [activeFilter, setActiveFilter] = useState('');
   const [searchText, setSearchText] = useState('');
+  const [selectedAreaId, setSelectedAreaId] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+
+  const { data: areas = [] } = useQuery({
+    queryKey: communityKeys.areas(),
+    queryFn: () => communityApi.getAreas(),
+  });
+  const { data: categories = [] } = useQuery({
+    queryKey: [...communityKeys.all, 'categories'],
+    queryFn: () => communityApi.getCategories(),
+  });
 
   const feedParams = {
     pageNumber: 1,
     pageSize: 12,
-    status: activeFilter === 'resolved' ? 'resolved' : undefined,
+    status: activeFilter || undefined,
     search: searchText || undefined,
+    areaId: selectedAreaId || undefined,
+    categoryId: selectedCategoryId || undefined,
+    sort: 'trending',
   };
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -35,11 +56,11 @@ export default function CommunityFeedScreen() {
     queryFn: () => communityApi.getFeed(feedParams),
   });
 
-  const items = (data?.items ?? []) as CommunityFeedItem[];
+  const items = (data?.items ?? []) as PublicIncidentItem[];
 
   const summary = useMemo(() => ({
     total: data?.totalItems ?? items.length,
-    resolved: items.filter((item) => String(item?.status ?? '').toUpperCase() === 'RESOLVED').length,
+    resolved: items.filter((item) => getResidentStage(item.status) === 'completed').length,
   }), [data?.totalItems, items]);
 
   return (
@@ -47,7 +68,7 @@ export default function CommunityFeedScreen() {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text className="text-xl font-sans-bold text-text">Cộng đồng</Text>
-          <Text className="text-sm text-text-muted mt-1">Ghé lại bảng tin, theo dõi phản ánh và trao đổi</Text>
+          <Text className="text-sm text-text-muted mt-1">Theo dõi sự vụ công khai quanh khu vực của bạn</Text>
         </View>
         <Pressable onPress={() => router.push('/(resident)/community/map')} style={styles.mapButton}>
           <Icon name="map" size={18} color={colors.primary} />
@@ -63,7 +84,7 @@ export default function CommunityFeedScreen() {
           <Icon name="search" size={16} color={colors.muted} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm kiếm phản ánh..."
+            placeholder="Tìm sự vụ, khu vực hoặc vấn đề..."
             placeholderTextColor={colors.lightMuted}
             value={searchText}
             onChangeText={setSearchText}
@@ -79,8 +100,8 @@ export default function CommunityFeedScreen() {
           <View style={styles.heroPanel}>
             <View style={styles.heroTextWrap}>
               <Text className="text-xs font-sans-semibold text-text-muted">Mạng lưới cộng đồng</Text>
-              <Text className="text-lg font-sans-bold text-text mt-1">Theo dõi phản ánh đang được quan tâm</Text>
-              <Text className="text-sm text-text-muted mt-2">Tìm nhanh vấn đề, chia sẻ tình trạng xử lý và đóng góp ý kiến.</Text>
+              <Text className="text-lg font-sans-bold text-text mt-1">Theo dõi sự vụ đang được quan tâm</Text>
+              <Text className="text-sm text-text-muted mt-2">Cập nhật tiến độ công khai, kết quả đã duyệt và đóng góp ý kiến.</Text>
             </View>
             <View style={styles.heroStatsWrap}>
               <View style={styles.heroStatBox}>
@@ -96,7 +117,7 @@ export default function CommunityFeedScreen() {
         </AppCard>
 
         <View style={styles.sectionTitleRow}>
-          <Text className="text-base font-sans-semibold text-text">Phản ánh gần đây</Text>
+          <Text className="text-base font-sans-semibold text-text">Sự vụ cộng đồng</Text>
         </View>
 
         <View style={styles.filterRow}>
@@ -114,6 +135,36 @@ export default function CommunityFeedScreen() {
           })}
         </View>
 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          <Pressable onPress={() => setSelectedAreaId('')} style={[styles.filterChip, !selectedAreaId && styles.filterChipActive]}>
+            <Text style={[styles.filterChipText, !selectedAreaId && styles.filterChipTextActive]}>Mọi khu vực</Text>
+          </Pressable>
+          {(areas as any[]).map((area) => {
+            const areaId = getId(area, 'areaId', 'id');
+            const active = areaId === selectedAreaId;
+            return (
+              <Pressable key={areaId} onPress={() => setSelectedAreaId(areaId)} style={[styles.filterChip, active && styles.filterChipActive]}>
+                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{getName(area, 'areaName', 'name')}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          <Pressable onPress={() => setSelectedCategoryId('')} style={[styles.filterChip, !selectedCategoryId && styles.filterChipActive]}>
+            <Text style={[styles.filterChipText, !selectedCategoryId && styles.filterChipTextActive]}>Mọi danh mục</Text>
+          </Pressable>
+          {(categories as any[]).map((category) => {
+            const categoryId = getId(category, 'categoryId', 'id');
+            const active = categoryId === selectedCategoryId;
+            return (
+              <Pressable key={categoryId} onPress={() => setSelectedCategoryId(categoryId)} style={[styles.filterChip, active && styles.filterChipActive]}>
+                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{getName(category, 'categoryName', 'name')}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
         {isLoading ? (
           <View>
             {Array.from({ length: 3 }).map((_, index) => (
@@ -124,16 +175,16 @@ export default function CommunityFeedScreen() {
           </View>
         ) : items.length === 0 ? (
           <AppEmptyState icon={<Icon name="layers" size={40} color={colors.lightMuted} />}>
-            Không có phản ánh nào phù hợp trong bảng tin cộng đồng.
+            Không có sự vụ cộng đồng nào phù hợp.
           </AppEmptyState>
         ) : (
           <View style={styles.feedList}>
             {items.map((item) => (
               <CommunityFeedCard
-                key={item.feedbackId ?? item.id}
+                key={item.incidentId}
                 item={item}
-                onPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}`)}
-                onCommentPress={() => router.push(`/(resident)/community/${item.feedbackId ?? item.id}?autoFocusComment=1`)}
+                onPress={() => router.push(`/(resident)/community/${item.incidentId}`)}
+                onCommentPress={() => router.push(`/(resident)/community/${item.incidentId}?autoFocusComment=1`)}
               />
             ))}
           </View>
@@ -221,6 +272,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 12,
+  },
+  filterScroll: {
+    gap: 8,
+    paddingBottom: 10,
   },
   filterChip: {
     paddingHorizontal: 12,

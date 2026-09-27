@@ -192,8 +192,32 @@ export default function NotificationsScreen() {
       }
     }
 
-    if (item.relatedId) {
-      router.push(`/(resident)/tickets/${item.relatedId}` as any);
+    const targetType = String(item.targetType ?? item.relatedType ?? item.type ?? '')
+      .trim()
+      .toLowerCase();
+    const targetId = item.targetId ?? item.relatedId;
+
+    if (item.incidentId || targetType.includes('incident')) {
+      const incidentId = item.incidentId ?? targetId;
+      if (incidentId) {
+        router.push(`/(resident)/community/${incidentId}` as any);
+      } else {
+        router.push('/(resident)/community' as any);
+      }
+      return;
+    }
+
+    if (targetType.includes('areaalert') || targetType.includes('area_alert')) {
+      router.push('/(resident)/area-alerts' as any);
+      return;
+    }
+
+    if (targetType.includes('feedback') || targetType.includes('report')) {
+      if (targetId) {
+        router.push(`/(resident)/tickets/${targetId}` as any);
+      } else {
+        router.push('/(resident)/tickets' as any);
+      }
     }
   };
 

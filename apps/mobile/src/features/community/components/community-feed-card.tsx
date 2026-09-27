@@ -6,23 +6,23 @@ import { AppCard } from '@/components/ui';
 import { AppButton } from '@/components/ui';
 import { TicketStatusBadge } from '@/components/ui';
 import { Text } from '@/components/ui';
-import { feedbackApi } from '@/features/reporting/api';
+import { getResidentStatusLabel } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
-import type { CommunityFeedCache, CommunityFeedCardProps, CommunityFeedItem } from '../types/community.types';
-import { communityKeys } from '../api';
+import type { CommunityFeedCache, CommunityIncidentCardProps, PublicIncidentItem } from '../types/community.types';
+import { communityApi, communityKeys } from '../api';
 
-export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFeedCardProps) {
+export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityIncidentCardProps) {
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
-  const [isSupported, setIsSupported] = useState(Boolean(item?.isSupported));
+  const [isSupported, setIsSupported] = useState(Boolean(item?.isSupportedByCurrentUser));
   const [supportCount, setSupportCount] = useState(Number(item?.supportCount ?? 0));
 
   useEffect(() => {
-    setIsSupported(Boolean(item?.isSupported));
+    setIsSupported(Boolean(item?.isSupportedByCurrentUser));
     setSupportCount(Number(item?.supportCount ?? 0));
-  }, [item?.isSupported, item?.supportCount]);
+  }, [item?.isSupportedByCurrentUser, item?.supportCount]);
 
   const queryClient = useQueryClient();
-  const feedbackId = String(item?.feedbackId ?? item?.id ?? '');
+  const incidentId = String(item?.incidentId ?? item?.id ?? '');
 
   const syncSupportCache = (supported: boolean) => {
     queryClient.setQueriesData({
@@ -36,22 +36,22 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFe
       return {
         ...cache,
         items: cache.items?.map((feedItem) => {
-          const itemId = String(feedItem.feedbackId ?? feedItem.id ?? '');
-          if (itemId !== feedbackId) return feedItem;
+          const itemId = String(feedItem.incidentId ?? feedItem.id ?? '');
+          if (itemId !== incidentId) return feedItem;
           return {
             ...feedItem,
-            isSupported: supported,
+            isSupportedByCurrentUser: supported,
             supportCount: Math.max(0, Number(feedItem.supportCount ?? 0) + (supported ? 1 : -1)),
           };
         }),
       };
     });
 
-    queryClient.setQueryData<CommunityFeedItem | null>(communityKeys.detail(feedbackId), (prev) => {
+    queryClient.setQueryData<PublicIncidentItem | null>(communityKeys.detail(incidentId), (prev) => {
       if (!prev) return prev;
       return {
         ...prev,
-        isSupported: supported,
+        isSupportedByCurrentUser: supported,
         supportCount: Math.max(0, Number(prev.supportCount ?? 0) + (supported ? 1 : -1)),
       };
     });
@@ -59,12 +59,12 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFe
 
   const supportMutation = useMutation({
     mutationFn: async () => {
-      if (!feedbackId) throw new Error('Missing feedback id');
+      if (!incidentId) throw new Error('Missing incident id');
       if (isSupported) {
-        await feedbackApi.unsupport(feedbackId);
+        await communityApi.unsupport(incidentId);
         return false;
       }
-      await feedbackApi.support(feedbackId);
+      await communityApi.support(incidentId);
       return true;
     },
     onSuccess: (supported: boolean) => {
@@ -83,17 +83,17 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityFe
       <View style={styles.cardContent}>
         <View style={styles.topRow}>
             <View style={styles.avatarWrap}>
-              <Icon name="user" size={14} color={colors.primary} />
+              <Icon name="users" size={14} color={colors.primary} />
             </View>
             <View style={styles.metaGroup}>
-              <Text className="text-sm font-sans-semibold text-text">{item?.authorName || item?.userName || 'Cộng đồng UrbanService'}</Text>
+              <Text className="text-sm font-sans-semibold text-text">Sự vụ cộng đồng</Text>
               <Text className="text-xs text-text-muted">{createdAt}</Text>
             </View>
-            <TicketStatusBadge status={item?.status ?? 'SUBMITTED'} size="sm" />
+            <TicketStatusBadge status={item?.status ?? 'SUBMITTED'} label={getResidentStatusLabel(item?.status)} size="sm" />
           </View>
 
-          {item?.imageUrl || item?.attachments?.[0]?.fileUrl ? (
-            <Image source={{ uri: item?.imageUrl || item?.attachments?.[0]?.fileUrl }} style={styles.heroImage} />
+          {item?.imageUrl || item?.media?.[0]?.fileUrl ? (
+            <Image source={{ uri: item?.imageUrl || item?.media?.[0]?.fileUrl }} style={styles.heroImage} />
           ) : (
             <View style={styles.heroImagePlaceholder}>
               <Icon name="image" size={28} color={colors.lightMuted} />

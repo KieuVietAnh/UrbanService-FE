@@ -38,6 +38,7 @@ const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
 const DRAFT_STORAGE_PREFIX = 'urbanmind:create-ticket-draft';
+const GPS_TIMEOUT_MS = 12_000;
 
 const formatFileSize = (bytes = 0) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -81,7 +82,6 @@ function StepDescription({
   onDescChange,
   titleError,
   descriptionError,
-  loading,
 }: {
   title: string;
   description: string;
@@ -89,7 +89,6 @@ function StepDescription({
   onDescChange: (v: string) => void;
   titleError?: string;
   descriptionError?: string;
-  loading?: boolean;
 }) {
   return (
     <View style={styles.stepBody}>
@@ -126,13 +125,9 @@ function StepDescription({
 
       <View style={styles.aiTipRow}>
         <View style={styles.aiTip}>
-          {loading ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Icon name="zap" size={14} color={colors.primary} />
-          )}
+          <Icon name="zap" size={14} color={colors.primary} />
           <Text className="text-xs text-primary flex-1">
-            {loading ? 'Đang dùng AI phân loại và xác định mức độ ưu tiên…' : 'AI sẽ phân loại tự động dựa trên mô tả của bạn để xử lý nhanh hơn.'}
+            Bạn cũng có thể dùng Trợ lý AI để chuẩn bị nội dung, ảnh và vị trí trước khi mở biểu mẫu này.
           </Text>
         </View>
       </View>
@@ -151,10 +146,9 @@ function StepLocation({
   onLatitudeChange,
   onLongitudeChange,
   onUseCurrentLocation,
+  locating,
   loading,
   error,
-  duplicateWarning,
-  duplicates,
   locationError,
   latitudeError,
   longitudeError,
@@ -168,11 +162,10 @@ function StepLocation({
   onLocationChange: (v: string) => void;
   onLatitudeChange: (v: string) => void;
   onLongitudeChange: (v: string) => void;
-  onUseCurrentLocation: () => void;
+  onUseCurrentLocation: () => void | Promise<void>;
+  locating?: boolean;
   loading?: boolean;
   error?: string;
-  duplicateWarning?: string;
-  duplicates: any[];
   locationError?: string;
   latitudeError?: string;
   longitudeError?: string;
@@ -303,9 +296,15 @@ function StepLocation({
               <Text style={styles.mapTitle}>Bản đồ khu vực</Text>
               <Text style={styles.mapSubtitle}>Đánh dấu vị trí sự cố</Text>
             </View>
-            <Pressable style={styles.mapButton} onPress={onUseCurrentLocation}>
-              <Icon name="navigation" size={14} color={colors.primary} />
-              <Text style={styles.mapButtonText}>Hiện tại</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={locating ? 'Đang lấy vị trí hiện tại' : 'Dùng vị trí hiện tại'}
+              disabled={locating}
+              style={({ pressed }) => [styles.mapButton, locating && styles.mapButtonDisabled, pressed && !locating && { opacity: 0.8 }]}
+              onPress={onUseCurrentLocation}
+            >
+              {locating ? <ActivityIndicator size="small" color={colors.primary} /> : <Icon name="navigation" size={14} color={colors.primary} />}
+              <Text style={styles.mapButtonText}>{locating ? 'Đang lấy...' : 'Hiện tại'}</Text>
             </Pressable>
           </View>
 
@@ -409,22 +408,6 @@ function StepLocation({
             />
           </View>
         </View>
-        {duplicateWarning ? (
-          <View style={styles.warningBox}>
-            <Icon name="alert-triangle" size={16} color={colors.primary} />
-            <Text className="text-sm text-primary flex-1 ml-2">{duplicateWarning}</Text>
-          </View>
-        ) : null}
-        {duplicates.length > 0 ? (
-          <View style={styles.duplicateList}>
-            <Text className="text-sm font-sans-semibold text-text mb-2">Phản ánh trùng lặp có thể đã tồn tại:</Text>
-            {duplicates.slice(0, 3).map((item, index) => (
-              <Text key={`${item?.feedbackId ?? index}`} className="text-xs text-text-muted mb-1">
-                • {item?.title || item?.feedbackTitle || 'Phản ánh tương tự'}
-              </Text>
-            ))}
-          </View>
-        ) : null}
       </View>
     </View>
   );
@@ -532,9 +515,6 @@ function StepReview({
   locationText,
   priority,
   attachments,
-  duplicates,
-  onSubmit,
-  submitting,
 }: {
   title: string;
   description: string;
@@ -543,9 +523,6 @@ function StepReview({
   locationText: string;
   priority: string;
   attachments: Array<{ uri: string; name: string; type: string }>;
-  duplicates: any[];
-  onSubmit?: () => void;
-  submitting?: boolean;
 }) {
   return (
     <View style={styles.stepBody}>
@@ -557,7 +534,9 @@ function StepReview({
       </Text>
       {[
         { label: 'Tiêu đề', value: title || '—', icon: 'edit-3' },
+        { label: 'Danh mục', value: categoryName || '—', icon: 'tag' },
         { label: 'Khu vực', value: areaName || '—', icon: 'map-pin' },
+        { label: 'Mức ưu tiên', value: priority || '—', icon: 'alert-circle' },
       ].map((row) => (
         <View key={row.label} style={styles.reviewRow}>
           <Icon name={row.icon as any} size={15} color={colors.muted} style={styles.reviewIcon} />
@@ -601,18 +580,10 @@ function StepReview({
           </View>
         </View>
       ) : null}
-      {duplicates.length > 0 ? (
-        <View style={styles.warningBox}>
-          <Icon name="alert-circle" size={16} color={colors.primary} />
-          <Text className="text-sm text-primary flex-1 ml-2">
-            Hệ thống phát hiện phản ánh tương tự ở gần vị trí này. Vẫn có thể tiếp tục gửi nếu đây là phản ánh mới.
-          </Text>
-        </View>
-      ) : null}
 
       <View style={styles.trustBox}>
         {[
-          'AI sẽ tự động phân loại',
+          'Thông tin sẽ được gửi đúng theo nội dung bạn đã kiểm tra',
           'Bạn có thể theo dõi tiến độ',
           'Thông báo sẽ được gửi khi có cập nhật',
         ].map((line) => (
@@ -646,17 +617,19 @@ export default function CreateFeedbackWizardScreen() {
   const [locationText, setLocationText] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [locationAccuracyMeters, setLocationAccuracyMeters] = useState<number | null>(null);
+  const [geoSource, setGeoSource] = useState<'GPS' | 'MANUAL'>('MANUAL');
+  const [locating, setLocating] = useState(false);
   const [attachments, setAttachments] = useState<Array<{ uri: string; name: string; type: string; size?: number }>>([]);
   const [areas, setAreas] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [areasLoading, setAreasLoading] = useState(true);
-  const [classificationLoading, setClassificationLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState('');
-  const [duplicates, setDuplicates] = useState<any[]>([]);
-  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
   const [draftNotice, setDraftNotice] = useState('');
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [suggestedCategoryName, setSuggestedCategoryName] = useState('');
 
   const selectedCategory = useMemo(() => categories.find((cat) => getCategoryId(cat) === categoryId), [categories, categoryId]);
   const selectedArea = useMemo(() => areas.find((area) => getAreaId(area) === areaId), [areas, areaId]);
@@ -702,19 +675,42 @@ export default function CreateFeedbackWizardScreen() {
         if (draft.categoryId) setCategoryId(String(draft.categoryId));
         if (draft.areaId) setAreaId(String(draft.areaId));
         if (draft.priority) setPriority(normalizePriority(draft.priority));
+        if (draft.suggestedCategory) setSuggestedCategoryName(String(draft.suggestedCategory));
         if (draft.locationText) setLocationText(draft.locationText);
         if (draft.latitude != null) setLatitude(Number(draft.latitude));
         if (draft.longitude != null) setLongitude(Number(draft.longitude));
-        setDraftNotice('Đã khôi phục phản ánh đang làm dở. Hình ảnh hoặc video cần được chọn lại.');
+        if (draft.locationAccuracyMeters != null) setLocationAccuracyMeters(Number(draft.locationAccuracyMeters));
+        if (draft.geoSource === 'GPS') setGeoSource('GPS');
+        if (Array.isArray(draft.attachments)) {
+          setAttachments(draft.attachments.filter((item: unknown) => {
+            if (!item || typeof item !== 'object') return false;
+            const candidate = item as { uri?: unknown; name?: unknown; type?: unknown };
+            return typeof candidate.uri === 'string' && typeof candidate.name === 'string' && typeof candidate.type === 'string';
+          }));
+        }
+        setDraftNotice('Đã khôi phục phản ánh đang làm dở. Vui lòng kiểm tra lại trước khi gửi.');
       } catch {
         // ignore
+      } finally {
+        setDraftLoaded(true);
       }
     };
     loadDraft();
   }, []);
 
   useEffect(() => {
+    if (!suggestedCategoryName || categoryId || categories.length === 0) return;
+    const normalizedSuggestion = suggestedCategoryName.trim().toLocaleLowerCase('vi-VN');
+    const matched = categories.find((category) => {
+      const name = String(category?.categoryName ?? category?.name ?? '').trim().toLocaleLowerCase('vi-VN');
+      return name === normalizedSuggestion || name.includes(normalizedSuggestion) || normalizedSuggestion.includes(name);
+    });
+    if (matched) setCategoryId(getCategoryId(matched));
+  }, [categories, categoryId, suggestedCategoryName]);
+
+  useEffect(() => {
     const persistDraft = async () => {
+      if (!draftLoaded) return;
       const draftKey = `${DRAFT_STORAGE_PREFIX}:mobile`;
       const hasDraftContent = Boolean(title.trim() || description.trim() || areaId || locationText || latitude != null || longitude != null || attachments.length > 0 || step > 1);
       if (!hasDraftContent) {
@@ -731,12 +727,15 @@ export default function CreateFeedbackWizardScreen() {
         locationText,
         latitude,
         longitude,
-        hadAttachments: attachments.length > 0,
+        locationAccuracyMeters,
+        geoSource,
+        attachments,
+        suggestedCategory: suggestedCategoryName,
         savedAt: new Date().toISOString(),
       }));
     };
     persistDraft();
-  }, [areaId, attachments.length, categoryId, description, latitude, longitude, locationText, priority, step, title]);
+  }, [areaId, attachments, categoryId, description, draftLoaded, geoSource, latitude, locationAccuracyMeters, longitude, locationText, priority, step, suggestedCategoryName, title]);
 
   const validateStep = (stepId: number) => {
     const errors: Record<string, string> = {};
@@ -827,19 +826,8 @@ export default function CreateFeedbackWizardScreen() {
     router.replace('/(resident)');
   };
 
-  const handleDescriptionNext = async () => {
+  const handleDescriptionNext = () => {
     setSubmitError('');
-    setClassificationLoading(true);
-    try {
-      const analysis = await feedbackApi.classify(title.trim(), description.trim());
-      if (analysis?.categoryId) setCategoryId(String(analysis.categoryId));
-      if (analysis?.urgencyLevel) setPriority(normalizePriority(analysis.urgencyLevel));
-    } catch (error) {
-      if (__DEV__) console.warn('Automatic classification unavailable');
-    } finally {
-      setClassificationLoading(false);
-    }
-
     if (!categoryId && categories.length > 0) {
       setCategoryId(getCategoryId(categories[0]));
     }
@@ -847,7 +835,7 @@ export default function CreateFeedbackWizardScreen() {
     setStep(2);
   };
 
-  const handleLocationNext = async () => {
+  const handleLocationNext = () => {
     if (latitude == null || longitude == null) {
       const errors = validateStep(2);
       replaceErrors(errors);
@@ -855,38 +843,55 @@ export default function CreateFeedbackWizardScreen() {
       return;
     }
 
-    try {
-      const matches = await feedbackApi.checkDuplicates(Number(categoryId || 0), latitude, longitude);
-      setDuplicates(Array.isArray(matches) ? matches : []);
-      setShowDuplicateWarning(Array.isArray(matches) ? matches.length > 0 : false);
-    } catch (error) {
-      if (__DEV__) console.warn('Duplicate check unavailable');
-    }
-
     setStep(3);
   };
 
   const handleUseCurrentLocation = async () => {
+    if (locating) return;
+    setLocating(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         toast.error('Quyền truy cập vị trí bị từ chối.');
         return;
       }
-      const result = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        toast.error('Dịch vụ vị trí đang tắt. Hãy bật GPS hoặc chọn vị trí trên bản đồ.');
+        return;
+      }
+
+      let result: Location.LocationObject | null = null;
+      try {
+        result = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('GPS_TIMEOUT')), GPS_TIMEOUT_MS);
+          }),
+        ]);
+      } catch {
+        result = await Location.getLastKnownPositionAsync({
+          maxAge: 120_000,
+          requiredAccuracy: 250,
+        });
+      }
+
+      if (!result) {
+        toast.error('Chưa nhận được vị trí. Hãy thử lại ngoài trời hoặc chọn trực tiếp trên bản đồ.');
+        return;
+      }
+
       setLatitude(result.coords.latitude);
       setLongitude(result.coords.longitude);
+      setLocationAccuracyMeters(result.coords.accuracy == null ? null : Math.max(0, Math.round(result.coords.accuracy)));
+      setGeoSource('GPS');
       setLocationText((current) => current || 'Vị trí hiện tại');
       clearFieldError('location');
-      const matches = await feedbackApi.checkDuplicates(
-        Number(categoryId || 0),
-        result.coords.latitude,
-        result.coords.longitude
-      );
-      setDuplicates(Array.isArray(matches) ? matches : []);
-      setShowDuplicateWarning(Array.isArray(matches) ? matches.length > 0 : false);
-    } catch (error) {
-      toast.error('Không thể lấy vị trí hiện tại.');
+    } catch {
+      toast.error('Không thể lấy vị trí hiện tại. Hãy chọn vị trí trực tiếp trên bản đồ.');
+    } finally {
+      setLocating(false);
     }
   };
 
@@ -947,7 +952,8 @@ export default function CreateFeedbackWizardScreen() {
       locationText: locationText.trim(),
       latitude: latitude ?? undefined,
       longitude: longitude ?? undefined,
-      geoSource: 'MANUAL',
+      locationAccuracyMeters: locationAccuracyMeters ?? undefined,
+      geoSource,
       attachments: attachments.map((item) => ({
         uri: item.uri,
         name: item.name,
@@ -1067,7 +1073,6 @@ export default function CreateFeedbackWizardScreen() {
                 }}
                 titleError={fieldErrors.title}
                 descriptionError={fieldErrors.description}
-                loading={classificationLoading}
               />
             )}
             {step === 2 && (
@@ -1089,18 +1094,21 @@ export default function CreateFeedbackWizardScreen() {
                 onLatitudeChange={(value) => {
                   const next = value === '' ? null : Number(value);
                   setLatitude(Number.isFinite(next) ? next : null);
+                  setLocationAccuracyMeters(null);
+                  setGeoSource('MANUAL');
                   clearFieldError('location');
                 }}
                 onLongitudeChange={(value) => {
                   const next = value === '' ? null : Number(value);
                   setLongitude(Number.isFinite(next) ? next : null);
+                  setLocationAccuracyMeters(null);
+                  setGeoSource('MANUAL');
                   clearFieldError('location');
                 }}
                 onUseCurrentLocation={handleUseCurrentLocation}
+                locating={locating}
                 loading={areasLoading}
                 error={fieldErrors.areaId}
-                duplicateWarning={showDuplicateWarning ? 'Một số phản ánh gần vị trí này đã tồn tại. Vui lòng kiểm tra trước khi gửi.' : undefined}
-                duplicates={duplicates}
                 locationError={fieldErrors.location}
                 latitudeError={fieldErrors.location}
                 longitudeError={fieldErrors.location}
@@ -1123,9 +1131,6 @@ export default function CreateFeedbackWizardScreen() {
                 locationText={locationText}
                 priority={priority}
                 attachments={attachments}
-                duplicates={duplicates}
-                onSubmit={handleSubmit}
-                submitting={submitting}
               />
             )}
             {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
@@ -1142,7 +1147,7 @@ export default function CreateFeedbackWizardScreen() {
           const isLastStep = step === STEPS.length;
           if (!isLastStep) {
             return (
-              <AppButton size="lg" onPress={goToNext} disabled={!isStepValid} className="flex-1" loading={classificationLoading} rightIcon={<Icon name="arrow-right" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />}>
+              <AppButton size="lg" onPress={goToNext} disabled={!isStepValid} className="flex-1" rightIcon={<Icon name="arrow-right" size={16} color="#FFFFFF" style={{ marginLeft: 6 }} />}>
                 Tiếp theo
               </AppButton>
             );
@@ -1198,6 +1203,7 @@ const styles = StyleSheet.create({
   mapTitle: { fontFamily: 'Geist-SemiBold', fontSize: 14, color: '#0F172A' },
   mapSubtitle: { fontFamily: 'Geist-Regular', fontSize: 11, color: '#64748B', marginTop: 2 },
   mapButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EFF6FF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: '#BFDBFE' },
+  mapButtonDisabled: { opacity: 0.65 },
   mapButtonText: { fontFamily: 'Geist-Medium', fontSize: 11, color: colors.primary },
   mapInner: { marginTop: 12, minHeight: 300, height: 300, borderRadius: 16, backgroundColor: '#EAF2F8', overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1' },
   mapMetaRow: { marginTop: 10 },

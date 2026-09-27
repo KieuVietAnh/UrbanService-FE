@@ -16,7 +16,6 @@
 import React, {
   useState,
   useCallback,
-  useMemo,
   useRef,
   useEffect,
 } from 'react';
@@ -602,7 +601,6 @@ export default function InboxScreen() {
   const {
     data: aiData,
     isLoading: aiLoading,
-    isFetching: aiFetching,
     isError: aiError,
     refetch: refetchAi,
     isRefetching: aiRefetching,
@@ -614,7 +612,6 @@ export default function InboxScreen() {
   const {
     data: supportThreads,
     isLoading: supportLoading,
-    isFetching: supportFetching,
     isError: supportError,
     refetch: refetchSupport,
     isRefetching: supportRefetching,
@@ -749,7 +746,6 @@ export default function InboxScreen() {
   const aiConversations: AiConversationItem[] = Array.isArray(aiData) ? aiData : [];
   const supportFeedbacks: SupportThread[] = Array.isArray(supportThreads) ? supportThreads : [];
 
-  const isAuthBooting = !authReady || !user;
   const showAiInitialLoading = activeTab === 'ai' && aiLoading && aiData === undefined;
   const showSupportInitialLoading = activeTab === 'support' && supportLoading && supportThreads === undefined;
 

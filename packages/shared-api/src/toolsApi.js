@@ -99,19 +99,8 @@ export const toolsApi = {
     const payload = typeof messageOrPayload === 'string'
       ? { message: messageOrPayload }
       : messageOrPayload;
-
-    try {
-      const response = await axiosClient.post('/api/ai/chat', payload);
-      return response?.data ?? response;
-    } catch (error) {
-      console.warn('toolsApi.getAiChatReply failed, falling back to mock reply', error);
-      const db = await getMockDb();
-      const fallbackMessage = typeof payload?.message === 'string' ? payload.message : '';
-      return {
-        message: db?.getAiChatReply?.(fallbackMessage) || 'Mình đã ghi nhận nội dung. Nếu bạn muốn tạo phản ánh, hãy bổ sung vị trí và ảnh minh chứng rồi bấm “Tạo bản nháp phản ánh”.',
-        createdAt: new Date().toISOString(),
-      };
-    }
+    const response = await axiosClient.post('/api/ai/chat', payload);
+    return response?.data ?? response;
   },
   async createAiFeedbackDraft(payload) {
     const response = await axiosClient.post('/api/ai/feedback-draft', payload);

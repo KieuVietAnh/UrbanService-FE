@@ -1,6 +1,7 @@
 import Icon from '@expo/vector-icons/Feather';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppCard, Text, TicketStatusBadge } from '@/components/ui';
+import { getResidentStatusLabel } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
 import { radius } from '@/theme/radius';
 import { spacing } from '@/theme/spacing';
@@ -37,7 +38,7 @@ export function TicketCard({ ticket, onPress }: TicketCardProps) {
             <Text style={styles.ticketTitle} numberOfLines={2}>
               {ticket.title ?? 'Chưa có tiêu đề'}
             </Text>
-            <TicketStatusBadge status={ticket.status ?? 'PENDING'} size="sm" />
+            <TicketStatusBadge status={ticket.status ?? 'PENDING'} label={getResidentStatusLabel(ticket.status)} size="sm" />
           </View>
 
           {ticket.categoryName && (

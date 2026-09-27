@@ -11,6 +11,8 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
     "test:data": "node --test tests/production-data.test.mjs",
+    "test:resident": "node --test tests/resident.test.mjs tests/production-data.test.mjs",
+    "test:resident:live": "node tests/resident-live-smoke.mjs",
     "test:staff": "node --test tests/staff.test.mjs tests/staff-sla.test.mjs"
   },
   "dependencies": {

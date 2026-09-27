@@ -4,6 +4,7 @@ import type Icon from '@expo/vector-icons/Feather';
 export type RouterLike = { push: (path: any) => void };
 
 export type TicketLike = {
+  incidentId?: string | number;
   feedbackId?: string | number;
   id?: string | number;
   title?: string;

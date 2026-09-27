@@ -62,7 +62,7 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
   const markers = nearby
     .filter((it) => Number.isFinite(Number((it as any)?.latitude)) && Number.isFinite(Number((it as any)?.longitude)))
     .map((it, index) => ({
-      id: String((it as any).feedbackId ?? (it as any).id ?? `community-marker-${index}`),
+      id: String((it as any).incidentId ?? (it as any).id ?? `community-marker-${index}`),
       latitude: Number((it as any).latitude),
       longitude: Number((it as any).longitude),
     }));
@@ -115,7 +115,7 @@ export function NearbyIncidents({ nearbyLoading, nearby, router }: Props) {
               style={styles.mapTicketCard}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                const id = (nearby[0] as any).feedbackId ?? (nearby[0] as any).id;
+                const id = (nearby[0] as any).incidentId ?? (nearby[0] as any).id;
                 if (id) router.push(`/(resident)/community/${id}`);
               }}
               accessibilityRole="button"

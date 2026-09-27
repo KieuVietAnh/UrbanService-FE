@@ -19,19 +19,16 @@ import { Text } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
 import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import { colors } from '@/constants/theme';
-import { managementTypes } from '@urbanmind/shared-types';
 import { TicketCard } from './ticket-card';
+import { getResidentStage, type ResidentStage } from '@/features/resident-status';
 
-const FILTERS = [
+const FILTERS: Array<{ key: '' | ResidentStage; label: string }> = [
   { key: '', label: 'Tất cả' },
-  { key: managementTypes.feedbackStatus.SUBMITTED, label: 'Đã gửi' },
-  { key: managementTypes.feedbackStatus.ASSIGNED, label: 'Đã phân công' },
-  { key: managementTypes.feedbackStatus.IN_PROGRESS, label: 'Đang xử lý' },
-  { key: managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL, label: 'Chờ nghiệm thu' },
-  { key: managementTypes.feedbackStatus.RESOLVED, label: 'Đã xử lý' },
-  { key: managementTypes.feedbackStatus.APPROVED, label: 'Đã duyệt' },
-  { key: managementTypes.feedbackStatus.CLOSED, label: 'Đã đóng' },
-  { key: managementTypes.feedbackStatus.REJECTED, label: 'Bị từ chối' },
+  { key: 'submitted', label: 'Đã gửi' },
+  { key: 'received', label: 'Đã tiếp nhận' },
+  { key: 'processing', label: 'Đang xử lý' },
+  { key: 'reviewing', label: 'Đang kiểm tra' },
+  { key: 'completed', label: 'Hoàn thành' },
 ];
 
 export default function TicketsScreen() {
@@ -49,8 +46,7 @@ export default function TicketsScreen() {
   };
 
   const filters = {
-    pageSize: 20,
-    status: activeFilter || undefined,
+    pageSize: 100,
     search: debouncedSearch || undefined,
     sortBy: 'createdAt',
     sortOrder: 'desc' as const,
@@ -65,9 +61,15 @@ export default function TicketsScreen() {
     ? data
     : data?.items ?? [];
 
+  const visibleTickets = activeFilter
+    ? tickets.filter((item: any) => getResidentStage(item?.status) === activeFilter)
+    : tickets;
+
   const totalCount = Array.isArray(data)
     ? data.length
-    : data?.totalItems ?? data?.totalCount ?? 0;
+    : activeFilter
+      ? visibleTickets.length
+      : data?.totalItems ?? data?.totalCount ?? 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -128,7 +130,7 @@ export default function TicketsScreen() {
       </View>
 
       <FlatList
-        data={isLoading ? Array(4).fill(null) : tickets}
+        data={isLoading ? Array(4).fill(null) : visibleTickets}
         keyExtractor={(item, i) =>
           item ? String(item.feedbackId ?? item.id ?? i) : String(i)
         }
