@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import * as signalR from '@microsoft/signalr';
+import { createOptionalSignalRConnection } from '../../utils/optionalSignalR';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { incidentManagementApi, slaApi } from '@urbanmind/shared-api';
@@ -970,13 +971,11 @@ export const InteractionApprovalDetailPage = () => {
   useEffect(() => {
     if (!feedbackId || isInteractionView) return undefined;
 
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(getSlaHubUrl(), {
-        accessTokenFactory: () => getSignalRAccessToken(),
-      })
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
+    const connection = createOptionalSignalRConnection({
+      signalR,
+      hubUrl: getSlaHubUrl(),
+      accessTokenFactory: () => getSignalRAccessToken(),
+    });
 
     let disposed = false;
 

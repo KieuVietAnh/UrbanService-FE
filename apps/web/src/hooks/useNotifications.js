@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import * as signalR from '@microsoft/signalr';
 import { notificationApi } from '../services/api/notificationApi';
 import { buildHubUrl, getSignalRAccessToken } from '../utils/signalRAccessToken';
+import { createOptionalSignalRConnection } from '../utils/optionalSignalR';
 import { buildRemainingNotificationPages, mergeNotificationPage, readNotificationTotal } from './notificationStoreUtils';
 
 const CACHE_TTL = 60_000;
@@ -210,13 +211,11 @@ const retainNotificationRealtime = (userId) => {
     const accessToken = getSignalRAccessToken();
     if (!accessToken) return () => {};
 
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(buildHubUrl('/hubs/notifications'), {
-        accessTokenFactory: () => getSignalRAccessToken(),
-      })
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
+    const connection = createOptionalSignalRConnection({
+      signalR,
+      hubUrl: buildHubUrl('/hubs/notifications'),
+      accessTokenFactory: () => getSignalRAccessToken(),
+    });
 
     const handleNotification = (payload) => {
       const store = getStore(userId);

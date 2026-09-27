@@ -8,6 +8,7 @@ const communityApi = read('../src/features/community/api/community-api.ts');
 const residentLayout = read('../app/(resident)/_layout.tsx');
 const ticketDetail = read('../src/features/reporting/components/ticket-detail-screen.tsx');
 const wizard = read('../src/features/reporting/components/create-feedback-wizard-screen.tsx');
+const addressGeocoding = read('../src/features/reporting/services/address-geocoding.ts');
 const inbox = read('../src/features/messaging/components/inbox-hub-screen.tsx');
 const notifications = read('../src/features/notifications/components/notifications-screen.tsx');
 const areaAlertsApi = read('../src/features/area-alerts/api/area-alerts-api.ts');
@@ -37,6 +38,18 @@ test('feedback evidence is optional and GPS metadata is honest and recoverable',
   assert.match(wizard, /setGeoSource\('GPS'\)/);
   assert.match(wizard, /setGeoSource\('MANUAL'\)/);
   assert.match(wizard, /geoSource,/);
+});
+
+test('feedback address input searches real Vietnamese geocoding services and focuses the map', () => {
+  assert.match(addressGeocoding, /geocode\.arcgis\.com/);
+  assert.match(addressGeocoding, /photon\.komoot\.io/);
+  assert.match(addressGeocoding, /countryCode:\s*'VNM'/);
+  assert.match(wizard, /searchVietnameseAddresses/);
+  assert.match(wizard, /setTimeout\(async \(\) =>/);
+  assert.match(wizard, /style=\{styles\.mapSearchOverlay\}/);
+  assert.match(wizard, /label="Tìm địa chỉ trên bản đồ"/);
+  assert.match(wizard, /onAddressSelect\(suggestion\.displayName, suggestion\.latitude, suggestion\.longitude\)/);
+  assert.match(wizard, /latitudeDelta:\s*0\.008/);
 });
 
 test('cached inbox content stays visible during background refresh', () => {
