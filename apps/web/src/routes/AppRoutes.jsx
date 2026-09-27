@@ -9,12 +9,14 @@ import { DashboardLayout } from '../components/layout/DashboardLayout';
 import PublicLayout from '../components/public/PublicLayout';
 import LoadingSkeleton from '../components/design-system/LoadingSkeleton';
 import { getRoleEntryPath, normalizeRole } from '../utils/roleMap';
+import { buildAuthPath, getSafeInternalPath } from '../utils/authRedirect';
 import { getSystemStaffLegacyRouteRedirect } from '../roles/system-staff/permissions';
 
 const LandingPage = lazy(() => import('../pages/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LoginPage = lazy(() => import('../pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('../pages/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })));
 const VerifyEmailPage = lazy(() => import('../pages/auth/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })));
+const MessengerAccountLinkPage = lazy(() => import('../pages/auth/MessengerAccountLinkPage').then((m) => ({ default: m.MessengerAccountLinkPage })));
 const Dashboard = lazy(() => import('../pages/dashboard/Dashboard').then((m) => ({ default: m.Dashboard })));
 const TicketListPage = lazy(() => import('../pages/tickets/TicketListPage').then((m) => ({ default: m.TicketListPage })));
 const CreateTicketPage = lazy(() => import('../pages/tickets/CreateTicketPage').then((m) => ({ default: m.CreateTicketPage })));
@@ -123,21 +125,6 @@ const RouteFallback = ({ isAuthenticated = false }) => {
 };
 
 
-const getSafeInternalPath = (candidate) => {
-  if (!candidate) return '';
-
-  if (typeof candidate === 'object') {
-    const pathname = candidate.pathname || '';
-    const search = candidate.search || '';
-    const hash = candidate.hash || '';
-    return getSafeInternalPath(`${pathname}${search}${hash}`);
-  }
-
-  const normalized = String(candidate).trim();
-  if (!normalized.startsWith('/') || normalized.startsWith('//')) return '';
-  return normalized;
-};
-
 const LoginRoute = ({ isAuthenticated, fallbackPath }) => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -151,6 +138,20 @@ const LoginRoute = ({ isAuthenticated, fallbackPath }) => {
   );
 
   return <Navigate to={redirect} replace />;
+};
+
+const VerifyEmailRoute = ({ isAuthenticated }) => {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  if (isAuthenticated) return <VerifyEmailPage />;
+
+  const redirect = (
+    getSafeInternalPath(searchParams.get('redirect')) ||
+    getSafeInternalPath(location.state?.from)
+  );
+
+  return <Navigate to={buildAuthPath('/login', redirect)} replace />;
 };
 
 const SystemStaffLegacyRouteRedirect = () => {
@@ -206,7 +207,8 @@ export const AppRoutes = () => {
         }
       />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/verify-email" element={isAuthenticated ? <VerifyEmailPage /> : <Navigate to="/login" replace />} />
+      <Route path="/verify-email" element={<VerifyEmailRoute isAuthenticated={isAuthenticated} />} />
+      <Route path="/messenger/link" element={<MessengerAccountLinkPage />} />
 
       {/* Protected Pages (All Auth Roles) */}
       <Route path="/dashboard" element={
