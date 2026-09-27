@@ -13,6 +13,7 @@ import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import * as Lucide from 'lucide-react';
 import { getRoleEntryPath } from '../../utils/roleMap';
+import { buildAuthPath, getSafeInternalPath } from '../../utils/authRedirect';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -53,22 +54,12 @@ const getAuthErrorMessage = (err, mode = 'login') => {
   return 'Đăng nhập thất bại. Vui lòng thử lại.';
 };
 
-const getSafeInternalPath = (candidate) => {
-  if (!candidate) return '';
-
-  if (typeof candidate === 'object') {
-    const pathname = candidate.pathname || '';
-    const search = candidate.search || '';
-    const hash = candidate.hash || '';
-    return getSafeInternalPath(`${pathname}${search}${hash}`);
-  }
-
-  const normalized = String(candidate).trim();
-  if (!normalized.startsWith('/') || normalized.startsWith('//')) return '';
-  return normalized;
-};
-
 const LOGIN_INTENT_META = {
+  'messenger-link': {
+    icon: Lucide.Link2,
+    title: 'Đăng nhập để liên kết Messenger',
+    description: 'Sau khi đăng nhập và xác thực email, bạn sẽ quay lại bước xác nhận liên kết.',
+  },
   'create-feedback': {
     icon: Lucide.MessageSquarePlus,
     title: 'Đăng nhập để gửi phản ánh',
@@ -137,6 +128,10 @@ export const LoginPage = () => {
   const sessionExpired = searchParams.get('reason') === 'session-expired';
   const loginIntent = LOGIN_INTENT_META[searchParams.get('intent')];
   const LoginIntentIcon = loginIntent?.icon;
+  const requestedRedirect = (
+    getSafeInternalPath(searchParams.get('redirect')) ||
+    getSafeInternalPath(location.state?.from)
+  );
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -168,11 +163,7 @@ export const LoginPage = () => {
     return () => window.clearInterval(timer);
   }, [forgotResendCountdown]);
 
-  const resolveRedirect = (role) => (
-    getSafeInternalPath(searchParams.get('redirect')) ||
-    getSafeInternalPath(location.state?.from) ||
-    getRoleEntryPath(role)
-  );
+  const resolveRedirect = (role) => requestedRedirect || getRoleEntryPath(role);
 
   const handleLogin = async (event) => {
     event?.preventDefault();
@@ -201,7 +192,7 @@ export const LoginPage = () => {
       const user = await login(normalizedEmail, password);
 
       if (user?.authCode === 'EMAIL_NOT_VERIFIED' || !user?.isVerified) {
-        navigate('/verify-email', { replace: true });
+        navigate(buildAuthPath('/verify-email', requestedRedirect), { replace: true });
         return;
       }
 
@@ -387,15 +378,11 @@ export const LoginPage = () => {
 
         const user = await googleLogin(idToken);
         if (!user?.isVerified) {
-          navigate('/verify-email');
+          navigate(buildAuthPath('/verify-email', requestedRedirect));
           return;
         }
 
-        const redirect = (
-          getSafeInternalPath(searchParams.get('redirect')) ||
-          getSafeInternalPath(location.state?.from) ||
-          getRoleEntryPath(user.role)
-        );
+        const redirect = requestedRedirect || getRoleEntryPath(user.role);
         navigate(redirect, { replace: true });
       } catch (err) {
         setError(getAuthErrorMessage(err, 'google'));
@@ -403,7 +390,7 @@ export const LoginPage = () => {
         setLoading(false);
       }
     },
-    [googleLogin, location.state, navigate, searchParams],
+    [googleLogin, navigate, requestedRedirect],
   );
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -869,7 +856,7 @@ export const LoginPage = () => {
 
         <p className="auth-login-register relative z-10 mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Bạn chưa có tài khoản?{' '}
-          <Link to="/register" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+          <Link to={buildAuthPath('/register', requestedRedirect)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
             Đăng ký ngay
           </Link>
         </p>
