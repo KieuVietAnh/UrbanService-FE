@@ -4,6 +4,7 @@ import * as Lucide from 'lucide-react';
 import * as signalR from '@microsoft/signalr';
 import { extractApiErrorMessage, slaApi } from '@urbanmind/shared-api';
 import { buildHubUrl, getSignalRAccessToken } from '../../utils/signalRAccessToken';
+import { createOptionalSignalRConnection } from '../../utils/optionalSignalR';
 import { ErrorAlert } from '../alerts/ErrorAlert';
 import { ManagerSectionHeader } from './ManagerPageElements';
 
@@ -222,11 +223,11 @@ export const IncidentSlaSection = ({ incidentId, incidentStatus, canManage = fal
   useEffect(() => {
     if (!incidentId || !getSignalRAccessToken()) return undefined;
 
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(buildHubUrl('/hubs/sla'), { accessTokenFactory: () => getSignalRAccessToken() })
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
+    const connection = createOptionalSignalRConnection({
+      signalR,
+      hubUrl: buildHubUrl('/hubs/sla'),
+      accessTokenFactory: () => getSignalRAccessToken(),
+    });
 
     let disposed = false;
     const mark = (connected) => { if (!disposed) setRealtimeConnected(connected); };
