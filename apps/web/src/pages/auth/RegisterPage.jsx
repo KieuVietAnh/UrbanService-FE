@@ -814,7 +814,7 @@ export const RegisterPage = () => {
             <p>
               {isEditingRegistration
                 ? 'Có thể sửa email và mật khẩu trước khi xác thực. Đổi email sẽ tạo mã OTP mới.'
-                : 'Sau khi đăng ký, hệ thống sẽ chuyển bạn sang bước xác thực email.'}
+                : 'Sau khi đăng ký, hệ thống sẽ chuyển bạn sang bước xác thực số điện thoại.'}
             </p>
           </div>
 
@@ -840,7 +840,7 @@ export const RegisterPage = () => {
         <p className="auth-login-register relative z-10 mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           {isEditingRegistration ? (
             <Link to={buildAuthPath('/verify-phone', requestedRedirect)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
-              Quay lại xác thực email
+              Quay lại xác thực số điện thoại
             </Link>
           ) : (
             <>

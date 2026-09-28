@@ -36,10 +36,11 @@ const saveUserSession = (response) => {
   const userPayload = response?.user ?? response?.data?.user ?? payload;
   const token = extractToken(response);
   const refreshToken = extractRefreshToken(response);
+  // Mã nghiệp vụ backend trả kèm, ví dụ PHONE_NOT_VERIFIED. Client dùng để rẽ nhánh
+  // giao diện; không dùng để đoán role nữa vì backend đã trả role thật, mà đoán
+  // SERVICEUSER thì sẽ dựng nhầm menu người dân cho một tài khoản staff.
   const responseCode = response?.code ?? payload?.code ?? null;
-  const normalizedRole = normalizeRole(
-    userPayload?.role || (responseCode === 'EMAIL_NOT_VERIFIED' ? 'SERVICEUSER' : undefined)
-  );
+  const normalizedRole = normalizeRole(userPayload?.role);
 
   const sessionUser = {
     userId: userPayload?.userId ?? userPayload?.id,
