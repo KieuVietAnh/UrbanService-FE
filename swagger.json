@@ -2137,7 +2137,7 @@
         },
         "responses": {
           "200": {
-            "description": "Đăng nhập thành công, trả về JWT và thông tin người dùng.\r\n            \r\nTài khoản chưa xác thực email cũng trả `200` và vẫn có token, nhưng body\r\nlà `UnverifiedLoginResultDto` với `code = EMAIL_NOT_VERIFIED`. Token đó\r\nđọc được dữ liệu bình thường nhưng bị từ chối ở mọi thao tác ghi, trừ các\r\nAPI hoàn tất đăng ký.",
+            "description": "Đăng nhập thành công, trả về JWT và thông tin người dùng.\r\n            \r\nTài khoản chưa xác thực số điện thoại cũng trả `200` và vẫn có token,\r\nnhưng body là `UnverifiedLoginResultDto` với `code = PHONE_NOT_VERIFIED`.\r\nToken đó đọc được dữ liệu bình thường nhưng bị từ chối ở mọi thao tác ghi,\r\ntrừ các API hoàn tất đăng ký.",
             "content": {
               "text/plain": {
                 "schema": {
@@ -2503,8 +2503,8 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Sửa thông tin đăng ký của tài khoản chưa xác thực email.",
-        "description": "Yêu cầu JWT hợp lệ. Dùng khi người dùng gõ nhầm email lúc đăng ký: họ\r\nkhông nhận được OTP nên không tự xác thực được, mà đăng ký lại cũng\r\nkhông xong vì email cũ đã chiếm chỗ.\r\n            \r\nGiữ nguyên email của chính tài khoản thì **không** báo trùng. Đổi sang\r\nemail đang thuộc tài khoản khác thì trả `400`.\r\n            \r\nKhi email đổi, OTP cũ bị hủy ngay và một OTP mới được gửi tới email mới\r\ntrong cùng lời gọi này, nên client **không** cần gọi thêm\r\n`email-verification/send-otp`.\r\n            \r\nResponse trả JWT mới vì email nằm trong claim của token.",
+        "summary": "Sửa thông tin đăng ký của tài khoản chưa xác thực số điện thoại.",
+        "description": "Yêu cầu JWT hợp lệ. Dùng khi người dùng gõ nhầm email lúc đăng ký: họ\r\nkhông nhận được OTP nên không tự xác thực được, mà đăng ký lại cũng\r\nkhông xong vì email cũ đã chiếm chỗ.\r\n            \r\nGiữ nguyên email của chính tài khoản thì **không** báo trùng. Đổi sang\r\nemail đang thuộc tài khoản khác thì trả `400`.\r\n            \r\nEndpoint này **không** gửi OTP. Người dùng bấm gửi mã ở màn xác thực, nơi\r\nhạn mức SMS được đếm. Số điện thoại là bắt buộc và được chuẩn hoá về E.164.\r\n            \r\nResponse trả JWT mới vì email nằm trong claim của token.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2546,7 +2546,7 @@
             }
           },
           "400": {
-            "description": "Email không hợp lệ, đã được dùng, hoặc tài khoản đã xác thực.",
+            "description": "Email hoặc số điện thoại không hợp lệ, hoặc tài khoản đã xác thực.",
             "content": {
               "text/plain": {
                 "schema": {
@@ -2588,89 +2588,52 @@
         }
       }
     },
-    "/api/auth/email-verification/send-otp": {
+    "/api/auth/phone-verification/request-otp": {
       "post": {
         "tags": [
           "Auth"
         ],
-        "summary": "Gửi OTP xác thực email tới email của người dùng hiện tại.",
-        "description": "Yêu cầu JWT hợp lệ. OTP có hiệu lực trong 5 phút. Brevo API phải được\r\ncấu hình trong section `Brevo`.",
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObjectApiResponse"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObjectApiResponse"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObjectApiResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/auth/email-verification/verify": {
-      "post": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Xác thực email bằng OTP.",
-        "description": "Yêu cầu JWT hợp lệ. Sau khi OTP đúng, trường `isVerified` của người\r\ndùng được cập nhật thành `true`.",
+        "summary": "Xin phép gửi SMS OTP xác thực số điện thoại.",
+        "description": "Yêu cầu JWT hợp lệ. Backend **không** gửi SMS — Firebase gửi từ phía client.\r\nEndpoint này chỉ kiểm tra điều kiện rồi ghi nhận một lượt: số hợp lệ, chưa\r\nthuộc tài khoản đã xác thực khác, và hôm nay hệ thống còn hạn mức SMS.\r\n            \r\nClient chỉ được gọi `signInWithPhoneNumber` của Firebase **sau khi** endpoint\r\nnày trả `200`. Mỗi tin SMS là chi phí thật nên hạn mức nằm ở backend; chặn ở\r\nfrontend thì người gọi thẳng Firebase bằng API key công khai vẫn đốt tiền.\r\n            \r\nBỏ trống `phoneNumber` để dùng số đã lưu trên tài khoản. Gửi số khác thì số\r\ncủa tài khoản được cập nhật luôn, phục vụ trường hợp gõ nhầm lúc đăng ký.\r\n            \r\nSố khai trong `PhoneOtp:TestNumbers` không tốn SMS nên không tính lượt và\r\ntrả `remainingToday = null`.",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VerifyEmailRequest"
+                "$ref": "#/components/schemas/RequestPhoneOtpRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/VerifyEmailRequest"
+                "$ref": "#/components/schemas/RequestPhoneOtpRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/VerifyEmailRequest"
+                "$ref": "#/components/schemas/RequestPhoneOtpRequest"
               }
             }
           }
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "description": "Được phép gửi OTP.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPhoneOtpResultDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPhoneOtpResultDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestPhoneOtpResultDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Bad Request",
@@ -2708,6 +2671,156 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Số điện thoại đã thuộc về tài khoản đã xác thực khác.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Hết hạn mức SMS trong ngày.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/phone-verification/verify": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Xác thực số điện thoại bằng Firebase ID token.",
+        "description": "Yêu cầu JWT hợp lệ. Client gửi lên `idToken` nhận được từ Firebase sau khi\r\nngười dùng nhập đúng OTP.\r\n            \r\nSố điện thoại được lấy từ token đã qua kiểm tra chữ ký của Firebase Admin\r\nSDK, không lấy từ request — nếu không thì client chỉ cần gửi đại một số là\r\nqua cửa. Token chỉ dùng được trong vòng `Firebase:MaxAuthAgeMinutes` phút\r\nkể từ lúc nhập OTP.\r\n            \r\nThành công thì `isVerified = true` và response trả JWT mới, vì trạng thái\r\nxác thực nằm trong claim của token.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyPhoneRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyPhoneRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyPhoneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Xác thực thành công, trả JWT mới.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResultDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResultDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Token không hợp lệ hoặc đã quá hạn.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Số điện thoại đã thuộc về tài khoản đã xác thực khác.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
                 }
               }
             }
@@ -14552,6 +14665,298 @@
         }
       }
     },
+    "/api/user/messenger-links": {
+      "get": {
+        "tags": [
+          "UserMessengerLinks"
+        ],
+        "summary": "Lấy các liên kết Messenger của tài khoản hiện tại.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessengerAccountLinkDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessengerAccountLinkDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessengerAccountLinkDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/messenger-links/confirm": {
+      "post": {
+        "tags": [
+          "UserMessengerLinks"
+        ],
+        "summary": "Xác nhận liên kết tài khoản web với Messenger bằng token dùng một lần.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmMessengerAccountLinkRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmMessengerAccountLinkRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmMessengerAccountLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessengerAccountLinkDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessengerAccountLinkDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessengerAccountLinkDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/user/messenger-links/{linkId}": {
+      "delete": {
+        "tags": [
+          "UserMessengerLinks"
+        ],
+        "summary": "Hủy một liên kết Messenger của tài khoản hiện tại.",
+        "parameters": [
+          {
+            "name": "linkId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/profile": {
       "get": {
         "tags": [
@@ -15742,6 +16147,16 @@
           "receivedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConfirmMessengerAccountLinkRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -18365,6 +18780,32 @@
         },
         "additionalProperties": false
       },
+      "MessengerAccountLinkDto": {
+        "type": "object",
+        "properties": {
+          "linkId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pageId": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "linkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "MessengerConversationDto": {
         "type": "object",
         "properties": {
@@ -19512,6 +19953,34 @@
         },
         "additionalProperties": false
       },
+      "RequestPhoneOtpRequest": {
+        "type": "object",
+        "properties": {
+          "phoneNumber": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RequestPhoneOtpResultDto": {
+        "type": "object",
+        "properties": {
+          "phoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "remainingToday": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "isTestNumber": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "ResetPasswordRequest": {
         "type": "object",
         "properties": {
@@ -20478,6 +20947,10 @@
             "type": "string",
             "nullable": true
           },
+          "role": {
+            "type": "string",
+            "nullable": true
+          },
           "isVerified": {
             "type": "boolean"
           }
@@ -20885,16 +21358,6 @@
         },
         "additionalProperties": false
       },
-      "VerifyEmailRequest": {
-        "type": "object",
-        "properties": {
-          "otp": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "additionalProperties": false
-      },
       "VerifyForgotPasswordOtpRequest": {
         "type": "object",
         "properties": {
@@ -20903,6 +21366,16 @@
             "nullable": true
           },
           "otp": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "VerifyPhoneRequest": {
+        "type": "object",
+        "properties": {
+          "idToken": {
             "type": "string",
             "nullable": true
           }

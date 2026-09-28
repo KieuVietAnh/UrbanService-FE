@@ -5,6 +5,9 @@ import test from 'node:test';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const communityApi = read('../src/features/community/api/community-api.ts');
+const communityFeedCard = read('../src/features/community/components/community-feed-card.tsx');
+const communityMap = read('../src/features/community/components/community-map.native.tsx');
+const communitySupportCache = read('../src/features/community/utils/support-cache.ts');
 const residentLayout = read('../app/(resident)/_layout.tsx');
 const ticketDetail = read('../src/features/reporting/components/ticket-detail-screen.tsx');
 const wizard = read('../src/features/reporting/components/create-feedback-wizard-screen.tsx');
@@ -64,6 +67,27 @@ test('feedback address input searches real Vietnamese geocoding services and foc
   assert.match(wizard, /label="Tìm địa chỉ trên bản đồ"/);
   assert.match(wizard, /onAddressSelect\(suggestion\.displayName, suggestion\.latitude, suggestion\.longitude\)/);
   assert.match(wizard, /latitudeDelta:\s*0\.008/);
+  assert.match(wizard, /contentContainerStyle=\{styles\.addressSuggestionListContent\}/);
+  assert.match(wizard, /addressSuggestionItem:\s*\{\s*width:\s*'100%'/);
+  assert.match(wizard, /addressSuggestionCopy:\s*\{\s*flex:\s*1,\s*minWidth:\s*0/);
+});
+
+test('community support reacts immediately and reconciles with the API in background', () => {
+  assert.match(communityFeedCard, /onMutate:\s*async/);
+  assert.match(communityFeedCard, /supportMutation\.mutate\(!isSupported\)/);
+  assert.doesNotMatch(communityFeedCard, /loading=\{supportMutation\.isPending\}/);
+  assert.match(communityMap, /applyOptimisticCommunitySupport/);
+  assert.doesNotMatch(communityMap, /Đang gửi\.\.\./);
+  assert.match(communitySupportCache, /pages:\s*infiniteData\.pages\.map/);
+  assert.match(communitySupportCache, /restoreCommunityCache/);
+});
+
+test('resident home keeps the chat FAB without covering content with an oversized control', () => {
+  const floatingChat = read('../src/components/ui/FloatingChatMenu.tsx');
+  assert.match(residentLayout, /<FloatingChatMenu/);
+  assert.match(residentLayout, /insets\.bottom\s*\+\s*68/);
+  assert.match(floatingChat, /width:\s*58/);
+  assert.match(floatingChat, /height:\s*58/);
 });
 
 test('cached inbox content stays visible during background refresh', () => {
@@ -97,6 +121,17 @@ test('public status vocabulary does not expose internal rework or assignment mec
   assert.doesNotMatch(residentStatus, /NeedRework|Provider|Phân công/);
 });
 
-test('phone OTP remains backend-blocked instead of being implemented with a fabricated route', () => {
-  assert.doesNotMatch(swagger, /phone[^\n]{0,80}otp|otp[^\n]{0,80}phone|verify-phone|send-phone/i);
+test('phone OTP follows the live backend and native Firebase contracts', () => {
+  const authService = read('../src/features/auth/auth.service.ts');
+  const firebasePhone = read('../src/features/auth/firebase-phone.service.ts');
+  const verifyPhoneScreen = read('../app/(auth)/verify-phone.tsx');
+  assert.match(swagger, /\/api\/auth\/phone-verification\/request-otp/);
+  assert.match(swagger, /\/api\/auth\/phone-verification\/verify/);
+  assert.match(authService, /authApi\.requestPhoneOtp/);
+  assert.match(authService, /authApi\.verifyPhone/);
+  assert.match(firebasePhone, /signInWithPhoneNumber/);
+  assert.match(firebasePhone, /getIdToken\(true\)/);
+  assert.match(verifyPhoneScreen, /Xác thực số điện thoại/);
+  assert.match(dynamicAppConfig, /'@react-native-firebase\/app'/);
+  assert.match(dynamicAppConfig, /'@react-native-firebase\/auth'/);
 });

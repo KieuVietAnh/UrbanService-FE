@@ -18,8 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
-import { Text } from '@/components/ui';
-import { FloatingChatMenu } from '@/components/ui';
+import { FloatingChatMenu, Text } from '@/components/ui';
 import { colors } from '@/constants/theme';
 
 type NavItem = {
@@ -175,7 +174,6 @@ export default function ResidentLayout() {
     router.replace(item.href);
   };
 
-  const isHomePath = normalizedPath === '/' || normalizedPath === '' || normalizedPath === '/index';
   const hideBottomNav =
     normalizedPath === '/create-feedback' ||
     normalizedPath === '/create-feedback-wizard' ||
@@ -187,7 +185,7 @@ export default function ResidentLayout() {
     normalizedPath.startsWith('/support/select-feedback');
   const tabBarHeight = RESIDENT_TAB_BAR_HEIGHT + insets.bottom;
 
-  const handleFloatingSelect = async (id: 'ai' | 'staff' | 'inbox') => {
+  const handleFloatingSelect = (id: 'ai' | 'staff' | 'inbox') => {
     if (id === 'ai') {
       router.push('/(resident)/ai/ai-assistant');
       return;
@@ -196,9 +194,10 @@ export default function ResidentLayout() {
       router.replace('/(resident)/inbox');
       return;
     }
-    // staff: choose feedback before opening staff chat
     router.push('/(resident)/support/select-feedback');
   };
+
+  const isHomePath = normalizedPath === '/' || normalizedPath === '' || normalizedPath === '/index';
 
   return (
     <View style={styles.screen}>
@@ -212,7 +211,12 @@ export default function ResidentLayout() {
         />
       </View>
 
-      {isHomePath && !hideBottomNav ? <FloatingChatMenu bottomOffset={Math.max(86, insets.bottom + 72)} onSelectOption={handleFloatingSelect} /> : null}
+      {isHomePath && !hideBottomNav ? (
+        <FloatingChatMenu
+          bottomOffset={Math.max(78, insets.bottom + 68)}
+          onSelectOption={handleFloatingSelect}
+        />
+      ) : null}
 
       {/* Custom tab bar */}
       {!hideBottomNav ? (

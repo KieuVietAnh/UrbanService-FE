@@ -29,10 +29,10 @@ test('mobile entry supports staff and resident, denying unsupported or missing r
   assert.equal(getMobileEntry(null), '/(auth)/login');
   for (const role of ['SYSTEMSTAFF', 'SystemStaff', 'system-staff']) assert.equal(getMobileEntry({ role, isVerified: true }), '/(staff)/staff');
   assert.equal(getMobileEntry({ role: 'ServiceUser', isVerified: true }), '/(resident)');
-  assert.equal(getMobileEntry({ role: 'SystemStaff' }), '/(auth)/verify-email');
-  assert.equal(getMobileEntry({ role: 'ServiceUser' }), '/(auth)/verify-email');
+  assert.equal(getMobileEntry({ role: 'SystemStaff' }), '/(auth)/verify-phone');
+  assert.equal(getMobileEntry({ role: 'ServiceUser' }), '/(auth)/verify-phone');
   for (const role of ['administrator', 'interaction-manager', 'service-provider', '', 'unknown']) assert.equal(getMobileEntry({ role }), '/unsupported-role');
-  assert.equal(getMobileEntry({ role: 'SystemStaff', isVerified: false }), '/(auth)/verify-email');
+  assert.equal(getMobileEntry({ role: 'SystemStaff', isVerified: false }), '/(auth)/verify-phone');
 });
 
 test('deep links cannot cross resident/staff boundaries or bypass verification', () => {
@@ -43,7 +43,8 @@ test('deep links cannot cross resident/staff boundaries or bypass verification',
   assert.equal(getMobileRedirect(null, ['(staff)', 'staff']), '/(auth)/login');
   assert.equal(getMobileRedirect(null, ['(auth)', 'forgot-password']), null);
   assert.equal(getMobileRedirect(staff, ['(staff)', 'staff', 'feedbacks']), null);
-  assert.equal(getMobileRedirect({ ...staff, isVerified: false }, ['(staff)']), '/(auth)/verify-email');
+  assert.equal(getMobileRedirect({ ...staff, isVerified: false }, ['(staff)']), '/(auth)/verify-phone');
+  assert.equal(getMobileRedirect({ ...staff, isVerified: false }, ['(auth)', 'verify-phone']), null);
   assert.equal(getMobileRedirect({ ...staff, isVerified: false }, ['(auth)', 'otp']), null);
   assert.equal(canAccessMobileWorkspace(staff, APP_ROLES.SERVICE_USER), false);
   assert.equal(canAccessMobileWorkspace({ ...staff, isVerified: false }, APP_ROLES.SYSTEM_STAFF), false);
@@ -192,24 +193,29 @@ test('Staff account stays on authenticated read-only fields while the ServiceUse
   } finally { getProfile.mock.restore(); updateProfile.mock.restore(); }
 });
 
-test('204 email verification preserves the authenticated Staff identity instead of building a user from an empty body', () => {
+test('phone verification exchanges a Firebase ID token for a complete backend session', () => {
   const serviceSource = readFileSync(new URL('../src/features/auth/auth.service.ts', import.meta.url), 'utf8');
   const storeSource = readFileSync(new URL('../src/features/auth/auth.store.ts', import.meta.url), 'utf8');
-  const verifyService = serviceSource.slice(serviceSource.indexOf('static async verifyOtp'), serviceSource.indexOf('static async logout'));
-  assert.match(verifyService, /Promise<void>/);
-  assert.match(verifyService, /await authApi\.verifyOtp\(otp\)/);
-  assert.equal(/buildUser|setAuthToken|setAuthRefreshToken/.test(verifyService), false);
+  const firebaseSource = readFileSync(new URL('../src/features/auth/firebase-phone.service.ts', import.meta.url), 'utf8');
+  const verifyService = serviceSource.slice(serviceSource.indexOf('static async verifyPhoneOtp'), serviceSource.indexOf('static async logout'));
+  assert.match(serviceSource, /authApi\.requestPhoneOtp\(normalized\)/);
+  assert.match(serviceSource, /sendFirebasePhoneOtp\(approvedPhone\)/);
+  assert.match(verifyService, /confirmFirebasePhoneOtp\(otp\)/);
+  assert.match(verifyService, /authApi\.verifyPhone\(idToken\)/);
+  assert.match(verifyService, /persistAuthenticatedSession\(response, user\)/);
+  assert.match(firebaseSource, /signInWithPhoneNumber\(auth, phoneNumber\)/);
+  assert.match(firebaseSource, /credential\.user\.getIdToken\(true\)/);
   assert.match(storeSource, /const requestUser = get\(\)\.user/);
-  assert.match(storeSource, /activeUser\.id !== requestUser\.id/);
-  assert.match(storeSource, /\{ \.\.\.activeUser, isVerified: true \}/);
+  assert.match(storeSource, /verifiedUser\.id !== requestUser\.id/);
+  assert.doesNotMatch(storeSource, /\{ \.\.\.activeUser, isVerified: true \}/);
 });
 
-test('authentication fails closed for incomplete tokens, refreshes session claims, sends initial OTP, and keeps login email-only', () => {
+test('authentication fails closed, uses opt-in SMS auto-send, and keeps login email-only', () => {
   const serviceSource = readFileSync(new URL('../src/features/auth/auth.service.ts', import.meta.url), 'utf8');
   const apiConfigSource = readFileSync(new URL('../src/config/api.ts', import.meta.url), 'utf8');
   const sharedClientSource = readFileSync(new URL('../../../packages/shared-api/src/axiosClient.js', import.meta.url), 'utf8');
   const loginSource = readFileSync(new URL('../app/(auth)/login.tsx', import.meta.url), 'utf8');
-  const otpSource = readFileSync(new URL('../app/(auth)/otp.tsx', import.meta.url), 'utf8');
+  const phoneSource = readFileSync(new URL('../app/(auth)/verify-phone.tsx', import.meta.url), 'utf8');
 
   assert.match(serviceSource, /if \(!user\.token \|\| !refreshToken\)[\s\S]*await clearAuthTokens\(\)/);
   assert.match(serviceSource, /Promise\.all\([\s\S]*setAuthToken\(user\.token\)[\s\S]*setAuthRefreshToken\(refreshToken\)/);
@@ -218,9 +224,10 @@ test('authentication fails closed for incomplete tokens, refreshes session claim
   assert.match(sharedClientSource, /await authSessionRefreshedHandler\?\.\(response\?\.data\)/);
   assert.equal(/Email hoặc Số điện thoại|email hoặc số điện thoại/i.test(loginSource), false);
   assert.match(loginSource, /label="Email"/);
-  assert.match(otpSource, /initialSendStartedRef\.current = true/);
-  assert.match(otpSource, /void sendOtp\(\)\.then/);
-  assert.match(otpSource, /sendState === 'sent'/);
+  assert.match(phoneSource, /params\.autoSend !== '1'/);
+  assert.match(phoneSource, /autoSendStarted\.current = true/);
+  assert.match(phoneSource, /requestPhoneOtp\(normalized\)/);
+  assert.match(phoneSource, /verifyPhoneOtp\(otp\)/);
 });
 
 test('incident query is always scoped to the signed-in staff and fails closed without ID', async () => {

@@ -20,6 +20,8 @@ const AUTH_REQUEST_PATHS = [
   '/api/auth/refresh-token',
   '/api/auth/forgot-password/send-otp',
   '/api/auth/forgot-password/reset',
+  '/api/auth/phone-verification/request-otp',
+  '/api/auth/phone-verification/verify',
 ];
 
 const getPayload = (value) => value?.data ?? value;

@@ -13,7 +13,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Alert, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import MapView from 'react-native-map-clustering';
 import { Marker, Circle } from 'react-native-maps';
@@ -22,7 +22,13 @@ import { AppHeader } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { AppButton } from '@/components/ui';
 import { BottomSheet } from '@/components/shared';
+import { useToast } from '@/components/shared/toast';
 import { communityApi, communityKeys } from '@/features/community/api';
+import {
+  applyOptimisticCommunitySupport,
+  restoreCommunityCache,
+  type CommunityCacheSnapshot,
+} from '@/features/community/utils/support-cache';
 import { getResidentStatusLabel } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
 
@@ -104,6 +110,8 @@ const getMarkerColor = (item: any) => {
 
 export default function CommunityMapNative() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const mapRef = useRef<any>(null);
   const clusterRef = useRef<any>(null);
   const insets = useSafeAreaInsets();
@@ -117,7 +125,6 @@ export default function CommunityMapNative() {
   const [selectedMarker, setSelectedMarker] = useState<any | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [feedbackListVisible, setFeedbackListVisible] = useState(false);
-  const [supportLoading, setSupportLoading] = useState(false);
 
   const {
     data: areas,
@@ -371,28 +378,40 @@ export default function CommunityMapNative() {
     }
   };
 
-  const handleSupport = async () => {
-    if (!selectedIncident) return;
-    const incidentId = getIncidentId(selectedIncident);
-    if (!incidentId) return;
-
-    setSupportLoading(true);
-    try {
+  const supportMutation = useMutation({
+    mutationFn: async ({ incidentId }: { incidentId: string }) => {
       await communityApi.support(incidentId);
-      setSelectedIncident((current: any) =>
-        current
-          ? {
-              ...current,
-              isSupportedByCurrentUser: true,
-              supportCount: Math.max(0, Number(current.supportCount ?? 0) + 1),
-            }
-          : current
-      );
-    } catch {
-      // swallow, UX only
-    } finally {
-      setSupportLoading(false);
-    }
+    },
+    onMutate: async ({ incidentId }): Promise<{
+      previousIncident: any;
+      snapshot: CommunityCacheSnapshot;
+    }> => {
+      const previousIncident = selectedIncident;
+      setSelectedIncident((current: any) => current ? {
+        ...current,
+        isSupportedByCurrentUser: true,
+        supportCount: Math.max(0, Number(current.supportCount ?? 0) + 1),
+      } : current);
+      const snapshot = applyOptimisticCommunitySupport(queryClient, incidentId, true);
+      await queryClient.cancelQueries({ queryKey: communityKeys.all });
+      return { previousIncident, snapshot };
+    },
+    onError: (_error, _variables, context) => {
+      setSelectedIncident(context?.previousIncident ?? null);
+      restoreCommunityCache(queryClient, context?.snapshot);
+      toast.error('Không thể cập nhật lượt ủng hộ. Vui lòng thử lại.');
+    },
+    onSettled: (_data, _error, variables) => {
+      void queryClient.invalidateQueries({ queryKey: communityKeys.feeds() });
+      void queryClient.invalidateQueries({ queryKey: communityKeys.detail(variables.incidentId) });
+    },
+  });
+
+  const handleSupport = () => {
+    if (!selectedIncident || supportMutation.isPending) return;
+    const incidentId = getIncidentId(selectedIncident);
+    if (!incidentId || selectedIncident.isSupportedByCurrentUser) return;
+    supportMutation.mutate({ incidentId });
   };
 
   const supportDisabled = Boolean(
@@ -773,9 +792,10 @@ export default function CommunityMapNative() {
                   variant="primary"
                   size="md"
                   onPress={handleSupport}
-                  disabled={supportDisabled || supportLoading}
+                  disabled={supportDisabled}
+                  accessibilityState={{ selected: supportDisabled, busy: supportMutation.isPending }}
                 >
-                  {supportLoading ? 'Đang gửi...' : supportDisabled ? 'Đã ủng hộ' : 'Tôi cũng gặp'}
+                  {supportDisabled ? 'Đã ủng hộ' : 'Tôi cũng gặp'}
                 </AppButton>
               </View>
             </View>

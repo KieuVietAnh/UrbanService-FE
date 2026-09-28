@@ -7,7 +7,8 @@ import { fontSizes, fonts } from '@/theme/typography';
 
 const { width: W } = Dimensions.get('window');
 const HORIZONTAL = 20;
-const ACTION_COLUMNS = W >= 600 ? 5 : 3;
+const ACTION_COLUMNS = W >= 600 ? 5 : W < 360 ? 2 : 3;
+const ACTION_ROWS = Math.ceil(5 / ACTION_COLUMNS);
 const ACTION_WIDTH = Math.max(
   44,
   (W - HORIZONTAL * 2 - 28 - 14 * (ACTION_COLUMNS - 1)) / ACTION_COLUMNS,
@@ -430,7 +431,7 @@ export const styles = StyleSheet.create({
   },
 
   quickActionsPanel: {
-    minHeight: 236,
+    minHeight: ACTION_ROWS * 92 + (ACTION_ROWS - 1) * 14 + 32,
     borderRadius: radius['3xl'],
     backgroundColor: colors.surface,
     flexDirection: 'row',

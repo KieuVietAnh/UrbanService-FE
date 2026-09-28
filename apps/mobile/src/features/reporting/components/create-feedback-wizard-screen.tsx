@@ -492,6 +492,7 @@ function StepLocation({
               {addressSuggestions.length > 0 ? (
                 <ScrollView
                   style={styles.addressSuggestionList}
+                  contentContainerStyle={styles.addressSuggestionListContent}
                   accessibilityRole="menu"
                   nestedScrollEnabled
                   keyboardShouldPersistTaps="always"
@@ -521,7 +522,14 @@ function StepLocation({
                       <View style={styles.addressSuggestionIcon}>
                         <Icon name="map-pin" size={15} color={colors.primary} />
                       </View>
-                      <Text style={styles.addressSuggestionText} numberOfLines={3}>{suggestion.displayName}</Text>
+                      <View style={styles.addressSuggestionCopy}>
+                        <Text style={styles.addressSuggestionText} numberOfLines={2}>
+                          {String(suggestion.displayName)}
+                        </Text>
+                        <Text style={styles.addressSuggestionHint} numberOfLines={1}>
+                          Chạm để chọn và định vị trên bản đồ
+                        </Text>
+                      </View>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -1366,11 +1374,14 @@ const styles = StyleSheet.create({
   mapSearchOverlay: { position: 'absolute', top: 12, left: 12, right: 12, zIndex: 20, elevation: 12, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.97)', borderWidth: 1, borderColor: '#DBEAFE', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.14, shadowRadius: 14 },
   addressSearchStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingHorizontal: 4 },
   addressSearchStatusText: { fontFamily: 'Geist-Medium', fontSize: 12, color: '#475569' },
-  addressSuggestionList: { maxHeight: 190, marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#DBEAFE', borderRadius: 14, backgroundColor: '#FFFFFF' },
-  addressSuggestionItem: { minHeight: 54, flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 12, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0' },
+  addressSuggestionList: { width: '100%', maxHeight: 184, marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#DBEAFE', borderRadius: 14, backgroundColor: '#FFFFFF' },
+  addressSuggestionListContent: { width: '100%', alignItems: 'stretch' },
+  addressSuggestionItem: { width: '100%', minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
   addressSuggestionItemPressed: { backgroundColor: '#EFF6FF' },
-  addressSuggestionIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF' },
-  addressSuggestionText: { flex: 1, fontFamily: 'Geist-Medium', fontSize: 13, lineHeight: 19, color: '#1E293B' },
+  addressSuggestionIcon: { width: 30, height: 30, flexShrink: 0, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF' },
+  addressSuggestionCopy: { flex: 1, minWidth: 0, alignSelf: 'stretch', justifyContent: 'center' },
+  addressSuggestionText: { width: '100%', flexShrink: 1, fontFamily: 'Geist-SemiBold', fontSize: 13, lineHeight: 18, color: '#0F172A', includeFontPadding: false },
+  addressSuggestionHint: { width: '100%', marginTop: 2, fontFamily: 'Geist-Regular', fontSize: 10, lineHeight: 14, color: '#64748B', includeFontPadding: false },
   addressSearchMessage: { marginTop: 8, paddingHorizontal: 4, fontFamily: 'Geist-Regular', fontSize: 12, lineHeight: 18, color: '#64748B' },
   locationMapCard: { backgroundColor: '#F8FAFC', borderRadius: 24, padding: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12 },
   mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
