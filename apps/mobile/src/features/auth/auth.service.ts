@@ -1,11 +1,18 @@
 import {
   authApi,
+  normalizePhone,
   setAuthToken,
   setAuthRefreshToken,
   clearAuthTokens,
 } from '@urbanmind/shared-api';
 import { getInternalRole } from '@urbanmind/shared-types';
 import type { User } from '@/types';
+import {
+  assertFirebasePhoneAuthAvailable,
+  clearFirebasePhoneSession,
+  confirmFirebasePhoneOtp,
+  sendFirebasePhoneOtp,
+} from './firebase-phone.service';
 
 type ApiRecord = Record<string, unknown>;
 
@@ -55,7 +62,7 @@ const buildUser = (rawResponse: unknown): User => {
     token: (token || '') as string,
     fullName: (userPayload.name ?? userPayload.fullName ?? data.name ?? data.fullName ?? '') as string,
     isVerified: Boolean(userPayload.isVerified ?? data.isVerified ?? false),
-    phone: (userPayload.phone ?? data.phone ?? '') as string,
+    phone: (userPayload.phoneNumber ?? userPayload.phone ?? data.phoneNumber ?? data.phone ?? '') as string,
     avatarUrl: (userPayload.avatarUrl ?? data.avatarUrl ?? null) as string | null,
   };
 };
@@ -141,15 +148,37 @@ export class AuthService {
     return persistAuthenticatedSession(response, user);
   }
 
-  static async sendOtp(): Promise<void> {
-    const response = await authApi.sendOtp();
-    extractData(response);
+  static async requestPhoneOtp(phoneNumber: string): Promise<{
+    phoneNumber: string;
+    remainingToday: number | null;
+    isTestNumber: boolean;
+  }> {
+    const normalized = normalizePhone(phoneNumber);
+    if (!normalized) {
+      throw new Error('Số điện thoại chưa hợp lệ. Vui lòng nhập 10 chữ số, ví dụ 0901 234 567.');
+    }
+
+    await assertFirebasePhoneAuthAvailable();
+    const response = await authApi.requestPhoneOtp(normalized);
+    const extracted = extractData(response);
+    const payload = isApiRecord(extracted) ? extracted : {};
+    const approvedPhone = String(payload.phoneNumber || normalized);
+
+    await sendFirebasePhoneOtp(approvedPhone);
+    return {
+      phoneNumber: approvedPhone,
+      remainingToday: typeof payload.remainingToday === 'number' ? payload.remainingToday : null,
+      isTestNumber: payload.isTestNumber === true,
+    };
   }
 
-  static async verifyOtp(otp: string): Promise<void> {
-    // Swagger returns 204 No Content. The authenticated user and tokens must
-    // remain the ones established by login/registration.
-    await authApi.verifyOtp(otp);
+  static async verifyPhoneOtp(otp: string): Promise<User> {
+    const idToken = await confirmFirebasePhoneOtp(otp);
+    const response = await authApi.verifyPhone(idToken);
+    const user = buildUser(response);
+    const authenticatedUser = await persistAuthenticatedSession(response, user);
+    clearFirebasePhoneSession();
+    return authenticatedUser;
   }
 
   static async logout(): Promise<void> {
@@ -160,5 +189,6 @@ export class AuthService {
     }
 
     await clearAuthTokens();
+    clearFirebasePhoneSession();
   }
 }

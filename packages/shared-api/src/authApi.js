@@ -29,10 +29,6 @@ export const authApi = {
     return axiosClient.post('/api/auth/forgot-password/send-otp', { email });
   },
 
-  verifyForgotPasswordOtp(email, otp) {
-    return axiosClient.post('/api/auth/forgot-password/verify-otp', { email, otp });
-  },
-
   /** Kiểm tra OTP quên mật khẩu mà không tiêu thụ nó; vẫn phải gửi lại otp ở bước reset. */
   verifyForgotPasswordOtp(email, otp) {
     return axiosClient.post('/api/auth/forgot-password/verify-otp', { email, otp });

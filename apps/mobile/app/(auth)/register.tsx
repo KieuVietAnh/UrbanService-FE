@@ -30,7 +30,6 @@ export default function RegisterScreen() {
   const router = useRouter();
   const toast = useToast();
   const register = useAuthStore((s) => s.register);
-  const sendOtp = useAuthStore((s) => s.sendOtp);
   const isLoading = useAuthStore((s) => s.isLoading);
 
   const [form, setForm] = useState({
@@ -102,15 +101,9 @@ export default function RegisterScreen() {
         password: form.password,
       });
 
-      try {
-        await sendOtp();
-      } catch {
-        /* proceed to verify screen where user can retry */
-      }
-
-      router.replace('/(auth)/verify-email');
-    } catch (err: any) {
-      toast.error(err.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+      router.replace({ pathname: '/(auth)/verify-phone', params: { autoSend: '1' } });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng thử lại.');
     }
   };
 
@@ -221,7 +214,7 @@ export default function RegisterScreen() {
               className="mt-4"
               rightIcon={<Icon name="arrow-right" size={18} color="#FFFFFF" style={{ marginLeft: 4 }} />}
             >
-              Tiếp tục (Xác thực Email)
+              Tiếp tục xác thực số điện thoại
             </AppButton>
 
             <Pressable onPress={() => router.replace('/(auth)/login')} className="mt-5 self-center">

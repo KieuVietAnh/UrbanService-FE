@@ -54,7 +54,6 @@ export default function HomeScreen() {
         <ActiveTickets isLoading={isLoading} tickets={tickets} router={router} />
         <View style={{ height: 120 }} />
       </ScrollView>
-      {/* Floating chat menu rendered by layout to avoid duplicate FABs */}
     </SafeAreaView>
   );
 }

@@ -8,8 +8,14 @@ import { TicketStatusBadge } from '@/components/ui';
 import { Text } from '@/components/ui';
 import { getResidentStatusLabel } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
-import type { CommunityFeedCache, CommunityIncidentCardProps, PublicIncidentItem } from '../types/community.types';
+import type { CommunityIncidentCardProps } from '../types/community.types';
 import { communityApi, communityKeys } from '../api';
+import { useToast } from '@/components/shared/toast';
+import {
+  applyOptimisticCommunitySupport,
+  restoreCommunityCache,
+  type CommunityCacheSnapshot,
+} from '../utils/support-cache';
 
 export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityIncidentCardProps) {
   const createdAt = item?.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '—';
@@ -22,60 +28,48 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityIn
   }, [item?.isSupportedByCurrentUser, item?.supportCount]);
 
   const queryClient = useQueryClient();
+  const toast = useToast();
   const incidentId = String(item?.incidentId ?? item?.id ?? '');
 
-  const syncSupportCache = (supported: boolean) => {
-    queryClient.setQueriesData({
-      queryKey: communityKeys.feeds(),
-    }, (data) => {
-      if (!data || typeof data !== 'object' || !Array.isArray((data as CommunityFeedCache).items)) {
-        return data;
-      }
-
-      const cache = data as CommunityFeedCache;
-      return {
-        ...cache,
-        items: cache.items?.map((feedItem) => {
-          const itemId = String(feedItem.incidentId ?? feedItem.id ?? '');
-          if (itemId !== incidentId) return feedItem;
-          return {
-            ...feedItem,
-            isSupportedByCurrentUser: supported,
-            supportCount: Math.max(0, Number(feedItem.supportCount ?? 0) + (supported ? 1 : -1)),
-          };
-        }),
-      };
-    });
-
-    queryClient.setQueryData<PublicIncidentItem | null>(communityKeys.detail(incidentId), (prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        isSupportedByCurrentUser: supported,
-        supportCount: Math.max(0, Number(prev.supportCount ?? 0) + (supported ? 1 : -1)),
-      };
-    });
-  };
-
   const supportMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (nextSupported: boolean) => {
       if (!incidentId) throw new Error('Missing incident id');
-      if (isSupported) {
+      if (!nextSupported) {
         await communityApi.unsupport(incidentId);
         return false;
       }
       await communityApi.support(incidentId);
       return true;
     },
-    onSuccess: (supported: boolean) => {
-      setIsSupported(supported);
-      setSupportCount((prev) => Math.max(0, prev + (supported ? 1 : -1)));
-      syncSupportCache(supported);
+    onMutate: async (nextSupported: boolean): Promise<{
+      previousSupported: boolean;
+      previousCount: number;
+      snapshot: CommunityCacheSnapshot;
+    }> => {
+      const previousSupported = isSupported;
+      const previousCount = supportCount;
+
+      setIsSupported(nextSupported);
+      setSupportCount(Math.max(0, previousCount + (nextSupported ? 1 : -1)));
+      const snapshot = applyOptimisticCommunitySupport(queryClient, incidentId, nextSupported);
+      await queryClient.cancelQueries({ queryKey: communityKeys.all });
+      return { previousSupported, previousCount, snapshot };
+    },
+    onError: (_error, _nextSupported, context) => {
+      setIsSupported(context?.previousSupported ?? Boolean(item?.isSupportedByCurrentUser));
+      setSupportCount(context?.previousCount ?? Number(item?.supportCount ?? 0));
+      restoreCommunityCache(queryClient, context?.snapshot);
+      toast.error('Không thể cập nhật lượt ủng hộ. Vui lòng thử lại.');
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: communityKeys.feeds() });
+      void queryClient.invalidateQueries({ queryKey: communityKeys.detail(incidentId) });
     },
   });
 
   const handleSupportPress = () => {
-    supportMutation.mutate();
+    if (!incidentId || supportMutation.isPending) return;
+    supportMutation.mutate(!isSupported);
   };
 
   return (
@@ -128,7 +122,7 @@ export function CommunityFeedCard({ item, onPress, onCommentPress }: CommunityIn
                   event.stopPropagation?.();
                   handleSupportPress();
                 }}
-                loading={supportMutation.isPending}
+                accessibilityState={{ selected: isSupported, busy: supportMutation.isPending }}
                 style={styles.actionButton}
                 leftIcon={<Icon name="thumbs-up" size={14} color={isSupported ? '#FFFFFF' : colors.primary} />}
               >

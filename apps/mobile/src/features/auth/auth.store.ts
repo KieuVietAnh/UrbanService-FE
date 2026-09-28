@@ -22,8 +22,12 @@ interface AuthState {
   login: (email: string, password: string) => Promise<User>;
   googleLogin: (idToken: string) => Promise<User>;
   register: (data: RegisterData) => Promise<User>;
-  sendOtp: () => Promise<void>;
-  verifyOtp: (otp: string) => Promise<User>;
+  requestPhoneOtp: (phoneNumber: string) => Promise<{
+    phoneNumber: string;
+    remainingToday: number | null;
+    isTestNumber: boolean;
+  }>;
+  verifyPhoneOtp: (otp: string) => Promise<User>;
   logout: () => Promise<void>;
   clearError: () => void;
   setUser: (user: User | null) => void;
@@ -133,13 +137,14 @@ export const useAuthStore = create<AuthState>()(
           }
         },
 
-        sendOtp: async () => {
+        requestPhoneOtp: async (phoneNumber: string) => {
           set({ isLoading: true, error: null });
           try {
-            await withRequestTimeout(AuthService.sendOtp());
+            const result = await withRequestTimeout(AuthService.requestPhoneOtp(phoneNumber));
             set({ isLoading: false });
+            return result;
           } catch (err: unknown) {
-            const msg = extractApiErrorMessage(err, 'Gửi mã OTP thất bại');
+            const msg = extractApiErrorMessage(err);
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {
@@ -147,21 +152,19 @@ export const useAuthStore = create<AuthState>()(
           }
         },
 
-        verifyOtp: async (otp: string) => {
+        verifyPhoneOtp: async (otp: string) => {
           set({ isLoading: true, error: null });
           try {
             const requestUser = get().user;
             if (!requestUser) throw new Error('Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.');
-            await withRequestTimeout(AuthService.verifyOtp(otp));
-            const activeUser = get().user;
-            if (!activeUser || activeUser.id !== requestUser.id) {
+            const verifiedUser = await withRequestTimeout(AuthService.verifyPhoneOtp(otp));
+            if (!verifiedUser.id || verifiedUser.id !== requestUser.id) {
               throw new Error('Phiên đăng nhập đã thay đổi. Vui lòng xác thực lại bằng tài khoản hiện tại.');
             }
-            const updatedUser = { ...activeUser, isVerified: true };
-            set({ user: updatedUser, isLoading: false });
-            return updatedUser;
+            set({ user: verifiedUser, isLoading: false });
+            return verifiedUser;
           } catch (err: unknown) {
-            const msg = extractApiErrorMessage(err, 'Mã OTP không chính xác');
+            const msg = extractApiErrorMessage(err);
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {

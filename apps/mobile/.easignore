@@ -57,6 +57,7 @@ ios/
 !assets/icon.png
 !assets/adaptive-icon.png
 !assets/favicon.png
+!google-services.json
 !app.json
 !app.config.js
 !eas.json

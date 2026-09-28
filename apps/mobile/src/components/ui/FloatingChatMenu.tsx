@@ -126,7 +126,7 @@ export function FloatingChatMenu({ bottomOffset = 90, onSelectOption, mode = 'de
           accessibilityRole="button"
           accessibilityLabel="Mở menu trợ lý đô thị"
         >
-          <Icon name={expanded ? 'x' : 'message-circle'} size={30} color="#FFFFFF" />
+          <Icon name={expanded ? 'x' : 'message-circle'} size={24} color="#FFFFFF" />
         </Pressable>
       </Animated.View>
     </View>
@@ -166,7 +166,7 @@ function ChatOption({
 const styles = StyleSheet.create({
   rootContainer: {
     position: 'absolute',
-    right: 22,
+    right: 16,
     alignItems: 'flex-end',
     zIndex: 20,
   },
@@ -245,16 +245,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.34,
     shadowRadius: 28,
-    elevation: 14,
+    elevation: 10,
   },
   fabButton: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 6,
+    borderWidth: 4,
     borderColor: 'rgba(255,255,255,0.92)',
   },
 });
