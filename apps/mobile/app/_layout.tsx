@@ -1,5 +1,4 @@
-import React, { useEffect } from "react";
-import { ActivityIndicator, View, Text } from "react-native";
+import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -17,17 +16,20 @@ import { ToastProvider } from "@/components/shared";
 import { useAuthGuard, useAuthStore } from "@/features/auth";
 import { canAccessMobileWorkspace } from "@/features/auth/mobile-access";
 import { APP_ROLES } from '@urbanmind/shared-types';
+import BrandSplashScreen from "@/screens/splash/SplashScreen";
 
-SplashScreen.preventAutoHideAsync();
+const BRAND_SPLASH_DURATION_MS = 900;
+
+void SplashScreen.preventAutoHideAsync();
 
 // Ensure API is configured before any child component or data fetch runs.
 initApi();
 
-function RootNavigation() {
+function RootNavigation({ showBrandSplash }: { showBrandSplash: boolean }) {
   useAuthGuard();
   const user = useAuthStore((state) => state.user);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
-  if (!hasHydrated) return <ActivityIndicator style={{ flex: 1 }} accessibilityLabel="Đang khôi phục phiên đăng nhập" />;
+  if (showBrandSplash || !hasHydrated) return <BrandSplashScreen />;
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
@@ -44,42 +46,28 @@ function RootNavigation() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [showBrandSplash, setShowBrandSplash] = useState(true);
+  const [fontsLoaded, fontError] = useFonts({
     "Geist-Regular": Geist_400Regular,
     "Geist-Medium": Geist_500Medium,
     "Geist-SemiBold": Geist_600SemiBold,
     "Geist-Bold": Geist_700Bold,
   });
 
-  useEffect(() => {
-    console.log("[RootLayout] initApi");
-    initApi();
-  }, []);
+  const fontsReady = fontsLoaded || Boolean(fontError);
 
   useEffect(() => {
-    console.log("[RootLayout] fontsLoaded", fontsLoaded);
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
+    if (!fontsReady) return undefined;
 
-  if (!fontsLoaded) {
-    console.log("[RootLayout] waiting for fonts to load");
-    return (
-      <View
-        style={{
-          flex: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "#ffffff",
-        }}
-      >
-        <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827" }}>
-          Đang khởi động UrbanMind...
-        </Text>
-      </View>
-    );
-  }
+    // The branded React screen is already mounted when the native splash is
+    // hidden, preventing a white flash between the two launch surfaces.
+    void SplashScreen.hideAsync();
+    const timer = setTimeout(() => setShowBrandSplash(false), BRAND_SPLASH_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [fontsReady]);
+
+  // Keep the native splash visible while bundled fonts are loading.
+  if (!fontsReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -91,7 +79,7 @@ export default function RootLayout() {
         >
           <QueryClientProvider client={queryClient}>
             <ToastProvider>
-              <RootNavigation />
+              <RootNavigation showBrandSplash={showBrandSplash} />
             </ToastProvider>
           </QueryClientProvider>
         </KeyboardProvider>

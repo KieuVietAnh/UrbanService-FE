@@ -1,6 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import BrandLogo from '@/components/brand/BrandLogo';
 import { rawColors as colors } from '@/theme/colors';
 
 export default function SplashScreen() {
@@ -8,22 +7,26 @@ export default function SplashScreen() {
     <View style={styles.screen}>
       <StatusBar style="dark" />
 
-      <View style={[styles.glow, styles.glowTop]} />
-      <View style={[styles.glow, styles.glowBottom]} />
+      <View style={[styles.orbit, styles.orbitTop]} />
+      <View style={[styles.orbit, styles.orbitBottom]} />
 
-      <View style={styles.card}>
-        <View style={styles.center}>
-          <BrandLogo center subtitle="" />
-          <Text style={styles.title}>Kết nối cộng đồng</Text>
-          <Text style={styles.desc}>
-            Kiến tạo tương lai đô thị thông minh và bền vững.
-          </Text>
+      <View style={styles.center}>
+        <View style={styles.logoFrame}>
+          <Image
+            source={require('../../../assets/icon.png')}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="Biểu tượng UrbanMind"
+          />
         </View>
+        <Text style={styles.brand}>UrbanMind</Text>
+        <Text style={styles.title}>Kết nối cộng đồng</Text>
+        <Text style={styles.desc}>Kiến tạo đô thị thông minh và bền vững.</Text>
+      </View>
 
-        <View style={styles.loadingArea}>
-          <View style={styles.loadingBar} />
-          <Text style={styles.loadingText}>ĐANG KHỞI TẠO</Text>
-        </View>
+      <View style={styles.loadingArea}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <Text style={styles.loadingText}>ĐANG KHỞI ĐỘNG</Text>
       </View>
     </View>
   );
@@ -32,76 +35,79 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.backgroundBlue,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  glow: {
+  orbit: {
     position: 'absolute',
-    width: 310,
-    height: 460,
-    borderRadius: 180,
-    borderWidth: 22,
-    borderColor: 'rgba(37, 99, 235, 0.10)',
-    backgroundColor: 'rgba(147, 197, 253, 0.12)',
+    width: 330,
+    height: 330,
+    borderRadius: 165,
+    borderWidth: 30,
+    borderColor: 'rgba(37, 99, 235, 0.08)',
   },
-  glowTop: {
-    top: -135,
-    left: -120,
-    transform: [{ rotate: '-10deg' }],
+  orbitTop: {
+    top: -150,
+    left: -145,
   },
-  glowBottom: {
-    bottom: -125,
-    right: -125,
-    transform: [{ rotate: '-12deg' }],
-  },
-  card: {
-    width: '82%',
-    height: '76%',
-    backgroundColor: '#F9FBFF',
-    borderRadius: 0,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 230,
-    paddingBottom: 54,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.08,
-    shadowRadius: 30,
-    elevation: 8,
+  orbitBottom: {
+    bottom: -155,
+    right: -155,
   },
   center: {
     alignItems: 'center',
-    paddingHorizontal: 28,
+    paddingHorizontal: 32,
+  },
+  logoFrame: {
+    width: 150,
+    height: 150,
+    borderRadius: 42,
+    padding: 5,
+    backgroundColor: '#FFFFFF',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  logo: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 37,
+  },
+  brand: {
+    marginTop: 24,
+    fontFamily: 'Geist-Bold',
+    fontSize: 28,
+    letterSpacing: -0.7,
+    color: colors.text,
   },
   title: {
-    marginTop: 18,
-    fontSize: 18,
-    fontWeight: '800',
+    marginTop: 8,
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 17,
     color: colors.text,
   },
   desc: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 22,
+    marginTop: 6,
+    fontFamily: 'Geist-Regular',
+    fontSize: 13,
+    lineHeight: 20,
     color: colors.muted,
     textAlign: 'center',
   },
   loadingArea: {
+    position: 'absolute',
+    bottom: 64,
     alignItems: 'center',
-  },
-  loadingBar: {
-    width: 48,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    marginBottom: 18,
+    gap: 14,
   },
   loadingText: {
+    fontFamily: 'Geist-SemiBold',
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 3,
+    letterSpacing: 2.2,
     color: colors.lightMuted,
   },
 });
