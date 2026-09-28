@@ -9,6 +9,7 @@ export { notificationApi } from './notificationApi.js';
 export { userApi } from './userApi.js';
 export { staffResponsibilityApi, normalizeStaffResponsibilityFilters, normalizeStaffResponsibilityCollection, normalizeStaffResponsibilityCreatePayload, normalizeStaffResponsibilityUpdatePayload } from './staffResponsibilityApi.js';
 export { userAreaAlertApi } from './userAreaAlertApi.js';
+export { messengerAccountLinkApi } from './messengerAccountLinkApi.js';
 export { slaApi } from './slaApi.js';
 // NOTE: `mockDb` is a development-only in-memory store. It is no longer exported
 // from the public package index to avoid accidental inclusion in production bundles.

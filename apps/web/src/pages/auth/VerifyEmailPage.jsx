@@ -1,11 +1,12 @@
 // src/pages/auth/VerifyEmailPage.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ErrorAlert, SuccessAlert } from '../../components/alerts/ErrorAlert';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import * as Lucide from 'lucide-react';
 import { getRoleEntryPath } from '../../utils/roleMap';
+import { buildAuthPath, getSafeInternalPath } from '../../utils/authRedirect';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -188,6 +189,11 @@ export const VerifyEmailPage = () => {
   const { user, sendOtp, verifyOtp, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const requestedRedirect = (
+    getSafeInternalPath(searchParams.get('redirect')) ||
+    getSafeInternalPath(location.state?.from)
+  );
 
   const [otpDigits, setOtpDigits] = useState(createEmptyOtp);
   const [error, setError] = useState(null);
@@ -209,14 +215,14 @@ export const VerifyEmailPage = () => {
 
   useEffect(() => {
     if (!user) {
-      navigate('/login', { replace: true });
+      navigate(buildAuthPath('/login', requestedRedirect), { replace: true });
       return;
     }
 
     if (user.isVerified && !verificationHandledRef.current) {
-      navigate(getRoleEntryPath(user.role), { replace: true });
+      navigate(requestedRedirect || getRoleEntryPath(user.role), { replace: true });
     }
-  }, [navigate, user]);
+  }, [navigate, requestedRedirect, user]);
 
   useEffect(() => () => {
     if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
@@ -397,7 +403,7 @@ export const VerifyEmailPage = () => {
 
       const verifiedUser = result?.user || { ...user, isVerified: true };
       redirectTimerRef.current = window.setTimeout(() => {
-        navigate(getRoleEntryPath(verifiedUser?.role || user?.role), { replace: true });
+        navigate(requestedRedirect || getRoleEntryPath(verifiedUser?.role || user?.role), { replace: true });
       }, 900);
     } catch (verifyError) {
       verificationHandledRef.current = false;
@@ -412,9 +418,9 @@ export const VerifyEmailPage = () => {
   };
 
   const handleEditRegistration = () => {
-    navigate('/register?mode=edit', {
+    navigate(buildAuthPath('/register?mode=edit', requestedRedirect), {
       state: {
-        from: '/verify-email',
+        from: requestedRedirect || '/verify-email',
       },
     });
   };
@@ -423,7 +429,7 @@ export const VerifyEmailPage = () => {
     window.sessionStorage.removeItem(sessionKey);
     window.sessionStorage.removeItem(REGISTER_DRAFT_STORAGE_KEY);
     await logout();
-    navigate('/login', { replace: true });
+    navigate(buildAuthPath('/login', requestedRedirect), { replace: true });
   };
 
   if (!user) {

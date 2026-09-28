@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { getRoleEntryPath } from '../../utils/roleMap';
+import { buildAuthPath, getSafeInternalPath } from '../../utils/authRedirect';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_PATTERN = /^0\d{9}$/;
@@ -366,6 +367,10 @@ export const RegisterPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const requestedRedirect = (
+    getSafeInternalPath(searchParams.get('redirect')) ||
+    getSafeInternalPath(location.state?.from)
+  );
   const isEditingRegistration = (
     searchParams.get('mode') === 'edit' &&
     Boolean(user) &&
@@ -409,14 +414,14 @@ export const RegisterPage = () => {
     if (!user) return;
 
     if (user.isVerified) {
-      navigate(getRoleEntryPath(user.role), { replace: true });
+      navigate(requestedRedirect || getRoleEntryPath(user.role), { replace: true });
       return;
     }
 
     if (!isEditingRegistration) {
-      navigate('/verify-email', { replace: true });
+      navigate(buildAuthPath('/verify-email', requestedRedirect), { replace: true });
     }
-  }, [isEditingRegistration, navigate, user]);
+  }, [isEditingRegistration, navigate, requestedRedirect, user]);
 
   useEffect(() => {
     if (!fullName && !email && !phone) return;
@@ -459,7 +464,9 @@ export const RegisterPage = () => {
       nextErrors.email = 'Địa chỉ email không đúng định dạng.';
     }
 
-    if (normalizedPhone && !PHONE_PATTERN.test(normalizedPhone)) {
+    if (!normalizedPhone) {
+      nextErrors.phone = 'Vui lòng nhập số điện thoại.';
+    } else if (!PHONE_PATTERN.test(normalizedPhone)) {
       nextErrors.phone = 'Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0.';
     }
 
@@ -547,7 +554,7 @@ export const RegisterPage = () => {
           otpDelivery = { status: 'sent', sentAt };
         }
 
-        navigate('/verify-email', {
+        navigate(buildAuthPath('/verify-email', requestedRedirect), {
           replace: true,
           state: {
             registrationUpdated: true,
@@ -582,7 +589,7 @@ export const RegisterPage = () => {
         };
       }
 
-      navigate('/verify-email', {
+      navigate(buildAuthPath('/verify-email', requestedRedirect), {
         replace: true,
         state: { otpDelivery },
       });
@@ -754,7 +761,7 @@ export const RegisterPage = () => {
 
           <div className="space-y-1.5">
             <label htmlFor="register-phone" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Số điện thoại <span className="ml-1 text-[11px] font-medium text-slate-400">(không bắt buộc)</span>
+              Số điện thoại <span className="text-red-500" aria-hidden="true">*</span>
             </label>
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400" aria-hidden="true">
@@ -919,13 +926,13 @@ export const RegisterPage = () => {
 
         <p className="auth-login-register relative z-10 mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           {isEditingRegistration ? (
-            <Link to="/verify-email" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+            <Link to={buildAuthPath('/verify-email', requestedRedirect)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
               Quay lại xác thực email
             </Link>
           ) : (
             <>
               Đã có tài khoản?{' '}
-              <Link to="/login" className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+              <Link to={buildAuthPath('/login', requestedRedirect)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
                 Đăng nhập ngay
               </Link>
             </>
