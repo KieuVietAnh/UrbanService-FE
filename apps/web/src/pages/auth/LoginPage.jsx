@@ -192,7 +192,7 @@ export const LoginPage = () => {
       const user = await login(normalizedEmail, password);
 
       if (user?.authCode === 'EMAIL_NOT_VERIFIED' || !user?.isVerified) {
-        navigate(buildAuthPath('/verify-email', requestedRedirect), { replace: true });
+        navigate(buildAuthPath('/verify-phone', requestedRedirect), { replace: true });
         return;
       }
 
@@ -378,7 +378,7 @@ export const LoginPage = () => {
 
         const user = await googleLogin(idToken);
         if (!user?.isVerified) {
-          navigate(buildAuthPath('/verify-email', requestedRedirect));
+          navigate(buildAuthPath('/verify-phone', requestedRedirect));
           return;
         }
 

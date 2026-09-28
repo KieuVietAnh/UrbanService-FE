@@ -1,5 +1,6 @@
 export { axiosClient, extractApiErrorMessage } from './axiosClient.js';
 export { authApi } from './authApi.js';
+export { normalizePhone, formatPhone } from './phone.js';
 export { ticketApi } from './ticketApi.js';
 export { chatbotApi } from './chatbotApi.js';
 export { analyticsApi } from './analyticsApi.js';

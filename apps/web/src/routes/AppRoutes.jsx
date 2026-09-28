@@ -15,7 +15,7 @@ import { getSystemStaffLegacyRouteRedirect } from '../roles/system-staff/permiss
 const LandingPage = lazy(() => import('../pages/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LoginPage = lazy(() => import('../pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('../pages/auth/RegisterPage').then((m) => ({ default: m.RegisterPage })));
-const VerifyEmailPage = lazy(() => import('../pages/auth/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })));
+const VerifyPhonePage = lazy(() => import('../pages/auth/VerifyPhonePage').then((m) => ({ default: m.VerifyPhonePage })));
 const MessengerAccountLinkPage = lazy(() => import('../pages/auth/MessengerAccountLinkPage').then((m) => ({ default: m.MessengerAccountLinkPage })));
 const Dashboard = lazy(() => import('../pages/dashboard/Dashboard').then((m) => ({ default: m.Dashboard })));
 const TicketListPage = lazy(() => import('../pages/tickets/TicketListPage').then((m) => ({ default: m.TicketListPage })));
@@ -140,11 +140,11 @@ const LoginRoute = ({ isAuthenticated, fallbackPath }) => {
   return <Navigate to={redirect} replace />;
 };
 
-const VerifyEmailRoute = ({ isAuthenticated }) => {
+const VerifyPhoneRoute = ({ isAuthenticated }) => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  if (isAuthenticated) return <VerifyEmailPage />;
+  if (isAuthenticated) return <VerifyPhonePage />;
 
   const redirect = (
     getSafeInternalPath(searchParams.get('redirect')) ||
@@ -165,7 +165,9 @@ export const AppRoutes = () => {
   const { isAuthenticated, user } = useAuth();
   const currentRole = normalizeRole(user?.role);
   const roleEntryPath = getRoleEntryPath(currentRole);
-  const authRedirect = user?.isVerified ? roleEntryPath : '/verify-email';
+  // Chưa xác thực số điện thoại vẫn vào bình thường; ràng buộc chỉ áp khi gửi
+  // phản ánh, nên đăng nhập xong không đẩy họ sang trang xác thực nữa.
+  const authRedirect = roleEntryPath;
   const isCitizen = currentRole === APP_ROLES.SERVICE_USER;
   const renderCommunityPage = (page) => (
     isAuthenticated ? (
@@ -188,8 +190,6 @@ export const AppRoutes = () => {
         element={
           !isAuthenticated ? (
             <LandingPage />
-          ) : !user?.isVerified ? (
-            <Navigate to="/verify-email" replace />
           ) : isCitizen ? (
             <LandingPage />
           ) : (
@@ -207,7 +207,7 @@ export const AppRoutes = () => {
         }
       />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/verify-email" element={<VerifyEmailRoute isAuthenticated={isAuthenticated} />} />
+      <Route path="/verify-phone" element={<VerifyPhoneRoute isAuthenticated={isAuthenticated} />} />
       <Route path="/messenger/link" element={<MessengerAccountLinkPage />} />
 
       {/* Protected Pages (All Auth Roles) */}
