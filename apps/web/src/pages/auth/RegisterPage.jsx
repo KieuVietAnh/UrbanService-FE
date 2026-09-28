@@ -500,11 +500,6 @@ export const RegisterPage = () => {
       );
 
       /*
-       * Không tự gửi OTP ở đây. Gửi SMS cần widget reCAPTCHA của Firebase, vốn nằm
-       * ở màn xác thực; và mỗi tin nhắn là chi phí thật nên để người dùng tự bấm
-       * gửi, thay vì đốt một lượt cho cả những người đăng ký rồi bỏ dở.
-       */
-      /*
        * Số điện thoại vừa nhập ở form này rồi, nên đưa thẳng sang bước nhập mã thay
        * vì hỏi lại số lần nữa. Trang xác thực tự gửi mã khi thấy cờ autoSend.
        */

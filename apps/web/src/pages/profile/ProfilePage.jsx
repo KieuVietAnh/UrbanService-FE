@@ -5,7 +5,7 @@ import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRoleLabel } from '../../utils/roleMap';
 import { managementTypes } from '@urbanmind/shared-types';
-import { userApi } from '@urbanmind/shared-api';
+import { formatPhone, userApi } from '@urbanmind/shared-api';
 import { ticketApi } from '../../services/api/ticketApi';
 import { canUseResidentProfileApi, getSessionProfile } from './profileAccess';
 
@@ -96,16 +96,6 @@ const formatMembership = timestamp => {
   return `${days} ngày`;
 };
 
-const PHONE_PATTERN = /^0\d{9,10}$/;
-
-const validatePhoneNumber = value => {
-  const normalizedPhone = String(value || '').trim();
-  if (!normalizedPhone) return '';
-  return PHONE_PATTERN.test(normalizedPhone)
-    ? ''
-    : 'Số điện thoại phải bắt đầu bằng 0 và gồm 10–11 chữ số.';
-};
-
 const statusTone = status => {
   if ([managementTypes.feedbackStatus.CLOSED, 'Closed'].includes(status)) {
     return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300';
@@ -125,7 +115,6 @@ export const ProfilePage = () => {
   const [profile, setProfile] = useState(null);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [phoneError, setPhoneError] = useState('');
   const [address, setAddress] = useState('');
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -157,7 +146,6 @@ export const ProfilePage = () => {
         setProfile(sessionProfile);
         setFullName(sessionProfile.fullName);
         setPhone(sessionProfile.phoneNumber);
-        setPhoneError('');
         setAddress(sessionProfile.address);
         setLoadingProfile(false);
         return;
@@ -170,7 +158,6 @@ export const ProfilePage = () => {
         setProfile(data);
         setFullName(data?.fullName || '');
         setPhone(data?.phoneNumber || '');
-        setPhoneError('');
         setAddress(data?.address || '');
       } catch (error) {
         console.error('ProfilePage profile load failed', error);
@@ -178,7 +165,6 @@ export const ProfilePage = () => {
           setProfile(sessionProfile);
           setFullName(sessionProfile.fullName);
           setPhone(sessionProfile.phoneNumber);
-          setPhoneError('');
           setAddress(sessionProfile.address);
           setToastMessage('Không thể tải thông tin hồ sơ');
         }
@@ -242,7 +228,6 @@ export const ProfilePage = () => {
 
   const hasProfileChanges = canManageProfile && (
     String(fullName || '').trim() !== String(profile?.fullName || '').trim()
-    || String(phone || '').trim() !== String(profile?.phoneNumber || '').trim()
     || String(address || '').trim() !== String(profile?.address || '').trim()
   );
 
@@ -250,15 +235,10 @@ export const ProfilePage = () => {
     event.preventDefault();
     if (!canManageProfile || savingProfile) return;
 
-    const nextPhoneError = validatePhoneNumber(phone);
-    setPhoneError(nextPhoneError);
-    if (nextPhoneError) return;
-
     setSavingProfile(true);
     try {
       const updatedProfile = await userApi.updateProfile({
         fullName: fullName.trim() || null,
-        phoneNumber: phone.trim() || null,
         address: address.trim() || null,
         avatarUrl: avatarUrl || null,
       });
@@ -266,7 +246,6 @@ export const ProfilePage = () => {
       const nextProfile = updatedProfile || {
         ...profile,
         fullName: fullName.trim() || null,
-        phoneNumber: phone.trim() || null,
         address: address.trim() || null,
         avatarUrl: avatarUrl || null,
       };
@@ -274,12 +253,23 @@ export const ProfilePage = () => {
       setProfile(nextProfile);
       setFullName(nextProfile?.fullName || '');
       setPhone(nextProfile?.phoneNumber || '');
-      setPhoneError('');
       setAddress(nextProfile?.address || '');
       setToastMessage('Đã lưu thay đổi hồ sơ');
     } catch (error) {
       console.error('ProfilePage profile update failed', error);
-      setToastMessage(error?.response?.data?.message || 'Không thể cập nhật hồ sơ. Vui lòng thử lại.');
+      /*
+       * Tài khoản chưa xác thực số điện thoại bị backend chặn mọi thao tác ghi, kể
+       * cả sửa hồ sơ. Nói thẳng điều đó thay vì một câu chung chung khiến người
+       * dùng bấm lưu đi lưu lại mà không hiểu vì sao.
+       */
+      const blockedCode = error?.response?.data?.data?.code;
+      setToastMessage(
+        blockedCode === 'PHONE_NOT_VERIFIED'
+          ? 'Bạn cần xác thực số điện thoại trước khi sửa hồ sơ.'
+          : error?.response?.data?.msg
+            || error?.response?.data?.message
+            || 'Không thể cập nhật hồ sơ. Vui lòng thử lại.'
+      );
     } finally {
       setSavingProfile(false);
       window.setTimeout(() => setToastMessage(''), 2600);
@@ -681,33 +671,24 @@ export const ProfilePage = () => {
                     <input
                       id="profile-phone"
                       type="tel"
-                      inputMode="numeric"
-                      autoComplete="tel"
-                      maxLength={11}
-                      value={phone}
-                      disabled={!canManageProfile}
-                      onChange={event => {
-                        const digitsOnly = event.target.value.replace(/\D/g, '').slice(0, 11);
-                        setPhone(digitsOnly);
-                        if (phoneError) setPhoneError(validatePhoneNumber(digitsOnly));
-                      }}
-                      onBlur={() => setPhoneError(validatePhoneNumber(phone))}
-                      aria-invalid={Boolean(phoneError)}
-                      aria-describedby={phoneError ? 'profile-phone-error' : undefined}
-                      className={`h-12 w-full rounded-xl border bg-[var(--public-surface-strong)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none transition placeholder:text-[var(--public-muted)] focus:ring-4 disabled:cursor-not-allowed disabled:bg-[var(--public-surface-soft)] disabled:text-[var(--public-muted)] ${
-                        phoneError
-                          ? 'border-rose-400 focus:border-rose-400 focus:ring-rose-500/10'
-                          : 'border-[var(--public-border)] focus:border-blue-400 focus:ring-blue-500/10'
-                      }`}
-                      placeholder="Nhập số điện thoại"
+                      value={phone ? formatPhone(phone) : ''}
+                      readOnly
+                      aria-describedby="profile-phone-hint"
+                      className="h-12 w-full cursor-not-allowed rounded-xl border border-[var(--public-border)] bg-[var(--public-surface-soft)] pl-11 pr-4 text-sm font-medium text-[var(--public-title)] outline-none placeholder:text-[var(--public-muted)]"
+                      placeholder="Chưa có số điện thoại"
                     />
                   </div>
-                  {phoneError ? (
-                    <p id="profile-phone-error" className="mt-2 flex items-center gap-1.5 text-xs font-medium text-rose-600">
-                      <Lucide.CircleAlert size={13} aria-hidden="true" />
-                      {phoneError}
-                    </p>
-                  ) : null}
+                  <p id="profile-phone-hint" className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--public-muted)]">
+                    <Lucide.ShieldCheck size={13} aria-hidden="true" className="text-blue-500" />
+                    Số điện thoại là thông tin đã xác thực nên chỉ đổi được qua bước nhập mã OTP.
+                    <button
+                      type="button"
+                      onClick={() => navigate('/verify-phone', { state: { from: '/profile' } })}
+                      className="font-semibold text-blue-600 underline-offset-2 hover:underline"
+                    >
+                      Đổi số điện thoại
+                    </button>
+                  </p>
                 </div>
 
                 <div className="lg:col-span-2">
@@ -737,7 +718,7 @@ export const ProfilePage = () => {
                 {canManageProfile ? (
                   <button
                     type="submit"
-                    disabled={savingProfile || loadingProfile || !hasProfileChanges || Boolean(phoneError)}
+                    disabled={savingProfile || loadingProfile || !hasProfileChanges}
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:pointer-events-none disabled:opacity-60"
                   >
                     {savingProfile ? <Lucide.LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> : <Lucide.Save size={16} aria-hidden="true" />}
