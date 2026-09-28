@@ -74,7 +74,7 @@ const loginAsServiceUser = async (page: Page) => {
   }
 
   // Wait until the app redirects away from the login route and the client finishes loading.
-  await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 15000 }).catch(async () => {
+  await page.waitForFunction(() => !window.location.pathname.includes('/login'), undefined, { timeout: 15000 }).catch(async () => {
     const url = page.url();
     const bodyText = await page.locator('body').innerText().catch(() => '');
     throw new Error(`Service user login did not redirect. URL=${url}. Body=${bodyText.slice(0, 200)}...`);

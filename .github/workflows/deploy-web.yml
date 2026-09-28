@@ -61,15 +61,26 @@ jobs:
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         run: |
-          test -n "$VITE_API_BASE_URL"
-          test -n "$VITE_GOOGLE_CLIENT_ID"
-          # Thiếu cấu hình Firebase thì bản build vẫn chạy nhưng không ai xác thực
-          # được số điện thoại, tức là không ai đăng ký mới được. Dừng ở đây to và
-          # sớm, hơn là deploy một bản im lặng hỏng mất luồng đăng ký.
-          test -n "$VITE_FIREBASE_API_KEY"
-          test -n "$VITE_FIREBASE_AUTH_DOMAIN"
-          test -n "$VITE_FIREBASE_PROJECT_ID"
-          test -n "$VITE_FIREBASE_APP_ID"
+          # Kiểm tra từng biến và in tên biến thiếu. Dùng `test -n` trần thì log chỉ
+          # có exit code 1, người đọc không biết phải vào sửa secret nào.
+          missing=""
+          for name in             VITE_API_BASE_URL             VITE_GOOGLE_CLIENT_ID             VITE_FIREBASE_API_KEY             VITE_FIREBASE_AUTH_DOMAIN             VITE_FIREBASE_PROJECT_ID             VITE_FIREBASE_APP_ID
+          do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+              echo "THIEU: $name"
+            else
+              echo "co: $name"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo ""
+            echo "Thieu secret:$missing"
+            echo "Them tai Settings > Secrets and variables > Actions, dung ten o tren."
+            exit 1
+          fi
+
           echo "Production env variables are available"
 
       - name: Create production env file

@@ -218,8 +218,8 @@ export const VerifyPhonePage = () => {
       <AuthLayout brandTo={null} onBack={handleLogout} backLabel="Đổi tài khoản">
         <article className="rounded-[28px] border border-slate-200/90 bg-white p-6 shadow-[0_24px_65px_rgba(15,23,42,0.13)] sm:p-8 dark:border-slate-700 dark:bg-slate-900">
           <ErrorAlert
-            title="Chưa cấu hình xác thực số điện thoại"
-            message="Web chưa có cấu hình Firebase. Hãy điền các biến VITE_FIREBASE_* trong apps/web/.env.local rồi khởi động lại."
+            title="Chưa xác thực được số điện thoại"
+            message="Tính năng xác thực đang tạm thời không dùng được do thiếu cấu hình phía máy chủ. Vui lòng thử lại sau hoặc báo cho quản trị hệ thống."
           />
         </article>
       </AuthLayout>
