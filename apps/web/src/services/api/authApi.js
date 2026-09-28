@@ -98,29 +98,25 @@ export const authApi = {
     return { success: true };
   },
 
-  async sendOTP() {
-    await sharedAuthApi.sendOtp();
-    return { success: true };
+  /**
+   * Xin phép gửi SMS OTP. Chỉ gọi Firebase sau khi hàm này trả về thành công:
+   * hạn mức nằm ở backend vì mỗi tin nhắn là chi phí thật.
+   * Trả về remainingToday = null khi là số test (không tốn SMS).
+   */
+  async requestPhoneOtp(phoneNumber) {
+    const response = await sharedAuthApi.requestPhoneOtp(phoneNumber);
+    const payload = response?.data ?? response;
+    return {
+      phoneNumber: payload?.phoneNumber ?? phoneNumber,
+      remainingToday: payload?.remainingToday ?? null,
+      isTestNumber: payload?.isTestNumber === true,
+    };
   },
 
-  async verifyOTP(otp) {
-    const response = await sharedAuthApi.verifyOtp(otp);
-    const payload = response?.data ?? response;
-    const existingUser = tokenStorage.getUser();
-    const updatedUser = payload?.user ?? existingUser;
-    const token = extractToken(response);
-    const refreshToken = extractRefreshToken(response);
-
-    if (token) tokenStorage.setToken(token);
-    if (refreshToken) tokenStorage.setRefreshToken(refreshToken);
-
-    if (updatedUser) {
-      updatedUser.role = getInternalRole(updatedUser.role);
-      updatedUser.isVerified = true;
-      tokenStorage.setUser(updatedUser);
-    }
-
-    return { success: true, user: updatedUser };
+  /** idToken: Firebase ID token nhận được sau khi người dùng nhập đúng OTP. */
+  async verifyPhone(idToken) {
+    const response = await sharedAuthApi.verifyPhone(idToken);
+    return saveUserSession(response);
   },
 
   async logout() {

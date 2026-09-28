@@ -4,7 +4,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -20,9 +20,11 @@ export const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (user && user.isVerified === false) {
-    return <Navigate to="/verify-email" replace />;
-  }
+  /*
+   * Tài khoản chưa xác thực số điện thoại vẫn xem được bảng tin, bản đồ sự cố và
+   * thông báo. Ràng buộc chỉ đặt ở thao tác ghi — backend từ chối bằng
+   * PHONE_NOT_VERIFIED — nên chặn cả trang ở đây là chặn thừa.
+   */
 
   return children;
 };

@@ -206,16 +206,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const verifyOtp = async (otp) => {
+  /**
+   * Gửi Firebase ID token lên backend để đánh dấu tài khoản đã xác thực số điện
+   * thoại. Backend trả JWT mới vì trạng thái xác thực nằm trong claim của token.
+   */
+  const verifyPhone = async (idToken) => {
     setLoading(true);
     try {
-      const result = await authApi.verifyOTP(otp);
+      const result = await authApi.verifyPhone(idToken);
       const updatedUser = result?.user || tokenStorage.getUser();
       if (updatedUser) {
         setTokenRevision((current) => current + 1);
         setUser({
           ...updatedUser,
           role: normalizeRole(updatedUser.role),
+          isVerified: true,
         });
       }
       return result;
@@ -244,10 +249,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const sendOtp = async () => {
+  /** Xin phép gửi SMS OTP; bỏ trống phoneNumber để dùng số đã lưu trên tài khoản. */
+  const requestPhoneOtp = async (phoneNumber) => {
     setLoading(true);
     try {
-      return await authApi.sendOTP();
+      return await authApi.requestPhoneOtp(phoneNumber);
     } finally {
       setLoading(false);
     }
@@ -322,9 +328,9 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
-    verifyOtp,
+    verifyPhone,
     googleLogin,
-    sendOtp,
+    requestPhoneOtp,
     updatePendingRegistration,
     logout,
     isAuthenticated: Boolean(user),

@@ -109,7 +109,7 @@ export const MessengerAccountLinkPage = () => {
   );
   const loginPath = buildAuthPath('/login', returnPath, { intent: 'messenger-link' });
   const registerPath = buildAuthPath('/register', returnPath);
-  const verifyPath = buildAuthPath('/verify-email', returnPath);
+  const verifyPath = buildAuthPath('/verify-phone', returnPath);
   const currentRole = normalizeRole(user?.role);
   const isCitizen = currentRole === APP_ROLES.SERVICE_USER;
 
