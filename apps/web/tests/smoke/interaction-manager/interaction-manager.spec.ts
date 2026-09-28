@@ -79,94 +79,94 @@ const verifyRouteAndPage = async (page: Page, route: string, locator: string | R
 test.describe.serial('Interaction Manager smoke tests', () => {
   test.setTimeout(120000);
 
-  test('Login successfully and open interaction monitoring', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
+  let sharedPage: Page;
+  let monitor: PageMonitor;
 
-    await loginAsInteractionManager(page);
+  test.beforeAll(async ({ browser }) => {
+    sharedPage = await browser.newPage();
+    monitor = attachPageMonitoring(sharedPage);
+    await loginAsInteractionManager(sharedPage);
+  });
 
+  test.beforeEach(() => {
+    monitor.pageErrors.length = 0;
+    monitor.consoleErrors.length = 0;
+    monitor.badResponses.length = 0;
+  });
+
+  test.afterAll(async () => {
+    await sharedPage.close();
+  });
+
+  test('Login successfully and open interaction monitoring', async () => {
     await verifyRouteAndPage(
-      page,
+      sharedPage,
       interactionsRoute,
-      page.getByRole('heading', { name: 'Giám sát phản ánh', exact: true }),
+      sharedPage.getByRole('heading', { name: 'Giám sát phản ánh', exact: true }),
       'interaction monitoring'
     );
 
     await assertNoErrors(monitor, 'Interaction monitoring');
   });
 
-  test('Open approval inbox', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-
-    await loginAsInteractionManager(page);
+  test('Open approval inbox', async () => {
     await verifyRouteAndPage(
-      page,
+      sharedPage,
       approvalsRoute,
-      page.getByRole('heading', { name: 'Duyệt kết quả xử lý', exact: true }),
+      sharedPage.getByRole('heading', { name: 'Duyệt kết quả xử lý', exact: true }),
       'approval inbox'
     );
 
     await assertNoErrors(monitor, 'Approval inbox');
   });
 
-  test('Open approval detail from first available item', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
+  test('Open approval detail from first available item', async () => {
+    await sharedPage.goto(approvalsRoute);
+    await sharedPage.waitForLoadState('domcontentloaded');
 
-    await loginAsInteractionManager(page);
-    await page.goto(approvalsRoute);
-    await page.waitForLoadState('domcontentloaded');
-
-    const rowCount = await page.locator('table tbody tr').count();
+    const rowCount = await sharedPage.locator('table tbody tr').count();
     if (rowCount === 0) {
       console.log('No approval items available — skipping detail check.');
       return;
     }
 
-    const firstRow = page.locator('table tbody tr').first();
+    const firstRow = sharedPage.locator('table tbody tr').first();
     await expect(firstRow).toBeVisible({ timeout: 20000 });
 
     await firstRow.click();
-    await page.waitForURL(/\/manager\/approvals\/[A-Za-z0-9_-]+/, { timeout: 30000 });
+    await sharedPage.waitForURL(/\/manager\/approvals\/[A-Za-z0-9_-]+/, { timeout: 30000 });
 
-    await expect(page.getByRole('button', { name: /Quay lại|Quay lại danh sách/i })).toBeVisible({ timeout: 15000 });
+    await expect(sharedPage.getByRole('button', { name: /Quay lại|Quay lại danh sách/i })).toBeVisible({ timeout: 15000 });
     await assertNoErrors(monitor, 'Approval detail');
   });
 
-  test('Open SLA analytics dashboard', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-
-    await loginAsInteractionManager(page);
+  test('Open SLA analytics dashboard', async () => {
     await verifyRouteAndPage(
-      page,
+      sharedPage,
       slaRoute,
-      page.getByRole('heading', { name: 'Phân tích SLA sự vụ', exact: true }),
+      sharedPage.getByRole('heading', { name: 'Phân tích SLA sự vụ', exact: true }),
       'SLA analytics'
     );
 
     await assertNoErrors(monitor, 'SLA analytics');
   });
 
-  test('Open sentiment dashboard', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-
-    await loginAsInteractionManager(page);
+  test('Open sentiment dashboard', async () => {
     await verifyRouteAndPage(
-      page,
+      sharedPage,
       sentimentRoute,
-      page.getByRole('heading', { name: 'Cảm xúc người dân', exact: true }),
+      sharedPage.getByRole('heading', { name: 'Cảm xúc người dân', exact: true }),
       'sentiment dashboard'
     );
 
     await assertNoErrors(monitor, 'Sentiment dashboard');
   });
 
-  test('Open heatmap dashboard', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-
-    await loginAsInteractionManager(page);
+  test('Open heatmap dashboard', async () => {
     await verifyRouteAndPage(
-      page,
+      sharedPage,
       heatmapRoute,
-      page.getByRole('heading', { name: 'Bản đồ điểm nóng', exact: true }),
+      sharedPage.getByRole('heading', { name: 'Bản đồ điểm nóng', exact: true }),
       'heatmap dashboard'
     );
 

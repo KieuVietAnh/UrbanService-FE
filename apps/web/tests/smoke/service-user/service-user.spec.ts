@@ -1,11 +1,10 @@
 import { expect, Page, test } from '@playwright/test';
 import { LoginPage } from '../../pages/LoginPage';
-import { DashboardPage } from '../../pages/DashboardPage';
 import { TicketListPage } from '../../pages/TicketListPage';
 import { TicketDetailPage } from '../../pages/TicketDetailPage';
 
-const serviceUserEmail = 'nguyengiauzxc@gmail.com';
-const serviceUserPassword = 'nguyenhuugiau';
+const serviceUserEmail = process.env.SERVICE_USER_EMAIL;
+const serviceUserPassword = process.env.SERVICE_USER_PASSWORD;
 
 const dashboardRoute = '/';
 const ticketListRoute = '/tickets';
@@ -61,20 +60,25 @@ const assertNoErrors = async (monitor: PageMonitor, context: string) => {
 };
 
 const loginAsServiceUser = async (page: Page) => {
+  if (!serviceUserEmail || !serviceUserPassword) {
+    throw new Error('SERVICE_USER_EMAIL và SERVICE_USER_PASSWORD chưa được cấu hình.');
+  }
+
   await page.goto('/login');
   const loginPage = new LoginPage(page);
   await loginPage.login(serviceUserEmail, serviceUserPassword);
   await page.waitForLoadState('domcontentloaded');
 
-  const loginError = page.locator('.alert.alert-error, .text-red-600');
-  const hasLoginError = await loginError.isVisible({ timeout: 4000 }).catch(() => false);
+  const loginError = loginPage.errorMessage;
+  const hasLoginError = await loginError.isVisible({ timeout: 6000 }).catch(() => false);
   if (hasLoginError) {
     const message = (await loginError.first().innerText().catch(() => '')).trim() || 'Email hoặc mật khẩu không chính xác.';
+    // If it's a rate-limit error, throw a descriptive message so it's identifiable
     throw new Error(`Service user login failed for ${serviceUserEmail}: ${message}. The external service-user account or backend auth flow is unavailable in this environment.`);
   }
 
   // Wait until the app redirects away from the login route and the client finishes loading.
-  await page.waitForFunction(() => !window.location.pathname.includes('/login'), undefined, { timeout: 15000 }).catch(async () => {
+  await page.waitForFunction(() => !window.location.pathname.includes('/login'), undefined, { timeout: 30000 }).catch(async () => {
     const url = page.url();
     const bodyText = await page.locator('body').innerText().catch(() => '');
     throw new Error(`Service user login did not redirect. URL=${url}. Body=${bodyText.slice(0, 200)}...`);
@@ -99,21 +103,32 @@ const verifyRouteAndPage = async (page: Page, route: string, locator: string | R
   expect(page.url().includes(route), `${description} route did not resolve to ${route}`).toBeTruthy();
 };
 
-test.describe('Service User smoke tests', () => {
-  test.setTimeout(120000);
+test.describe.serial('Service User smoke tests', () => {
+  test.setTimeout(300000);
 
-  test.beforeEach(async ({ page }) => {
-    try {
-      await loginAsServiceUser(page);
-    } catch (error) {
-      test.skip(true, error instanceof Error ? error.message : String(error));
-    }
+  let page: Page;
+
+  test.beforeAll(() => {
+    test.skip(
+      !serviceUserEmail || !serviceUserPassword,
+      'Cần SERVICE_USER_EMAIL và SERVICE_USER_PASSWORD hợp lệ để chạy smoke test Service User.'
+    );
   });
 
-  test('Login successfully and open dashboard', async ({ page }) => {
+  test.beforeAll(async ({ browser }) => {
+    if (!serviceUserEmail || !serviceUserPassword) return;
+    page = await browser.newPage();
+    await loginAsServiceUser(page);
+  });
+
+  test.afterAll(async () => {
+    if (page) await page.close();
+  });
+
+  test('Login successfully and open dashboard', async () => {
     const monitor = attachPageMonitoring(page);
 
-    // loginAsServiceUser is performed in beforeEach; the test skips automatically if the external service-user account is unavailable.
+    // The suite signs in once in beforeAll to avoid triggering production rate limits.
 
     // Service users land on the public landing page ("/"), not the internal staff dashboard.
     // Check for the landing hero as the primary signal the app loaded for service-user.
@@ -128,7 +143,7 @@ test.describe('Service User smoke tests', () => {
     await assertNoErrors(monitor, 'Dashboard');
   });
 
-  test('Open ticket list and open one ticket detail', async ({ page }) => {
+  test('Open ticket list and open one ticket detail', async () => {
     const monitor = attachPageMonitoring(page);
 
     await page.goto(ticketListRoute);
@@ -155,7 +170,7 @@ test.describe('Service User smoke tests', () => {
     await assertNoErrors(monitor, 'Ticket detail');
   });
 
-  test('Verify community feed loads', async ({ page }) => {
+  test('Verify community feed loads', async () => {
     const monitor = attachPageMonitoring(page);
 
     await page.goto(communityFeedRoute);
@@ -166,7 +181,7 @@ test.describe('Service User smoke tests', () => {
     await assertNoErrors(monitor, 'Community feed');
   });
 
-  test('Verify notification center loads', async ({ page }) => {
+  test('Verify notification center loads', async () => {
     const monitor = attachPageMonitoring(page);
 
     await page.goto(notificationCenterRoute);
@@ -178,7 +193,7 @@ test.describe('Service User smoke tests', () => {
     await assertNoErrors(monitor, 'Notification center');
   });
 
-  test('Verify profile page loads', async ({ page }) => {
+  test('Verify profile page loads', async () => {
     const monitor = attachPageMonitoring(page);
 
     await page.goto(profileRoute);

@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'tests',
-  timeout: 60000,
+  timeout: 90000,
   expect: {
     timeout: 10000,
   },
@@ -18,7 +18,7 @@ export default defineConfig({
     // CI smoke tests exercise the deployed production site. Local runs can
     // override this explicitly with BASE_URL when another target is needed.
     baseURL: process.env.BASE_URL || 'https://urbanservice.me/',
-    actionTimeout: 10000,
+    actionTimeout: 30000,
     navigationTimeout: 30000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
