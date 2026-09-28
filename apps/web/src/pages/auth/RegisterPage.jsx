@@ -504,8 +504,15 @@ export const RegisterPage = () => {
        * ở màn xác thực; và mỗi tin nhắn là chi phí thật nên để người dùng tự bấm
        * gửi, thay vì đốt một lượt cho cả những người đăng ký rồi bỏ dở.
        */
+      /*
+       * Số điện thoại vừa nhập ở form này rồi, nên đưa thẳng sang bước nhập mã thay
+       * vì hỏi lại số lần nữa. Trang xác thực tự gửi mã khi thấy cờ autoSend.
+       */
       void registeredUser;
-      navigate(buildAuthPath('/verify-phone', requestedRedirect), { replace: true });
+      navigate(buildAuthPath('/verify-phone', requestedRedirect), {
+        replace: true,
+        state: { autoSend: true, phoneNumber: normalizedValues.phone },
+      });
     } catch (err) {
       const registerError = getRegisterErrorDetails(err);
       if (isEditingRegistration && registerError.title === 'Không thể đăng ký') {
