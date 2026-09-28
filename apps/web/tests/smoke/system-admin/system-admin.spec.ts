@@ -69,7 +69,7 @@ const loginAsSystemAdmin = async (page: Page) => {
   const loginPage = new LoginPage(page);
   await loginPage.login(systemAdminEmail, systemAdminPassword);
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
+  await page.waitForFunction(() => !window.location.pathname.includes('/login'), undefined, { timeout: 30000 });
   await page.waitForSelector('.admin-page-hero, .admin-hero-title, .dashboard-shell, header', { timeout: 30000 }).catch(() => undefined);
 };
 
@@ -97,15 +97,31 @@ const verifyRouteAndPage = async (
 test.describe.serial('System Administrator smoke tests', () => {
   test.setTimeout(120000);
 
-  test('Login successfully as administrator', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsSystemAdmin(page);
+  let sharedPage: Page;
+  let monitor: PageMonitor;
 
-    const adminHeading = page
+  test.beforeAll(async ({ browser }) => {
+    sharedPage = await browser.newPage();
+    monitor = attachPageMonitoring(sharedPage);
+    await loginAsSystemAdmin(sharedPage);
+  });
+
+  test.beforeEach(() => {
+    monitor.pageErrors.length = 0;
+    monitor.consoleErrors.length = 0;
+    monitor.badResponses.length = 0;
+  });
+
+  test.afterAll(async () => {
+    await sharedPage.close();
+  });
+
+  test('Login successfully as administrator', async () => {
+    const adminHeading = sharedPage
       .locator('h1, h2')
       .filter({ hasText: /Quản lý người dùng|Quản lý feedback|Quản lý phản ánh|Danh mục phản ánh|Cấu hình thời hạn SLA|Chính sách SLA|Nhật ký hệ thống|Hiệu năng/i })
       .first();
-    const shellOrLogout = page.locator('button.admin-sidebar-logout, .dashboard-shell, .admin-page-hero').first();
+    const shellOrLogout = sharedPage.locator('button.admin-sidebar-logout, .dashboard-shell, .admin-page-hero').first();
 
     const headingVisible = await adminHeading.isVisible().catch(() => false);
     const shellVisible = await shellOrLogout.isVisible().catch(() => false);
@@ -116,27 +132,18 @@ test.describe.serial('System Administrator smoke tests', () => {
     await assertNoErrors(monitor, 'Administrator login');
   });
 
-  test('User Management loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsSystemAdmin(page);
-
-    await verifyRouteAndPage(page, usersRoute, page.getByRole('heading', { name: /Quản lý người dùng/i }), 'User Management');
+  test('User Management loads', async () => {
+    await verifyRouteAndPage(sharedPage, usersRoute, sharedPage.getByRole('heading', { name: /Quản lý người dùng/i }), 'User Management');
     await assertNoErrors(monitor, 'User Management');
   });
 
-  test('Feedback Management loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsSystemAdmin(page);
-
-    await verifyRouteAndPage(page, feedbacksRoute, page.getByRole('heading', { name: /Quản lý feedback|Quản lý phản ánh/i }), 'Feedback Management');
+  test('Feedback Management loads', async () => {
+    await verifyRouteAndPage(sharedPage, feedbacksRoute, sharedPage.getByRole('heading', { name: /Quản lý feedback|Quản lý phản ánh/i }), 'Feedback Management');
     await assertNoErrors(monitor, 'Feedback Management');
   });
 
-  test('Category Management loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsSystemAdmin(page);
-
-    await verifyRouteAndPage(page, categoriesRoute, page.getByRole('heading', { name: /Danh mục phản ánh/i }), 'Category Management');
+  test('Category Management loads', async () => {
+    await verifyRouteAndPage(sharedPage, categoriesRoute, sharedPage.getByRole('heading', { name: /Danh mục phản ánh/i }), 'Category Management');
     await assertNoErrors(
       monitor,
       'Category Management',
@@ -145,11 +152,8 @@ test.describe.serial('System Administrator smoke tests', () => {
     );
   });
 
-  test('SLA Configuration loads', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsSystemAdmin(page);
-
-    await verifyRouteAndPage(page, slaRoute, page.getByRole('heading', { name: 'Chính sách SLA', exact: true }), 'SLA Configuration');
+  test('SLA Configuration loads', async () => {
+    await verifyRouteAndPage(sharedPage, slaRoute, sharedPage.getByRole('heading', { name: 'Chính sách SLA', exact: true }), 'SLA Configuration');
     await assertNoErrors(
       monitor,
       'SLA Configuration',
@@ -158,23 +162,17 @@ test.describe.serial('System Administrator smoke tests', () => {
     );
   });
 
-  test('Retired Audit Log route redirects to the admin dashboard', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsSystemAdmin(page);
-
-    await page.goto(auditRoute);
-    await expect(page).toHaveURL(/\/dashboard\/?$/, { timeout: 30000 });
-    await expect(page.getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible();
+  test('Retired Audit Log route redirects to the admin dashboard', async () => {
+    await sharedPage.goto(auditRoute);
+    await expect(sharedPage).toHaveURL(/\/dashboard\/?$/, { timeout: 30000 });
+    await expect(sharedPage.getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible();
     await assertNoErrors(monitor, 'Retired Audit Log redirect');
   });
 
-  test('Retired Performance route redirects to the admin dashboard', async ({ page }) => {
-    const monitor = attachPageMonitoring(page);
-    await loginAsSystemAdmin(page);
-
-    await page.goto(performanceRoute);
-    await expect(page).toHaveURL(/\/dashboard\/?$/, { timeout: 30000 });
-    await expect(page.getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible();
+  test('Retired Performance route redirects to the admin dashboard', async () => {
+    await sharedPage.goto(performanceRoute);
+    await expect(sharedPage).toHaveURL(/\/dashboard\/?$/, { timeout: 30000 });
+    await expect(sharedPage.getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible();
     await assertNoErrors(monitor, 'Retired Performance redirect');
   });
 });

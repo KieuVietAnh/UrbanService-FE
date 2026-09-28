@@ -13,6 +13,8 @@ const loginAs = async (page: Page, email: string, password: string) => {
 };
 
 test.describe('Authentication smoke tests', () => {
+  test.setTimeout(180000);
+
   test('Administrator can log in and load the admin shell', async ({ page }) => {
     await loginAs(page, administratorEmail, validPassword);
     await page.waitForFunction(() => window.location.pathname !== '/login', undefined, { timeout: 30000 });

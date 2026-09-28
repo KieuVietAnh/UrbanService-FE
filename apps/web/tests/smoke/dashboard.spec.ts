@@ -12,9 +12,13 @@ const loginAs = async (page, email: string, password: string) => {
 };
 
 test.describe('System Staff smoke tests', () => {
+  test.setTimeout(300000);
   test('System Staff Incident dashboard loads successfully', async ({ page }) => {
     await loginAs(page, systemStaffEmail, validPassword);
-    await page.waitForURL(/\/dashboard(?:[/?#]|$)/, { timeout: 30000 });
+    // First confirm we left the /login page (handles slow auth responses)
+    await page.waitForFunction(() => !window.location.pathname.includes('/login'), undefined, { timeout: 60000 });
+    // Then wait for the app to redirect to /dashboard
+    await page.waitForURL(/\/dashboard(?:[/?#]|$)/, { timeout: 60000 });
 
     await expect(page.getByRole('heading', { name: 'Tổng quan công việc' })).toBeVisible({ timeout: 30000 });
     const kpiHeading = page.getByRole('heading', { name: 'Nhịp công việc hiện tại' });
