@@ -32,6 +32,7 @@ export const VerifyPhonePage = () => {
   const [confirmedPhone, setConfirmedPhone] = useState('');
   const [otpDigits, setOtpDigits] = useState(() => Array(OTP_LENGTH).fill(''));
   const [remainingToday, setRemainingToday] = useState(null);
+  const [isTestNumber, setIsTestNumber] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -135,6 +136,7 @@ export const VerifyPhonePage = () => {
 
     setConfirmedPhone(normalized);
     setRemainingToday(permission?.remainingToday ?? null);
+    setIsTestNumber(permission?.isTestNumber === true);
     setOtpDigits(Array(OTP_LENGTH).fill(''));
     setStep('otp');
     setResendIn(RESEND_COOLDOWN_SECONDS);
@@ -376,6 +378,10 @@ export const VerifyPhonePage = () => {
             {typeof remainingToday === 'number' ? (
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 Hôm nay hệ thống còn {remainingToday} lượt gửi tin nhắn.
+              </p>
+            ) : isTestNumber ? (
+              <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                Số này là số thử nghiệm: dùng mã cố định và không tốn tin nhắn nào.
               </p>
             ) : null}
 
