@@ -15,6 +15,20 @@ const areaAlertsApi = read('../src/features/area-alerts/api/area-alerts-api.ts')
 const aiConversation = read('../src/features/messaging/components/ai-conversation-screen.tsx');
 const residentStatus = read('../src/features/resident-status.ts');
 const swagger = read('../../../swagger.json');
+const appConfig = read('../app.json');
+const dynamicAppConfig = read('../app.config.js');
+const rootLayout = read('../app/_layout.tsx');
+const brandSplash = read('../src/screens/splash/SplashScreen.tsx');
+
+test('native and branded splash screens both use the bundled UrbanMind artwork', () => {
+  assert.match(appConfig, /"expo-splash-screen"/);
+  assert.match(appConfig, /"image": "\.\/assets\/icon\.png"/);
+  assert.match(dynamicAppConfig, /'expo-splash-screen'/);
+  assert.match(dynamicAppConfig, /image: '\.\/assets\/icon\.png'/);
+  assert.match(rootLayout, /BrandSplashScreen/);
+  assert.match(rootLayout, /BRAND_SPLASH_DURATION_MS/);
+  assert.match(brandSplash, /require\('\.\.\/\.\.\/\.\.\/assets\/icon\.png'\)/);
+});
 
 test('community is Incident-centric while My Feedback remains Feedback-centric', () => {
   assert.match(communityApi, /\/api\/public\/incidents/);
