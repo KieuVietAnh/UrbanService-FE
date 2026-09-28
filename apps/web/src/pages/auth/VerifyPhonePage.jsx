@@ -27,10 +27,14 @@ export const VerifyPhonePage = () => {
   const navigate = useNavigate();
   const routeLocation = useLocation();
 
-  const [step, setStep] = useState('phone');
+  const [step, setStep] = useState(() => (routeLocation.state?.autoSend === true ? 'otp' : 'phone'));
   const [phoneInput, setPhoneInput] = useState('');
-  const [confirmedPhone, setConfirmedPhone] = useState('');
+  const [confirmedPhone, setConfirmedPhone] = useState(
+    () => normalizePhone(routeLocation.state?.phoneNumber || '') || ''
+  );
   const [otpDigits, setOtpDigits] = useState(() => Array(OTP_LENGTH).fill(''));
+  // Không đọc ref lúc render được, nên trạng thái 'đã gửi mã' phải là state.
+  const [otpSent, setOtpSent] = useState(false);
   const [remainingToday, setRemainingToday] = useState(null);
   const [isTestNumber, setIsTestNumber] = useState(false);
   const [resendIn, setResendIn] = useState(0);
@@ -134,6 +138,7 @@ export const VerifyPhonePage = () => {
         confirmation.current = result;
       });
 
+    setOtpSent(true);
     setConfirmedPhone(normalized);
     setRemainingToday(permission?.remainingToday ?? null);
     setIsTestNumber(permission?.isTestNumber === true);
@@ -156,7 +161,14 @@ export const VerifyPhonePage = () => {
     const target = normalizePhone(phoneFromRegister || user?.phoneNumber || '');
     if (!target) return;
     autoSendStarted.current = true;
-    void run(() => sendOtpTo(target));
+    void run(() => sendOtpTo(target)).then(() => {
+      /*
+       * Gửi hỏng — hết hạn mức, số đã thuộc tài khoản khác, reCAPTCHA lỗi — thì lùi
+       * về bước nhập số để người dùng sửa và thử lại, thay vì mắc kẹt ở màn nhập mã
+       * mà chẳng bao giờ có mã nào tới.
+       */
+      if (!confirmation.current) setStep('phone');
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSendRequested, phoneFromRegister, user?.phoneNumber]);
 
@@ -269,7 +281,14 @@ export const VerifyPhonePage = () => {
           <p className="auth-login-description mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
             {step === 'phone'
               ? 'Chúng tôi gửi mã OTP qua tin nhắn SMS để xác nhận số điện thoại của bạn.'
-              : (
+              : busy && !otpSent ? (
+                <>
+                  Đang gửi mã xác thực tới{' '}
+                  <strong className="font-semibold text-slate-700 dark:text-slate-200">
+                    {formatPhone(confirmedPhone)}
+                  </strong>...
+                </>
+              ) : (
                 <>
                   Nhập mã gồm {OTP_LENGTH} chữ số vừa gửi tới{' '}
                   <strong className="font-semibold text-slate-700 dark:text-slate-200">
@@ -367,7 +386,7 @@ export const VerifyPhonePage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => { setStep('phone'); setSuccess(''); setError(null); }}
+                onClick={() => { setStep('phone'); setOtpSent(false); setSuccess(''); setError(null); }}
                 className="inline-flex items-center gap-1.5 font-semibold text-slate-600 transition hover:underline dark:text-slate-300"
               >
                 <Lucide.PencilLine size={14} aria-hidden="true" />
