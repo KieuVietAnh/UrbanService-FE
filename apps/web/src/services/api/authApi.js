@@ -46,6 +46,9 @@ const saveUserSession = (response) => {
     userId: userPayload?.userId ?? userPayload?.id,
     email: userPayload?.email,
     fullName: userPayload?.fullName,
+    // Màn xác thực điền sẵn số này. Không lưu lại thì ô số luôn trống, người dùng
+    // phải gõ lại chính số họ vừa đăng ký.
+    phoneNumber: userPayload?.phoneNumber ?? null,
     role: normalizedRole,
     isVerified: userPayload?.isVerified === true || userPayload?.isVerified === 'true',
   };
