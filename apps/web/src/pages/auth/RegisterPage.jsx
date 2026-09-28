@@ -329,6 +329,8 @@ export const RegisterPage = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const submitInFlightRef = useRef(false);
+  // Đánh dấu đã tự điều hướng sau khi submit, để effect ở trên không ghi đè lên.
+  const submittedRef = useRef(false);
   const draftHydratedRef = useRef(false);
 
   useEffect(() => {
@@ -354,13 +356,27 @@ export const RegisterPage = () => {
   useEffect(() => {
     if (!user) return;
 
+    /*
+     * Vừa bấm đăng ký xong thì hàm submit đã tự điều hướng, kèm cờ autoSend và số
+     * điện thoại vừa nhập. Effect này chạy ngay sau đó vì user thay đổi, và nếu nó
+     * cũng điều hướng thì lần replace của nó sẽ xoá sạch state kia — trang xác thực
+     * mount lại với state rỗng nên quay về bước nhập số, đúng thứ vừa bỏ đi.
+     *
+     * Effect này chỉ để lo trường hợp còn lại: người đã đăng nhập mà chưa xác thực
+     * tự mở /register.
+     */
+    if (submittedRef.current) return;
+
     if (user.isVerified) {
       navigate(requestedRedirect || getRoleEntryPath(user.role), { replace: true });
       return;
     }
 
     if (!isEditingRegistration) {
-      navigate(buildAuthPath('/verify-phone', requestedRedirect), { replace: true });
+      navigate(buildAuthPath('/verify-phone', requestedRedirect), {
+        replace: true,
+        state: { phoneNumber: user.phoneNumber || '' },
+      });
     }
   }, [isEditingRegistration, navigate, requestedRedirect, user]);
 
@@ -485,9 +501,10 @@ export const RegisterPage = () => {
           window.sessionStorage.removeItem(previousSessionKey);
         }
 
+        submittedRef.current = true;
         navigate(buildAuthPath('/verify-phone', requestedRedirect), {
           replace: true,
-          state: { registrationUpdated: true },
+          state: { registrationUpdated: true, phoneNumber: normalizedValues.phone },
         });
         return;
       }
@@ -504,6 +521,7 @@ export const RegisterPage = () => {
        * vì hỏi lại số lần nữa. Trang xác thực tự gửi mã khi thấy cờ autoSend.
        */
       void registeredUser;
+      submittedRef.current = true;
       navigate(buildAuthPath('/verify-phone', requestedRedirect), {
         replace: true,
         state: { autoSend: true, phoneNumber: normalizedValues.phone },
