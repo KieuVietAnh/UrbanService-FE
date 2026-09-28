@@ -107,6 +107,8 @@ export const CreateTicketPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submittedFeedbackId, setSubmittedFeedbackId] = useState(null);
+  const [blockedReason, setBlockedReason] = useState(null);
+  const [blockedMessage, setBlockedMessage] = useState('');
   const [previewAttachmentId, setPreviewAttachmentId] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [pendingFocusField, setPendingFocusField] = useState(null);
@@ -1054,6 +1056,21 @@ export const CreateTicketPage = () => {
     } catch (error) {
       console.error('createTicket error', error);
 
+      /*
+       * Backend trả mã nghiệp vụ trong data.code để client rẽ nhánh. Hai trường hợp
+       * này không phải lỗi kỹ thuật mà là trạng thái tài khoản, nên hiện một màn
+       * riêng giải thích việc cần làm thay vì một dòng đỏ cạnh nút gửi.
+       */
+      const businessCode = error?.response?.data?.data?.code;
+      if (businessCode === 'PHONE_NOT_VERIFIED' || businessCode === 'DAILY_FEEDBACK_LIMIT_REACHED') {
+        setBlockedReason(businessCode);
+        setBlockedMessage(
+          error?.response?.data?.msg || error?.response?.data?.message || ''
+        );
+        setSubmitting(false);
+        return;
+      }
+
       const networkUploadError = error?.message === 'Network Error';
       const responseMessage = error?.response?.data?.message || error?.response?.data?.msg;
       setSubmitError(
@@ -1100,10 +1117,90 @@ export const CreateTicketPage = () => {
     setSubmitError('');
     setSubmitted(false);
     setSubmittedFeedbackId(null);
+    setBlockedReason(null);
+    setBlockedMessage('');
     setPreviewAttachmentId(null);
     setFieldErrors({});
     setPendingFocusField(null);
   };
+
+  if (blockedReason === 'PHONE_NOT_VERIFIED') {
+    return (
+      <main className="flex min-h-[calc(100vh-220px)] items-center justify-center py-8 text-base-content">
+        <section className="w-full max-w-2xl rounded-[28px] border border-base-300 bg-base-100 p-6 text-center shadow-sm sm:p-10">
+          <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-warning/12 text-warning" aria-hidden="true">
+            <Lucide.ShieldAlert size={30} />
+          </span>
+          <h1 className="mt-5 text-2xl font-bold tracking-tight sm:text-3xl">
+            Tài khoản chưa xác thực số điện thoại
+          </h1>
+          <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-base-content/60">
+            {blockedMessage || 'Bạn cần xác thực số điện thoại trước khi gửi phản ánh.'}
+            {' '}Chúng tôi gửi một mã OTP qua tin nhắn SMS để xác nhận số của bạn. Nội dung
+            bạn vừa nhập vẫn được giữ lại, xác thực xong quay lại gửi là được.
+          </p>
+
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => navigate('/verify-phone', { state: { from: '/tickets/create' } })}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700"
+            >
+              <Lucide.ShieldCheck size={16} aria-hidden="true" />
+              Xác thực số điện thoại
+            </button>
+            <button
+              type="button"
+              onClick={() => setBlockedReason(null)}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-base-300 bg-base-100 px-4 text-sm font-semibold transition hover:border-blue-200 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <Lucide.ArrowLeft size={16} aria-hidden="true" />
+              Quay lại nội dung
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (blockedReason === 'DAILY_FEEDBACK_LIMIT_REACHED') {
+    return (
+      <main className="flex min-h-[calc(100vh-220px)] items-center justify-center py-8 text-base-content">
+        <section className="w-full max-w-2xl rounded-[28px] border border-base-300 bg-base-100 p-6 text-center shadow-sm sm:p-10">
+          <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-warning/12 text-warning" aria-hidden="true">
+            <Lucide.CalendarClock size={30} />
+          </span>
+          <h1 className="mt-5 text-2xl font-bold tracking-tight sm:text-3xl">
+            Bạn đã gửi đủ số phản ánh hôm nay
+          </h1>
+          <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-base-content/60">
+            {blockedMessage || 'Bạn đã gửi đủ số phản ánh cho phép trong hôm nay.'}
+            {' '}Giới hạn này giúp đội ngũ tiếp nhận xử lý kịp các phản ánh đang chờ. Bạn có
+            thể quay lại vào ngày mai, hoặc theo dõi những phản ánh đã gửi.
+          </p>
+
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => navigate('/tickets')}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700"
+            >
+              <Lucide.ListChecks size={16} aria-hidden="true" />
+              Xem phản ánh của tôi
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-base-300 bg-base-100 px-4 text-sm font-semibold transition hover:border-blue-200 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <Lucide.Home size={16} aria-hidden="true" />
+              Về trang chủ
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   if (submitted) {
     return (

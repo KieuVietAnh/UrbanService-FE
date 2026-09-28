@@ -299,69 +299,10 @@ const getOtpSessionKey = (user, fallbackEmail = '') => {
   return `urbanmind:otp-sent:${identity}`;
 };
 
-const getOtpDeliveryError = (err) => {
-  const status = err?.status ?? err?.response?.status;
-  const messages = [
-    ...toMessageList(err?.response?.data),
-    ...toMessageList(err?.message),
-  ].filter(Boolean);
-  const normalizedMessage = normalizeForMatch(messages.join(' '));
-
-  if (
-    err?.code === 'ERR_NETWORK' ||
-    normalizedMessage.includes('network error') ||
-    normalizedMessage.includes('failed to fetch')
-  ) {
-    return {
-      title: 'Chưa thể gửi mã xác thực',
-      message: 'Không thể kết nối đến máy chủ. Bạn có thể thử gửi lại mã ở bước tiếp theo.',
-    };
-  }
-
-  if (err?.code === 'ECONNABORTED' || normalizedMessage.includes('timeout')) {
-    return {
-      title: 'Gửi mã mất quá nhiều thời gian',
-      message: 'Máy chủ phản hồi chậm. Bạn có thể thử gửi lại mã ở bước tiếp theo.',
-    };
-  }
-
-  if (status === 429 || normalizedMessage.includes('too many') || normalizedMessage.includes('qua nhieu')) {
-    return {
-      title: 'Bạn thao tác quá nhanh',
-      message: 'Vui lòng chờ một lúc rồi gửi lại mã xác thực.',
-    };
-  }
-
-  if (
-    normalizedMessage.includes('brevo') ||
-    normalizedMessage.includes('email service') ||
-    normalizedMessage.includes('mail service') ||
-    normalizedMessage.includes('gui email')
-  ) {
-    return {
-      title: 'Chưa thể gửi email',
-      message: 'Tài khoản đã được tạo nhưng dịch vụ gửi email đang gián đoạn. Vui lòng thử gửi lại mã.',
-    };
-  }
-
-  if (status >= 500) {
-    return {
-      title: 'Chưa thể gửi mã xác thực',
-      message: 'Tài khoản đã được tạo nhưng máy chủ chưa thể gửi mã lúc này. Vui lòng thử lại sau.',
-    };
-  }
-
-  return {
-    title: 'Chưa thể gửi mã xác thực',
-    message: 'Tài khoản đã được tạo. Vui lòng thử gửi lại mã ở bước tiếp theo.',
-  };
-};
-
 export const RegisterPage = () => {
   const {
     user,
     register,
-    sendOtp,
     updatePendingRegistration,
   } = useAuth();
   const navigate = useNavigate();
@@ -419,7 +360,7 @@ export const RegisterPage = () => {
     }
 
     if (!isEditingRegistration) {
-      navigate(buildAuthPath('/verify-email', requestedRedirect), { replace: true });
+      navigate(buildAuthPath('/verify-phone', requestedRedirect), { replace: true });
     }
   }, [isEditingRegistration, navigate, requestedRedirect, user]);
 
@@ -522,9 +463,6 @@ export const RegisterPage = () => {
 
     try {
       if (isEditingRegistration) {
-        const previousEmail = String(user?.email || '').trim().toLowerCase();
-        const nextEmail = normalizedValues.email.toLowerCase();
-        const emailChanged = previousEmail !== nextEmail;
         const previousSessionKey = getOtpSessionKey(user, user?.email);
 
         const updatedUser = await updatePendingRegistration({
@@ -542,25 +480,14 @@ export const RegisterPage = () => {
         setPassword('');
         setConfirmPassword('');
 
-        let otpDelivery;
-        if (emailChanged) {
+        void updatedUser;
+        if (previousSessionKey) {
           window.sessionStorage.removeItem(previousSessionKey);
-          const sentAt = Date.now();
-          const nextSessionKey = getOtpSessionKey(updatedUser, normalizedValues.email);
-          window.sessionStorage.setItem(nextSessionKey, JSON.stringify({
-            sentAt,
-            email: updatedUser?.email || normalizedValues.email,
-          }));
-          otpDelivery = { status: 'sent', sentAt };
         }
 
-        navigate(buildAuthPath('/verify-email', requestedRedirect), {
+        navigate(buildAuthPath('/verify-phone', requestedRedirect), {
           replace: true,
-          state: {
-            registrationUpdated: true,
-            emailChanged,
-            otpDelivery,
-          },
+          state: { registrationUpdated: true },
         });
         return;
       }
@@ -572,26 +499,14 @@ export const RegisterPage = () => {
         normalizedValues.phone,
       );
 
-      let otpDelivery;
-      try {
-        await sendOtp();
-        const sentAt = Date.now();
-        const sessionKey = getOtpSessionKey(registeredUser, normalizedValues.email);
-        window.sessionStorage.setItem(sessionKey, JSON.stringify({
-          sentAt,
-          email: registeredUser?.email || normalizedValues.email,
-        }));
-        otpDelivery = { status: 'sent', sentAt };
-      } catch (otpError) {
-        otpDelivery = {
-          status: 'failed',
-          error: getOtpDeliveryError(otpError),
-        };
-      }
-
-      navigate(buildAuthPath('/verify-email', requestedRedirect), {
+      /*
+       * Số điện thoại vừa nhập ở form này rồi, nên đưa thẳng sang bước nhập mã thay
+       * vì hỏi lại số lần nữa. Trang xác thực tự gửi mã khi thấy cờ autoSend.
+       */
+      void registeredUser;
+      navigate(buildAuthPath('/verify-phone', requestedRedirect), {
         replace: true,
-        state: { otpDelivery },
+        state: { autoSend: true, phoneNumber: normalizedValues.phone },
       });
     } catch (err) {
       const registerError = getRegisterErrorDetails(err);
@@ -901,7 +816,7 @@ export const RegisterPage = () => {
             <p>
               {isEditingRegistration
                 ? 'Có thể sửa email và mật khẩu trước khi xác thực. Đổi email sẽ tạo mã OTP mới.'
-                : 'Sau khi đăng ký, hệ thống sẽ chuyển bạn sang bước xác thực email.'}
+                : 'Sau khi đăng ký, hệ thống sẽ chuyển bạn sang bước xác thực số điện thoại.'}
             </p>
           </div>
 
@@ -926,8 +841,8 @@ export const RegisterPage = () => {
 
         <p className="auth-login-register relative z-10 mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           {isEditingRegistration ? (
-            <Link to={buildAuthPath('/verify-email', requestedRedirect)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
-              Quay lại xác thực email
+            <Link to={buildAuthPath('/verify-phone', requestedRedirect)} className="font-semibold text-blue-700 hover:underline dark:text-blue-300">
+              Quay lại xác thực số điện thoại
             </Link>
           ) : (
             <>
