@@ -43,10 +43,16 @@ export const VerifyPhonePage = () => {
   const inputRefs = useRef([]);
 
   const redirectTo = routeLocation.state?.from || null;
+  // Tới từ màn đăng ký thì số đã nhập rồi, không hỏi lại lần nữa.
+  const autoSendRequested = routeLocation.state?.autoSend === true;
+  const phoneFromRegister = routeLocation.state?.phoneNumber || '';
+  const autoSendStarted = useRef(false);
 
   useEffect(() => {
-    setPhoneInput(user?.phoneNumber ? formatPhone(user.phoneNumber) : '');
-  }, [user?.phoneNumber]);
+    const known = phoneFromRegister || user?.phoneNumber || '';
+    if (!known) return;
+    setPhoneInput(formatPhone(normalizePhone(known) || known));
+  }, [phoneFromRegister, user?.phoneNumber]);
 
   useEffect(() => {
     if (resendIn <= 0) return undefined;
@@ -135,6 +141,22 @@ export const VerifyPhonePage = () => {
     setSuccess(`Mã xác thực đã được gửi tới ${formatPhone(normalized)}.`);
     focusOtpInput(0);
   };
+
+  /*
+   * Gửi mã ngay khi vừa đăng ký xong, đúng một lần. Bắt người dùng gõ lại chính số
+   * họ vừa điền ở form đăng ký rồi mới được bấm gửi là thừa một bước.
+   *
+   * Chỉ chạy khi có cờ autoSend từ màn đăng ký, nên mở thẳng /verify-phone hay tải
+   * lại trang đều không tự đốt thêm một tin nhắn.
+   */
+  useEffect(() => {
+    if (!autoSendRequested || autoSendStarted.current) return;
+    const target = normalizePhone(phoneFromRegister || user?.phoneNumber || '');
+    if (!target) return;
+    autoSendStarted.current = true;
+    void run(() => sendOtpTo(target));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSendRequested, phoneFromRegister, user?.phoneNumber]);
 
   const handlePhoneSubmit = (event) => {
     event.preventDefault();

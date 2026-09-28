@@ -1,6 +1,6 @@
 // src/pages/profile/ProfilePage.jsx
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getRoleLabel } from '../../utils/roleMap';
@@ -121,6 +121,7 @@ const statusTone = status => {
 
 export const ProfilePage = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -451,7 +452,23 @@ export const ProfilePage = () => {
               <strong className="mt-3 block text-lg font-semibold">
                 {isVerified ? 'Đã xác minh' : 'Chưa xác minh'}
               </strong>
-              <p className="mt-1 text-xs profile-hero-metric-copy text-slate-500">Dữ liệu từ hồ sơ tài khoản</p>
+              {isVerified ? (
+                <p className="mt-1 text-xs profile-hero-metric-copy text-slate-500">Dữ liệu từ hồ sơ tài khoản</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-xs profile-hero-metric-copy text-slate-500">
+                    Xác thực số điện thoại để gửi được phản ánh.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/verify-phone', { state: { from: '/profile' } })}
+                    className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    <Lucide.ShieldCheck size={14} aria-hidden="true" />
+                    Xác thực ngay
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="profile-hero-metric rounded-2xl border border-white/80 bg-white/70 px-4 py-4 text-slate-900 shadow-sm backdrop-blur-md">
