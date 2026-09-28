@@ -58,7 +58,7 @@ const loginAsInteractionManager = async (page: Page) => {
   const loginPage = new LoginPage(page);
   await loginPage.login(interactionManagerEmail, interactionManagerPassword);
   await page.waitForLoadState('domcontentloaded');
-  await page.waitForFunction(() => !window.location.pathname.includes('/login'), { timeout: 30000 });
+  await page.waitForFunction(() => !window.location.pathname.includes('/login'), undefined, { timeout: 30000 });
   await page.waitForSelector('.admin-page-hero, .admin-hero-title, .dashboard-shell, header', { timeout: 30000 }).catch(() => undefined);
 };
 
