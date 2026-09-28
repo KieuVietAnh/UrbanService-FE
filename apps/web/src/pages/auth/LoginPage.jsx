@@ -31,7 +31,7 @@ const getAuthErrorMessage = (err, mode = 'login') => {
 
   if (mode === 'google') {
     if (status === 400 || status === 401 || status === 403) {
-      return 'Không thể đăng nhập bằng Google. Tài khoản phải tồn tại, đang hoạt động và đã xác thực email.';
+      return 'Không thể đăng nhập bằng Google. Tài khoản phải tồn tại và đang hoạt động.';
     }
     if (status >= 500) {
       return 'Google Login tạm thời chưa khả dụng. Vui lòng thử lại sau.';
@@ -58,7 +58,7 @@ const LOGIN_INTENT_META = {
   'messenger-link': {
     icon: Lucide.Link2,
     title: 'Đăng nhập để liên kết Messenger',
-    description: 'Sau khi đăng nhập và xác thực email, bạn sẽ quay lại bước xác nhận liên kết.',
+    description: 'Sau khi đăng nhập và xác thực số điện thoại, bạn sẽ quay lại bước xác nhận liên kết.',
   },
   'create-feedback': {
     icon: Lucide.MessageSquarePlus,
@@ -191,12 +191,12 @@ export const LoginPage = () => {
     try {
       const user = await login(normalizedEmail, password);
 
-      if (user?.authCode === 'EMAIL_NOT_VERIFIED' || !user?.isVerified) {
-        navigate(buildAuthPath('/verify-phone', requestedRedirect), { replace: true });
-        return;
-      }
-
-      navigate(resolveRedirect(user.role), { replace: true });
+      /*
+       * Chưa xác thực số điện thoại vẫn vào thẳng trang chính. Ràng buộc chỉ áp khi
+       * gửi phản ánh, nên chặn ngay ở cửa đăng nhập là chặn thừa: người chỉ muốn
+       * xem bảng tin hay bản đồ sự cố không có lý do gì phải nhận một tin SMS.
+       */
+      navigate(resolveRedirect(user?.role), { replace: true });
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
@@ -377,12 +377,9 @@ export const LoginPage = () => {
         }
 
         const user = await googleLogin(idToken);
-        if (!user?.isVerified) {
-          navigate(buildAuthPath('/verify-phone', requestedRedirect));
-          return;
-        }
 
-        const redirect = requestedRedirect || getRoleEntryPath(user.role);
+        // Cùng lý do với đăng nhập bằng mật khẩu: không ép xác thực ngay ở cửa vào.
+        const redirect = requestedRedirect || getRoleEntryPath(user?.role);
         navigate(redirect, { replace: true });
       } catch (err) {
         setError(getAuthErrorMessage(err, 'google'));
