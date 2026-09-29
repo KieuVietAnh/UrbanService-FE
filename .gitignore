@@ -47,6 +47,8 @@ vite.config.*.timestamp-*
 *.p12
 *.key
 *.mobileprovision
+apps/mobile/google-services.json
+apps/mobile/GoogleService-Info.plist
 *.orig.*
 web-build/
 android/
