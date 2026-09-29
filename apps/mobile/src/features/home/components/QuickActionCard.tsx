@@ -10,15 +10,23 @@ import { styles } from '../homeStyles';
 type Props = {
   action: QuickAction;
   delay?: number;
+  isTablet?: boolean;
   router: RouterLike;
 };
 
-export function QuickActionCard({ action, delay = 0, router }: Props) {
+export function QuickActionCard({ action, delay = 0, isTablet = false, router }: Props) {
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <Animated.View entering={FadeInDown.delay(delay).springify().damping(16)} style={[styles.actionItem, animStyle]}>
+    <Animated.View
+      entering={FadeInDown.delay(delay).springify().damping(16)}
+      style={[
+        styles.actionItem,
+        isTablet ? styles.actionItemTablet : styles.actionItemPhone,
+        animStyle,
+      ]}
+    >
       <Pressable
         onPressIn={() => {
           scale.value = withSpring(0.94, { damping: 16, stiffness: 360 });

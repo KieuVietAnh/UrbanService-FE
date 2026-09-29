@@ -12,6 +12,8 @@ const residentLayout = read('../app/(resident)/_layout.tsx');
 const ticketDetail = read('../src/features/reporting/components/ticket-detail-screen.tsx');
 const wizard = read('../src/features/reporting/components/create-feedback-wizard-screen.tsx');
 const addressGeocoding = read('../src/features/reporting/services/address-geocoding.ts');
+const homeStyles = read('../src/features/home/homeStyles.ts');
+const quickActions = read('../src/features/home/components/QuickActions.tsx');
 const inbox = read('../src/features/messaging/components/inbox-hub-screen.tsx');
 const notifications = read('../src/features/notifications/components/notifications-screen.tsx');
 const areaAlertsApi = read('../src/features/area-alerts/api/area-alerts-api.ts');
@@ -67,9 +69,11 @@ test('feedback address input searches real Vietnamese geocoding services and foc
   assert.match(wizard, /label="Tìm địa chỉ trên bản đồ"/);
   assert.match(wizard, /onAddressSelect\(suggestion\.displayName, suggestion\.latitude, suggestion\.longitude\)/);
   assert.match(wizard, /latitudeDelta:\s*0\.008/);
-  assert.match(wizard, /contentContainerStyle=\{styles\.addressSuggestionListContent\}/);
+  assert.match(wizard, /addressSuggestions\.slice\(0, 4\)/);
+  assert.match(wizard, /Text as NativeText/);
   assert.match(wizard, /addressSuggestionItem:\s*\{\s*width:\s*'100%'/);
-  assert.match(wizard, /addressSuggestionCopy:\s*\{\s*flex:\s*1,\s*minWidth:\s*0/);
+  assert.match(wizard, /addressSuggestionCopy:\s*\{\s*flexGrow:\s*1,\s*flexShrink:\s*1,\s*flexBasis:\s*0/);
+  assert.doesNotMatch(wizard, /contentContainerStyle=\{styles\.addressSuggestionListContent\}/);
 });
 
 test('community support reacts immediately and reconciles with the API in background', () => {
@@ -88,6 +92,10 @@ test('resident home keeps the chat FAB without covering content with an oversize
   assert.match(residentLayout, /insets\.bottom\s*\+\s*68/);
   assert.match(floatingChat, /width:\s*58/);
   assert.match(floatingChat, /height:\s*58/);
+  assert.match(quickActions, /useWindowDimensions/);
+  assert.match(homeStyles, /actionItemPhone:\s*\{\s*width:\s*'28%'/);
+  assert.doesNotMatch(homeStyles, /Dimensions\.get/);
+  assert.doesNotMatch(homeStyles, /ACTION_WIDTH|ACTION_ROWS/);
 });
 
 test('cached inbox content stays visible during background refresh', () => {

@@ -1,18 +1,11 @@
 
-import { Dimensions, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { colors } from '@/constants/theme';
 import { radius } from '@/theme/radius';
 import { spacing } from '@/theme/spacing';
 import { fontSizes, fonts } from '@/theme/typography';
 
-const { width: W } = Dimensions.get('window');
 const HORIZONTAL = 20;
-const ACTION_COLUMNS = W >= 600 ? 5 : W < 360 ? 2 : 3;
-const ACTION_ROWS = Math.ceil(5 / ACTION_COLUMNS);
-const ACTION_WIDTH = Math.max(
-  44,
-  (W - HORIZONTAL * 2 - 28 - 14 * (ACTION_COLUMNS - 1)) / ACTION_COLUMNS,
-);
 
 export const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
@@ -431,14 +424,14 @@ export const styles = StyleSheet.create({
   },
 
   quickActionsPanel: {
-    minHeight: ACTION_ROWS * 92 + (ACTION_ROWS - 1) * 14 + 32,
     borderRadius: radius['3xl'],
     backgroundColor: colors.surface,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
     justifyContent: 'flex-start',
-    gap: 14,
+    columnGap: 14,
+    rowGap: 12,
     paddingHorizontal: spacing['3.5'],
     paddingVertical: spacing['4'],
     borderWidth: 1,
@@ -450,9 +443,10 @@ export const styles = StyleSheet.create({
     elevation: 4,
   },
   actionItem: {
-    width: ACTION_WIDTH,
-    minHeight: 92,
+    minHeight: 86,
   },
+  actionItemPhone: { width: '28%' },
+  actionItemTablet: { width: '17%' },
   actionPressable: {
     flex: 1,
     alignItems: 'center',
@@ -460,8 +454,8 @@ export const styles = StyleSheet.create({
     gap: 9,
   },
   actionIconWrap: {
-    width: 54,
-    height: 54,
+    width: 50,
+    height: 50,
     borderRadius: radius['card'],
     alignItems: 'center',
     justifyContent: 'center',
