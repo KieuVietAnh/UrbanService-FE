@@ -81,6 +81,7 @@ export const ManagementFeedbackDetailPage = () => {
   const [messageDraft, setMessageDraft] = useState('');
   const [composerMode, setComposerMode] = useState('public');
   const messageViewportRef = useRef(null);
+  const messageSendInFlightRef = useRef(false);
   const exchangeSectionRef = useRef(null);
   const initialExchangeFocusHandledRef = useRef(false);
   const [activeViewTab, setActiveViewTab] = useState(() => location.state?.focusExchange ? 'exchange' : 'detail');
@@ -157,24 +158,30 @@ export const ManagementFeedbackDetailPage = () => {
   }, [feedbackId, reloadFeedbackMessages]);
 
   const handleMessageSend = async () => {
-    if (!feedbackId || !messageDraft.trim()) return;
+    const messageText = messageDraft.trim();
+    if (!feedbackId || !messageText || messageSendInFlightRef.current || messageSubmitting) return;
 
+    messageSendInFlightRef.current = true;
+    setMessageDraft('');
     try {
-      const refreshed = await sendFeedbackMessage({
-        messageText: messageDraft.trim(),
+      const sent = await sendFeedbackMessage({
+        messageText,
         isInternal: composerMode === 'internal',
       });
 
-      if (refreshed) {
-        sessionStorage.setItem('staff-conversation-count-dirty', '1');
-        setMessageDraft('');
-        setPageMessage({ type: '', text: '' });
-      } else {
-        setPageMessage({ type: '', text: '' });
+      if (!sent) {
+        setMessageDraft((currentDraft) => currentDraft.trim() ? currentDraft : messageText);
+        return;
       }
+
+      sessionStorage.setItem('staff-conversation-count-dirty', '1');
+      setPageMessage({ type: '', text: '' });
     } catch (err) {
       console.error('Failed to send feedback message', err);
+      setMessageDraft((currentDraft) => currentDraft.trim() ? currentDraft : messageText);
       setPageMessage({ type: 'error', text: 'Không thể gửi trao đổi. Vui lòng thử lại.' });
+    } finally {
+      messageSendInFlightRef.current = false;
     }
   };
 
@@ -1294,9 +1301,18 @@ export const ManagementFeedbackDetailPage = () => {
                                 const body = getMessageBody(message);
 
                                 return (
-                                  <div key={message?.interactionMessageId || message?.id}>
+                                  <div
+                                    key={message?.interactionMessageId || message?.id}
+                                    className={`flex flex-col ${
+                                      block.isInternal
+                                        ? 'items-center'
+                                        : isStaffPublic
+                                          ? 'items-end'
+                                          : 'items-start'
+                                    }`}
+                                  >
                                     <div
-                                      className={`rounded-2xl px-4 py-3 text-sm leading-6 ${
+                                      className={`w-fit max-w-full rounded-2xl px-4 py-3 text-sm leading-6 ${
                                         block.isInternal
                                           ? 'border border-amber-200 bg-amber-50 text-amber-950'
                                           : block.isStaff
@@ -1308,9 +1324,7 @@ export const ManagementFeedbackDetailPage = () => {
                                     </div>
 
                                     <div
-                                      className={`mt-1 px-1 text-[11px] text-slate-400 ${
-                                        isStaffPublic ? 'text-right' : ''
-                                      }`}
+                                      className="mt-1 w-fit px-1 text-[11px] tabular-nums text-slate-400"
                                     >
                                       {formatDate(message?.createdAt) || 'Chưa có dữ liệu'}
                                     </div>
@@ -1364,6 +1378,7 @@ export const ManagementFeedbackDetailPage = () => {
                   <textarea
                     value={messageDraft}
                     onChange={(event) => setMessageDraft(event.target.value)}
+                    disabled={messageSubmitting}
                     onKeyDown={(event) => {
                       if (event.key !== 'Enter' || event.shiftKey) return;
                       if (event.nativeEvent?.isComposing) return;
@@ -1380,7 +1395,7 @@ export const ManagementFeedbackDetailPage = () => {
                         ? 'Nhập ghi chú nội bộ...'
                         : 'Nhập phản hồi cho người dân...'
                     }
-                    className="min-h-[72px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    className="min-h-[72px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:cursor-wait disabled:bg-slate-100 disabled:text-slate-500"
                   />
                 </label>
 
