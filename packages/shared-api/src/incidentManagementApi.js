@@ -411,6 +411,34 @@ export const incidentManagementApi = Object.freeze({
     return normalizeIncidentTimelineResponse(response);
   },
 
+  /**
+   * Đánh giá của người dân về kết quả xử lý sự vụ.
+   *
+   * Một sự vụ gộp nhiều phản ánh của nhiều người, mỗi người đánh giá phần của mình,
+   * nên backend trả về một danh sách kèm vài số liệu tổng hợp chứ không phải một
+   * đánh giá duy nhất.
+   */
+  async getIncidentResolutionReviews(incidentId, options = {}) {
+    const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
+    const response = await axiosClient.get(`${detailEndpoint}/resolution-reviews`, {
+      signal: options?.signal,
+    });
+
+    const payload = response?.data ?? response ?? {};
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+
+    return {
+      incidentId: payload?.incidentId ?? incidentId,
+      eligibleReportCount: Number(payload?.eligibleReportCount) || 0,
+      reviewCount: Number(payload?.reviewCount) || items.length,
+      satisfiedCount: Number(payload?.satisfiedCount) || 0,
+      averageRating: Number.isFinite(Number(payload?.averageRating))
+        ? Number(payload.averageRating)
+        : null,
+      items,
+    };
+  },
+
   async updateIncident(incidentId, payload = {}, options = {}) {
     const response = await axiosClient.patch(
       buildIncidentDetailEndpoint(incidentId),
