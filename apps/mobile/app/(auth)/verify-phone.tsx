@@ -53,6 +53,12 @@ export default function VerifyPhoneScreen() {
       return;
     }
 
+    const previousStep = step;
+    setConfirmedPhone(normalized);
+    setPhoneInput(formatPhone(normalized));
+    setOtp('');
+    setHasOtpError(false);
+    setStep('otp');
     setAction('send');
     try {
       const permission = await requestPhoneOtp(normalized);
@@ -60,12 +66,10 @@ export default function VerifyPhoneScreen() {
       setPhoneInput(formatPhone(permission.phoneNumber));
       setRemainingToday(permission.remainingToday);
       setIsTestNumber(permission.isTestNumber);
-      setOtp('');
-      setHasOtpError(false);
       setCountdown(RESEND_COOLDOWN_SECONDS);
-      setStep('otp');
       toast.success(`Đã gửi mã OTP tới ${formatPhone(permission.phoneNumber)}.`);
     } catch (error) {
+      setStep(previousStep);
       toast.error(error instanceof Error ? error.message : 'Không thể gửi mã OTP qua SMS.');
     } finally {
       setAction(null);

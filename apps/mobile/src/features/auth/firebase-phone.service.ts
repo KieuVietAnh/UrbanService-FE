@@ -34,11 +34,17 @@ const loadFirebasePhoneAuth = async (): Promise<FirebasePhoneModule> => {
   }
 };
 
-export const sendFirebasePhoneOtp = async (phoneNumber: string): Promise<void> => {
+export const sendFirebasePhoneOtp = async (
+  phoneNumber: string,
+  options: { isTestNumber?: boolean } = {},
+): Promise<void> => {
   const firebaseAuth = await loadFirebasePhoneAuth();
   try {
     const auth = firebaseAuth.getAuth();
     auth.languageCode = 'vi';
+    // Only backend-approved Firebase test numbers may bypass native app
+    // verification. Real numbers keep Play Integrity/reCAPTCHA protection.
+    auth.settings.appVerificationDisabledForTesting = options.isTestNumber === true;
     confirmation = await firebaseAuth.signInWithPhoneNumber(auth, phoneNumber);
   } catch (error) {
     confirmation = null;

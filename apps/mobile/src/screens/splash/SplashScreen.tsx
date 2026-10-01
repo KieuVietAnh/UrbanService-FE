@@ -11,17 +11,12 @@ export default function SplashScreen() {
       <View style={[styles.orbit, styles.orbitBottom]} />
 
       <View style={styles.center}>
-        <View style={styles.logoFrame}>
-          <Image
-            source={require('../../../assets/icon.png')}
-            style={styles.logo}
-            resizeMode="contain"
-            accessibilityLabel="Biểu tượng UrbanMind"
-          />
-        </View>
-        <Text style={styles.brand}>UrbanMind</Text>
-        <Text style={styles.title}>Kết nối cộng đồng</Text>
-        <Text style={styles.desc}>Kiến tạo đô thị thông minh và bền vững.</Text>
+        <Image
+          source={require('../../../assets/splash-logo.jpg')}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="UrbanMind - Cổng phản ánh đô thị"
+        />
       </View>
 
       <View style={styles.loadingArea}>
@@ -35,7 +30,7 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -46,7 +41,7 @@ const styles = StyleSheet.create({
     height: 330,
     borderRadius: 165,
     borderWidth: 30,
-    borderColor: 'rgba(37, 99, 235, 0.08)',
+    borderColor: 'rgba(37, 99, 235, 0.055)',
   },
   orbitTop: {
     top: -150,
@@ -57,46 +52,14 @@ const styles = StyleSheet.create({
     right: -155,
   },
   center: {
+    width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  logoFrame: {
-    width: 150,
-    height: 150,
-    borderRadius: 42,
-    padding: 5,
-    backgroundColor: '#FFFFFF',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    elevation: 8,
+    paddingHorizontal: 24,
   },
   logo: {
     width: '100%',
-    height: '100%',
-    borderRadius: 37,
-  },
-  brand: {
-    marginTop: 24,
-    fontFamily: 'Geist-Bold',
-    fontSize: 28,
-    letterSpacing: -0.7,
-    color: colors.text,
-  },
-  title: {
-    marginTop: 8,
-    fontFamily: 'Geist-SemiBold',
-    fontSize: 17,
-    color: colors.text,
-  },
-  desc: {
-    marginTop: 6,
-    fontFamily: 'Geist-Regular',
-    fontSize: 13,
-    lineHeight: 20,
-    color: colors.muted,
-    textAlign: 'center',
+    maxWidth: 420,
+    aspectRatio: 1280 / 426,
   },
   loadingArea: {
     position: 'absolute',

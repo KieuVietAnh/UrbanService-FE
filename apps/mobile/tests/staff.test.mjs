@@ -199,7 +199,7 @@ test('phone verification exchanges a Firebase ID token for a complete backend se
   const firebaseSource = readFileSync(new URL('../src/features/auth/firebase-phone.service.ts', import.meta.url), 'utf8');
   const verifyService = serviceSource.slice(serviceSource.indexOf('static async verifyPhoneOtp'), serviceSource.indexOf('static async logout'));
   assert.match(serviceSource, /authApi\.requestPhoneOtp\(normalized\)/);
-  assert.match(serviceSource, /sendFirebasePhoneOtp\(approvedPhone\)/);
+  assert.match(serviceSource, /sendFirebasePhoneOtp\(approvedPhone, \{ isTestNumber: payload\.isTestNumber === true \}\)/);
   assert.match(verifyService, /confirmFirebasePhoneOtp\(otp\)/);
   assert.match(verifyService, /authApi\.verifyPhone\(idToken\)/);
   assert.match(verifyService, /persistAuthenticatedSession\(response, user\)/);

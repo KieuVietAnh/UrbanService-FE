@@ -20,7 +20,7 @@
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0B63F6"
       },
       "permissions": [
         "android.permission.INTERNET",
@@ -41,9 +41,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#EFF6FF",
-          "image": "./assets/icon.png",
-          "imageWidth": 180,
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-logo.jpg",
+          "imageWidth": 300,
           "resizeMode": "contain"
         }
       ],

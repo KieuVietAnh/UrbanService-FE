@@ -164,7 +164,7 @@ export class AuthService {
     const payload = isApiRecord(extracted) ? extracted : {};
     const approvedPhone = String(payload.phoneNumber || normalized);
 
-    await sendFirebasePhoneOtp(approvedPhone);
+    await sendFirebasePhoneOtp(approvedPhone, { isTestNumber: payload.isTestNumber === true });
     return {
       phoneNumber: approvedPhone,
       remainingToday: typeof payload.remainingToday === 'number' ? payload.remainingToday : null,
