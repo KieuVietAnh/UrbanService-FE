@@ -18,6 +18,7 @@ export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, c
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncStatus, setSyncStatus] = useState('idle');
   const syncInFlightRef = useRef(false);
+  const sendInFlightRef = useRef(false);
 
   const loadMessages = useCallback(
     async ({ keepMessagesOnError = false, silent = false } = {}) => {
@@ -85,10 +86,11 @@ export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, c
 
   const sendMessage = useCallback(
     async (payload) => {
-      if (!feedbackId) {
+      if (!feedbackId || sendInFlightRef.current) {
         return false;
       }
 
+      sendInFlightRef.current = true;
       setMessageSubmitting(true);
       setMessagesError('');
 
@@ -101,13 +103,17 @@ export const FeedbackMessagesProvider = ({ feedbackId, includeInternal = true, c
         } else {
           setSyncStatus('warning');
         }
-        return refreshed;
+        // The message has already been accepted by the API at this point.
+        // A concurrent poll may make the follow-up refresh return false; that
+        // must not be reported to the composer as a failed send.
+        return true;
       } catch (error) {
         console.error('Failed to send feedback message', error);
         setMessagesError(error?.message || 'Không thể gửi trao đổi.');
         setSyncStatus('failed');
         throw error;
       } finally {
+        sendInFlightRef.current = false;
         setMessageSubmitting(false);
       }
     },
