@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementTypes } from '@urbanmind/shared-types';
+import { managementFeedbackApi } from '@urbanmind/shared-api';
 import { getAdminFeedbackCategories, loadAdminFeedbackDetail, peekAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
 import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
@@ -189,6 +190,8 @@ export const FeedbackDetailPage = () => {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [failedMedia, setFailedMedia] = useState(() => new Set());
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
   const detailRequestIdRef = useRef(0);
   const resolvedLocationText = useResolvedLocationText({
     locationText: feedback?.locationText || feedback?.address,
@@ -325,6 +328,28 @@ export const FeedbackDetailPage = () => {
     });
   };
 
+  const normalizedStatus = String(feedback?.status || '').trim().toLowerCase();
+  const awaitingAiClassification = normalizedStatus === 'submitted';
+  // Backend nhận cả hai trạng thái này ở PUT /management/feedbacks/{id}/verify.
+  const canVerifyManually = awaitingAiClassification || normalizedStatus === 'aireviewed';
+
+  const handleManualVerify = async () => {
+    setVerifying(true);
+    setVerifyError('');
+    try {
+      await managementFeedbackApi.verifyFeedback(feedbackId);
+      setReloadNonce((value) => value + 1);
+    } catch (verifyException) {
+      setVerifyError(
+        verifyException?.response?.data?.msg
+        || verifyException?.response?.data?.message
+        || 'Không thể xác minh phản ánh. Vui lòng thử lại.',
+      );
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const markMediaFailed = (file) => {
     setFailedMedia((current) => {
       const next = new Set(current);
@@ -419,6 +444,56 @@ export const FeedbackDetailPage = () => {
           </div>
         </div>
       </section>
+
+      {canVerifyManually ? (
+        <section className={`flex flex-col gap-3 rounded-2xl border p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between ${
+          awaitingAiClassification
+            ? 'border-amber-200 bg-amber-50/70 dark:border-amber-500/20 dark:bg-amber-500/10'
+            : 'border-blue-200 bg-blue-50/70 dark:border-blue-500/20 dark:bg-blue-500/10'
+        }`}>
+          <div className="flex min-w-0 items-start gap-3">
+            <Lucide.ShieldCheck
+              size={18}
+              aria-hidden="true"
+              className={`mt-0.5 shrink-0 ${awaitingAiClassification ? 'text-amber-600 dark:text-amber-300' : 'text-blue-600 dark:text-blue-300'}`}
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {awaitingAiClassification ? 'AI chưa phân loại phản ánh này' : 'Phản ánh đã được AI phân loại'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                {awaitingAiClassification
+                  ? 'Xác minh thủ công sẽ bỏ qua bước phân loại tự động và tạo sự vụ ngay. Dùng khi AI gặp sự cố, để phản ánh không nằm chờ vô thời hạn.'
+                  : 'Xác minh để chuyển phản ánh thành sự vụ và đưa vào quy trình xử lý.'}
+              </p>
+              {verifyError ? (
+                <p className="mt-2 flex items-start gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-300">
+                  <Lucide.CircleAlert size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  {verifyError}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleManualVerify}
+            disabled={verifying || loading}
+            className="btn h-10 shrink-0 rounded-xl bg-blue-600 px-4 text-sm font-semibold normal-case text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {verifying ? (
+              <>
+                <span className="loading loading-spinner loading-xs" aria-hidden="true" />
+                Đang xác minh...
+              </>
+            ) : (
+              <>
+                <Lucide.ShieldCheck size={15} aria-hidden="true" />
+                {awaitingAiClassification ? 'Xác minh thủ công' : 'Xác minh phản ánh'}
+              </>
+            )}
+          </button>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <InfoItem label="Danh mục" value={getCategoryName(feedback, categories)} />
