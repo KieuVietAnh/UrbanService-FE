@@ -1,5 +1,7 @@
 export type AddressSuggestion = {
   id: string;
+  label: string;
+  detail: string;
   displayName: string;
   latitude: number;
   longitude: number;
@@ -8,7 +10,21 @@ export type AddressSuggestion = {
 type ArcGisCandidate = {
   address?: string;
   location?: { x?: number; y?: number };
-  attributes?: { Match_addr?: string };
+  attributes?: {
+    Match_addr?: string;
+    LongLabel?: string;
+    ShortLabel?: string;
+    PlaceName?: string;
+    Place_addr?: string;
+    Address?: string;
+    AddNum?: string;
+    StName?: string;
+    District?: string;
+    City?: string;
+    Region?: string;
+    Country?: string;
+    Postal?: string;
+  };
 };
 
 type PhotonFeature = {
@@ -18,9 +34,13 @@ type PhotonFeature = {
     name?: string;
     street?: string;
     housenumber?: string;
+    suburb?: string;
+    locality?: string;
     district?: string;
+    county?: string;
     city?: string;
     state?: string;
+    postcode?: string;
     country?: string;
   };
 };
@@ -45,6 +65,8 @@ const isAbortError = (error: unknown) => (
 
 const normalizeResults = (results: Array<{
   id?: string | number;
+  label?: string;
+  detail?: string;
   displayName?: string;
   latitude?: string | number;
   longitude?: string | number;
@@ -56,6 +78,14 @@ const normalizeResults = (results: Array<{
     const latitude = Number(result.latitude);
     const longitude = Number(result.longitude);
     const displayName = String(result.displayName || '').trim();
+    const label = String(result.label || displayName.split(',')[0] || displayName).trim();
+    let detail = String(result.detail || '').trim();
+    const normalizedLabel = label.toLocaleLowerCase('vi');
+    if (detail.toLocaleLowerCase('vi').startsWith(`${normalizedLabel},`)) {
+      detail = detail.slice(label.length + 1).trim();
+    } else if (detail.toLocaleLowerCase('vi') === normalizedLabel) {
+      detail = '';
+    }
     if (
       !displayName ||
       !isValidCoordinate(latitude, -90, 90) ||
@@ -67,6 +97,8 @@ const normalizeResults = (results: Array<{
     seen.add(key);
     normalized.push({
       id: String(result.id || `address-${index}-${latitude}-${longitude}`),
+      label,
+      detail,
       displayName,
       latitude,
       longitude,
@@ -87,7 +119,7 @@ const searchWithArcGis = async (
     f: 'json',
     singleLine: contextualQuery,
     maxLocations: '8',
-    outFields: 'Match_addr,Addr_type,PlaceName,Type',
+    outFields: 'Match_addr,LongLabel,ShortLabel,PlaceName,Place_addr,Address,AddNum,StName,District,City,Region,Country,Postal',
     countryCode: 'VNM',
   });
 
@@ -106,12 +138,35 @@ const searchWithArcGis = async (
 
   const payload = await response.json();
   const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
-  return normalizeResults((candidates as ArcGisCandidate[]).map((candidate, index) => ({
-    id: `arcgis-${index}-${candidate?.location?.y}-${candidate?.location?.x}`,
-    displayName: candidate?.address || candidate?.attributes?.Match_addr,
-    latitude: candidate?.location?.y,
-    longitude: candidate?.location?.x,
-  })));
+  return normalizeResults((candidates as ArcGisCandidate[]).map((candidate, index) => {
+    const attributes = candidate.attributes || {};
+    const streetAddress = [attributes.AddNum, attributes.StName].filter(Boolean).join(' ');
+    const label = attributes.ShortLabel
+      || attributes.PlaceName
+      || attributes.Address
+      || candidate.address
+      || attributes.Match_addr;
+    const detail = attributes.Place_addr || [
+      streetAddress,
+      attributes.District,
+      attributes.City,
+      attributes.Region,
+      attributes.Postal,
+      attributes.Country,
+    ].filter(Boolean).join(', ');
+    const displayName = attributes.LongLabel
+      || (detail ? [label, detail].filter(Boolean).join(', ') : attributes.Match_addr)
+      || candidate.address
+      || '';
+    return {
+      id: `arcgis-${index}-${candidate?.location?.y}-${candidate?.location?.x}`,
+      label,
+      detail,
+      displayName,
+      latitude: candidate?.location?.y,
+      longitude: candidate?.location?.x,
+    };
+  }));
 };
 
 const searchWithPhoton = async (
@@ -147,16 +202,23 @@ const searchWithPhoton = async (
     const properties = feature.properties || {};
     const [longitude, latitude] = feature.geometry?.coordinates || [];
     const street = [properties.housenumber, properties.street].filter(Boolean).join(' ');
+    const label = properties.name || street || properties.district || properties.city;
+    const detail = [
+      street && street !== label ? street : '',
+      properties.suburb,
+      properties.locality,
+      properties.district,
+      properties.county,
+      properties.city,
+      properties.state,
+      properties.postcode,
+      properties.country,
+    ].filter(Boolean).join(', ');
     return {
       id: properties.osm_id || `photon-${index}-${latitude}-${longitude}`,
-      displayName: [
-        properties.name,
-        street,
-        properties.district,
-        properties.city,
-        properties.state,
-        properties.country,
-      ].filter(Boolean).join(', '),
+      label,
+      detail,
+      displayName: [label, detail].filter(Boolean).join(', '),
       latitude,
       longitude,
     };

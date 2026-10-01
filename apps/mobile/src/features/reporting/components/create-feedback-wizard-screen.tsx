@@ -529,14 +529,14 @@ function StepLocation({
                           numberOfLines={2}
                           maxFontSizeMultiplier={1.25}
                         >
-                          {suggestion.displayName}
+                          {suggestion.label}
                         </NativeText>
                         <NativeText
                           style={styles.addressSuggestionHint}
-                          numberOfLines={1}
+                          numberOfLines={2}
                           maxFontSizeMultiplier={1.25}
                         >
-                          Chạm để chọn và định vị trên bản đồ
+                          {suggestion.detail || suggestion.displayName}
                         </NativeText>
                       </View>
                     </Pressable>
@@ -1384,13 +1384,13 @@ const styles = StyleSheet.create({
   addressSearchStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingHorizontal: 4 },
   addressSearchStatusText: { fontFamily: 'Geist-Medium', fontSize: 12, color: '#475569' },
   addressSuggestionList: { width: '100%', marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#DBEAFE', borderRadius: 14, backgroundColor: '#FFFFFF' },
-  addressSuggestionItem: { width: '100%', minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
+  addressSuggestionItem: { width: '100%', minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E2E8F0', backgroundColor: '#FFFFFF' },
   addressSuggestionItemLast: { borderBottomWidth: 0 },
   addressSuggestionItemPressed: { backgroundColor: '#EFF6FF' },
   addressSuggestionIcon: { width: 30, height: 30, flexShrink: 0, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF' },
   addressSuggestionCopy: { flexGrow: 1, flexShrink: 1, flexBasis: 0, alignSelf: 'stretch', justifyContent: 'center' },
   addressSuggestionText: { fontFamily: 'Geist-SemiBold', fontSize: 13, lineHeight: 18, color: '#0F172A', includeFontPadding: false },
-  addressSuggestionHint: { marginTop: 2, fontFamily: 'Geist-Regular', fontSize: 10, lineHeight: 14, color: '#64748B', includeFontPadding: false },
+  addressSuggestionHint: { marginTop: 2, fontFamily: 'Geist-Regular', fontSize: 11, lineHeight: 15, color: '#64748B', includeFontPadding: false },
   addressSearchMessage: { marginTop: 8, paddingHorizontal: 4, fontFamily: 'Geist-Regular', fontSize: 12, lineHeight: 18, color: '#64748B' },
   locationMapCard: { backgroundColor: '#F8FAFC', borderRadius: 24, padding: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12 },
   mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

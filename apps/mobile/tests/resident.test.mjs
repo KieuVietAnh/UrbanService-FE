@@ -24,15 +24,18 @@ const appConfig = read('../app.json');
 const dynamicAppConfig = read('../app.config.js');
 const rootLayout = read('../app/_layout.tsx');
 const brandSplash = read('../src/screens/splash/SplashScreen.tsx');
+const otpInput = read('../src/components/shared/otp-input.tsx');
 
 test('native and branded splash screens both use the bundled UrbanMind artwork', () => {
   assert.match(appConfig, /"expo-splash-screen"/);
-  assert.match(appConfig, /"image": "\.\/assets\/icon\.png"/);
+  assert.match(appConfig, /"icon": "\.\/assets\/icon\.png"/);
+  assert.match(appConfig, /"foregroundImage": "\.\/assets\/adaptive-icon\.png"/);
+  assert.match(appConfig, /"image": "\.\/assets\/splash-logo\.jpg"/);
   assert.match(dynamicAppConfig, /'expo-splash-screen'/);
-  assert.match(dynamicAppConfig, /image: '\.\/assets\/icon\.png'/);
+  assert.match(dynamicAppConfig, /image: '\.\/assets\/splash-logo\.jpg'/);
   assert.match(rootLayout, /BrandSplashScreen/);
   assert.match(rootLayout, /BRAND_SPLASH_DURATION_MS/);
-  assert.match(brandSplash, /require\('\.\.\/\.\.\/\.\.\/assets\/icon\.png'\)/);
+  assert.match(brandSplash, /require\('\.\.\/\.\.\/\.\.\/assets\/splash-logo\.jpg'\)/);
 });
 
 test('community is Incident-centric while My Feedback remains Feedback-centric', () => {
@@ -63,6 +66,9 @@ test('feedback address input searches real Vietnamese geocoding services and foc
   assert.match(addressGeocoding, /geocode\.arcgis\.com/);
   assert.match(addressGeocoding, /photon\.komoot\.io/);
   assert.match(addressGeocoding, /countryCode:\s*'VNM'/);
+  assert.match(addressGeocoding, /LongLabel,ShortLabel,PlaceName,Place_addr/);
+  assert.match(addressGeocoding, /label:\s*string/);
+  assert.match(addressGeocoding, /detail:\s*string/);
   assert.match(wizard, /searchVietnameseAddresses/);
   assert.match(wizard, /setTimeout\(async \(\) =>/);
   assert.match(wizard, /style=\{styles\.mapSearchOverlay\}/);
@@ -70,6 +76,8 @@ test('feedback address input searches real Vietnamese geocoding services and foc
   assert.match(wizard, /onAddressSelect\(suggestion\.displayName, suggestion\.latitude, suggestion\.longitude\)/);
   assert.match(wizard, /latitudeDelta:\s*0\.008/);
   assert.match(wizard, /addressSuggestions\.slice\(0, 4\)/);
+  assert.match(wizard, /\{suggestion\.label\}/);
+  assert.match(wizard, /\{suggestion\.detail \|\| suggestion\.displayName\}/);
   assert.match(wizard, /Text as NativeText/);
   assert.match(wizard, /addressSuggestionItem:\s*\{\s*width:\s*'100%'/);
   assert.match(wizard, /addressSuggestionCopy:\s*\{\s*flexGrow:\s*1,\s*flexShrink:\s*1,\s*flexBasis:\s*0/);
@@ -93,7 +101,11 @@ test('resident home keeps the chat FAB without covering content with an oversize
   assert.match(floatingChat, /width:\s*58/);
   assert.match(floatingChat, /height:\s*58/);
   assert.match(quickActions, /useWindowDimensions/);
-  assert.match(homeStyles, /actionItemPhone:\s*\{\s*width:\s*'28%'/);
+  assert.match(quickActions, /const columnCount = isTablet \? QUICK_ACTIONS\.length : 3/);
+  assert.match(quickActions, /quickActionsRow/);
+  assert.match(homeStyles, /quickActionsRow:\s*\{/);
+  assert.match(homeStyles, /actionItem:\s*\{[\s\S]*?flex:\s*1/);
+  assert.doesNotMatch(homeStyles, /actionItemPhone:\s*\{\s*width:/);
   assert.doesNotMatch(homeStyles, /Dimensions\.get/);
   assert.doesNotMatch(homeStyles, /ACTION_WIDTH|ACTION_ROWS/);
 });
@@ -138,8 +150,14 @@ test('phone OTP follows the live backend and native Firebase contracts', () => {
   assert.match(authService, /authApi\.requestPhoneOtp/);
   assert.match(authService, /authApi\.verifyPhone/);
   assert.match(firebasePhone, /signInWithPhoneNumber/);
+  assert.match(firebasePhone, /appVerificationDisabledForTesting\s*=\s*options\.isTestNumber\s*===\s*true/);
+  assert.match(authService, /sendFirebasePhoneOtp\(approvedPhone, \{ isTestNumber: payload\.isTestNumber === true \}\)/);
   assert.match(firebasePhone, /getIdToken\(true\)/);
   assert.match(verifyPhoneScreen, /Xác thực số điện thoại/);
+  assert.match(verifyPhoneScreen, /setStep\('otp'\);[\s\S]*?setAction\('send'\);[\s\S]*?await requestPhoneOtp/);
+  assert.equal((otpInput.match(/style=\{styles\.nativeInput\}/g) || []).length, 1, 'OTP uses one native input so Android advances naturally');
+  assert.match(otpInput, /onChangeText=\{\(text\) => onChange\(text\.replace\(\/\\D\/g, ''\)\.slice\(0, length\)\)\}/);
+  assert.doesNotMatch(otpInput, /inputs\.current\[index \+ 1\]/);
   assert.match(dynamicAppConfig, /'@react-native-firebase\/app'/);
   assert.match(dynamicAppConfig, /'@react-native-firebase\/auth'/);
 });

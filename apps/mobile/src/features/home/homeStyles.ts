@@ -426,12 +426,7 @@ export const styles = StyleSheet.create({
   quickActionsPanel: {
     borderRadius: radius['3xl'],
     backgroundColor: colors.surface,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    columnGap: 14,
-    rowGap: 12,
+    gap: 16,
     paddingHorizontal: spacing['3.5'],
     paddingVertical: spacing['4'],
     borderWidth: 1,
@@ -442,11 +437,23 @@ export const styles = StyleSheet.create({
     shadowRadius: 22,
     elevation: 4,
   },
-  actionItem: {
-    minHeight: 86,
+  quickActionsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  actionItemPhone: { width: '28%' },
-  actionItemTablet: { width: '17%' },
+  quickActionSpacer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  actionItem: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 96,
+  },
+  actionItemPhone: { flex: 1 },
+  actionItemTablet: { flex: 1 },
   actionPressable: {
     flex: 1,
     alignItems: 'center',
