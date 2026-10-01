@@ -323,14 +323,24 @@ test('Incident detail and timeline use separate real endpoints with safe path en
 
 test('staff messages use internal scope explicitly and preserve public/internal write mode', async () => {
   const get = mock.method(axiosClient, 'get', async () => []);
-  const post = mock.method(axiosClient, 'post', async () => ({}));
+  const post = mock.method(axiosClient, 'post', async (_url, payload) => ({
+    interactionMessageId: payload.isInternal ? 2 : 1,
+    userFullName: 'Nhân viên hiện trường',
+    userId: 'staff-1',
+    messageText: payload.messageText,
+    isInternal: payload.isInternal,
+    createdAt: '2026-09-29T09:00:00Z',
+  }));
   try {
     await staffApi.messages('f1');
     assert.equal(get.mock.calls[0].arguments[1].params.includeInternal, true);
-    await staffApi.sendMessage('f1', '  Trả lời  ', false);
-    await staffApi.sendMessage('f1', 'Nội bộ', true);
+    const publicMessage = await staffApi.sendMessage('f1', '  Trả lời  ', false);
+    const internalMessage = await staffApi.sendMessage('f1', 'Nội bộ', true);
     assert.deepEqual(post.mock.calls[0].arguments[1], { messageText: 'Trả lời', isInternal: false });
     assert.deepEqual(post.mock.calls[1].arguments[1], { messageText: 'Nội bộ', isInternal: true });
+    assert.deepEqual(publicMessage, { id: '1', text: 'Trả lời', sender: 'Nhân viên hiện trường', senderId: 'staff-1', internal: false, createdAt: '2026-09-29T09:00:00Z' });
+    assert.equal(internalMessage.id, '2');
+    assert.equal(internalMessage.internal, true);
     await assert.rejects(staffApi.sendMessage('f1', '  ', true));
     assert.equal(post.mock.callCount(), 2);
   } finally { get.mock.restore(); post.mock.restore(); }
@@ -343,6 +353,18 @@ test('Staff chat reuses the Resident keyboard composer contract without double A
   assert.doesNotMatch(source, /KeyboardAvoidingView|useHeaderHeight|keyboardVerticalOffset|composerMinHeight/);
   assert.match(source, /width:\s*48,\s*height:\s*48/);
   assert.match(source, /accessibilityLabel=\{internal \? 'Lưu ghi chú nội bộ' : 'Gửi phản hồi'\}/);
+});
+
+test('Staff chat mirrors Resident near-realtime polling and optimistic delivery without a chat hub', () => {
+  const source = readFileSync(new URL('../src/features/staff/components/staff-chat-screen.tsx', import.meta.url), 'utf8');
+  assert.match(source, /MESSAGE_POLL_INTERVAL_MS\s*=\s*2000/);
+  assert.match(source, /AppState\.addEventListener\('change'/);
+  assert.match(source, /refetchIntervalInBackground:\s*false/);
+  assert.match(source, /enabled:\s*Boolean\(id && userId && focused && appActive\)/);
+  assert.match(source, /const tempId\s*=\s*`temp-\$\{Date\.now\(\)\}`/);
+  assert.match(source, /cache\.setQueryData<StaffMessage\[]>/);
+  assert.match(source, /refreshing=\{manualRefreshing\}/, 'silent polling must not flash the pull-to-refresh spinner');
+  assert.doesNotMatch(source, /SignalR|\/hubs\//i, 'chat must not depend on an undocumented realtime hub');
 });
 
 test('confirmed Incident execution capabilities support provider flow, direct status transition and resubmit', () => {

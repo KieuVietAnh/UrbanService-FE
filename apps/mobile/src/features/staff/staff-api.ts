@@ -75,6 +75,7 @@ export const staffApi = {
   async sendMessage(id: string, text: string, internal: boolean) {
     const messageText = text.trim();
     if (!id.trim() || !messageText) throw new Error('Vui lòng nhập nội dung tin nhắn.');
-    return managementFeedbackApi.createFeedbackMessage(encodeURIComponent(id), { messageText, isInternal: internal });
+    const response = await managementFeedbackApi.createFeedbackMessage(encodeURIComponent(id), { messageText, isInternal: internal });
+    return normalizeMessage(unwrap(response));
   },
 };
