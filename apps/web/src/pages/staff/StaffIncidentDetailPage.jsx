@@ -27,6 +27,7 @@ import { getIncidentLifecycleMilestones } from './incidentDetailPresentation';
 import {
   formatStaffIncidentSlaRemaining,
   getStaffIncidentSlaMetric,
+  getStaffIncidentSlaPause,
   getStaffIncidentSlaState,
   getStaffIncidentSlaStatusLabel,
 } from './staffIncidentSla';
@@ -285,6 +286,7 @@ function IncidentSlaContent({ onRetry, sla, state }) {
 
   const overallState = getStaffIncidentSlaState(sla);
   const overallIntent = overallState === 'breached' ? 'danger' : overallState === 'warning' ? 'warning' : 'success';
+  const pause = getStaffIncidentSlaPause(sla);
 
   return (
     <div className="space-y-3">
@@ -295,6 +297,29 @@ function IncidentSlaContent({ onRetry, sla, state }) {
         </div>
         <Badge intent={overallIntent}>{getStaffIncidentSlaStatusLabel(sla.status)}</Badge>
       </div>
+
+      {/*
+        * Đồng hồ đang đứng im thì phải nói rõ vì sao, nếu không Staff dễ tưởng hệ
+        * thống lỗi hoặc tưởng mình còn nhiều thời gian. Quyền tạm dừng vẫn thuộc
+        * Manager; đây chỉ là phần đọc.
+        */}
+      {pause ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5 dark:border-amber-500/20 dark:bg-amber-500/10" role="status">
+          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            <Lucide.PauseCircle size={13} aria-hidden="true" />
+            SLA đang tạm dừng
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-800 dark:text-slate-100">{pause.reasonLabel}</p>
+          {pause.note ? (
+            <p className="mt-0.5 text-xs leading-5 text-slate-600 dark:text-slate-300">{pause.note}</p>
+          ) : null}
+          <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            {pause.pausedAt ? `Từ ${formatDateTime(pause.pausedAt)}` : 'Chưa rõ thời điểm'}
+            {pause.pausedByUserName ? ` · ${pause.pausedByUserName}` : ''}
+          </p>
+        </div>
+      ) : null}
+
       <SlaMetricCard label="Phản hồi đầu tiên" metric={getStaffIncidentSlaMetric(sla, 'response')} />
       <SlaMetricCard label="Hoàn thành xử lý" metric={getStaffIncidentSlaMetric(sla, 'resolution')} />
       <p className="text-right text-[11px] font-medium text-slate-400 dark:text-slate-500">Đồng bộ lúc {formatDateTime(sla.serverTime)}</p>
