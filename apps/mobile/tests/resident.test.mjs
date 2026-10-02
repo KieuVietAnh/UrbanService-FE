@@ -123,6 +123,14 @@ test('feedback evidence is optional and GPS metadata is honest and recoverable',
   assert.match(wizard, /setGeoSource\('GPS'\)/);
   assert.match(wizard, /setGeoSource\('MANUAL'\)/);
   assert.match(wizard, /geoSource,/);
+  assert.match(wizard, /getCameraPermissionsAsync/);
+  assert.match(wizard, /requestCameraPermissionsAsync/);
+  assert.match(wizard, /launchCameraAsync/);
+  assert.match(wizard, /Chụp ảnh/);
+  assert.match(wizard, /Thư viện/);
+  assert.doesNotMatch(wizard, /attachments\.length > 0 && attachments\.length < MAX_ATTACHMENT_COUNT/);
+  assert.match(appConfig, /"expo-image-picker"[\s\S]*?"cameraPermission"[\s\S]*?"microphonePermission": false/);
+  assert.match(dynamicAppConfig, /'expo-image-picker'[\s\S]*?cameraPermission:[\s\S]*?microphonePermission: false/);
 });
 
 test('feedback address input searches real Vietnamese geocoding services and focuses the map', () => {

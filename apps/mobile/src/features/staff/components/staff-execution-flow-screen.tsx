@@ -340,6 +340,25 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
       mimeType: asset.mimeType || 'image/jpeg', file: asset.file,
     }))].filter((asset, index, all) => all.findIndex((other) => other.uri === asset.uri) === index));
   });
+  const takePhoto = () => run('camera', async () => {
+    let permission = await ImagePicker.getCameraPermissionsAsync();
+    if (!permission.granted && permission.canAskAgain) {
+      permission = await ImagePicker.requestCameraPermissionsAsync();
+    }
+    if (!permission.granted) {
+      throw new Error('Ứng dụng cần quyền camera để chụp ảnh minh chứng. Hãy bật quyền Camera cho UrbanMind trong Cài đặt.');
+    }
+
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (!isCurrentSession() || result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    setAssets((current) => [...current, {
+      uri: asset.uri,
+      name: asset.fileName || `minh-chung-camera-${Date.now()}.jpg`,
+      mimeType: asset.mimeType || 'image/jpeg',
+      file: asset.file,
+    }].filter((item, index, all) => all.findIndex((other) => other.uri === item.uri) === index));
+  });
   const pickDocuments = () => run('picker', async () => {
     const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], multiple: true, copyToCacheDirectory: true });
     if (!isCurrentSession() || result.canceled) return;
@@ -491,6 +510,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
               {!readonly && <Button label="Tiếp tục đến kết quả" disabled={!!busy} onPress={skipEvidence} />}
             </> : <>
               <Label muted size={13}>Ảnh và PDF được tải vào đúng phân công đơn vị của sự vụ. Tệp đã chọn trên thiết bị chỉ được giữ khi bạn còn ở màn hình này.</Label>
+              <Button secondary label="Chụp ảnh trực tiếp" busy={busy === 'camera'} disabled={!!busy || readonly} onPress={() => { void takePhoto(); }} />
               <Button secondary label="Chọn ảnh minh chứng" busy={busy === 'picker'} disabled={!!busy || readonly} onPress={() => { void pickImages(); }} />
               <Button secondary label="Chọn ảnh hoặc PDF" disabled={!!busy || readonly} onPress={() => { void pickDocuments(); }} />
               {assets.map((asset, index) => <View key={asset.uri} style={{ gap: 8 }}>

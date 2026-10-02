@@ -30,6 +30,14 @@ module.exports = ({ config }) => {
       '@react-native-firebase/auth',
       'expo-router',
       [
+        'expo-image-picker',
+        {
+          photosPermission: 'Cho phép UrbanMind truy cập thư viện để bạn đính kèm ảnh hoặc video minh chứng.',
+          cameraPermission: 'Cho phép UrbanMind sử dụng camera để bạn chụp ảnh minh chứng.',
+          microphonePermission: false,
+        },
+      ],
+      [
         'expo-splash-screen',
         {
           backgroundColor: '#FFFFFF',

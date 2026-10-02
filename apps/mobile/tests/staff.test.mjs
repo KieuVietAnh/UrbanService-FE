@@ -568,6 +568,10 @@ test('NeedRework evidence clear uses the contract path, validates the assignment
   assert.match(source, /Nội dung đang nhập vẫn được giữ/);
   assert.match(source, /DocumentPicker\.getDocumentAsync/);
   assert.match(source, /application\/pdf/);
+  assert.match(source, /getCameraPermissionsAsync/);
+  assert.match(source, /requestCameraPermissionsAsync/);
+  assert.match(source, /ImagePicker\.launchCameraAsync/);
+  assert.match(source, /Chụp ảnh trực tiếp/);
 });
 
 test('native URI evidence is appended as a native file descriptor without assuming Blob support', () => {

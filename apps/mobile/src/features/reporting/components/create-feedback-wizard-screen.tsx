@@ -13,6 +13,8 @@ import {
   Platform,
   Modal,
   Text as NativeText,
+  Alert,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -598,7 +600,14 @@ function StepAttachments({
   onRemove: (index: number) => void;
   error?: string;
 }) {
+  const toast = useToast();
+  const attachmentLimitReached = attachments.length >= MAX_ATTACHMENT_COUNT;
+
   const pickImage = async () => {
+    if (attachmentLimitReached) {
+      toast.error(`Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`);
+      return;
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
@@ -613,13 +622,43 @@ function StepAttachments({
   };
 
   const takePhoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      quality: 0.85,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      onAdd(asset.uri, asset.fileName || `attachment_${Date.now()}.jpg`, asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'), asset.fileSize);
+    if (attachmentLimitReached) {
+      toast.error(`Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`);
+      return;
+    }
+
+    try {
+      let permission = await ImagePicker.getCameraPermissionsAsync();
+      if (!permission.granted && permission.canAskAgain) {
+        permission = await ImagePicker.requestCameraPermissionsAsync();
+      }
+      if (!permission.granted) {
+        Alert.alert(
+          'Cần quyền camera',
+          'UrbanMind cần quyền camera để chụp ảnh minh chứng. Bạn có thể bật quyền này trong Cài đặt của thiết bị.',
+          [
+            { text: 'Để sau', style: 'cancel' },
+            { text: 'Mở cài đặt', onPress: () => { void Linking.openSettings(); } },
+          ],
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        onAdd(
+          asset.uri,
+          asset.fileName || `anh-minh-chung-${Date.now()}.jpg`,
+          asset.mimeType || 'image/jpeg',
+          asset.fileSize,
+        );
+      }
+    } catch {
+      toast.error('Không thể mở camera. Hãy thử lại hoặc chọn ảnh từ thư viện.');
     }
   };
 
@@ -639,15 +678,26 @@ function StepAttachments({
         {error ? <Text style={styles.fieldError}>{error}</Text> : null}
 
         <View style={styles.imgToolbar}>
-          <Pressable onPress={pickImage} style={styles.addPrimaryBtn}>
-            <Icon name="plus" size={18} color="#FFFFFF" />
-            <Text style={styles.addPrimaryBtnText}>Thêm ảnh</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Chụp ảnh minh chứng"
+            disabled={attachmentLimitReached}
+            onPress={takePhoto}
+            style={[styles.addPrimaryBtn, attachmentLimitReached && styles.attachmentActionDisabled]}
+          >
+            <Icon name="camera" size={18} color="#FFFFFF" />
+            <Text style={styles.addPrimaryBtnText}>Chụp ảnh</Text>
           </Pressable>
-          {attachments.length > 0 && attachments.length < MAX_ATTACHMENT_COUNT ? (
-            <Pressable onPress={takePhoto} style={styles.secondaryActionBtn}>
-              <Icon name="camera" size={16} color={colors.primary} />
-            </Pressable>
-          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Chọn ảnh hoặc video từ thư viện"
+            disabled={attachmentLimitReached}
+            onPress={pickImage}
+            style={[styles.attachmentLibraryBtn, attachmentLimitReached && styles.attachmentActionDisabled]}
+          >
+            <Icon name="image" size={18} color={colors.primary} />
+            <Text style={styles.attachmentLibraryBtnText}>Thư viện</Text>
+          </Pressable>
         </View>
 
 
@@ -1417,9 +1467,11 @@ const styles = StyleSheet.create({
   duplicateList: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginTop: 10, borderWidth: 1, borderColor: '#E2E8F0' },
   addImgBtn: { backgroundColor: '#EFF6FF', borderRadius: 16, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#BFDBFE', borderStyle: 'dashed' },
   imgToolbar: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  addPrimaryBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
+  addPrimaryBtn: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 },
   addPrimaryBtnText: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: '#FFFFFF' },
-  secondaryActionBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' },
+  attachmentLibraryBtn: { flex: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' },
+  attachmentLibraryBtnText: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: colors.primary },
+  attachmentActionDisabled: { opacity: 0.45 },
   imgGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   imgItem: { position: 'relative', width: '48%' },
   imgPreview: { width: '100%', height: 120, borderRadius: 14, backgroundColor: '#E2E8F0' },
