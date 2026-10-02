@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -31,11 +32,15 @@ import MessageBubble, {
 } from './feedback-message-bubble';
 import MessageComposer from './message-composer';
 import {
+  MESSAGE_POLL_INTERVAL_MS,
+  REALTIME_RECONCILE_INTERVAL_MS,
+  useTicketMessagesRealtime,
+} from '../realtime/use-ticket-messages-realtime';
+import {
   messagingApi,
   messagingKeys,
 } from '../api';
 
-const MESSAGE_POLL_INTERVAL_MS = 2000;
 
 const getPersistedMessageId = (
   message: ChatMessage | null | undefined,
@@ -121,6 +126,18 @@ export default function FeedbackChatSection({
     }, []),
   );
 
+  /*
+   * Kênh realtime chỉ báo có tin mới; việc tải lại vẫn do react-query làm, nên API
+   * tiếp tục là nguồn sự thật và tin nhắn lạc quan trong cache không bị ghi đè.
+   */
+  const refetchRef = useRef<() => void>(() => {});
+  const { connected: realtimeConnected } = useTicketMessagesRealtime(feedbackId, {
+    enabled: Boolean(feedbackId) && isAppActive && isScreenFocused,
+    onMessage: useCallback(() => {
+      refetchRef.current();
+    }, []),
+  });
+
   const {
     data: messages = [],
     isLoading,
@@ -170,7 +187,9 @@ export default function FeedbackChatSection({
 
     refetchInterval:
       isAppActive && isScreenFocused
-        ? MESSAGE_POLL_INTERVAL_MS
+        ? (realtimeConnected
+            ? REALTIME_RECONCILE_INTERVAL_MS
+            : MESSAGE_POLL_INTERVAL_MS)
         : false,
 
     refetchIntervalInBackground:
@@ -178,6 +197,12 @@ export default function FeedbackChatSection({
 
     staleTime: 1000,
   });
+
+  useEffect(() => {
+    refetchRef.current = () => {
+      void refetch();
+    };
+  }, [refetch]);
 
   /**
    * Theo dõi trạng thái foreground/background.
