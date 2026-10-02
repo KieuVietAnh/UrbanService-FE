@@ -270,6 +270,7 @@ const FilterDropdown = ({
   icon: Icon,
   ariaLabel,
   widthClass = 'sm:w-[190px]',
+  placement = 'bottom',
 }) => {
   const detailsRef = useRef(null);
   const selectedOption =
@@ -305,7 +306,11 @@ const FilterDropdown = ({
         />
       </summary>
 
-      <menu className="absolute right-0 z-[80] mt-2 w-full min-w-[190px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+      <menu
+        className={`absolute right-0 z-[80] w-full min-w-[190px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
+          placement === 'top' ? 'bottom-full mb-2' : 'mt-2'
+        }`}
+      >
         {options.map((option) => {
           const isSelected = option.value === value;
 
@@ -1400,6 +1405,8 @@ export const InteractionHistoryMonitoring = () => {
                 icon={Lucide.Rows3}
                 ariaLabel="Chọn số dòng mỗi trang"
                 widthClass="w-[112px]"
+                placement="top"
+                placement="top"
               />
             </div>
 
