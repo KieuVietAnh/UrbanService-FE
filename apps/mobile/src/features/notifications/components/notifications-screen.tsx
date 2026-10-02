@@ -19,6 +19,7 @@ import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 import type { NotificationItem } from '../types/notification.types';
 import { notificationApi, notificationKeys } from '../api';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 export type { NotificationItem } from '../types/notification.types';
 
@@ -151,8 +152,8 @@ export default function NotificationsScreen() {
       queryClient.invalidateQueries({ queryKey: notificationKeys.all });
       toast.success('Đã đánh dấu tất cả là đã đọc');
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Không thể đánh dấu tất cả đã đọc');
+    onError: (err: unknown) => {
+      toast.error(getUserFacingError(err, 'Không thể đánh dấu tất cả là đã đọc. Vui lòng thử lại.'));
     },
   });
 
@@ -275,7 +276,7 @@ export default function NotificationsScreen() {
 
       {isError && !isLoading ? (
         <AppErrorState onRetry={refetch}>
-          {(error as any)?.message || 'Không thể tải danh sách thông báo'}
+          {getUserFacingError(error, 'Không thể tải danh sách thông báo. Vui lòng thử lại.')}
         </AppErrorState>
       ) : (
         <FlatList

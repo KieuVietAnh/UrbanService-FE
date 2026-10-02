@@ -22,7 +22,7 @@ const isApiRecord = (value: unknown): value is ApiRecord =>
 const extractData = (response: unknown): unknown => {
   if (typeof response === 'string') {
     if (response.includes('<!DOCTYPE html>') || response.includes('<html')) {
-      throw new Error('Không thể kết nối đến máy chủ API (phản hồi trang HTML 404/500). Vui lòng kiểm tra cấu hình EXPO_PUBLIC_API_URL.');
+      throw new Error('Hệ thống đang tạm thời gián đoạn. Vui lòng thử lại sau.');
     }
     try {
       return JSON.parse(response);

@@ -128,7 +128,7 @@ function IncidentOverview({ item, userId }: { item: StaffRecord; userId: string 
       {!sameIncident(item.assignedStaffUserId, userId) && <Notice>Sự vụ này chưa được xác nhận là đang phân công cho bạn.</Notice>}
       {normalizeKey(item.status) === 'needrework' && <Notice>Manager đã yêu cầu xử lý lại. Hãy bổ sung minh chứng cần thiết và gửi một kết quả mới; các lần gửi trước vẫn được giữ trong lịch sử.</Notice>}
       <ExecutionOverview item={item} userId={userId} />
-      <Label muted size={12}>SLA được backend tính cho sự vụ và hiển thị trong tab Reports. Hạn dự kiến không được dùng để tự suy ra cảnh báo hay vi phạm SLA.</Label>
+      <Label muted size={12}>Chỉ tiêu thời gian được tính cho toàn bộ sự vụ và hiển thị trong mục Phản ánh. Hạn dự kiến chỉ dùng để tham khảo tiến độ.</Label>
     </Section>
   </>;
 }

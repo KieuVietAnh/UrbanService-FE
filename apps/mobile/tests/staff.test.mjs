@@ -5,15 +5,39 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { axiosClient, INCIDENT_MANAGEMENT_CAPABILITIES, notificationApi as sharedNotificationApi, userApi } from '@urbanmind/shared-api';
 import { canAccessMobileWorkspace, getMobileEntry, getMobileRedirect } from '../src/features/auth/mobile-access.ts';
+import { getUserFacingError } from '../src/utils/user-facing-error.ts';
 import * as staffModels from '../src/features/staff/staff-models.ts';
 import { getStaffContentLayout, getStaffLineHeight, getStaffTabLayout, getStaffTextScale, STAFF_FIXED_CHROME_MAX_FONT_SCALE } from '../src/features/staff/staff-layout.ts';
 import { smokeProfile, STAFF_SMOKE_PROFILES } from './staff-smoke-profiles.mjs';
 
 const { normalizeStaffRecord, normalizePage, normalizeMessage, normalizeStaffNotification, normalizeEvent, staffNotificationTarget, formatConfidence } = staffModels;
 
+test('mobile error copy hides service internals and gives the user a next step', () => {
+  assert.equal(
+    getUserFacingError({ response: { status: 400, data: { message: 'AuthCenter.InvalidCredentials' } } }, 'Không thể đăng nhập.', 'login'),
+    'Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.',
+  );
+  assert.equal(
+    getUserFacingError({ code: 'ERR_NETWORK', message: 'Network Error' }),
+    'Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.',
+  );
+  assert.equal(
+    getUserFacingError({ response: { status: 500, data: { message: 'System.InvalidOperationException' } } }),
+    'Hệ thống đang tạm thời gián đoạn. Vui lòng thử lại sau.',
+  );
+  assert.equal(
+    getUserFacingError(new Error('Backend endpoint failed'), 'Không thể hoàn tất thao tác. Vui lòng thử lại.'),
+    'Không thể hoàn tất thao tác. Vui lòng thử lại.',
+  );
+  assert.equal(
+    getUserFacingError(new Error('Mã OTP đã hết hạn. Vui lòng gửi lại mã mới.'), 'Không thể xác thực.', 'phone-otp-verify'),
+    'Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới.',
+  );
+});
+
 // Node test runner resolves the extensionless TS import used by Metro.
 const resolver = registerHooks({ resolve(specifier, context, nextResolve) {
-  if (['./staff-models', './staff-execution-models', './staff-execution-flow-models'].includes(specifier) && context.parentURL?.includes('/features/staff/')) {
+  if (['./staff-models', './staff-execution-models', './staff-execution-flow-models', '../../utils/user-facing-error'].includes(specifier) && context.parentURL?.includes('/features/staff/')) {
     return nextResolve(specifier + '.ts', context);
   }
   return nextResolve(specifier, context);
@@ -572,6 +596,11 @@ test('NeedRework evidence clear uses the contract path, validates the assignment
   assert.match(source, /requestCameraPermissionsAsync/);
   assert.match(source, /ImagePicker\.launchCameraAsync/);
   assert.match(source, /Chụp ảnh trực tiếp/);
+  assert.match(source, /Alert\.alert\(['"]Cần quyền camera/);
+  assert.match(source, /mediaNotice/);
+  assert.match(source, /Không thể mở thư viện ảnh/);
+  assert.match(source, /Không thể mở trình chọn tệp/);
+  assert.match(source, /scroll\.current\?\.scrollTo/);
 });
 
 test('native URI evidence is appended as a native file descriptor without assuming Blob support', () => {

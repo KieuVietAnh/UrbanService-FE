@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { sendForgotPasswordOtp, resetForgotPassword } from '../api/forgotPassword.api';
-import { extractApiErrorMessage } from '@urbanmind/shared-api';
 import { useToast } from '@/components/shared';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 export const useForgotPassword = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +19,7 @@ export const useForgotPassword = () => {
       );
       return true;
     } catch (err: unknown) {
-      const message = extractApiErrorMessage(err, 'Không thể gửi mã OTP. Vui lòng thử lại.');
+      const message = getUserFacingError(err, 'Không thể gửi mã OTP. Vui lòng thử lại.', 'forgot-password');
       setError(message);
       toast.error(message);
       return false;
@@ -36,7 +36,7 @@ export const useForgotPassword = () => {
       toast.success('Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.');
       return true;
     } catch (err: unknown) {
-      const message = extractApiErrorMessage(err, 'Đặt lại mật khẩu thất bại. Vui lòng kiểm tra lại.');
+      const message = getUserFacingError(err, 'Không thể đặt lại mật khẩu. Vui lòng kiểm tra và thử lại.', 'forgot-password');
       setError(message);
       toast.error(message);
       return false;
@@ -53,7 +53,7 @@ export const useForgotPassword = () => {
       toast.success('Mã OTP mới đã được yêu cầu. Vui lòng kiểm tra email.');
       return true;
     } catch (err: unknown) {
-      const message = extractApiErrorMessage(err, 'Không thể gửi lại mã OTP. Vui lòng thử lại.');
+      const message = getUserFacingError(err, 'Không thể gửi lại mã OTP. Vui lòng thử lại.', 'forgot-password');
       setError(message);
       toast.error(message);
       return false;

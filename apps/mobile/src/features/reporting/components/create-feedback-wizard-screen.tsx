@@ -38,6 +38,7 @@ import {
   type AddressSuggestion,
 } from '@/features/reporting/services/address-geocoding';
 import FeedbackLocationPicker from './feedback-location-picker';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 const { width: W } = Dimensions.get('window');
 const STEPS = ['Mô tả', 'Vị trí', 'Minh chứng', 'Xem lại'];
@@ -47,6 +48,13 @@ const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
 const DRAFT_STORAGE_PREFIX = 'urbanmind:create-ticket-draft';
 const GPS_TIMEOUT_MS = 12_000;
+
+type FeedbackAttachmentDraft = {
+  uri: string;
+  name: string;
+  type: string;
+  size?: number;
+};
 
 const formatFileSize = (bytes = 0) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -595,8 +603,8 @@ function StepAttachments({
   onRemove,
   error,
 }: {
-  attachments: Array<{ uri: string; name: string; type: string; size?: number }>;
-  onAdd: (uri: string, fileName: string, type: string, size?: number) => void;
+  attachments: FeedbackAttachmentDraft[];
+  onAdd: (items: FeedbackAttachmentDraft[]) => number;
   onRemove: (index: number) => void;
   error?: string;
 }) {
@@ -608,16 +616,24 @@ function StepAttachments({
       toast.error(`Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`);
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_ATTACHMENT_COUNT - attachments.length,
-      quality: 0.85,
-    });
-    if (!result.canceled) {
-      result.assets.forEach((asset) => {
-        onAdd(asset.uri, asset.fileName || `attachment_${Date.now()}.jpg`, asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'), asset.fileSize);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_ATTACHMENT_COUNT - attachments.length,
+        quality: 0.85,
       });
+      if (!result.canceled) {
+        const added = onAdd(result.assets.map((asset, index) => ({
+          uri: asset.uri,
+          name: asset.fileName || `minh-chung-${Date.now()}-${index}.jpg`,
+          type: asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
+          size: asset.fileSize,
+        })));
+        if (added > 0) toast.success(`Đã thêm ${added} tệp từ thư viện.`);
+      }
+    } catch {
+      toast.error('Không thể mở thư viện ảnh. Hãy kiểm tra quyền truy cập ảnh của UrbanMind rồi thử lại.');
     }
   };
 
@@ -638,7 +654,14 @@ function StepAttachments({
           'UrbanMind cần quyền camera để chụp ảnh minh chứng. Bạn có thể bật quyền này trong Cài đặt của thiết bị.',
           [
             { text: 'Để sau', style: 'cancel' },
-            { text: 'Mở cài đặt', onPress: () => { void Linking.openSettings(); } },
+            {
+              text: 'Mở cài đặt',
+              onPress: () => {
+                void Linking.openSettings().catch(() => {
+                  toast.error('Không thể mở Cài đặt. Hãy mở Cài đặt thiết bị và cấp quyền Camera cho UrbanMind.');
+                });
+              },
+            },
           ],
         );
         return;
@@ -650,12 +673,15 @@ function StepAttachments({
       });
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        onAdd(
-          asset.uri,
-          asset.fileName || `anh-minh-chung-${Date.now()}.jpg`,
-          asset.mimeType || 'image/jpeg',
-          asset.fileSize,
-        );
+        const added = onAdd([{
+          uri: asset.uri,
+          name: asset.fileName || `anh-minh-chung-${Date.now()}.jpg`,
+          type: asset.mimeType || 'image/jpeg',
+          size: asset.fileSize,
+        }]);
+        if (added > 0) toast.success('Đã thêm ảnh vừa chụp vào minh chứng.');
+      } else if (!result.canceled) {
+        toast.warning('Camera chưa trả về ảnh. Hãy chụp lại hoặc chọn ảnh từ thư viện.');
       }
     } catch {
       toast.error('Không thể mở camera. Hãy thử lại hoặc chọn ảnh từ thư viện.');
@@ -844,7 +870,7 @@ export default function CreateFeedbackWizardScreen() {
   const [locationAccuracyMeters, setLocationAccuracyMeters] = useState<number | null>(null);
   const [geoSource, setGeoSource] = useState<'GPS' | 'MANUAL'>('MANUAL');
   const [locating, setLocating] = useState(false);
-  const [attachments, setAttachments] = useState<Array<{ uri: string; name: string; type: string; size?: number }>>([]);
+  const [attachments, setAttachments] = useState<FeedbackAttachmentDraft[]>([]);
   const [areas, setAreas] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [areasLoading, setAreasLoading] = useState(true);
@@ -1119,26 +1145,42 @@ export default function CreateFeedbackWizardScreen() {
     }
   };
 
-  const handleAddAttachment = (uri: string, fileName: string, type: string, size?: number) => {
-    if (attachments.length >= MAX_ATTACHMENT_COUNT) {
-      toast.error(`Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`);
-      return;
-    }
-    const normalizedType = type || (uri.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+  const handleAddAttachments = (items: FeedbackAttachmentDraft[]) => {
+    const next = [...attachments];
+    let added = 0;
+    let firstError = '';
 
-    const normalizedSize = size ?? 0;
-    const isVideo = normalizedType.startsWith('video/');
-    const sizeLimit = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
-    if (normalizedSize > sizeLimit && normalizedSize > 0) {
-      toast.error(`${isVideo ? 'Video' : 'Ảnh'} không được vượt quá ${formatFileSize(sizeLimit)}.`);
-      return;
+    for (const item of items) {
+      if (next.length >= MAX_ATTACHMENT_COUNT) {
+        firstError ||= `Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`;
+        break;
+      }
+
+      const normalizedType = item.type || (item.uri.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+      const normalizedSize = item.size ?? 0;
+      const isVideo = normalizedType.startsWith('video/');
+      const sizeLimit = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
+      if (normalizedSize > sizeLimit && normalizedSize > 0) {
+        firstError ||= `${isVideo ? 'Video' : 'Ảnh'} “${item.name}” vượt quá ${formatFileSize(sizeLimit)}.`;
+        continue;
+      }
+
+      const nextTotalSize = next.reduce((sum, attachment) => sum + (attachment.size || 0), 0) + normalizedSize;
+      if (nextTotalSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES && normalizedSize > 0) {
+        firstError ||= `Tổng dung lượng minh chứng không được vượt quá ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`;
+        continue;
+      }
+
+      next.push({ ...item, type: normalizedType, size: normalizedSize });
+      added += 1;
     }
-    if (attachments.reduce((sum, item) => sum + (item.size || 0), 0) + normalizedSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES && normalizedSize > 0) {
-      toast.error(`Tổng dung lượng minh chứng không được vượt quá ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`);
-      return;
+
+    if (added > 0) {
+      setAttachments(next);
+      clearFieldError('attachments');
     }
-    setAttachments((current) => [...current, { uri, name: fileName, type: normalizedType, size: normalizedSize }]);
-    clearFieldError('attachments');
+    if (firstError) toast.error(firstError);
+    return added;
   };
 
   const handleRemoveAttachment = (index: number) => {
@@ -1214,7 +1256,7 @@ export default function CreateFeedbackWizardScreen() {
       const resp = (error as any)?.response;
       const serverMessage = resp?.data?.message || (error as any)?.message || '';
       if (resp?.status === 413) {
-        toast.error(`Tệp gửi lên quá lớn (HTTP 413). Vui lòng giảm kích thước ảnh/video hoặc gửi ít tệp hơn. Tối đa ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`);
+        toast.error(`Tệp đã chọn quá lớn. Vui lòng giảm kích thước ảnh/video hoặc chọn ít tệp hơn. Tổng dung lượng tối đa ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`);
       } else if (typeof serverMessage === 'string' && serverMessage.includes('BoundaryGeoJson')) {
         // Graceful fallback: retry once without areaId so user can still submit
         try {
@@ -1234,7 +1276,7 @@ export default function CreateFeedbackWizardScreen() {
             qc.setQueryData(reportingKeys.detail(String(fallbackFeedbackId)), fallbackCreatedFeedback);
           }
 
-          toast.success('Phản ánh đã được gửi (không kèm khu vực do lỗi hình dạng).');
+          toast.success('Phản ánh đã được gửi. Khu vực sẽ được xác định từ vị trí bạn đã chọn.');
 
           // Navigate to newly created ticket detail
           if (fallbackFeedbackId) {
@@ -1244,10 +1286,10 @@ export default function CreateFeedbackWizardScreen() {
           }
         } catch (err2) {
           if (__DEV__) console.warn('Fallback submit without area failed');
-          toast.error('Khu vực được chọn chứa dữ liệu hình dạng không hợp lệ. Vui lòng chọn khu vực khác hoặc liên hệ quản trị viên.');
+          toast.error(getUserFacingError(err2, 'Chưa thể gửi phản ánh với khu vực này. Vui lòng chọn khu vực khác hoặc thử lại.'));
         }
       } else {
-        toast.error('Gửi phản ánh thất bại. Vui lòng thử lại.');
+        toast.error(getUserFacingError(error, 'Không thể gửi phản ánh. Vui lòng thử lại.'));
       }
     } finally {
       setSubmitting(false);
@@ -1349,7 +1391,7 @@ export default function CreateFeedbackWizardScreen() {
             {step === 3 && (
               <StepAttachments
                 attachments={attachments}
-                onAdd={handleAddAttachment}
+                onAdd={handleAddAttachments}
                 onRemove={handleRemoveAttachment}
                 error={fieldErrors.attachments}
               />

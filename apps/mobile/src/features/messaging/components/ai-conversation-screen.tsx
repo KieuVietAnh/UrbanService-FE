@@ -34,6 +34,7 @@ import {
 } from '@/components/shared';
 import { KeyboardAwareComposerLayout } from '@/components/layouts';
 import { semantics } from '@/theme/semantics';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 import MessageComposer from './message-composer';
 import type { AiMessage } from '../types/messaging.types';
@@ -55,17 +56,6 @@ const isApiRecord = (value: unknown): value is ApiRecord =>
   value !== null &&
   typeof value === 'object' &&
   !Array.isArray(value);
-
-const getErrorMessage = (value: unknown): string | null => {
-  if (
-    !isApiRecord(value) ||
-    typeof value.message !== 'string'
-  ) {
-    return null;
-  }
-
-  return value.message;
-};
 
 const formatTime = (value: string) => {
   if (!value) return '';
@@ -629,8 +619,7 @@ export default function AiConversationDetailScreen() {
           <AppErrorState
             onRetry={refetch}
           >
-            {getErrorMessage(error) ||
-              'Không thể tải hội thoại AI.'}
+            {getUserFacingError(error, 'Không thể tải hội thoại trợ lý. Vui lòng thử lại.')}
           </AppErrorState>
         ) : (
           <KeyboardAwareComposerLayout

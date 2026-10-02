@@ -3,8 +3,8 @@ import { devtools, persist } from 'zustand/middleware';
 import { AsyncStorageService } from '@/services/storage/asyncStorage';
 import { AuthService } from './auth.service';
 import type { User } from '@/types';
-import { extractApiErrorMessage } from '@urbanmind/shared-api';
 import { queryClient } from '@/config/query-client';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 interface RegisterData {
   fullName: string;
@@ -83,7 +83,7 @@ export const useAuthStore = create<AuthState>()(
             set({ user, isLoading: false });
             return user;
           } catch (err: unknown) {
-            const msg = extractApiErrorMessage(err, 'Đăng nhập thất bại');
+            const msg = getUserFacingError(err, 'Không thể đăng nhập. Vui lòng thử lại.', 'login');
             const details = err as ApiErrorDetails;
             if (__DEV__) {
               console.error('[Auth login failed]', {
@@ -106,7 +106,7 @@ export const useAuthStore = create<AuthState>()(
             set({ user, isLoading: false });
             return user;
           } catch (err: unknown) {
-            const msg = extractApiErrorMessage(err, 'Đăng nhập bằng Google thất bại');
+            const msg = getUserFacingError(err, 'Không thể đăng nhập bằng Google. Vui lòng thử lại.', 'google-login');
             const details = err as ApiErrorDetails;
             if (__DEV__) {
               console.error('[Auth googleLogin failed]', {
@@ -129,7 +129,7 @@ export const useAuthStore = create<AuthState>()(
             set({ user, isLoading: false });
             return user;
           } catch (err: unknown) {
-            const msg = extractApiErrorMessage(err, 'Đăng ký thất bại');
+            const msg = getUserFacingError(err, 'Không thể tạo tài khoản. Vui lòng thử lại.', 'register');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {
@@ -144,7 +144,7 @@ export const useAuthStore = create<AuthState>()(
             set({ isLoading: false });
             return result;
           } catch (err: unknown) {
-            const msg = extractApiErrorMessage(err);
+            const msg = getUserFacingError(err, 'Không thể gửi mã OTP. Vui lòng thử lại sau.', 'phone-otp-send');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {
@@ -164,7 +164,7 @@ export const useAuthStore = create<AuthState>()(
             set({ user: verifiedUser, isLoading: false });
             return verifiedUser;
           } catch (err: unknown) {
-            const msg = extractApiErrorMessage(err);
+            const msg = getUserFacingError(err, 'Không thể xác thực mã OTP. Vui lòng kiểm tra và thử lại.', 'phone-otp-verify');
             set({ error: msg, isLoading: false });
             throw new Error(msg);
           } finally {

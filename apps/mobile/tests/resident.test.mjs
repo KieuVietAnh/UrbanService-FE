@@ -128,6 +128,11 @@ test('feedback evidence is optional and GPS metadata is honest and recoverable',
   assert.match(wizard, /launchCameraAsync/);
   assert.match(wizard, /Chụp ảnh/);
   assert.match(wizard, /Thư viện/);
+  assert.match(wizard, /handleAddAttachments/);
+  assert.match(wizard, /Đã thêm \$\{added\} tệp từ thư viện/);
+  assert.match(wizard, /Không thể mở thư viện ảnh/);
+  assert.match(wizard, /Không thể mở camera/);
+  assert.match(wizard, /Linking\.openSettings/);
   assert.doesNotMatch(wizard, /attachments\.length > 0 && attachments\.length < MAX_ATTACHMENT_COUNT/);
   assert.match(appConfig, /"expo-image-picker"[\s\S]*?"cameraPermission"[\s\S]*?"microphonePermission": false/);
   assert.match(dynamicAppConfig, /'expo-image-picker'[\s\S]*?cameraPermission:[\s\S]*?microphonePermission: false/);
