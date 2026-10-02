@@ -36,6 +36,12 @@ module.exports = ({ config }) => {
           image: './assets/splash-logo.jpg',
           imageWidth: 300,
           resizeMode: 'contain',
+          android: {
+            backgroundColor: '#FFFFFF',
+            image: './assets/icon.png',
+            imageWidth: 160,
+            resizeMode: 'contain',
+          },
         },
       ],
       ['expo-system-ui', { userInterfaceStyle: 'light' }],
