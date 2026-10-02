@@ -10,7 +10,7 @@ import { AppBadge, AppButton, AppCard, AppHeader, Text } from '@/components/ui';
 import { AppEmptyState, AppErrorState, SkeletonCard, useToast } from '@/components/shared';
 import { communityApi, communityKeys } from '@/features/community/api';
 import type { CommunityFeedCache, PublicIncidentDetail } from '@/features/community/types';
-import { getResidentStatusLabel, getResidentStage } from '@/features/resident-status';
+import { getResidentStatusLabel, getResidentStage, normalizeResidentStatus } from '@/features/resident-status';
 import TicketLocationMap from '@/features/reporting/components/ticket-location-map';
 import { semantics } from '@/theme/semantics';
 
@@ -18,14 +18,36 @@ const formatDate = (value?: string | null) => value
   ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })
   : '';
 
-const publicEventLabel = (eventType?: string) => {
-  const key = String(eventType ?? '').replace(/[_\s-]+/g, '').toLowerCase();
-  if (key.includes('close') || key.includes('approved') || key.includes('complete')) return 'Hoàn thành';
-  if (key.includes('resolution') || key.includes('approval') || key.includes('review')) return 'Đang kiểm tra kết quả';
-  if (key.includes('progress') || key.includes('rework') || key.includes('process')) return 'Đang xử lý';
-  if (key.includes('assign') || key.includes('verify') || key.includes('receive')) return 'Đã tiếp nhận';
-  return 'Đã ghi nhận';
-};
+const PUBLIC_JOURNEY_STEPS = [
+  {
+    key: 'received',
+    label: 'Đã tiếp nhận',
+    description: 'Sự vụ đã được ghi nhận',
+    statuses: ['new', 'verified'],
+    icon: 'inbox',
+  },
+  {
+    key: 'processing',
+    label: 'Đang xử lý',
+    description: 'Đơn vị phụ trách thực hiện',
+    statuses: ['assigned', 'inprogress', 'needrework'],
+    icon: 'tool',
+  },
+  {
+    key: 'approval',
+    label: 'Kiểm tra kết quả',
+    description: 'Kết quả đang được rà soát',
+    statuses: ['submittedforapproval'],
+    icon: 'clipboard',
+  },
+  {
+    key: 'done',
+    label: 'Hoàn tất',
+    description: 'Sự vụ đã hoàn thành xử lý',
+    statuses: ['approved', 'resolved', 'closed'],
+    icon: 'check-circle',
+  },
+] as const;
 
 export default function CommunityDetailScreen() {
   const { id, autoFocusComment } = useLocalSearchParams<{ id?: string; autoFocusComment?: string }>();
@@ -45,11 +67,6 @@ export default function CommunityDetailScreen() {
     queryFn: () => communityApi.getResolution(incidentId),
     enabled: Boolean(incidentId) && getResidentStage(detailQuery.data?.status) === 'completed',
   });
-  const timelineQuery = useQuery({
-    queryKey: communityKeys.timeline(incidentId),
-    queryFn: () => communityApi.getTimeline(incidentId),
-    enabled: Boolean(incidentId),
-  });
   const commentsQuery = useQuery({
     queryKey: communityKeys.comments(incidentId),
     queryFn: () => communityApi.getComments(incidentId),
@@ -59,7 +76,6 @@ export default function CommunityDetailScreen() {
   const incident = detailQuery.data;
   const resolution = resolutionQuery.data;
   const comments = commentsQuery.data ?? [];
-  const timeline = timelineQuery.data ?? [];
 
   useEffect(() => {
     if (autoFocusComment === '1' || autoFocusComment === 'true') {
@@ -148,6 +164,12 @@ export default function CommunityDetailScreen() {
   const latitude = Number(incident.latitude ?? 0);
   const longitude = Number(incident.longitude ?? 0);
   const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 && longitude !== 0;
+  const statusKey = normalizeResidentStatus(incident.status);
+  const matchedJourneyIndex = PUBLIC_JOURNEY_STEPS.findIndex((step) => (
+    (step.statuses as readonly string[]).includes(statusKey)
+  ));
+  const currentJourneyIndex = matchedJourneyIndex >= 0 ? matchedJourneyIndex : 0;
+  const journeyCompleted = (PUBLIC_JOURNEY_STEPS[PUBLIC_JOURNEY_STEPS.length - 1].statuses as readonly string[]).includes(statusKey);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -226,18 +248,44 @@ export default function CommunityDetailScreen() {
           ) : null}
 
           <AppCard shadow="sm" style={styles.card}>
-            <Text style={styles.sectionTitle}>Tiến độ công khai</Text>
-            {timelineQuery.isLoading ? <SkeletonCard /> : timeline.length ? timeline.map((event, index) => (
-              <View key={String(event.incidentEventId ?? index)} style={styles.timelineRow}>
-                <View style={styles.timelineDot} />
-                <View style={styles.timelineBody}>
-                  <Text style={styles.timelineTitle}>{publicEventLabel(event.eventType)}</Text>
-                  <Text style={styles.timelineTime}>{formatDate(event.createdAt)}</Text>
-                </View>
+            <View style={styles.journeyHeader}>
+              <Text style={[styles.sectionTitle, styles.journeyTitle]}>Theo dõi tiến trình</Text>
+              <View style={styles.journeyCounter}>
+                <Text style={styles.journeyCounterText}>{currentJourneyIndex + 1}/{PUBLIC_JOURNEY_STEPS.length}</Text>
               </View>
-            )) : (
-              <Text style={styles.muted}>Sự vụ đã được ghi nhận. Tiến độ mới sẽ xuất hiện tại đây.</Text>
-            )}
+            </View>
+            <View accessibilityRole="list" accessibilityLabel="Tiến trình xử lý công khai" style={styles.journeyList}>
+              {PUBLIC_JOURNEY_STEPS.map((step, index) => {
+                const completed = index < currentJourneyIndex || (journeyCompleted && index === currentJourneyIndex);
+                const active = index === currentJourneyIndex && !completed;
+                const iconColor = completed
+                  ? semantics.text.inverse
+                  : active
+                    ? semantics.text.brand
+                    : semantics.text.lightMuted;
+
+                return (
+                  <View key={step.key} accessibilityLabel={`${step.label}. ${step.description}`} style={styles.journeyRow}>
+                    {index < PUBLIC_JOURNEY_STEPS.length - 1 ? (
+                      <View style={[styles.journeyRail, index < currentJourneyIndex && styles.journeyRailComplete]} />
+                    ) : null}
+                    <View
+                      style={[
+                        styles.journeyMarker,
+                        completed && styles.journeyMarkerComplete,
+                        active && styles.journeyMarkerActive,
+                      ]}
+                    >
+                      <Icon name={completed ? 'check' : step.icon} size={15} color={iconColor} />
+                    </View>
+                    <View style={styles.journeyCopy}>
+                      <Text style={[styles.journeyLabel, !completed && !active && styles.journeyLabelPending]}>{step.label}</Text>
+                      <Text style={styles.journeyDescription}>{step.description}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           </AppCard>
 
           {resolution ? (
@@ -296,10 +344,21 @@ const styles = StyleSheet.create({
   sectionTitle: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: semantics.text.primary, marginBottom: 12 },
   mapWrap: { height: 170, borderRadius: 16, overflow: 'hidden' },
   map: { width: '100%', height: 170 },
-  timelineRow: { flexDirection: 'row', gap: 12, paddingVertical: 9 },
-  timelineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: semantics.bg.primary, marginTop: 4 },
-  timelineBody: { flex: 1 },
-  timelineTitle: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: semantics.text.primary },
+  journeyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  journeyTitle: { marginBottom: 0 },
+  journeyCounter: { minWidth: 42, minHeight: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: semantics.bg.primarySoft, paddingHorizontal: 10 },
+  journeyCounterText: { fontFamily: 'Geist-SemiBold', fontSize: 12, color: semantics.text.brand, fontVariant: ['tabular-nums'] },
+  journeyList: { marginTop: 18 },
+  journeyRow: { position: 'relative', minHeight: 68, flexDirection: 'row', alignItems: 'flex-start', gap: 13, paddingBottom: 12 },
+  journeyRail: { position: 'absolute', left: 15.5, top: 32, bottom: 0, width: 1, backgroundColor: semantics.border.default },
+  journeyRailComplete: { backgroundColor: semantics.bg.primary },
+  journeyMarker: { zIndex: 1, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: semantics.border.default, backgroundColor: semantics.bg.surface },
+  journeyMarkerComplete: { borderColor: semantics.border.primary, backgroundColor: semantics.bg.primary },
+  journeyMarkerActive: { borderColor: semantics.border.primary, backgroundColor: semantics.bg.primarySoft },
+  journeyCopy: { flex: 1, minWidth: 0, paddingTop: 1 },
+  journeyLabel: { fontFamily: 'Geist-SemiBold', fontSize: 14, lineHeight: 20, color: semantics.text.primary },
+  journeyLabelPending: { color: semantics.text.lightMuted },
+  journeyDescription: { marginTop: 2, fontFamily: 'Geist-Regular', fontSize: 12, lineHeight: 18, color: semantics.text.muted },
   timelineTime: { fontFamily: 'Geist-Regular', fontSize: 11, color: semantics.text.muted, marginTop: 3 },
   muted: { fontFamily: 'Geist-Regular', fontSize: 13, lineHeight: 20, color: semantics.text.muted },
   resolutionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },

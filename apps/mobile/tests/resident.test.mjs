@@ -7,6 +7,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const communityApi = read('../src/features/community/api/community-api.ts');
 const communityFeedCard = read('../src/features/community/components/community-feed-card.tsx');
 const communityMap = read('../src/features/community/components/community-map.native.tsx');
+const communityDetail = read('../app/(resident)/community/[id].tsx');
 const communitySupportCache = read('../src/features/community/utils/support-cache.ts');
 const residentLayout = read('../app/(resident)/_layout.tsx');
 const ticketDetail = read('../src/features/reporting/components/ticket-detail-screen.tsx');
@@ -31,8 +32,10 @@ test('native and branded splash screens both use the bundled UrbanMind artwork',
   assert.match(appConfig, /"icon": "\.\/assets\/icon\.png"/);
   assert.match(appConfig, /"foregroundImage": "\.\/assets\/adaptive-icon\.png"/);
   assert.match(appConfig, /"image": "\.\/assets\/splash-logo\.jpg"/);
+  assert.match(appConfig, /"android": \{[\s\S]*?"image": "\.\/assets\/icon\.png"[\s\S]*?"imageWidth": 160/);
   assert.match(dynamicAppConfig, /'expo-splash-screen'/);
   assert.match(dynamicAppConfig, /image: '\.\/assets\/splash-logo\.jpg'/);
+  assert.match(dynamicAppConfig, /android: \{[\s\S]*?image: '\.\/assets\/icon\.png'[\s\S]*?imageWidth: 160/);
   assert.match(rootLayout, /BrandSplashScreen/);
   assert.match(rootLayout, /BRAND_SPLASH_DURATION_MS/);
   assert.match(brandSplash, /require\('\.\.\/\.\.\/\.\.\/assets\/splash-logo\.jpg'\)/);
@@ -43,6 +46,17 @@ test('community is Incident-centric while My Feedback remains Feedback-centric',
   assert.doesNotMatch(communityApi, /\/api\/user\/feedbacks\/feed/);
   assert.match(ticketDetail, /feedbackApi\.getById/);
   assert.match(ticketDetail, /ticket\.incidentId/);
+});
+
+test('community detail presents one four-step public journey instead of raw duplicate events', () => {
+  assert.match(communityDetail, /const PUBLIC_JOURNEY_STEPS = \[/);
+  assert.match(communityDetail, /label: 'Đã tiếp nhận',[\s\S]*?description: 'Sự vụ đã được ghi nhận'/);
+  assert.match(communityDetail, /label: 'Đang xử lý',[\s\S]*?description: 'Đơn vị phụ trách thực hiện'/);
+  assert.match(communityDetail, /label: 'Kiểm tra kết quả',[\s\S]*?description: 'Kết quả đang được rà soát'/);
+  assert.match(communityDetail, /label: 'Hoàn tất',[\s\S]*?description: 'Sự vụ đã hoàn thành xử lý'/);
+  assert.match(communityDetail, /PUBLIC_JOURNEY_STEPS\.map/);
+  assert.doesNotMatch(communityDetail, /communityKeys\.timeline/);
+  assert.doesNotMatch(communityDetail, /publicEventLabel/);
 });
 
 test('resident detail actions cannot be covered by the Android tab or system navigation bars', () => {
