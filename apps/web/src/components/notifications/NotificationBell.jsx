@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useAuth } from '../../contexts/AuthContext';
-import { resolveNotificationDestination } from '../../utils/notificationNavigation';
+import { resolveNotificationDestinationAsync } from '../../utils/notificationNavigation';
 
 const formatRelativeTime = (value) => {
   const date = new Date(value);
@@ -35,11 +35,12 @@ export const NotificationBell = () => {
     .sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0))
     .slice(0, 5), [notifications]);
 
-  const openNotification = (notification) => {
-    const destination = resolveNotificationDestination(notification, user?.role);
+  const openNotification = async (notification) => {
     if (notification?.isRead === false && notification?.notificationId) {
       markAsRead(notification.notificationId).catch(() => {});
     }
+
+    const destination = await resolveNotificationDestinationAsync(notification, user?.role);
     navigate(destination);
   };
 

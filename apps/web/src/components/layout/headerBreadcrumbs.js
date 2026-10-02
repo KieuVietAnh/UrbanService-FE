@@ -26,10 +26,13 @@ export const getHeaderBreadcrumbOverride = (pathname = '') => {
   if (pathname === '/manager/reports/review') {
     return [{ label: 'Duyệt phản ánh', href: null }];
   }
+  if (pathname === '/analytics/sentiment') {
+    return [{ label: 'Mức độ hài lòng', href: null }];
+  }
   if (pathname === '/analytics/sentiment/negative') {
     return [
-      { label: 'Cảm xúc người dân', href: '/analytics/sentiment' },
-      { label: 'Phản ánh tiêu cực', href: null },
+      { label: 'Mức độ hài lòng', href: '/analytics/sentiment' },
+      { label: 'Đánh giá cần chú ý', href: null },
     ];
   }
   return null;
