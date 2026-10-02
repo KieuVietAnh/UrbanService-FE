@@ -4,6 +4,7 @@ import { APP_ROLES } from '@urbanmind/shared-types';
 import {
   getNotificationDestinationEntity,
   resolveNotificationDestination,
+  resolveServiceUserResolutionRouteFromTickets,
 } from './notificationNavigation.js';
 
 test('SYSTEMSTAFF mở Incident bằng incidentId chuẩn trong NotificationDto', () => {
@@ -128,6 +129,34 @@ test('SERVICEUSER mở Incident khi notification trạng thái chỉ có inciden
   const notification = { incidentId: 'incident-status', type: 'StatusChanged', title: 'Trạng thái sự vụ được cập nhật' };
   assert.equal(resolveNotificationDestination(notification, APP_ROLES.SERVICE_USER), '/community/feed/incident-status');
   assert.equal(getNotificationDestinationEntity(notification, APP_ROLES.SERVICE_USER), 'incident');
+});
+
+test('SERVICEUSER không bị đưa sang Community khi thông báo kết quả đã phê duyệt chỉ có incidentId', () => {
+  const notification = {
+    incidentId: 'incident-approved',
+    type: 'TicketUpdated',
+    title: 'Kết quả xử lý đã được phê duyệt',
+  };
+  assert.equal(
+    resolveNotificationDestination(notification, APP_ROLES.SERVICE_USER),
+    '/tickets?status=awaiting-review',
+  );
+});
+
+test('SERVICEUSER tìm đúng Feedback của Incident để mở thẳng trang đánh giá kết quả', () => {
+  const notification = {
+    incidentId: 'incident-approved',
+    type: 'TicketUpdated',
+    title: 'Kết quả xử lý đã được phê duyệt',
+  };
+  const tickets = [
+    { feedbackId: 'feedback-other', incidentId: 'incident-other', status: 'Approved' },
+    { feedbackId: 'feedback-target', incidentId: 'incident-approved', status: 'Approved', updatedAt: '2026-10-02T08:48:30Z' },
+  ];
+  assert.equal(
+    resolveServiceUserResolutionRouteFromTickets(notification, tickets),
+    '/tickets/feedback-target/result',
+  );
 });
 
 test('SERVICEUSER mở Community Incident khi notification có incidentId rõ ràng', () => {

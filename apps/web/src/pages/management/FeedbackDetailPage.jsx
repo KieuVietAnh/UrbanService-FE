@@ -333,8 +333,17 @@ export const FeedbackDetailPage = () => {
 
   const returnPath = location.state?.from;
   const returnMapState = location.state?.mapState;
+  const returnState = location.state?.returnState;
+  const returningToIncidentMatch = returnPath?.startsWith('/manager/incident-matches/');
   const isManagerContext = location.pathname.startsWith('/manager/') || returnPath?.startsWith('/manager/');
   const feedbackMapPath = isManagerContext ? '/manager/map' : '/management/map';
+  const backLabel = returnPath === '/management/map' || returnPath === '/manager/map'
+    ? 'Quay lại bản đồ'
+    : returnPath === '/dashboard'
+      ? 'Quay lại tổng quan'
+      : returningToIncidentMatch
+        ? 'Quay lại đối chiếu'
+        : 'Quay lại danh sách';
 
   const goBack = () => {
     if (returnPath === '/management/map' || returnPath === '/manager/map') {
@@ -350,6 +359,13 @@ export const FeedbackDetailPage = () => {
           restoreFeedbackId: feedbackId,
           preserveScrollOnEnter: true,
         },
+      });
+      return;
+    }
+
+    if (returningToIncidentMatch) {
+      navigate(returnPath, {
+        state: returnState && typeof returnState === 'object' ? returnState : undefined,
       });
       return;
     }
@@ -468,7 +484,7 @@ export const FeedbackDetailPage = () => {
               <Lucide.RefreshCw size={16} />
               Thử tải lại
             </button>
-            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{returnPath === '/management/map' || returnPath === '/manager/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}</button>
+            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{backLabel}</button>
           </div>
         </div>
       </div>
@@ -482,7 +498,7 @@ export const FeedbackDetailPage = () => {
     <div className="admin-page-shell manager-ui-page space-y-5 pb-4">
       <button type="button" onClick={goBack} className="admin-secondary-link inline-flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition">
         <Lucide.ArrowLeft size={16} />
-        {returnPath === '/management/map' || returnPath === '/manager/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}
+        {backLabel}
       </button>
 
       {error ? (

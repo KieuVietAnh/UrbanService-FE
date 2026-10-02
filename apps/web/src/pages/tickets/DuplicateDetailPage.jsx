@@ -349,6 +349,26 @@ export const DuplicateDetailPage = () => {
     loadCandidate();
   }, [loadCandidate]);
 
+  useEffect(() => {
+    const restoreScrollTop = Number(location.state?.restoreScrollTop);
+    if (loading || !candidate || !Number.isFinite(restoreScrollTop) || restoreScrollTop < 0) {
+      return undefined;
+    }
+
+    const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+    if (!scrollContainer) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      scrollContainer.scrollTo({
+        top: restoreScrollTop,
+        left: 0,
+        behavior: 'auto',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [candidate, loading, location.state?.restoreScrollTop]);
+
   const primaryFeedback = useMemo(() => candidate?.primaryFeedback || null, [candidate]);
   const duplicateFeedback = useMemo(() => candidate?.duplicateFeedback || null, [candidate]);
   // reasoning not displayed here; keep helper available in utils if needed
@@ -522,6 +542,37 @@ export const DuplicateDetailPage = () => {
       },
     ];
   }, [comparisonRows]);
+
+  const openPrimaryFeedbackDetail = () => {
+    const feedbackId = primaryFeedback?.feedbackId || primaryFeedback?.id;
+    if (!feedbackId) return;
+
+    const returnPath = `${location.pathname}${location.search || ''}${location.hash || ''}`;
+    const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
+    const restoreScrollTop = Number(scrollContainer?.scrollTop) || 0;
+    const returnState = {
+      ...(location.state || {}),
+      preserveScroll: true,
+      restoreScrollTop,
+    };
+
+    try {
+      const historyState = window.history.state || {};
+      window.history.replaceState(
+        { ...historyState, usr: returnState },
+        document.title,
+      );
+    } catch {
+      // Browser Back vẫn giữ đúng route; phần state khôi phục scroll chỉ là bổ sung.
+    }
+
+    navigate(`/manager/interactions/${feedbackId}`, {
+      state: {
+        from: returnPath,
+        returnState,
+      },
+    });
+  };
 
   const handleConfirmDuplicate = async () => {
     if (!duplicateCandidateId) return;
@@ -759,9 +810,7 @@ export const DuplicateDetailPage = () => {
                 {primaryFeedback?.feedbackId || primaryFeedback?.id ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/manager/interactions/${primaryFeedback.feedbackId || primaryFeedback.id}`, {
-                      state: { fromInteractionList: true },
-                    })}
+                    onClick={openPrimaryFeedbackDetail}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-cyan-200 bg-white px-2.5 text-[11px] font-semibold text-cyan-700 transition hover:bg-cyan-50"
                   >
                     Xem chi tiết phản ánh

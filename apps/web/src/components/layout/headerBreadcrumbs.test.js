@@ -9,17 +9,22 @@ test('uses a concise Vietnamese breadcrumb for Manager report review queue', () 
   ]);
 });
 
-test('does not override unrelated routes', () => {
-  assert.equal(getHeaderBreadcrumbOverride('/analytics/sentiment'), null);
-});
-
-test('uses Vietnamese breadcrumb for negative sentiment drill-down', () => {
-  assert.deepEqual(getHeaderBreadcrumbOverride('/analytics/sentiment/negative'), [
-    { label: 'Cảm xúc người dân', href: '/analytics/sentiment' },
-    { label: 'Phản ánh tiêu cực', href: null },
+test('uses Vietnamese breadcrumb for satisfaction dashboard', () => {
+  assert.deepEqual(getHeaderBreadcrumbOverride('/analytics/sentiment'), [
+    { label: 'Mức độ hài lòng', href: null },
   ]);
 });
 
+test('uses Vietnamese breadcrumb for satisfaction drill-down', () => {
+  assert.deepEqual(getHeaderBreadcrumbOverride('/analytics/sentiment/negative'), [
+    { label: 'Mức độ hài lòng', href: '/analytics/sentiment' },
+    { label: 'Đánh giá cần chú ý', href: null },
+  ]);
+});
+
+test('does not override unrelated routes', () => {
+  assert.equal(getHeaderBreadcrumbOverride('/analytics/heatmap'), null);
+});
 
 test('uses Vietnamese breadcrumb for notifications', () => {
   assert.deepEqual(getHeaderBreadcrumbOverride('/notifications'), [
