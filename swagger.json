@@ -2254,8 +2254,8 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Đăng nhập bằng tài khoản Google đã xác thực.",
-        "description": "Frontend gửi Google ID token nhận từ Google Identity Services.\r\nBackend xác minh token và chỉ đăng nhập khi email đã tồn tại trong\r\nUrbanService, `isVerified = true` và tài khoản đang hoạt động.\r\n            \r\nAPI không tự động tạo tài khoản mới.",
+        "summary": "Đăng nhập bằng tài khoản Google.",
+        "description": "Frontend gửi Google ID token nhận từ Google Identity Services. Backend\r\nxác minh chữ ký, hạn dùng theo `GoogleAuth:ClientId` và claim\r\n`email_verified`, rồi yêu cầu tài khoản đang hoạt động.\r\n            \r\nLần đăng nhập đầu tiên **có** tạo tài khoản mới, nhưng với\r\n`isVerified = false`: Google chứng minh quyền sở hữu email, không phải\r\nsố điện thoại, mà cờ này nay mang nghĩa đã xác thực SĐT. Tài khoản kiểu\r\nnày phải qua luồng `phone-verification` trước khi ghi được gì.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2504,7 +2504,7 @@
           "Auth"
         ],
         "summary": "Sửa thông tin đăng ký của tài khoản chưa xác thực số điện thoại.",
-        "description": "Yêu cầu JWT hợp lệ. Dùng khi người dùng gõ nhầm email lúc đăng ký: họ\r\nkhông nhận được OTP nên không tự xác thực được, mà đăng ký lại cũng\r\nkhông xong vì email cũ đã chiếm chỗ.\r\n            \r\nGiữ nguyên email của chính tài khoản thì **không** báo trùng. Đổi sang\r\nemail đang thuộc tài khoản khác thì trả `400`.\r\n            \r\nEndpoint này **không** gửi OTP. Người dùng bấm gửi mã ở màn xác thực, nơi\r\nhạn mức SMS được đếm. Số điện thoại là bắt buộc và được chuẩn hoá về E.164.\r\n            \r\nResponse trả JWT mới vì email nằm trong claim của token.",
+        "description": "Yêu cầu JWT hợp lệ. Dùng khi người dùng gõ nhầm email hoặc số điện thoại\r\nlúc đăng ký: gõ nhầm số thì OTP gửi tới máy người khác nên không tự xác\r\nthực được, mà đăng ký lại cũng không xong vì email cũ đã chiếm chỗ.\r\n            \r\nGiữ nguyên email của chính tài khoản thì **không** báo trùng. Đổi sang\r\nemail đang thuộc tài khoản khác thì trả `400`.\r\n            \r\nEndpoint này **không** gửi OTP. Người dùng bấm gửi mã ở màn xác thực, nơi\r\nhạn mức SMS được đếm. Số điện thoại là bắt buộc và được chuẩn hoá về E.164.\r\n            \r\nResponse trả JWT mới vì email nằm trong claim của token.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -5414,7 +5414,7 @@
           "ManagementFeedbacks"
         ],
         "summary": "Manager verify feedback",
-        "description": "Chỉ `INTERACTIONMANAGER`; phản ánh phải thỏa điều kiện workflow hiện tại.\r\nNếu Report chưa thuộc Incident, thao tác này tạo Incident và chuyển cả hai sang `Verified`.",
+        "description": "Chỉ `INTERACTIONMANAGER`; phản ánh phải thỏa điều kiện workflow hiện tại.\r\nRequest bắt buộc có `categoryId`, `severity` và `priority` do Manager xác nhận.\r\nNếu Report chưa thuộc Incident, thao tác này tạo Incident và chuyển cả hai sang `Verified`.",
         "parameters": [
           {
             "name": "feedbackId",
@@ -5426,6 +5426,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyFeedbackRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyFeedbackRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyFeedbackRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -6584,6 +6603,88 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FeedbackResolutionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/management/incidents/{incidentId}/resolution-reviews": {
+      "get": {
+        "tags": [
+          "ManagementIncidents"
+        ],
+        "summary": "Lấy đánh giá của người dân về kết quả xử lý Incident.",
+        "description": "Một Incident gộp nhiều phản ánh của nhiều người, mỗi người đánh giá phần phản\r\nánh của mình, nên endpoint trả về danh sách chứ không phải một đánh giá.\r\n            \r\nKèm vài số liệu tổng hợp: số phản ánh đang gộp (tức số người có quyền đánh\r\ngiá), số đánh giá đã nhận, số người hài lòng và điểm trung bình.",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentResolutionReviewSummaryDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentResolutionReviewSummaryDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentResolutionReviewSummaryDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -16583,6 +16684,9 @@
               "$ref": "#/components/schemas/FeedbackStatusHistoryDto"
             },
             "nullable": true
+          },
+          "resolutionReview": {
+            "$ref": "#/components/schemas/FeedbackResolutionReviewDto"
           }
         },
         "additionalProperties": false
@@ -18325,6 +18429,85 @@
           "unlinkedAt": {
             "type": "string",
             "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "IncidentResolutionReviewItemDto": {
+        "type": "object",
+        "properties": {
+          "reviewId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "feedbackId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userName": {
+            "type": "string",
+            "nullable": true
+          },
+          "rating": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "isSatisfied": {
+            "type": "boolean"
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "feedbackTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "linkRole": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "IncidentResolutionReviewSummaryDto": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "eligibleReportCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reviewCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "satisfiedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "averageRating": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentResolutionReviewItemDto"
+            },
             "nullable": true
           }
         },
@@ -21353,6 +21536,24 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "VerifyFeedbackRequest": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "severity": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "string",
             "nullable": true
           }
         },

@@ -91,7 +91,7 @@ const normalizePage = (response: unknown): CommunityIncidentResponse => {
 
 const normalizeParams = (params: CommunityIncidentParams = {}) => ({
   PageNumber: params.pageNumber ?? 1,
-  PageSize: params.pageSize ?? 12,
+  PageSize: params.pageSize ?? 10,
   ...(params.areaId ? { AreaId: params.areaId } : {}),
   ...(params.categoryId ? { CategoryId: params.categoryId } : {}),
   ...(params.status ? { Status: params.status } : {}),
@@ -110,6 +110,10 @@ export const communityApi = {
 
   async getFeed(params: CommunityIncidentParams = {}) {
     return normalizePage(await axiosClient.get('/api/public/incidents', { params: normalizeParams(params) }));
+  },
+
+  async getMyIncidents(params: CommunityIncidentParams = {}) {
+    return normalizePage(await axiosClient.get('/api/user/incidents/me', { params: normalizeParams(params) }));
   },
 
   async getFeedDetail(incidentId: string): Promise<PublicIncidentDetail> {

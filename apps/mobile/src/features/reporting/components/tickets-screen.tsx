@@ -54,22 +54,16 @@ export default function TicketsScreen() {
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: reportingKeys.list(filters),
-    queryFn: () => feedbackApi.list(filters),
+    queryFn: () => feedbackApi.listAll(filters),
   });
 
-  const tickets = Array.isArray(data)
-    ? data
-    : data?.items ?? [];
+  const tickets = (data ?? []) as any[];
 
   const visibleTickets = activeFilter
     ? tickets.filter((item: any) => getResidentStage(item?.status) === activeFilter)
     : tickets;
 
-  const totalCount = Array.isArray(data)
-    ? data.length
-    : activeFilter
-      ? visibleTickets.length
-      : data?.totalItems ?? data?.totalCount ?? 0;
+  const totalCount = activeFilter ? visibleTickets.length : tickets.length;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

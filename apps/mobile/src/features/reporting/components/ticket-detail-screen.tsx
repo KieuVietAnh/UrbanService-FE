@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { radius } from '@/theme/radius';
 import { spacing } from '@/theme/spacing';
 import { fontSizes, fonts } from '@/theme/typography';
@@ -9,28 +9,21 @@ import {
   Pressable,
   Image,
   StyleSheet,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  FlatList,
   Modal,
   RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
 import { AppBadge } from '@/components/ui';
 import { TimelineStep } from '@/components/ui';
-import { BottomSheet } from '@/components/shared';
 import { AppButton } from '@/components/ui';
 import { SkeletonCard, Skeleton } from '@/components/shared';
 import { AppErrorState } from '@/components/shared';
-import { AppEmptyState } from '@/components/shared';
-import { useToast } from '@/components/shared';
 import { feedbackApi, reportingKeys } from '@/features/reporting/api';
 import {
   getResidentStage,
@@ -121,43 +114,11 @@ const TIMELINE_STEPS = [
   { key: 'completed', label: 'Hoàn thành', desc: 'Kết quả xử lý đã được phê duyệt.' },
 ];
 
-interface CommentItem {
-  id: string;
-  senderName: string;
-  senderRole?: string;
-  content: string;
-  createdAt: string;
-}
-
-function CommentBubble({ msg, isOwn }: { msg: CommentItem; isOwn: boolean }) {
-  const time = msg.createdAt
-    ? new Date(msg.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-    : '';
-
-  return (
-    <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
-      {!isOwn && (
-        <Text style={styles.bubbleSender}>{msg.senderName || 'Cán bộ xử lý'}</Text>
-      )}
-      <Text style={[styles.bubbleText, isOwn && styles.bubbleTextOwn]}>
-        {msg.content}
-      </Text>
-      <Text style={[styles.bubbleTime, isOwn && styles.bubbleTimeOwn]}>
-        {time}
-      </Text>
-    </View>
-  );
-}
-
 export default function TicketDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const toast = useToast();
-  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
 
-  const [showComments, setShowComments] = useState(false);
-  const [commentInput, setCommentInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const feedbackId = id || '';
@@ -182,41 +143,6 @@ export default function TicketDetailScreen() {
     queryFn: () => feedbackApi.getResolutions(feedbackId),
     enabled: Boolean(feedbackId) && isApprovedPublicResult(ticket?.status),
   });
-
-  // The detail contract already includes comments. Reuse the polled detail response
-  // instead of issuing a second GET to the same endpoint on every interval.
-  const comments = useMemo<CommentItem[]>(() => {
-    const items = Array.isArray(ticket?.comments) ? ticket.comments : [];
-    return items.map((c: any, index: number) => {
-      const createdAt = c.createdAt ?? '';
-      return {
-        id: String(c.commentId ?? c.id ?? `comment-${index}`),
-        senderName: c.authorName ?? c.userName ?? c.userFullName ?? 'Hệ thống',
-        senderRole: c.authorRole ?? c.userRole ?? 'SERVICE_USER',
-        content: c.content ?? c.text ?? '',
-        createdAt,
-      };
-    });
-  }, [ticket?.comments]);
-
-  // Post Comment Mutation
-  const addCommentMutation = useMutation({
-    mutationFn: (content: string) => feedbackApi.addComment(feedbackId, content),
-    onSuccess: async () => {
-      setCommentInput('');
-      await queryClient.invalidateQueries({ queryKey: reportingKeys.detail(feedbackId) });
-      toast.success('Đã gửi trao đổi');
-    },
-    onError: (err: any) => toast.error(err.message || 'Không thể gửi bình luận'),
-  });
-
-  const commentCount = Array.isArray(comments) ? comments.length : 0;
-  const latestComment = Array.isArray(comments) && comments.length > 0
-    ? comments[comments.length - 1]
-    : null;
-  const latestCommentPreview = latestComment?.content
-    ? String(latestComment.content).slice(0, 96)
-    : 'Chưa có bình luận';
 
   const status = ticket?.status ?? 'SUBMITTED';
   const createdAt = ticket?.createdAt
@@ -250,7 +176,8 @@ export default function TicketDetailScreen() {
   const resolutionDocuments = Array.isArray(latestResolution?.completionDocuments)
     ? latestResolution.completionDocuments.map(getAttachmentUrl).filter((value: string | null): value is string => Boolean(value))
     : [];
-  const canReview = isApprovedPublicResult(status) && Boolean(latestResolution);
+  const resolutionReview = ticket?.resolutionReview ?? null;
+  const canReview = isApprovedPublicResult(status) && Boolean(latestResolution) && !resolutionReview;
 
   if (isLoading) {
     return (
@@ -291,7 +218,7 @@ export default function TicketDetailScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, !canReview && styles.scrollContentNoAction]}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -519,6 +446,42 @@ export default function TicketDetailScreen() {
             </AppCard>
           )}
 
+          {resolutionReview ? (
+            <AppCard shadow="sm">
+              <View style={styles.cardContent}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardHeaderTitle}>Đánh giá của bạn</Text>
+                  <View style={styles.reviewSubmittedBadge}>
+                    <Icon name="check" size={12} color="#047857" />
+                    <Text style={styles.reviewSubmittedBadgeText}>Đã gửi</Text>
+                  </View>
+                </View>
+                <View style={styles.reviewStarsRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Icon
+                      key={star}
+                      name="star"
+                      size={18}
+                      color={star <= Number(resolutionReview.rating ?? 0) ? '#D97706' : '#CBD5E1'}
+                      fill={star <= Number(resolutionReview.rating ?? 0) ? '#FBBF24' : 'transparent'}
+                    />
+                  ))}
+                  <Text style={styles.reviewSatisfactionText}>
+                    {resolutionReview.isSatisfied ? 'Hài lòng' : 'Chưa hài lòng'}
+                  </Text>
+                </View>
+                {resolutionReview.comment ? (
+                  <Text style={styles.reviewComment}>{resolutionReview.comment}</Text>
+                ) : null}
+                {resolutionReview.createdAt ? (
+                  <Text style={styles.reviewTime}>
+                    Đã gửi lúc {new Date(resolutionReview.createdAt).toLocaleString('vi-VN')}
+                  </Text>
+                ) : null}
+              </View>
+            </AppCard>
+          ) : null}
+
           <AppCard shadow="sm">
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
@@ -546,14 +509,13 @@ export default function TicketDetailScreen() {
             <View style={styles.cardContent}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardHeaderTitle}>Thảo luận cộng đồng</Text>
-                <View style={styles.supportMeta}>
-                  <Icon name="message-circle" size={12} color={semantics.text.brand} />
-                  <Text style={styles.supportCount}>{commentCount} bình luận</Text>
-                </View>
+                <Icon name="users" size={17} color={semantics.text.brand} />
               </View>
               <View style={styles.communityPreview}>
-                <Text style={styles.communityTitle}>Trò chuyện với cộng đồng</Text>
-                <Text style={styles.descriptionText} numberOfLines={2}>{latestCommentPreview}</Text>
+                <Text style={styles.communityTitle}>Mở sự vụ liên quan</Text>
+                <Text style={styles.descriptionText}>
+                  Xem tiến độ công khai và tham gia thảo luận cùng cộng đồng tại trang sự vụ.
+                </Text>
                 <View style={styles.supportRow}>
                   <AppButton
                     variant="outline"
@@ -573,21 +535,9 @@ export default function TicketDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Resolution Review Card / Bottom Action Bar */}
-      <View style={[styles.bottomBar, { paddingBottom: Math.max(spacing['7'] as number, insets.bottom + 8) }]}>
-        <View style={{ flex: 1 }}>
-          <AppButton
-            variant="outline"
-            size="md"
-            fullWidth
-            leftIcon={<Icon name="message-circle" size={16} color={semantics.text.brand} style={{ marginRight: spacing['1.5'] }} />}
-            onPress={() => setShowComments(true)}
-          >
-            Trao đổi
-          </AppButton>
-        </View>
-
-        {canReview && (
+      {/* Resolution Review Bottom Action Bar */}
+      {canReview ? (
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(spacing['7'] as number, insets.bottom + 8) }]}>
           <View style={{ flex: 1 }}>
             <AppButton
               variant="primary"
@@ -599,65 +549,8 @@ export default function TicketDetailScreen() {
               Đánh giá kết quả
             </AppButton>
           </View>
-        )}
-      </View>
-
-      {/* Discussion Bottom Sheet */}
-      <BottomSheet
-        visible={showComments}
-        onClose={() => setShowComments(false)}
-        snapPoint={560}
-      >
-        <View style={styles.msgHeader}>
-          <Text style={styles.msgHeaderTitle}>Trao đổi với cán bộ xử lý</Text>
-          <Pressable onPress={() => setShowComments(false)} hitSlop={10}>
-            <Icon name="x" size={20} color={semantics.text.primary} />
-          </Pressable>
         </View>
-
-        <FlatList
-          data={comments}
-          keyExtractor={(m) => m.id}
-          style={{ flex: 1, paddingHorizontal: spacing['4'] }}
-          contentContainerStyle={{ paddingVertical: spacing['3'], gap: spacing['2.5'] }}
-          ListEmptyComponent={
-            <AppEmptyState
-              icon={<Icon name="message-circle" size={40} color={semantics.text.lightMuted} />}
-            >
-              Chưa có bình luận trao đổi nào.{'\n'}Gửi câu hỏi hoặc phản hồi cho cán bộ phụ trách.
-            </AppEmptyState>
-          }
-          renderItem={({ item }) => (
-            <CommentBubble
-              msg={item}
-              isOwn={item.senderRole === 'SERVICE_USER' || item.senderRole === 'service-user'}
-            />
-          )}
-        />
-
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.msgInputRow}>
-            <TextInput
-              style={styles.msgInput}
-              placeholder="Nhập nội dung trao đổi..."
-              placeholderTextColor={semantics.text.lightMuted}
-              value={commentInput}
-              onChangeText={setCommentInput}
-              multiline
-            />
-            <Pressable
-              onPress={() => commentInput.trim() && addCommentMutation.mutate(commentInput.trim())}
-              disabled={!commentInput.trim() || addCommentMutation.isPending}
-              style={[
-                styles.sendBtn,
-                !commentInput.trim() && styles.sendBtnDisabled,
-              ]}
-            >
-              <Icon name="send" size={18} color="#FFFFFF" />
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
-      </BottomSheet>
+      ) : null}
 
       {/* Image Zoom Modal */}
       <Modal visible={Boolean(selectedImage)} transparent animationType="fade">
@@ -682,6 +575,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: semantics.bg.app },
   scrollContent: {
     paddingBottom: 140,
+  },
+  scrollContentNoAction: {
+    paddingBottom: spacing['6'],
   },
   heroSection: {
     paddingHorizontal: spacing['5'],
@@ -852,16 +748,6 @@ const styles = StyleSheet.create({
     fontSize: fontSizes['xs'],
     fontFamily: fonts.semibold,
     color: semantics.text.primary,
-  },
-  supportMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  supportCount: {
-    fontSize: fontSizes['2xs'],
-    fontFamily: fonts.semibold,
-    color: semantics.text.muted,
   },
   chatCardMain: {
     borderRadius: radius['lg'],
@@ -1229,6 +1115,44 @@ const styles = StyleSheet.create({
     borderRadius: radius['control'],
     backgroundColor: semantics.bg.surfaceSubtle,
   },
+  reviewSubmittedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['1'],
+    borderRadius: radius['pill'],
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: spacing['2.5'],
+    paddingVertical: spacing['1.5'],
+  },
+  reviewSubmittedBadgeText: {
+    fontFamily: fonts.semibold,
+    fontSize: fontSizes['2xs'],
+    color: '#047857',
+  },
+  reviewStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['1'],
+  },
+  reviewSatisfactionText: {
+    marginLeft: spacing['2'],
+    fontFamily: fonts.semibold,
+    fontSize: fontSizes['xs'],
+    color: semantics.text.primary,
+  },
+  reviewComment: {
+    marginTop: spacing['2.5'],
+    fontFamily: fonts.regular,
+    fontSize: fontSizes['sm'],
+    lineHeight: 21,
+    color: semantics.text.primary,
+  },
+  reviewTime: {
+    marginTop: spacing['2'],
+    fontFamily: fonts.regular,
+    fontSize: fontSizes['2xs'],
+    color: semantics.text.muted,
+  },
   activityRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1272,94 +1196,6 @@ const styles = StyleSheet.create({
     backgroundColor: semantics.bg.surface,
     borderTopWidth: 1,
     borderTopColor: semantics.border.default,
-  },
-  msgHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing['5'],
-    paddingBottom: spacing['3.5'],
-    borderBottomWidth: 1,
-    borderBottomColor: semantics.border.default,
-  },
-  msgHeaderTitle: {
-    fontSize: 16,
-    fontFamily: fonts.bold,
-    color: semantics.text.primary,
-  },
-  msgInputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing['2.5'],
-    paddingHorizontal: spacing['4'],
-    paddingTop: spacing['2.5'],
-    paddingBottom: spacing['4'],
-    borderTopWidth: 1,
-    borderTopColor: semantics.border.default,
-  },
-  msgInput: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 100,
-    backgroundColor: semantics.bg.surfaceSubtle,
-    borderRadius: radius['cardLarge'],
-    paddingHorizontal: spacing['4'],
-    paddingVertical: spacing['2.5'],
-    fontFamily: fonts.regular,
-    fontSize: 14,
-    color: semantics.text.primary,
-  },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: radius['cardLarge'],
-    backgroundColor: semantics.bg.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendBtnDisabled: {
-    backgroundColor: semantics.text.lightMuted,
-  },
-  bubble: {
-    maxWidth: '82%',
-    borderRadius: radius['card'],
-    paddingHorizontal: spacing['3.5'],
-    paddingVertical: spacing['2.5'],
-  },
-  bubbleOwn: {
-    backgroundColor: semantics.bg.primary,
-    alignSelf: 'flex-end',
-    borderBottomRightRadius: 4,
-  },
-  bubbleOther: {
-    backgroundColor: semantics.bg.surfaceSubtle,
-    alignSelf: 'flex-start',
-    borderBottomLeftRadius: 4,
-  },
-  bubbleSender: {
-    fontFamily: fonts.semibold,
-    fontSize: 11,
-    color: semantics.text.muted,
-    marginBottom: 3,
-  },
-  bubbleText: {
-    fontFamily: fonts.regular,
-    fontSize: 14,
-    color: semantics.text.primary,
-    lineHeight: 20,
-  },
-  bubbleTextOwn: {
-    color: semantics.text.inverse,
-  },
-  bubbleTime: {
-    fontFamily: fonts.regular,
-    fontSize: fontSizes['2xs'],
-    color: semantics.text.lightMuted,
-    marginTop: spacing['1'],
-    alignSelf: 'flex-end',
-  },
-  bubbleTimeOwn: {
-    color: 'rgba(255,255,255,0.7)',
   },
   imageModalBackdrop: {
     flex: 1,

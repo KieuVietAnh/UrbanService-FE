@@ -43,12 +43,11 @@ export default function CommunityFeedScreen() {
 
   const feedParams = {
     pageNumber: 1,
-    pageSize: 12,
+    pageSize: 10,
     status: activeFilter || undefined,
     search: searchText || undefined,
     areaId: selectedAreaId || undefined,
     categoryId: selectedCategoryId || undefined,
-    sort: 'trending',
   };
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -70,9 +69,24 @@ export default function CommunityFeedScreen() {
           <Text className="text-xl font-sans-bold text-text">Cộng đồng</Text>
           <Text className="text-sm text-text-muted mt-1">Theo dõi sự vụ công khai quanh khu vực của bạn</Text>
         </View>
-        <Pressable onPress={() => router.push('/(resident)/community/map')} style={styles.mapButton}>
-          <Icon name="map" size={18} color={colors.primary} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Mở danh sách sự vụ của tôi"
+            onPress={() => router.push('/(resident)/community/following')}
+            style={styles.mapButton}
+          >
+            <Icon name="bookmark" size={18} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Mở bản đồ sự vụ cộng đồng"
+            onPress={() => router.push('/(resident)/community/map')}
+            style={styles.mapButton}
+          >
+            <Icon name="map" size={18} color={colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -208,6 +222,11 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F1F5F9',
   },
   headerContent: { flex: 1, marginRight: 12 },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   mapButton: {
     width: 42,
     height: 42,

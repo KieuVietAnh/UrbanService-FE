@@ -153,7 +153,9 @@ export default function CommunityMapNative() {
     refetchOnWindowFocus: false,
   });
 
-  const PAGE_SIZE = 20;
+  // Keep the public map request aligned with Resident Web. Pagination still
+  // remains incremental on native so rendering a large marker set stays smooth.
+  const PAGE_SIZE = 100;
 
   const {
     data: feedbackPages,

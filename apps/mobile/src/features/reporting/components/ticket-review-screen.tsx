@@ -56,8 +56,12 @@ export default function ReviewScreen() {
     onError: () => toast.error('Gửi đánh giá thất bại'),
   });
 
+  const existingReview = feedback?.resolutionReview ?? null;
+  const alreadyReviewed = Boolean(existingReview);
+  const displayedRating = alreadyReviewed ? Number(existingReview?.rating ?? 0) : rating;
+  const displayedSatisfaction = alreadyReviewed ? Boolean(existingReview?.isSatisfied) : isSatisfied;
   const resultAvailable = isApprovedPublicResult(feedback?.status) && Array.isArray(resolutions) && resolutions.length > 0;
-  const canSubmit = resultAvailable && rating > 0 && isSatisfied !== null;
+  const canSubmit = !alreadyReviewed && resultAvailable && rating > 0 && isSatisfied !== null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -83,6 +87,12 @@ export default function ReviewScreen() {
         </View>
 
         <View style={styles.ratingCard}>
+          {alreadyReviewed ? (
+            <View style={styles.submittedNotice}>
+              <Icon name="check-circle" size={16} color="#047857" />
+              <Text style={styles.submittedNoticeText}>Bạn đã gửi đánh giá cho kết quả xử lý này.</Text>
+            </View>
+          ) : null}
           {!resultAvailable ? (
             <View style={styles.pendingNotice}>
               <Icon name="clock" size={16} color="#92400E" />
@@ -100,17 +110,23 @@ export default function ReviewScreen() {
           <Text style={styles.subtleQuestion}>Bạn đánh giá chất lượng xử lý như thế nào?</Text>
           <View style={styles.starsRow}>
             {STARS.map((s) => (
-              <Pressable key={s} onPress={() => setRating(s)} hitSlop={8} style={s <= rating ? styles.starButtonActive : styles.starButton}>
+              <Pressable
+                key={s}
+                onPress={() => setRating(s)}
+                disabled={alreadyReviewed}
+                hitSlop={8}
+                style={s <= displayedRating ? styles.starButtonActive : styles.starButton}
+              >
                 <Icon
                   name="star"
                   size={34}
-                  color={s <= rating ? colors.amber : '#CBD5E1'}
-                  fill={s <= rating ? colors.amber : 'transparent'}
+                  color={s <= displayedRating ? colors.amber : '#CBD5E1'}
+                  fill={s <= displayedRating ? colors.amber : 'transparent'}
                 />
               </Pressable>
             ))}
           </View>
-          <Text style={styles.ratingHint}>{rating ? `${rating}/5 sao` : 'Chưa có đánh giá'}</Text>
+          <Text style={styles.ratingHint}>{displayedRating ? `${displayedRating}/5 sao` : 'Chưa có đánh giá'}</Text>
         </View>
 
         <View style={styles.satisfactionCard}>
@@ -118,11 +134,12 @@ export default function ReviewScreen() {
           <Text style={styles.subtleQuestion}>Bạn có hài lòng với kết quả không?</Text>
           <View style={styles.satisfactionRow}>
             {SATISFACTION_OPTIONS.map((opt) => {
-              const active = isSatisfied === opt.value;
+              const active = displayedSatisfaction === opt.value;
               return (
                 <Pressable
                   key={String(opt.value)}
                   onPress={() => setIsSatisfied(opt.value)}
+                  disabled={alreadyReviewed}
                   style={[
                     styles.satisfactionBtn,
                     { backgroundColor: active ? opt.bg : colors.background },
@@ -158,8 +175,9 @@ export default function ReviewScreen() {
           <View style={styles.commentWrap}>
             <AppTextArea
               label="Góp ý thêm (tùy chọn)"
-              value={comment}
+              value={alreadyReviewed ? String(existingReview?.comment ?? '') : comment}
               onChangeText={setComment}
+              editable={!alreadyReviewed}
               placeholder="Chia sẻ thêm về trải nghiệm của bạn..."
               rows={4}
               maxLength={500}
@@ -177,7 +195,7 @@ export default function ReviewScreen() {
             size="lg"
             rightIcon={<Icon name="send" size={16} color="#FFFFFF" style={{ marginLeft: spacing['1'] }} />}
           >
-            Gửi đánh giá
+            {alreadyReviewed ? 'Đã gửi đánh giá' : 'Gửi đánh giá'}
           </AppButton>
 
           <Pressable onPress={() => router.back()} style={styles.skipButton} hitSlop={12}>
@@ -214,6 +232,24 @@ const styles = StyleSheet.create({
     fontSize: fontSizes['xs'],
     lineHeight: 18,
     color: '#92400E',
+  },
+  submittedNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing['2'],
+    borderRadius: radius['control'],
+    padding: spacing['3'],
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    marginBottom: spacing['3'],
+  },
+  submittedNoticeText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: fontSizes['xs'],
+    lineHeight: 18,
+    color: '#047857',
   },
   successCard: {
     backgroundColor: colors.surface,
