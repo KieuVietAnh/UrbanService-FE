@@ -4,6 +4,8 @@ export const communityKeys = {
   all: ['community'] as const,
   feeds: () => [...communityKeys.all, 'feeds'] as const,
   feed: (params: CommunityIncidentParams = {}) => [...communityKeys.feeds(), params] as const,
+  myIncidents: (params: CommunityIncidentParams = {}) =>
+    [...communityKeys.all, 'my-incidents', params] as const,
   mapFeed: (params: Pick<CommunityIncidentParams, 'areaId' | 'categoryId' | 'status'> = {}) =>
     [...communityKeys.feeds(), 'map', 'infinite', params] as const,
   webMapFeed: () => [...communityKeys.feeds(), 'map', 'web'] as const,

@@ -28,6 +28,19 @@ export const feedbackApi = {
     return ticketApi.getTickets(params, CITIZEN_OPTS);
   },
 
+  /** Full resident history, matching the paged aggregation used by Resident Web. */
+  async listAll(filters: FeedbackFilters = {}) {
+    const params: Record<string, string | number> = {
+      pageSize: filters.pageSize ?? 100,
+    };
+    if (filters.status) params.status = filters.status;
+    if (filters.search) params.search = filters.search;
+    if (filters.sortBy) params.sortBy = filters.sortBy;
+    if (filters.sortOrder) params.sortOrder = filters.sortOrder;
+
+    return ticketApi.getAllTickets(params, CITIZEN_OPTS);
+  },
+
   /** Get a single feedback by ID with full details + attachments */
   async getById(feedbackId: string) {
     return ticketApi.getTicketById(feedbackId, CITIZEN_OPTS);

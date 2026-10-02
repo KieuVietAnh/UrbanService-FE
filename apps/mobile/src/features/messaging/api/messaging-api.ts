@@ -82,14 +82,4 @@ export const messagingApi = {
     return response?.data ?? response;
   },
 
-  async getInboxConversations(): Promise<Array<Record<string, unknown>>> {
-    const response = await axiosClient.get('/api/inbox/conversations');
-    return unwrapItems(response) as Array<Record<string, unknown>>;
-  },
-
-  async createInboxConversation(type: string): Promise<Record<string, unknown>> {
-    const response = await axiosClient.post('/api/inbox/conversations', { type });
-    const value = response?.data ?? response;
-    return value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  },
 };

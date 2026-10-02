@@ -61,4 +61,16 @@ export const QUICK_ACTIONS: QuickAction[] = [
     textColor: '#0F172A',
     subColor: '#B91C1C',
   },
+  {
+    id: 'incidents',
+    icon: 'bookmark',
+    label: 'Sự vụ của tôi',
+    sub: 'Theo dõi tiến độ',
+    href: '/(resident)/community/following',
+    accent: '#0E7490',
+    bg: '#ECFEFF',
+    iconBg: '#CFFAFE',
+    textColor: '#0F172A',
+    subColor: '#0E7490',
+  },
 ];

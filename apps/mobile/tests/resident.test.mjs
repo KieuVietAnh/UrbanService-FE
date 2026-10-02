@@ -8,13 +8,21 @@ const communityApi = read('../src/features/community/api/community-api.ts');
 const communityFeedCard = read('../src/features/community/components/community-feed-card.tsx');
 const communityMap = read('../src/features/community/components/community-map.native.tsx');
 const communityDetail = read('../app/(resident)/community/[id].tsx');
+const communityFeed = read('../app/(resident)/community/index.tsx');
+const myIncidents = read('../app/(resident)/community/following.tsx');
 const communitySupportCache = read('../src/features/community/utils/support-cache.ts');
 const residentLayout = read('../app/(resident)/_layout.tsx');
 const ticketDetail = read('../src/features/reporting/components/ticket-detail-screen.tsx');
+const ticketReview = read('../src/features/reporting/components/ticket-review-screen.tsx');
+const ticketsScreen = read('../src/features/reporting/components/tickets-screen.tsx');
+const feedbackApi = read('../src/features/reporting/api/feedback-api.ts');
+const messagingApi = read('../src/features/messaging/api/messaging-api.ts');
+const legacyChatFab = read('../src/features/home/components/ChatFab.tsx');
 const wizard = read('../src/features/reporting/components/create-feedback-wizard-screen.tsx');
 const addressGeocoding = read('../src/features/reporting/services/address-geocoding.ts');
 const homeStyles = read('../src/features/home/homeStyles.ts');
 const quickActions = read('../src/features/home/components/QuickActions.tsx');
+const homeActions = read('../src/features/home/constants/homeActions.ts');
 const inbox = read('../src/features/messaging/components/inbox-hub-screen.tsx');
 const notifications = read('../src/features/notifications/components/notifications-screen.tsx');
 const areaAlertsApi = read('../src/features/area-alerts/api/area-alerts-api.ts');
@@ -26,6 +34,7 @@ const dynamicAppConfig = read('../app.config.js');
 const rootLayout = read('../app/_layout.tsx');
 const brandSplash = read('../src/screens/splash/SplashScreen.tsx');
 const otpInput = read('../src/components/shared/otp-input.tsx');
+const webCommunityApi = read('../../web/src/services/api/feedApi.js');
 
 test('native and branded splash screens both use the bundled UrbanMind artwork', () => {
   assert.match(appConfig, /"expo-splash-screen"/);
@@ -43,9 +52,49 @@ test('native and branded splash screens both use the bundled UrbanMind artwork',
 
 test('community is Incident-centric while My Feedback remains Feedback-centric', () => {
   assert.match(communityApi, /\/api\/public\/incidents/);
+  assert.match(webCommunityApi, /\/api\/public\/incidents/);
+  assert.match(communityApi, /PageSize:\s*params\.pageSize \?\? 10/);
+  assert.match(communityFeed, /pageSize:\s*10/);
+  assert.match(communityMap, /const PAGE_SIZE = 100/);
+  assert.doesNotMatch(communityFeed, /sort:\s*'trending'/);
   assert.doesNotMatch(communityApi, /\/api\/user\/feedbacks\/feed/);
   assert.match(ticketDetail, /feedbackApi\.getById/);
   assert.match(ticketDetail, /ticket\.incidentId/);
+});
+
+test('resident can open the contracted list of followed or related incidents', () => {
+  assert.match(swagger, /\/api\/user\/incidents\/me/);
+  assert.match(communityApi, /getMyIncidents/);
+  assert.match(communityApi, /axiosClient\.get\('\/api\/user\/incidents\/me'/);
+  assert.match(myIncidents, /communityApi\.getMyIncidents/);
+  assert.match(myIncidents, /Gồm các sự vụ bạn đang theo dõi hoặc có phản ánh liên quan/);
+  assert.match(homeActions, /label:\s*'Sự vụ của tôi'/);
+  assert.match(homeActions, /href:\s*'\/\(resident\)\/community\/following'/);
+  assert.match(communityFeed, /\/\(resident\)\/community\/following/);
+});
+
+test('feedback detail keeps one private support entry point', () => {
+  assert.match(ticketDetail, /Mở hỗ trợ/);
+  assert.doesNotMatch(ticketDetail, /Trao đổi/);
+  assert.doesNotMatch(ticketDetail, /showComments|BottomSheet|feedbackApi\.addComment/);
+  assert.match(ticketDetail, /Xem tiến độ công khai và tham gia thảo luận cùng cộng đồng/);
+});
+
+test('resident resolution review follows the latest feedback detail contract', () => {
+  assert.match(swagger, /"resolutionReview"/);
+  assert.match(ticketDetail, /ticket\?\.resolutionReview/);
+  assert.match(ticketDetail, /!resolutionReview/);
+  assert.match(ticketDetail, /Đánh giá của bạn/);
+  assert.match(ticketReview, /feedback\?\.resolutionReview/);
+  assert.match(ticketReview, /disabled=\{alreadyReviewed\}/);
+});
+
+test('resident feedback history and support chat follow the live Web contracts', () => {
+  assert.match(feedbackApi, /ticketApi\.getAllTickets/);
+  assert.match(ticketsScreen, /feedbackApi\.listAll/);
+  assert.match(messagingApi, /\/api\/feedbacks\/\$\{feedbackId\}\/messages/);
+  assert.doesNotMatch(messagingApi, /\/api\/inbox\/conversations/);
+  assert.match(legacyChatFab, /\/\(resident\)\/support\/select-feedback/);
 });
 
 test('community detail presents one four-step public journey instead of raw duplicate events', () => {
