@@ -54,4 +54,25 @@ export const normalizeStaffResponsibilityCreatePayload = (payload = {}) => {
 
 export const normalizeStaffResponsibilityUpdatePayload = (payload = {}) => assignmentScopePayload(payload);
 
+export const normalizeManagedStaffAccountPayload = (payload = {}) => {
+  const fullName = String(payload?.fullName || '').trim();
+  const email = String(payload?.email || '').trim().toLowerCase();
+  const password = String(payload?.password || '');
+  if (!fullName) throw new TypeError('fullName is required');
+  if (!email) throw new TypeError('email is required');
+  if (password.length < 8) throw new TypeError('password must contain at least 8 characters');
+
+  const normalized = {
+    fullName,
+    email,
+    password,
+    ...assignmentScopePayload(payload),
+  };
+  const phoneNumber = String(payload?.phoneNumber || '').trim();
+  const address = String(payload?.address || '').trim();
+  if (phoneNumber) normalized.phoneNumber = phoneNumber;
+  if (address) normalized.address = address;
+  return normalized;
+};
+
 export const normalizeAssignmentId = (assignmentId) => positiveInteger(assignmentId, 'assignmentId');

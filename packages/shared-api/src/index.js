@@ -8,7 +8,8 @@ export { incidentDashboardApi, INCIDENT_DASHBOARD_RANGES } from './incidentDashb
 export { assignmentApi } from './assignmentApi.js';
 export { notificationApi } from './notificationApi.js';
 export { userApi } from './userApi.js';
-export { staffResponsibilityApi, normalizeStaffResponsibilityFilters, normalizeStaffResponsibilityCollection, normalizeStaffResponsibilityCreatePayload, normalizeStaffResponsibilityUpdatePayload } from './staffResponsibilityApi.js';
+export { managerAreaAssignmentApi, normalizeManagerAreaAssignmentCollection, normalizeManagerAreaAssignmentCreatePayload, normalizeManagerAreaAssignmentFilters, normalizeManagerAreaAssignmentUpdatePayload } from './managerAreaAssignmentApi.js';
+export { staffResponsibilityApi, normalizeManagedStaffAccountPayload, normalizeStaffResponsibilityFilters, normalizeStaffResponsibilityCollection, normalizeStaffResponsibilityCreatePayload, normalizeStaffResponsibilityUpdatePayload } from './staffResponsibilityApi.js';
 export { userAreaAlertApi } from './userAreaAlertApi.js';
 export { messengerAccountLinkApi } from './messengerAccountLinkApi.js';
 export { slaApi } from './slaApi.js';

@@ -1,5 +1,6 @@
 export const getHeaderBreadcrumbOverride = (pathname = '') => {
   const adminOverrides = {
+    '/management/manager-areas': 'Phạm vi quản lý khu vực',
     '/management/staff-responsibilities': 'Phạm vi phụ trách nhân viên',
     '/management/feedbacks': 'Quản lý phản ánh',
     '/management/map': 'Bản đồ sự vụ',

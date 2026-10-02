@@ -6,6 +6,7 @@ export default [
   { name: 'Giám sát phản ánh', path: '/manager/interactions', icon: 'MessageSquareDashed' },
   { name: 'Quản lý sự vụ', path: '/manager/incidents', icon: 'Siren' },
   { name: 'Duyệt kết quả xử lý', path: '/manager/approvals', icon: 'GitPullRequestArrow' },
+  { name: 'Phạm vi phụ trách nhân viên', path: '/management/staff-responsibilities', icon: 'UserRoundCog' },
   {
     name: 'Quản lý điều phối viên',
     path: '/management/coordinators',

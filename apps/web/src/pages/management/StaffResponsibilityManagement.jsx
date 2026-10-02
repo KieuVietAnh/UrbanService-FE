@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as Lucide from 'lucide-react';
+import { APP_ROLES } from '@urbanmind/shared-types';
 import { staffResponsibilityApi, toolsApi } from '@urbanmind/shared-api';
 import { userApi } from '../../services/api/userApi';
+import { useAuth } from '../../contexts/AuthContext';
+import { normalizeRole as normalizeAppRole } from '../../utils/roleMap';
 import {
   ManagerConfirmDialog,
   ManagerListRefreshIndicator,
@@ -16,8 +19,8 @@ import {
   AdminErrorState,
 } from '../../components/admin/AdminDataStates';
 
-const normalizeRole = (value) => String(value || '').trim().replace(/[-_\s]/g, '').toLowerCase();
-const isStaffUser = (user) => normalizeRole(user?.roleName || user?.role) === 'systemstaff';
+const normalizeBackendRole = (value) => String(value || '').trim().replace(/[-_\s]/g, '').toLowerCase();
+const isStaffUser = (user) => normalizeBackendRole(user?.roleName || user?.role) === 'systemstaff';
 const getUserId = (user) => user?.userId || user?.id || '';
 const getUserName = (user) => user?.fullName || user?.name || user?.email || 'Nhân viên chưa cập nhật tên';
 const getAreaId = (area) => area?.areaId ?? area?.id;
@@ -34,10 +37,24 @@ const EMPTY_FORM = {
   isPrimary: false,
 };
 
+const EMPTY_STAFF_ACCOUNT_FORM = {
+  fullName: '',
+  email: '',
+  password: '',
+  phoneNumber: '',
+  address: '',
+  areaId: '',
+  categoryId: '',
+  isPrimary: true,
+};
+
 const buttonBase = 'inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60';
 const PAGE_SIZE = 8;
 
 export const StaffResponsibilityManagement = () => {
+  const { user } = useAuth();
+  const currentRole = normalizeAppRole(user?.role);
+  const isManager = currentRole === APP_ROLES.INTERACTION_MANAGER;
   const [assignments, setAssignments] = useState([]);
   const [users, setUsers] = useState([]);
   const [areas, setAreas] = useState([]);
@@ -53,6 +70,9 @@ export const StaffResponsibilityManagement = () => {
   const [activeFilter, setActiveFilter] = useState('active');
   const [form, setForm] = useState(EMPTY_FORM);
   const [modalOpen, setModalOpen] = useState(false);
+  const [staffAccountForm, setStaffAccountForm] = useState(EMPTY_STAFF_ACCOUNT_FORM);
+  const [staffAccountModalOpen, setStaffAccountModalOpen] = useState(false);
+  const [creatingStaffAccount, setCreatingStaffAccount] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [confirmAction, setConfirmAction] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -65,19 +85,55 @@ export const StaffResponsibilityManagement = () => {
     try {
       const [assignmentResult, userResult, areaResult, categoryResult] = await Promise.allSettled([
         staffResponsibilityApi.getAll(),
-        userApi.getUsers(),
-        toolsApi.getAreas({}, { throwOnError: true }),
+        isManager
+          ? Promise.resolve([])
+          : userApi.getUsers({ roleName: 'SYSTEMSTAFF', isActive: true }),
+        isManager
+          ? staffResponsibilityApi.getManagedAreas()
+          : toolsApi.getAreas({}, { throwOnError: true }),
         toolsApi.getCategories(),
       ]);
 
       if (assignmentResult.status === 'rejected') throw assignmentResult.reason;
-      setAssignments(assignmentResult.value || []);
-      setUsers(userResult.status === 'fulfilled' && Array.isArray(userResult.value) ? userResult.value.filter(isStaffUser) : []);
-      setAreas(areaResult.status === 'fulfilled' && Array.isArray(areaResult.value) ? areaResult.value : []);
+      const nextAssignments = assignmentResult.value || [];
+      setAssignments(nextAssignments);
+
+      if (isManager) {
+        const assignedStaff = new Map();
+        nextAssignments.forEach((item) => {
+          const userId = String(item?.userId || '');
+          if (!userId || assignedStaff.has(userId)) return;
+          assignedStaff.set(userId, {
+            userId,
+            fullName: item?.staffName || 'Nhân viên chưa cập nhật tên',
+            roleName: 'SYSTEMSTAFF',
+          });
+        });
+        setUsers(Array.from(assignedStaff.values()));
+      } else {
+        setUsers(userResult.status === 'fulfilled' && Array.isArray(userResult.value) ? userResult.value.filter(isStaffUser) : []);
+      }
+      const fallbackManagedAreas = Array.from(nextAssignments.reduce((directory, item) => {
+        const areaId = item?.areaId;
+        if (areaId != null && !directory.has(String(areaId))) {
+          directory.set(String(areaId), {
+            areaId,
+            areaName: item?.areaName || 'Khu vực chưa cập nhật',
+          });
+        }
+        return directory;
+      }, new Map()).values());
+      setAreas(
+        areaResult.status === 'fulfilled' && Array.isArray(areaResult.value)
+          ? areaResult.value
+          : isManager
+            ? fallbackManagedAreas
+            : [],
+      );
       setCategories(categoryResult.status === 'fulfilled' && Array.isArray(categoryResult.value) ? categoryResult.value : []);
 
       const unavailable = [
-        userResult.status === 'rejected' ? 'danh sách nhân viên' : '',
+        !isManager && userResult.status === 'rejected' ? 'danh sách nhân viên' : '',
         areaResult.status === 'rejected' ? 'khu vực' : '',
         categoryResult.status === 'rejected' ? 'danh mục' : '',
       ].filter(Boolean);
@@ -91,28 +147,33 @@ export const StaffResponsibilityManagement = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isManager]);
 
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!modalOpen || typeof window === 'undefined') return undefined;
+    if ((!modalOpen && !staffAccountModalOpen) || typeof window === 'undefined') return undefined;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && !saving) setModalOpen(false);
+      if (event.key === 'Escape' && !saving && !creatingStaffAccount) {
+        setModalOpen(false);
+        setStaffAccountModalOpen(false);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalOpen, saving]);
+  }, [creatingStaffAccount, modalOpen, saving, staffAccountModalOpen]);
 
   const staffOptions = useMemo(() => [
     { value: '', label: 'Chọn nhân viên' },
     ...users.map((user) => ({ value: getUserId(user), label: getUserName(user) })),
   ], [users]);
 
+  const visibleAreas = areas;
+
   const areaOptions = useMemo(() => [
     { value: '', label: 'Chọn phường / khu vực' },
-    ...areas.map((area) => ({ value: String(getAreaId(area)), label: getAreaName(area) })),
-  ], [areas]);
+    ...visibleAreas.map((area) => ({ value: String(getAreaId(area)), label: getAreaName(area) })),
+  ], [visibleAreas]);
 
   const categoryOptions = useMemo(() => [
     { value: '', label: 'Tất cả danh mục' },
@@ -170,6 +231,48 @@ export const StaffResponsibilityManagement = () => {
     if (saving) return;
     setModalOpen(false);
     resetForm();
+  };
+
+  const openStaffAccountModal = () => {
+    setStaffAccountForm({
+      ...EMPTY_STAFF_ACCOUNT_FORM,
+      areaId: visibleAreas.length === 1 ? String(getAreaId(visibleAreas[0])) : '',
+    });
+    setStaffAccountModalOpen(true);
+  };
+
+  const closeStaffAccountModal = () => {
+    if (creatingStaffAccount) return;
+    setStaffAccountModalOpen(false);
+    setStaffAccountForm(EMPTY_STAFF_ACCOUNT_FORM);
+  };
+
+  const createStaffAccount = async (event) => {
+    event.preventDefault();
+    if (!staffAccountForm.fullName.trim() || !staffAccountForm.email.trim() || !staffAccountForm.areaId) {
+      setToast({ type: 'error', message: 'Vui lòng nhập họ tên, email và chọn khu vực phụ trách.' });
+      return;
+    }
+    if (staffAccountForm.password.length < 8) {
+      setToast({ type: 'error', message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
+      return;
+    }
+
+    setCreatingStaffAccount(true);
+    try {
+      await staffResponsibilityApi.createStaffAccount(staffAccountForm);
+      setToast({ type: 'success', message: 'Đã tạo tài khoản nhân viên và phân công khu vực ban đầu.' });
+      setStaffAccountModalOpen(false);
+      setStaffAccountForm(EMPTY_STAFF_ACCOUNT_FORM);
+      await load({ background: true });
+    } catch (createError) {
+      setToast({
+        type: 'error',
+        message: createError?.response?.data?.message || createError?.message || 'Không thể tạo tài khoản nhân viên.',
+      });
+    } finally {
+      setCreatingStaffAccount(false);
+    }
   };
 
   const persistForm = async () => {
@@ -239,6 +342,13 @@ export const StaffResponsibilityManagement = () => {
     const assignmentId = getAssignmentId(item);
     if (!assignmentId) return;
     const isActive = item?.isActive !== false;
+    if (isManager && !isActive) {
+      setToast({
+        type: 'info',
+        message: 'Manager chỉ được tạm dừng phạm vi. Vui lòng liên hệ Admin để kích hoạt lại.',
+      });
+      return;
+    }
     setConfirmAction({
       type: isActive ? 'pause' : 'activate',
       item,
@@ -279,7 +389,9 @@ export const StaffResponsibilityManagement = () => {
     <div className="manager-ui-page space-y-5">
       <ManagerPageHeader
         title="Phạm vi phụ trách nhân viên"
-        description="Quản lý phạm vi phụ trách theo phường và danh mục."
+        description={isManager
+          ? 'Quản lý nhân viên theo các khu vực bạn đang phụ trách và danh mục xử lý.'
+          : 'Quản lý phạm vi phụ trách theo phường và danh mục.'}
         icon={Lucide.UserRoundCog}
         statusLabel="Đang hoạt động"
         statusValue={loading ? 'Đang tải…' : `${activeCount} phạm vi`}
@@ -289,7 +401,13 @@ export const StaffResponsibilityManagement = () => {
               <Lucide.RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
               Làm mới
             </button>
-            <button type="button" onClick={openCreateModal} disabled={loading} className={`${buttonBase} bg-blue-600 text-white shadow-sm hover:bg-blue-700`}>
+            {isManager ? (
+              <button type="button" onClick={openStaffAccountModal} disabled={loading || visibleAreas.length === 0} title={visibleAreas.length === 0 ? 'Bạn chưa được Admin phân khu vực quản lý.' : undefined} className={`${buttonBase} border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300`}>
+                <Lucide.UserPlus size={17} />
+                Tạo nhân viên mới
+              </button>
+            ) : null}
+            <button type="button" onClick={openCreateModal} disabled={loading || (isManager && users.length === 0)} title={isManager && users.length === 0 ? 'Chưa có nhân viên trong các phạm vi hiện tại để tạo thêm phân công.' : undefined} className={`${buttonBase} bg-blue-600 text-white shadow-sm hover:bg-blue-700`}>
               <Lucide.Plus size={17} />
               Thêm phân công
             </button>
@@ -398,10 +516,16 @@ export const StaffResponsibilityManagement = () => {
                       <Lucide.Pencil size={13} />
                       Chỉnh sửa
                     </button>
-                    <button type="button" onClick={() => requestToggleActive(item)} className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${isActive ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
-                      {isActive ? <Lucide.Pause size={13} /> : <Lucide.Play size={13} />}
-                      {isActive ? 'Tạm dừng' : 'Kích hoạt'}
-                    </button>
+                    {isActive || !isManager ? (
+                      <button type="button" onClick={() => requestToggleActive(item)} className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${isActive ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                        {isActive ? <Lucide.Pause size={13} /> : <Lucide.Play size={13} />}
+                        {isActive ? 'Tạm dừng' : 'Kích hoạt'}
+                      </button>
+                    ) : (
+                      <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-900">
+                        <Lucide.LockKeyhole size={13} /> Admin kích hoạt
+                      </span>
+                    )}
                   </div>
                 </article>
               );
@@ -427,6 +551,78 @@ export const StaffResponsibilityManagement = () => {
         ) : null}
       </section>
 
+      {staffAccountModalOpen && isManager && typeof document !== 'undefined' ? createPortal(
+        <div className="fixed inset-0 z-[10000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="staff-account-modal-title" onMouseDown={(event) => { if (event.target === event.currentTarget) closeStaffAccountModal(); }}>
+          <form onSubmit={createStaffAccount} className="my-auto w-full max-w-2xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
+            <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6 dark:border-slate-800">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Tài khoản SYSTEMSTAFF</p>
+                <h2 id="staff-account-modal-title" className="mt-1 text-xl font-black tracking-tight text-slate-950 dark:text-slate-100">Tạo nhân viên mới</h2>
+                <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">Tài khoản được kích hoạt ngay và gắn với khu vực phụ trách ban đầu.</p>
+              </div>
+              <button type="button" onClick={closeStaffAccountModal} disabled={creatingStaffAccount} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-900" aria-label="Đóng cửa sổ">
+                <Lucide.X size={17} />
+              </button>
+            </header>
+
+            <div className="grid gap-4 px-5 py-5 sm:grid-cols-2 sm:px-6">
+              <label className="block min-w-0 sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Họ và tên <span className="text-rose-500">*</span></span>
+                <input value={staffAccountForm.fullName} onChange={(event) => setStaffAccountForm((current) => ({ ...current, fullName: event.target.value }))} required maxLength={150} className="input input-bordered h-11 w-full rounded-xl bg-white text-sm dark:bg-slate-900" placeholder="Nguyễn Văn An" />
+              </label>
+
+              <label className="block min-w-0">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Email đăng nhập <span className="text-rose-500">*</span></span>
+                <input type="email" value={staffAccountForm.email} onChange={(event) => setStaffAccountForm((current) => ({ ...current, email: event.target.value }))} required maxLength={150} autoComplete="off" className="input input-bordered h-11 w-full rounded-xl bg-white text-sm dark:bg-slate-900" placeholder="nhanvien@urban.local" />
+              </label>
+
+              <label className="block min-w-0">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Số điện thoại</span>
+                <input value={staffAccountForm.phoneNumber} onChange={(event) => setStaffAccountForm((current) => ({ ...current, phoneNumber: event.target.value }))} maxLength={20} className="input input-bordered h-11 w-full rounded-xl bg-white text-sm dark:bg-slate-900" placeholder="0901 234 567" />
+              </label>
+
+              <label className="block min-w-0 sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Mật khẩu ban đầu <span className="text-rose-500">*</span></span>
+                <input type="password" value={staffAccountForm.password} onChange={(event) => setStaffAccountForm((current) => ({ ...current, password: event.target.value }))} required minLength={8} autoComplete="new-password" className="input input-bordered h-11 w-full rounded-xl bg-white text-sm dark:bg-slate-900" placeholder="Tối thiểu 8 ký tự" />
+                <span className="mt-1.5 block text-xs text-slate-400">Manager cần gửi mật khẩu này cho nhân viên qua kênh an toàn.</span>
+              </label>
+
+              <label className="block min-w-0 sm:col-span-2">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Địa chỉ</span>
+                <input value={staffAccountForm.address} onChange={(event) => setStaffAccountForm((current) => ({ ...current, address: event.target.value }))} maxLength={255} className="input input-bordered h-11 w-full rounded-xl bg-white text-sm dark:bg-slate-900" placeholder="Đơn vị hoặc địa chỉ làm việc" />
+              </label>
+
+              <label className="block min-w-0">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Phường / khu vực <span className="text-rose-500">*</span></span>
+                <ManagerSelectMenu value={staffAccountForm.areaId} options={areaOptions} onChange={(value) => setStaffAccountForm((current) => ({ ...current, areaId: value }))} placeholder="Chọn khu vực" ariaLabel="Chọn khu vực cho nhân viên mới" />
+              </label>
+
+              <label className="block min-w-0">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Danh mục phụ trách</span>
+                <ManagerSelectMenu value={staffAccountForm.categoryId} options={categoryOptions} onChange={(value) => setStaffAccountForm((current) => ({ ...current, categoryId: value }))} placeholder="Tất cả danh mục" ariaLabel="Chọn danh mục cho nhân viên mới" />
+              </label>
+
+              <label className="sm:col-span-2 flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+                <input type="checkbox" checked={staffAccountForm.isPrimary} onChange={(event) => setStaffAccountForm((current) => ({ ...current, isPrimary: event.target.checked }))} className="checkbox checkbox-sm checkbox-primary" />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">Đặt làm phạm vi chính</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">Phạm vi này được đánh dấu là trách nhiệm chính của nhân viên mới.</span>
+                </span>
+              </label>
+            </div>
+
+            <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-4 sm:flex-row sm:justify-end sm:px-6 dark:border-slate-800 dark:bg-slate-900/40">
+              <button type="button" onClick={closeStaffAccountModal} disabled={creatingStaffAccount} className={`${buttonBase} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200`}>Hủy</button>
+              <button type="submit" disabled={creatingStaffAccount || !staffAccountForm.fullName.trim() || !staffAccountForm.email.trim() || staffAccountForm.password.length < 8 || !staffAccountForm.areaId} className={`${buttonBase} bg-blue-600 text-white shadow-sm hover:bg-blue-700`}>
+                {creatingStaffAccount ? <span className="loading loading-spinner loading-sm" /> : <Lucide.UserPlus size={16} />}
+                {creatingStaffAccount ? 'Đang tạo…' : 'Tạo tài khoản nhân viên'}
+              </button>
+            </footer>
+          </form>
+        </div>,
+        document.body
+      ) : null}
+
       {modalOpen && typeof document !== 'undefined' ? createPortal(
         <div className="fixed inset-0 z-[10000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="staff-responsibility-modal-title" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
           <form onSubmit={submit} className="my-auto w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.3)] dark:border-slate-700 dark:bg-slate-950">
@@ -445,6 +641,7 @@ export const StaffResponsibilityManagement = () => {
                 <span className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">Nhân viên <span className="text-rose-500">*</span></span>
                 <ManagerSelectMenu value={form.userId} options={staffOptions} onChange={(value) => setForm((current) => ({ ...current, userId: value }))} placeholder="Chọn nhân viên" ariaLabel="Chọn nhân viên" disabled={Boolean(form.assignmentId)} />
                 {form.assignmentId ? <span className="mt-1.5 block text-xs text-slate-400">Không thể đổi nhân viên khi chỉnh sửa phân công đã có.</span> : null}
+                {!form.assignmentId && isManager ? <span className="mt-1.5 block text-xs text-slate-400">Danh sách gồm các nhân viên đã xuất hiện trong phạm vi khu vực bạn quản lý.</span> : null}
               </label>
 
               <label className="block min-w-0">
