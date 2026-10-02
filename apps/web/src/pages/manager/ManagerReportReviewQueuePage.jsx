@@ -757,6 +757,11 @@ export const ManagerReportReviewQueuePage = () => {
       return;
     }
 
+    if (!editSeverity) {
+      setActionError('Vui lòng chọn mức độ nghiêm trọng trước khi xác nhận.');
+      return;
+    }
+
     setActionError('');
     setApproveConfirmOpen(true);
   };
@@ -778,19 +783,19 @@ export const ManagerReportReviewQueuePage = () => {
       return;
     }
 
+    if (!editSeverity) {
+      setActionError('Vui lòng chọn mức độ nghiêm trọng trước khi xác nhận.');
+      return;
+    }
+
     setLoading(true);
     setActionError('');
     try {
-      // Swagger separates classification edits from workflow verification:
-      // 1) Manager persists category/priority inside the assigned area.
-      // 2) Dedicated /verify endpoint performs the Verified transition.
-      await managementFeedbackApi.updateFeedback(selectedTicket.feedbackId, {
+      await managementFeedbackApi.verifyFeedback(selectedTicket.feedbackId, {
         categoryId,
         priority,
-        severity: editSeverity || null,
+        severity: editSeverity,
       });
-
-      await managementFeedbackApi.verifyFeedback(selectedTicket.feedbackId);
 
       sessionStorage.removeItem(aiQueueCacheKey);
       try {

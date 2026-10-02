@@ -399,20 +399,19 @@ export const FeedbackDetailPage = () => {
       return;
     }
 
+    if (!severity) {
+      setVerifyError('Chọn mức độ nghiêm trọng trước khi xác minh.');
+      return;
+    }
+
     setVerifying(true);
     setVerifyError('');
     try {
-      /*
-       * Lưu phân loại trước rồi mới xác minh. Sự vụ được tạo ngay lúc verify và kế
-       * thừa danh mục, ưu tiên, mức nghiêm trọng từ phản ánh; thiếu danh mục hoặc
-       * ưu tiên thì SLA không khởi động được và sự vụ nằm im.
-       */
-      await managementFeedbackApi.updateFeedback(feedbackId, {
+      await managementFeedbackApi.verifyFeedback(feedbackId, {
         categoryId,
         priority,
-        severity: severity || null,
+        severity,
       });
-      await managementFeedbackApi.verifyFeedback(feedbackId);
       setReloadNonce((value) => value + 1);
     } catch (verifyException) {
       setVerifyError(

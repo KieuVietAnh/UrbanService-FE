@@ -139,14 +139,23 @@ test('getAiReviewedFeedbackPage sends only swagger-supported filters', async () 
   }
 });
 
-test('verifyFeedback follows the swagger endpoint without inventing a request body', async () => {
+test('verifyFeedback sends the required manager classification', async () => {
   const putRequest = mock.method(axiosClient, 'put', async () => undefined);
 
   try {
-    await managementFeedbackApi.verifyFeedback('feedback-verify');
+    await managementFeedbackApi.verifyFeedback('feedback-verify', {
+      categoryId: '12',
+      priority: 'High',
+      severity: 'Critical',
+    });
 
     assert.deepEqual(putRequest.mock.calls[0].arguments, [
       '/api/management/feedbacks/feedback-verify/verify',
+      {
+        categoryId: 12,
+        priority: 'High',
+        severity: 'Critical',
+      },
     ]);
   } finally {
     putRequest.mock.restore();
