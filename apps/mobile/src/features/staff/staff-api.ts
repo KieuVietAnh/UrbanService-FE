@@ -1,5 +1,6 @@
-import { axiosClient, extractApiErrorMessage, incidentManagementApi, managementFeedbackApi, normalizeFeedbackListParams } from '@urbanmind/shared-api';
+import { axiosClient, incidentManagementApi, managementFeedbackApi, normalizeFeedbackListParams } from '@urbanmind/shared-api';
 import { asRecord, asText, itemsFrom, normalizeEvent, normalizeMessage, normalizePage, normalizeStaffRecord, unwrap } from './staff-models';
+import { getUserFacingError } from '../../utils/user-facing-error';
 
 export type StaffListParams = { pageNumber: number; search?: string; status?: string; priority?: string; severity?: string; areaId?: string | number; categoryId?: string | number };
 
@@ -14,13 +15,23 @@ export const staffKeys = {
   messages: (userId: string, id: string) => ['staff', userId, 'messages', id] as const,
 };
 
+export function staffQueryRetry(failureCount: number, error: unknown) {
+  const record = asRecord(error);
+  const status = Number(asRecord(record.response).status ?? record.status);
+
+  // Retrying validation/auth/conflict/rate-limit responses cannot succeed by
+  // repeating the same request and only creates a larger request burst.
+  if (Number.isFinite(status) && status >= 400 && status < 500) return false;
+  return failureCount < 1;
+}
+
 export function staffError(error: unknown) {
   const record = asRecord(error);
   const status = Number(asRecord(record.response).status ?? record.status);
   if (status === 403) return 'Bạn không có quyền thực hiện thao tác này hoặc hồ sơ không còn được phân công cho bạn.';
   if (status === 404) return 'Không tìm thấy hồ sơ. Hồ sơ có thể đã được chuyển hoặc không còn khả dụng.';
   if (status === 409) return 'Hồ sơ vừa được cập nhật. Hãy làm mới để xem trạng thái mới nhất.';
-  return extractApiErrorMessage(error, 'Không thể kết nối máy chủ. Vui lòng thử lại.');
+  return getUserFacingError(error, 'Không thể hoàn tất thao tác. Vui lòng thử lại.');
 }
 
 export const staffApi = {

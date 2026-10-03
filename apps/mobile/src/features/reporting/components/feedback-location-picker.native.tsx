@@ -1,9 +1,9 @@
 import React, { forwardRef, useImperativeHandle, useRef } from 'react';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Polygon } from 'react-native-maps';
 import type { FeedbackLocationMapHandle, FeedbackLocationPickerProps } from './reporting-map.types';
 
 const FeedbackLocationPicker = forwardRef<FeedbackLocationMapHandle, FeedbackLocationPickerProps>(
-  ({ latitude, longitude, onCoordinateSelect }, ref) => {
+  ({ latitude, longitude, boundaryPolygons = [], onCoordinateSelect }, ref) => {
     const mapRef = useRef<MapView>(null);
 
     useImperativeHandle(ref, () => ({
@@ -26,6 +26,17 @@ const FeedbackLocationPicker = forwardRef<FeedbackLocationMapHandle, FeedbackLoc
         onCoordinateSelect(coordinate.latitude, coordinate.longitude);
       }}
     >
+      {boundaryPolygons.map((polygon, index) => (
+        <Polygon
+          key={`area-boundary-${index}`}
+          coordinates={polygon.coordinates}
+          holes={polygon.holes}
+          strokeColor="#2563EB"
+          strokeWidth={3}
+          fillColor="rgba(37, 99, 235, 0.14)"
+          tappable={false}
+        />
+      ))}
       {latitude != null && longitude != null ? (
         <Marker coordinate={{ latitude: Number(latitude), longitude: Number(longitude) }} />
       ) : null}

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { Stack, useLocalSearchParams, type Href } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,8 @@ import { normalizeProviderReportStatus } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuthStore } from '@/features/auth';
 import { canAccessMobileWorkspace } from '@/features/auth/mobile-access';
-import { staffApi, staffError, staffKeys } from '../staff-api';
+import { staffApi, staffError, staffKeys, staffQueryRetry } from '../staff-api';
+import { useRefreshOnReturn } from '../use-refresh-on-return';
 import { executionApi, executionKeys } from '../staff-execution-api';
 import {
   buildExecutionSteps, currentExecutionStep, emptyExecutionDraft, executionDraftKey,
@@ -43,8 +44,7 @@ function localContactTime(value: string): string | null {
     && date.getHours() === hour && date.getMinutes() === minute ? date.toISOString() : null;
 }
 
-const messageFor = (value: unknown) => value instanceof Error && !('response' in value) && !('status' in value)
-  ? value.message : staffError(value);
+const messageFor = (value: unknown) => staffError(value);
 
 function ChoiceCard({ title, description, details, selected, disabled, onPress }: {
   title: string; description: string; details: string; selected: boolean; disabled?: boolean; onPress: () => void;
@@ -125,6 +125,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [mediaNotice, setMediaNotice] = useState<{ error: boolean; message: string } | null>(null);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [submittedStatus, setSubmittedStatus] = useState('');
@@ -137,9 +138,9 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
 
   const incidentKey = staffKeys.incident(userId, id);
   const assignmentKey = executionKeys.assignment(userId, id);
-  const incident = useQuery({ queryKey: incidentKey, queryFn: ({ signal }) => staffApi.incident(id, signal), enabled: bootstrapReady, retry: 1 });
-  const readable = incident.isSuccess && !incident.error;
-  const assignment = useQuery({ queryKey: assignmentKey, queryFn: ({ signal }) => executionApi.assignment(id, signal), enabled: readable, retry: 1 });
+  const incident = useQuery({ queryKey: incidentKey, queryFn: ({ signal }) => staffApi.incident(id, signal), enabled: bootstrapReady, retry: staffQueryRetry });
+  const readable = Boolean(incident.data);
+  const assignment = useQuery({ queryKey: assignmentKey, queryFn: ({ signal }) => executionApi.assignment(id, signal), enabled: readable, retry: staffQueryRetry });
   const assignmentId = assignment.data?.providerAssignmentId || 0;
   const routeMode: ExecutionMode | null = initialStep === 'provider'
     ? 'provider'
@@ -155,22 +156,22 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   const candidates = useQuery({
     queryKey: executionKeys.candidates(userId, id),
     queryFn: ({ signal }) => executionApi.candidates(id, signal),
-    enabled: readable && assignment.isSuccess && !assignment.data && canEdit && mode === 'provider', retry: 1,
+    enabled: readable && assignment.isSuccess && !assignment.data && canEdit && mode === 'provider', retry: staffQueryRetry,
   });
   const contacts = useQuery({
     queryKey: executionKeys.contacts(userId, id, assignmentId),
     queryFn: ({ signal }) => executionApi.contacts(assignmentId, signal),
-    enabled: readable && assignmentId > 0, retry: 1,
+    enabled: readable && assignmentId > 0, retry: staffQueryRetry,
   });
   const evidence = useQuery({
     queryKey: executionKeys.evidence(userId, id, assignmentId),
     queryFn: ({ signal }) => executionApi.evidence(assignmentId, signal),
-    enabled: readable && assignmentId > 0, retry: 1,
+    enabled: readable && assignmentId > 0, retry: staffQueryRetry,
   });
   const history = useQuery({
     queryKey: executionKeys.resolutions(userId, id),
     queryFn: ({ signal }) => executionApi.resolutions(id, signal),
-    enabled: readable, retry: 1,
+    enabled: readable, retry: staffQueryRetry,
   });
 
   const steps = useMemo(() => mode ? buildExecutionSteps({
@@ -237,7 +238,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
       cache.invalidateQueries({ queryKey: ['staff', userId, 'timeline', id] }),
     ]);
   }, [cache, id, incidentKey, userId]);
-  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
+  useRefreshOnReturn(refresh);
 
   const isCurrentSession = () => {
     const current = useAuthStore.getState().user;
@@ -262,7 +263,13 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     if (operation.current) return;
     operation.current = true; setBusy(name); setError(''); setSuccess('');
     try { await action(); }
-    catch (value) { if (isCurrentSession()) { setError(`${messageFor(value)} Nội dung đang nhập vẫn được giữ.`); void refresh(); } }
+    catch (value) {
+      if (isCurrentSession()) {
+        setError(`${messageFor(value)} Nội dung đang nhập vẫn được giữ.`);
+        scroll.current?.scrollTo({ y: 0, animated: true });
+        void refresh();
+      }
+    }
     finally { operation.current = false; setBusy(null); }
   };
   const advance = (step: ExecutionStepId, message: string) => {
@@ -333,38 +340,73 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   });
 
   const pickImages = () => run('picker', async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.85 });
-    if (!isCurrentSession() || result.canceled) return;
-    setAssets((current) => [...current, ...result.assets.map((asset, index) => ({
-      uri: asset.uri, name: asset.fileName || `minh-chung-${Date.now()}-${index}.jpg`,
-      mimeType: asset.mimeType || 'image/jpeg', file: asset.file,
-    }))].filter((asset, index, all) => all.findIndex((other) => other.uri === asset.uri) === index));
+    setMediaNotice(null);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.85 });
+      if (!isCurrentSession() || result.canceled) return;
+      setAssets((current) => [...current, ...result.assets.map((asset, index) => ({
+        uri: asset.uri, name: asset.fileName || `minh-chung-${Date.now()}-${index}.jpg`,
+        mimeType: asset.mimeType || 'image/jpeg', file: asset.file,
+      }))].filter((asset, index, all) => all.findIndex((other) => other.uri === asset.uri) === index));
+      setMediaNotice({ error: false, message: `Đã thêm ${result.assets.length} ảnh từ thư viện. Kiểm tra ảnh bên dưới trước khi tải lên.` });
+    } catch {
+      setMediaNotice({ error: true, message: 'Không thể mở thư viện ảnh. Hãy kiểm tra quyền truy cập ảnh của UrbanMind rồi thử lại.' });
+    }
   });
   const takePhoto = () => run('camera', async () => {
-    let permission = await ImagePicker.getCameraPermissionsAsync();
-    if (!permission.granted && permission.canAskAgain) {
-      permission = await ImagePicker.requestCameraPermissionsAsync();
-    }
-    if (!permission.granted) {
-      throw new Error('Ứng dụng cần quyền camera để chụp ảnh minh chứng. Hãy bật quyền Camera cho UrbanMind trong Cài đặt.');
-    }
+    setMediaNotice(null);
+    try {
+      let permission = await ImagePicker.getCameraPermissionsAsync();
+      if (!permission.granted && permission.canAskAgain) {
+        permission = await ImagePicker.requestCameraPermissionsAsync();
+      }
+      if (!permission.granted) {
+        const message = 'UrbanMind cần quyền Camera để chụp ảnh minh chứng. Hãy bật quyền trong Cài đặt của thiết bị.';
+        setMediaNotice({ error: true, message });
+        Alert.alert('Cần quyền camera', message, [
+          { text: 'Để sau', style: 'cancel' },
+          {
+            text: 'Mở cài đặt',
+            onPress: () => {
+              void Linking.openSettings().catch(() => {
+                setMediaNotice({ error: true, message: 'Không thể mở Cài đặt. Hãy mở Cài đặt thiết bị và cấp quyền Camera cho UrbanMind.' });
+              });
+            },
+          },
+        ]);
+        return;
+      }
 
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
-    if (!isCurrentSession() || result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    setAssets((current) => [...current, {
-      uri: asset.uri,
-      name: asset.fileName || `minh-chung-camera-${Date.now()}.jpg`,
-      mimeType: asset.mimeType || 'image/jpeg',
-      file: asset.file,
-    }].filter((item, index, all) => all.findIndex((other) => other.uri === item.uri) === index));
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
+      if (!isCurrentSession() || result.canceled) return;
+      if (!result.assets[0]) {
+        setMediaNotice({ error: true, message: 'Camera chưa trả về ảnh. Hãy chụp lại hoặc chọn ảnh từ thư viện.' });
+        return;
+      }
+      const asset = result.assets[0];
+      setAssets((current) => [...current, {
+        uri: asset.uri,
+        name: asset.fileName || `minh-chung-camera-${Date.now()}.jpg`,
+        mimeType: asset.mimeType || 'image/jpeg',
+        file: asset.file,
+      }].filter((item, index, all) => all.findIndex((other) => other.uri === item.uri) === index));
+      setMediaNotice({ error: false, message: 'Đã thêm ảnh vừa chụp. Kiểm tra ảnh bên dưới trước khi tải lên.' });
+    } catch {
+      setMediaNotice({ error: true, message: 'Không thể mở camera trên thiết bị này. Hãy thử lại hoặc chọn ảnh từ thư viện.' });
+    }
   });
   const pickDocuments = () => run('picker', async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], multiple: true, copyToCacheDirectory: true });
-    if (!isCurrentSession() || result.canceled) return;
-    setAssets((current) => [...current, ...result.assets.map((asset) => ({
-      uri: asset.uri, name: asset.name, mimeType: asset.mimeType || undefined, file: asset.file,
-    }))].filter((asset, index, all) => all.findIndex((other) => other.uri === asset.uri) === index));
+    setMediaNotice(null);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], multiple: true, copyToCacheDirectory: true });
+      if (!isCurrentSession() || result.canceled) return;
+      setAssets((current) => [...current, ...result.assets.map((asset) => ({
+        uri: asset.uri, name: asset.name, mimeType: asset.mimeType || undefined, file: asset.file,
+      }))].filter((asset, index, all) => all.findIndex((other) => other.uri === asset.uri) === index));
+      setMediaNotice({ error: false, message: `Đã thêm ${result.assets.length} tệp. Kiểm tra danh sách bên dưới trước khi tải lên.` });
+    } catch {
+      setMediaNotice({ error: true, message: 'Không thể mở trình chọn tệp. Hãy kiểm tra quyền truy cập tệp rồi thử lại.' });
+    }
   });
   const uploadEvidence = () => run('upload', async () => {
     if (!assignmentId || !assets.length) throw new Error('Vui lòng chọn ít nhất một tệp minh chứng.');
@@ -373,6 +415,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     const uploaded = await executionApi.uploadEvidence(assignmentId, assets, draft.evidenceDescription);
     if (!uploaded.length) throw new Error('Máy chủ chưa xác nhận tệp đã lưu. Hãy kiểm tra danh sách trước khi tải lại.');
     setAssets([]);
+    setMediaNotice(null);
     setDraft((current) => ({ ...current, evidenceDescription: '', evidenceSkipped: false, activeStep: 'resolution' }));
     await refresh();
     setViewStep('resolution'); setSuccess('Đã tải minh chứng. Bây giờ hãy hoàn tất kết quả xử lý.');
@@ -440,7 +483,14 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     <Stack.Screen options={{ title: currentStatus === 'needrework' ? 'Xử lý lại sự vụ' : 'Xử lý sự vụ' }} />
     <StaffScrollView ref={scroll} refreshControl={<RefreshControl refreshing={incident.isRefetching || assignment.isRefetching || contacts.isRefetching || evidence.isRefetching || history.isRefetching} onRefresh={() => { if (!operation.current) void refresh(); }} />}>
       <BackLink href={(`/(staff)/staff/incidents/${encodeURIComponent(id)}`) as Href} label="Chi tiết sự vụ" />
-      <QueryState pending={queryPending} error={bootstrapError || incident.error || assignment.error} retry={() => { void refresh(); }} />
+      <QueryState
+        pending={queryPending}
+        error={bootstrapError || (!incident.data ? incident.error : undefined) || (assignment.data === undefined ? assignment.error : undefined)}
+        retry={() => { void refresh(); }}
+      />
+      {(incident.data && incident.error) || (assignment.data !== undefined && assignment.error) ? (
+        <Notice error>Dữ liệu mới chưa đồng bộ được. Tiến trình gần nhất vẫn được giữ lại để bạn tiếp tục xử lý.</Notice>
+      ) : null}
       {readable && hydrated && incident.data && <>
         <PageHeading eyebrow={recordCode(id, true)} title={incident.data.title} accessory={<Status value={incident.data.status} />} description={currentStatus === 'needrework' ? 'Bổ sung phần Manager yêu cầu và gửi lại trong cùng một luồng.' : 'Hoàn thành lần lượt từng bước; tiến độ được lưu khi bạn rời màn hình.'} />
         {error ? <Notice error>{error}</Notice> : null}
@@ -468,7 +518,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
               {!!assignment.data.phoneNumber && <Label size={13}>Điện thoại: {assignment.data.phoneNumber}</Label>}
               <Label muted size={12}>Trạng thái đơn vị: {normalizeProviderReportStatus(assignment.data.reportStatus)}</Label>
             </View> : <>
-              <Label muted size={13}>Danh sách do backend lọc theo khu vực và danh mục của sự vụ. Mỗi sự vụ chỉ được phân công một đơn vị.</Label>
+              <Label muted size={13}>Danh sách được lọc theo khu vực và danh mục của sự vụ. Mỗi sự vụ chỉ được phân công một đơn vị.</Label>
               <Field label="Tìm đơn vị" placeholder="Tên đơn vị, đầu mối hoặc địa chỉ…" value={search} onChangeText={setSearch} editable={!busy} />
               <QueryState pending={candidates.isPending} error={candidates.error} empty={candidates.isSuccess && !filteredCandidates.length && (search.trim() ? 'Không có đơn vị khớp từ khóa.' : 'Chưa có đơn vị phù hợp với sự vụ.')} retry={() => { void candidates.refetch(); }} />
               <View accessibilityRole="radiogroup" accessibilityLabel="Đơn vị xử lý" style={{ gap: 10 }}>
@@ -484,7 +534,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
             <View style={panelStyle}>
               <Label bold>Flow tự xử lý</Label>
               <Label size={14}>Sự vụ sẽ chuyển sang “Đang xử lý”. Sau đó bạn ghi kết quả và gửi Manager duyệt.</Label>
-              <Label muted size={12}>Nếu cần tải ảnh hoặc PDF lên kho minh chứng của backend, hãy dùng nhánh Phối hợp đơn vị vì endpoint tệp hiện thuộc phân công đơn vị.</Label>
+              <Label muted size={12}>Nếu cần tải ảnh hoặc PDF làm minh chứng, hãy chọn Phối hợp đơn vị để gắn tệp đúng hồ sơ xử lý.</Label>
             </View>
             {!readonly && <Button label="Xác nhận bắt đầu tự xử lý" busy={busy === 'direct'} disabled={!!busy} onPress={() => { void startDirect(); }} />}
           </Section>}
@@ -509,11 +559,12 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
 
           {activeStep === 'evidence' && <Section title={mode === 'provider' ? '3. Minh chứng xử lý' : '2. Minh chứng xử lý'}>
             {mode === 'direct' ? <>
-              <Notice>Minh chứng là tùy chọn trong nhánh tự xử lý. Backend hiện chỉ nhận tệp theo một phân công đơn vị, nên ứng dụng không gửi đường dẫn ảnh cục bộ hoặc gắn tệp sai phạm vi.</Notice>
+              <Notice>Khi tự xử lý, bạn có thể mô tả minh chứng trong kết quả. Để tải ảnh hoặc PDF, hãy quay lại và chọn Phối hợp đơn vị.</Notice>
               <Label muted size={13}>Nếu sự vụ bắt buộc có ảnh/PDF, quay lại và chọn “Phối hợp đơn vị” trước khi bắt đầu. Nếu không, tiếp tục ghi kết quả xử lý.</Label>
               {!readonly && <Button label="Tiếp tục đến kết quả" disabled={!!busy} onPress={skipEvidence} />}
             </> : <>
               <Label muted size={13}>Ảnh và PDF được tải vào đúng phân công đơn vị của sự vụ. Tệp đã chọn trên thiết bị chỉ được giữ khi bạn còn ở màn hình này.</Label>
+              {mediaNotice ? <Notice error={mediaNotice.error}>{mediaNotice.message}</Notice> : null}
               <Button secondary label="Chụp ảnh trực tiếp" busy={busy === 'camera'} disabled={!!busy || readonly} onPress={() => { void takePhoto(); }} />
               <Button secondary label="Chọn ảnh minh chứng" busy={busy === 'picker'} disabled={!!busy || readonly} onPress={() => { void pickImages(); }} />
               <Button secondary label="Chọn ảnh hoặc PDF" disabled={!!busy || readonly} onPress={() => { void pickDocuments(); }} />

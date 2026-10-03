@@ -37,7 +37,14 @@ import {
   searchVietnameseAddresses,
   type AddressSuggestion,
 } from '@/features/reporting/services/address-geocoding';
+import {
+  areaBoundaryValue,
+  boundaryViewbox,
+  extractBoundaryPolygons,
+  flattenBoundaryCoordinates,
+} from '@/features/reporting/services/area-boundary';
 import FeedbackLocationPicker from './feedback-location-picker';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 const { width: W } = Dimensions.get('window');
 const STEPS = ['Mô tả', 'Vị trí', 'Minh chứng', 'Xem lại'];
@@ -47,6 +54,13 @@ const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024;
 const DRAFT_STORAGE_PREFIX = 'urbanmind:create-ticket-draft';
 const GPS_TIMEOUT_MS = 12_000;
+
+type FeedbackAttachmentDraft = {
+  uri: string;
+  name: string;
+  type: string;
+  size?: number;
+};
 
 const formatFileSize = (bytes = 0) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -187,80 +201,24 @@ function StepLocation({
   const [searchingAddress, setSearchingAddress] = useState(false);
   const [addressSearchMessage, setAddressSearchMessage] = useState('');
   const selectedAddressRef = useRef('');
-  const toast = useToast();
-
-  const normalizeBoundary = (boundaryGeoJson: any) => {
-    if (!boundaryGeoJson) return null;
-    if (typeof boundaryGeoJson === 'object') return boundaryGeoJson;
-    if (typeof boundaryGeoJson !== 'string') return null;
-    const trimmed = boundaryGeoJson.trim();
-    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
-    // try several common serializations
-    const candidates = [trimmed, trimmed.replace(/""/g, '"'), trimmed.replace(/\\"/g, '"')];
-    for (const c of candidates) {
-      try {
-        const parsed = JSON.parse(c);
-        if (parsed) return parsed;
-      } catch (e) {
-        // continue
-
-      }
-    }
-    return null;
-  };
-
-  const extractCoordsFromGeoJson = (geo: any) => {
-    if (!geo) return [];
-    const coords: Array<{ latitude: number; longitude: number }> = [];
-    const pushFromArray = (arr: any) => {
-      if (!Array.isArray(arr)) return;
-      // arr could be [lng, lat] or nested
-      if (typeof arr[0] === 'number' && typeof arr[1] === 'number') {
-        const lng = Number(arr[0]);
-        const lat = Number(arr[1]);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) coords.push({ latitude: lat, longitude: lng });
-        return;
-      }
-      for (const item of arr) pushFromArray(item);
-    };
-
-    if (geo.type === 'FeatureCollection' && Array.isArray(geo.features)) {
-      geo.features.forEach((f: any) => extractCoordsFromGeoJson(f).forEach((c) => coords.push(c)));
-      return coords;
-    }
-    if (geo.type === 'Feature' && geo.geometry) return extractCoordsFromGeoJson(geo.geometry);
-    if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
-      pushFromArray(geo.coordinates);
-      return coords;
-    }
-    if (geo.coordinates) {
-      pushFromArray(geo.coordinates);
-      return coords;
-    }
-    return coords;
-  };
 
   const selectedArea = useMemo(
     () => areas.find((area) => getAreaId(area) === areaId),
     [areaId, areas]
   );
 
-  const selectedAreaViewbox = useMemo(() => {
-    const rawBoundary = selectedArea?.BoundaryGeoJson
-      ?? selectedArea?.boundaryGeoJson
-      ?? selectedArea?.boundaryGeoJSON
-      ?? selectedArea?.boundary
-      ?? selectedArea?.geoJson
-      ?? selectedArea?.geoJSON
-      ?? null;
-    const normalized = normalizeBoundary(rawBoundary);
-    const coordinates = extractCoordsFromGeoJson(normalized);
-    if (coordinates.length === 0) return '';
-
-    const latitudes = coordinates.map((coordinate) => coordinate.latitude);
-    const longitudes = coordinates.map((coordinate) => coordinate.longitude);
-    return `${Math.min(...longitudes)},${Math.max(...latitudes)},${Math.max(...longitudes)},${Math.min(...latitudes)}`;
-  }, [selectedArea]);
+  const selectedAreaPolygons = useMemo(
+    () => extractBoundaryPolygons(areaBoundaryValue(selectedArea)),
+    [selectedArea]
+  );
+  const selectedAreaCoordinates = useMemo(
+    () => flattenBoundaryCoordinates(selectedAreaPolygons),
+    [selectedAreaPolygons]
+  );
+  const selectedAreaViewbox = useMemo(
+    () => boundaryViewbox(selectedAreaPolygons),
+    [selectedAreaPolygons]
+  );
 
   React.useEffect(() => {
     if (!addressInputFocused) return undefined;
@@ -317,28 +275,14 @@ function StepLocation({
     const area = selectedArea;
     if (!area || !mapRef.current) return;
 
-    // attempt polygon/geojson first
-    const rawBoundary = area?.BoundaryGeoJson ?? area?.boundaryGeoJson ?? area?.boundaryGeoJSON ?? area?.boundary ?? area?.geoJson ?? area?.geoJSON ?? null;
-    const normalized = normalizeBoundary(rawBoundary);
-    if (normalized) {
+    if (selectedAreaCoordinates.length) {
       try {
-        const coords = extractCoordsFromGeoJson(normalized);
-        if (coords.length > 0) {
-          // fit to polygon bounds
-          try {
-            mapRef.current.fitToCoordinates(coords, { edgePadding: { top: 36, left: 36, right: 36, bottom: 36 }, animated: true });
-          } catch (e) {
-            // some platforms may not support fitToCoordinates; fallback to center
-            const first = coords[0];
-            mapRef.current.animateToRegion({ latitude: first.latitude, longitude: first.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 600);
-          }
-          return;
-        }
-      } catch (err) {
-        if (__DEV__) console.warn('Failed to parse area boundary');
-        toast.error('Không thể tải hình dạng khu vực. Vui lòng thử lại.');
-        return;
+        mapRef.current.fitToCoordinates(selectedAreaCoordinates, { edgePadding: { top: 54, left: 36, right: 36, bottom: 36 }, animated: true });
+      } catch {
+        const first = selectedAreaCoordinates[0];
+        mapRef.current.animateToRegion({ latitude: first.latitude, longitude: first.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 600);
       }
+      return;
     }
 
     // fallback to center coordinates
@@ -351,7 +295,7 @@ function StepLocation({
         // ignore
       }
     }
-  }, [selectedArea, mapRef]);
+  }, [selectedArea, selectedAreaCoordinates]);
 
   React.useEffect(() => {
     if (latitude == null || longitude == null || !mapRef.current) return;
@@ -432,7 +376,11 @@ function StepLocation({
           <View style={styles.mapHeader}>
             <View style={{ flex: 1 }}>
               <Text style={styles.mapTitle}>Bản đồ khu vực</Text>
-              <Text style={styles.mapSubtitle}>Đánh dấu vị trí sự cố</Text>
+              <Text style={styles.mapSubtitle} numberOfLines={2}>
+                {selectedAreaPolygons.length
+                  ? `Đường viền xanh là ranh giới ${getAreaName(selectedArea)}`
+                  : 'Đánh dấu vị trí sự cố'}
+              </Text>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -457,6 +405,7 @@ function StepLocation({
               ref={mapRef}
               latitude={latitude}
               longitude={longitude}
+              boundaryPolygons={selectedAreaPolygons}
               onCoordinateSelect={(nextLatitude, nextLongitude) => {
                 setAddressInputFocused(false);
                 setAddressSuggestions([]);
@@ -535,7 +484,7 @@ function StepLocation({
                         </NativeText>
                         <NativeText
                           style={styles.addressSuggestionHint}
-                          numberOfLines={2}
+                          numberOfLines={3}
                           maxFontSizeMultiplier={1.25}
                         >
                           {suggestion.detail || suggestion.displayName}
@@ -595,8 +544,8 @@ function StepAttachments({
   onRemove,
   error,
 }: {
-  attachments: Array<{ uri: string; name: string; type: string; size?: number }>;
-  onAdd: (uri: string, fileName: string, type: string, size?: number) => void;
+  attachments: FeedbackAttachmentDraft[];
+  onAdd: (items: FeedbackAttachmentDraft[]) => number;
   onRemove: (index: number) => void;
   error?: string;
 }) {
@@ -608,16 +557,24 @@ function StepAttachments({
       toast.error(`Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`);
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_ATTACHMENT_COUNT - attachments.length,
-      quality: 0.85,
-    });
-    if (!result.canceled) {
-      result.assets.forEach((asset) => {
-        onAdd(asset.uri, asset.fileName || `attachment_${Date.now()}.jpg`, asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'), asset.fileSize);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_ATTACHMENT_COUNT - attachments.length,
+        quality: 0.85,
       });
+      if (!result.canceled) {
+        const added = onAdd(result.assets.map((asset, index) => ({
+          uri: asset.uri,
+          name: asset.fileName || `minh-chung-${Date.now()}-${index}.jpg`,
+          type: asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
+          size: asset.fileSize,
+        })));
+        if (added > 0) toast.success(`Đã thêm ${added} tệp từ thư viện.`);
+      }
+    } catch {
+      toast.error('Không thể mở thư viện ảnh. Hãy kiểm tra quyền truy cập ảnh của UrbanMind rồi thử lại.');
     }
   };
 
@@ -638,7 +595,14 @@ function StepAttachments({
           'UrbanMind cần quyền camera để chụp ảnh minh chứng. Bạn có thể bật quyền này trong Cài đặt của thiết bị.',
           [
             { text: 'Để sau', style: 'cancel' },
-            { text: 'Mở cài đặt', onPress: () => { void Linking.openSettings(); } },
+            {
+              text: 'Mở cài đặt',
+              onPress: () => {
+                void Linking.openSettings().catch(() => {
+                  toast.error('Không thể mở Cài đặt. Hãy mở Cài đặt thiết bị và cấp quyền Camera cho UrbanMind.');
+                });
+              },
+            },
           ],
         );
         return;
@@ -650,12 +614,15 @@ function StepAttachments({
       });
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        onAdd(
-          asset.uri,
-          asset.fileName || `anh-minh-chung-${Date.now()}.jpg`,
-          asset.mimeType || 'image/jpeg',
-          asset.fileSize,
-        );
+        const added = onAdd([{
+          uri: asset.uri,
+          name: asset.fileName || `anh-minh-chung-${Date.now()}.jpg`,
+          type: asset.mimeType || 'image/jpeg',
+          size: asset.fileSize,
+        }]);
+        if (added > 0) toast.success('Đã thêm ảnh vừa chụp vào minh chứng.');
+      } else if (!result.canceled) {
+        toast.warning('Camera chưa trả về ảnh. Hãy chụp lại hoặc chọn ảnh từ thư viện.');
       }
     } catch {
       toast.error('Không thể mở camera. Hãy thử lại hoặc chọn ảnh từ thư viện.');
@@ -844,7 +811,7 @@ export default function CreateFeedbackWizardScreen() {
   const [locationAccuracyMeters, setLocationAccuracyMeters] = useState<number | null>(null);
   const [geoSource, setGeoSource] = useState<'GPS' | 'MANUAL'>('MANUAL');
   const [locating, setLocating] = useState(false);
-  const [attachments, setAttachments] = useState<Array<{ uri: string; name: string; type: string; size?: number }>>([]);
+  const [attachments, setAttachments] = useState<FeedbackAttachmentDraft[]>([]);
   const [areas, setAreas] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [areasLoading, setAreasLoading] = useState(true);
@@ -1119,26 +1086,42 @@ export default function CreateFeedbackWizardScreen() {
     }
   };
 
-  const handleAddAttachment = (uri: string, fileName: string, type: string, size?: number) => {
-    if (attachments.length >= MAX_ATTACHMENT_COUNT) {
-      toast.error(`Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`);
-      return;
-    }
-    const normalizedType = type || (uri.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+  const handleAddAttachments = (items: FeedbackAttachmentDraft[]) => {
+    const next = [...attachments];
+    let added = 0;
+    let firstError = '';
 
-    const normalizedSize = size ?? 0;
-    const isVideo = normalizedType.startsWith('video/');
-    const sizeLimit = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
-    if (normalizedSize > sizeLimit && normalizedSize > 0) {
-      toast.error(`${isVideo ? 'Video' : 'Ảnh'} không được vượt quá ${formatFileSize(sizeLimit)}.`);
-      return;
+    for (const item of items) {
+      if (next.length >= MAX_ATTACHMENT_COUNT) {
+        firstError ||= `Chỉ được chọn tối đa ${MAX_ATTACHMENT_COUNT} tệp minh chứng.`;
+        break;
+      }
+
+      const normalizedType = item.type || (item.uri.toLowerCase().endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+      const normalizedSize = item.size ?? 0;
+      const isVideo = normalizedType.startsWith('video/');
+      const sizeLimit = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_IMAGE_SIZE_BYTES;
+      if (normalizedSize > sizeLimit && normalizedSize > 0) {
+        firstError ||= `${isVideo ? 'Video' : 'Ảnh'} “${item.name}” vượt quá ${formatFileSize(sizeLimit)}.`;
+        continue;
+      }
+
+      const nextTotalSize = next.reduce((sum, attachment) => sum + (attachment.size || 0), 0) + normalizedSize;
+      if (nextTotalSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES && normalizedSize > 0) {
+        firstError ||= `Tổng dung lượng minh chứng không được vượt quá ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`;
+        continue;
+      }
+
+      next.push({ ...item, type: normalizedType, size: normalizedSize });
+      added += 1;
     }
-    if (attachments.reduce((sum, item) => sum + (item.size || 0), 0) + normalizedSize > MAX_TOTAL_ATTACHMENT_SIZE_BYTES && normalizedSize > 0) {
-      toast.error(`Tổng dung lượng minh chứng không được vượt quá ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`);
-      return;
+
+    if (added > 0) {
+      setAttachments(next);
+      clearFieldError('attachments');
     }
-    setAttachments((current) => [...current, { uri, name: fileName, type: normalizedType, size: normalizedSize }]);
-    clearFieldError('attachments');
+    if (firstError) toast.error(firstError);
+    return added;
   };
 
   const handleRemoveAttachment = (index: number) => {
@@ -1214,7 +1197,7 @@ export default function CreateFeedbackWizardScreen() {
       const resp = (error as any)?.response;
       const serverMessage = resp?.data?.message || (error as any)?.message || '';
       if (resp?.status === 413) {
-        toast.error(`Tệp gửi lên quá lớn (HTTP 413). Vui lòng giảm kích thước ảnh/video hoặc gửi ít tệp hơn. Tối đa ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`);
+        toast.error(`Tệp đã chọn quá lớn. Vui lòng giảm kích thước ảnh/video hoặc chọn ít tệp hơn. Tổng dung lượng tối đa ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE_BYTES)}.`);
       } else if (typeof serverMessage === 'string' && serverMessage.includes('BoundaryGeoJson')) {
         // Graceful fallback: retry once without areaId so user can still submit
         try {
@@ -1234,7 +1217,7 @@ export default function CreateFeedbackWizardScreen() {
             qc.setQueryData(reportingKeys.detail(String(fallbackFeedbackId)), fallbackCreatedFeedback);
           }
 
-          toast.success('Phản ánh đã được gửi (không kèm khu vực do lỗi hình dạng).');
+          toast.success('Phản ánh đã được gửi. Khu vực sẽ được xác định từ vị trí bạn đã chọn.');
 
           // Navigate to newly created ticket detail
           if (fallbackFeedbackId) {
@@ -1244,10 +1227,10 @@ export default function CreateFeedbackWizardScreen() {
           }
         } catch (err2) {
           if (__DEV__) console.warn('Fallback submit without area failed');
-          toast.error('Khu vực được chọn chứa dữ liệu hình dạng không hợp lệ. Vui lòng chọn khu vực khác hoặc liên hệ quản trị viên.');
+          toast.error(getUserFacingError(err2, 'Chưa thể gửi phản ánh với khu vực này. Vui lòng chọn khu vực khác hoặc thử lại.'));
         }
       } else {
-        toast.error('Gửi phản ánh thất bại. Vui lòng thử lại.');
+        toast.error(getUserFacingError(error, 'Không thể gửi phản ánh. Vui lòng thử lại.'));
       }
     } finally {
       setSubmitting(false);
@@ -1349,7 +1332,7 @@ export default function CreateFeedbackWizardScreen() {
             {step === 3 && (
               <StepAttachments
                 attachments={attachments}
-                onAdd={handleAddAttachment}
+                onAdd={handleAddAttachments}
                 onRemove={handleRemoveAttachment}
                 error={fieldErrors.attachments}
               />

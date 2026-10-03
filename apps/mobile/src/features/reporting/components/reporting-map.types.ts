@@ -5,6 +5,11 @@ export type MapCoordinate = {
   longitude: number;
 };
 
+export type MapBoundaryPolygon = {
+  coordinates: MapCoordinate[];
+  holes?: MapCoordinate[][];
+};
+
 export type MapRegion = MapCoordinate & {
   latitudeDelta: number;
   longitudeDelta: number;
@@ -32,6 +37,7 @@ export type FeedbackLocationMapHandle = {
 export type FeedbackLocationPickerProps = {
   latitude: number | null;
   longitude: number | null;
+  boundaryPolygons?: MapBoundaryPolygon[];
   onCoordinateSelect: (latitude: number, longitude: number) => void;
 };
 

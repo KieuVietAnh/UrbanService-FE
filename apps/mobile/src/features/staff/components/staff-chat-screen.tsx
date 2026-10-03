@@ -4,7 +4,7 @@ import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth';
 import { KeyboardAwareComposerLayout } from '@/components/layouts';
-import { staffApi, staffError, staffKeys } from '../staff-api';
+import { staffApi, staffError, staffKeys, staffQueryRetry } from '../staff-api';
 import { getStaffLineHeight } from '../staff-layout';
 import { formatDate, type StaffMessage } from '../staff-models';
 import { colors, contentStyle, Label, QueryState, StaffIcon } from './staff-ui';
@@ -68,7 +68,7 @@ export function StaffChatScreen() {
       return dedupeMessages([...remoteMessages, ...optimisticMessages]);
     },
     enabled: Boolean(id && userId && focused && appActive),
-    retry: 1,
+    retry: staffQueryRetry,
     refetchInterval: focused && appActive
       ? (realtimeConnected ? REALTIME_RECONCILE_INTERVAL_MS : MESSAGE_POLL_INTERVAL_MS)
       : false,
@@ -80,7 +80,7 @@ export function StaffChatScreen() {
     refetchRef.current = () => {
       void query.refetch();
     };
-  }, [query]);
+  }, [query.refetch]);
 
   useFocusEffect(useCallback(() => {
     setFocused(true);
@@ -93,11 +93,6 @@ export function StaffChatScreen() {
     });
     return () => subscription.remove();
   }, []);
-
-  useEffect(() => {
-    if (!id || !userId || !focused || !appActive) return;
-    void cache.refetchQueries({ queryKey, type: 'active' });
-  }, [appActive, cache, focused, id, queryKey, userId]);
 
   useEffect(() => {
     if (!query.data?.length) return undefined;
@@ -185,11 +180,11 @@ export function StaffChatScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={internal ? 'Lưu ghi chú nội bộ' : 'Gửi phản hồi'}
-            accessibilityState={{ disabled: !message.trim() || query.isError || query.isPending || mutation.isPending, busy: mutation.isPending }}
-            disabled={!message.trim() || query.isError || query.isPending || mutation.isPending}
+            accessibilityState={{ disabled: !message.trim() || (!query.data && query.isError) || query.isPending || mutation.isPending, busy: mutation.isPending }}
+            disabled={!message.trim() || (!query.data && query.isError) || query.isPending || mutation.isPending}
             onPress={() => mutation.mutate({ text: message, internal })}
             android_ripple={{ color: 'rgba(255,255,255,0.24)', borderless: true }}
-            style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 24, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, opacity: !message.trim() || query.isError || query.isPending ? 0.45 : 1 }}
+            style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 24, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, opacity: !message.trim() || (!query.data && query.isError) || query.isPending ? 0.45 : 1 }}
           >
             {mutation.isPending ? <ActivityIndicator color="#FFFFFF" /> : <StaffIcon name="send" size={20} color="#FFFFFF" />}
           </Pressable>
@@ -200,7 +195,7 @@ export function StaffChatScreen() {
     >
       <FlatList ref={list} style={{ flex: 1, minHeight: 48 }} data={query.data || []} keyExtractor={(item, index) => item.id || `${item.createdAt}-${index}`} {...layout} contentContainerStyle={[contentStyle, layout.contentContainerStyle, { gap: 12, paddingBottom: 20 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         refreshing={manualRefreshing} onRefresh={() => { void refreshManually(); }}
-        ListHeaderComponent={<QueryState pending={query.isPending} error={query.error} empty={!query.isPending && !query.error && !query.data?.length && 'Chưa có trao đổi. Bạn có thể gửi phản hồi đầu tiên.'} retry={() => { void query.refetch(); }} />}
+        ListHeaderComponent={<QueryState pending={query.isPending} error={query.data ? undefined : query.error} empty={!query.isPending && (!query.error || query.data) && !query.data?.length && 'Chưa có trao đổi. Bạn có thể gửi phản hồi đầu tiên.'} retry={() => { void query.refetch(); }} />}
         renderItem={({ item }) => <View style={{ alignSelf: item.senderId === userId ? 'flex-end' : 'flex-start', maxWidth: '94%', minWidth: 0, padding: 16, gap: 6, borderRadius: 16, borderBottomRightRadius: item.senderId === userId ? 4 : 16, borderBottomLeftRadius: item.senderId === userId ? 16 : 4, backgroundColor: item.internal ? colors.amberLight : item.senderId === userId ? colors.primarySoft : colors.surface, borderWidth: 1, borderColor: item.internal ? colors.amber : colors.border }}>
           <Label bold size={12}>{item.sender}{item.internal ? ' · Nội bộ' : ''}</Label><Label>{item.text}</Label><Label muted size={12}>{formatDate(item.createdAt)}</Label>
         </View>}

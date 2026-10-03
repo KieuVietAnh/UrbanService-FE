@@ -31,6 +31,7 @@ import {
 } from '@/features/community/utils/support-cache';
 import { getResidentStatusLabel } from '@/features/resident-status';
 import { colors } from '@/constants/theme';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 const DEFAULT_REGION = {
   latitude: 21.0278,
@@ -510,7 +511,7 @@ export default function CommunityMapNative() {
             </View>
             {areasError ? (
               <Text style={styles.selectorErrorText} numberOfLines={2}>
-                {areasFetchError?.message ?? 'Không tải được danh sách khu vực. Vui lòng kiểm tra đăng nhập hoặc thử lại.'}
+                {getUserFacingError(areasFetchError, 'Không tải được danh sách khu vực. Vui lòng thử lại.')}
               </Text>
             ) : null}
             <Pressable style={styles.filterSummary} onPress={() => setFilterModalOpen(true)}>

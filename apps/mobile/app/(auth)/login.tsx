@@ -24,6 +24,7 @@ import { useAuthStore } from '@/features/auth';
 import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 import UrbanHeroBackground from '@/components/auth/UrbanHeroBackground';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -108,8 +109,7 @@ export default function LoginScreen() {
       const user = await login(email.trim(), password);
       router.replace(getMobileEntry(user));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Email hoặc mật khẩu không chính xác';
-      toast.error(message || 'Email hoặc mật khẩu không chính xác');
+      toast.error(getUserFacingError(err, 'Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.', 'login'));
     } finally {
       submitLockRef.current = false;
     }
@@ -118,7 +118,7 @@ export default function LoginScreen() {
   const handleGoogleSignIn = async () => {
     if (submitLockRef.current || isLoading) return;
     if (!request) {
-      toast.error('Google login chưa sẵn sàng. Vui lòng thử lại.');
+      toast.error('Đăng nhập bằng Google chưa sẵn sàng. Vui lòng thử lại.');
       return;
     }
 
@@ -146,8 +146,8 @@ export default function LoginScreen() {
 
       if (result.type !== 'success' || !result.authentication?.idToken) {
         const errorMessage = result.type === 'dismiss'
-          ? 'Google login đã bị hủy'
-          : 'Google login không thành công';
+          ? 'Bạn đã hủy đăng nhập bằng Google.'
+          : 'Không thể đăng nhập bằng Google. Vui lòng thử lại.';
         toast.error(errorMessage);
         return;
       }
@@ -155,8 +155,7 @@ export default function LoginScreen() {
       const user = await googleLogin(result.authentication.idToken);
       router.replace(getMobileEntry(user));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Google đăng nhập thất bại';
-      toast.error(message || 'Google đăng nhập thất bại');
+      toast.error(getUserFacingError(err, 'Không thể đăng nhập bằng Google. Vui lòng thử lại.', 'google-login'));
     } finally {
       submitLockRef.current = false;
     }

@@ -22,7 +22,7 @@ export function useStaffIncidentSlaQuery({
         (error as { response?: { status?: number }; status?: number })?.response?.status
         ?? (error as { status?: number })?.status,
       );
-      return ![400, 401, 403, 404].includes(status) && failureCount < 2;
+      return !(Number.isFinite(status) && status >= 400 && status < 500) && failureCount < 1;
     },
   });
 }

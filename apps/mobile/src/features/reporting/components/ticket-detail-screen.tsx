@@ -35,6 +35,7 @@ import {
 import { semantics } from '@/theme/semantics';
 import { axiosClient } from '@urbanmind/shared-api';
 import TicketLocationMap from './ticket-location-map';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 const resolveMediaUrl = (value: any) => {
   if (!value || typeof value !== 'string') return null;
@@ -198,7 +199,7 @@ export default function TicketDetailScreen() {
       <SafeAreaView style={styles.safe} edges={['top']}>
         <AppHeader showBack title="Chi tiết phản ánh" />
         <AppErrorState onRetry={refetch}>
-          {(error as any)?.message || 'Không thể tải thông tin phản ánh'}
+          {getUserFacingError(error, 'Không thể tải thông tin phản ánh. Vui lòng thử lại.')}
         </AppErrorState>
       </SafeAreaView>
     );

@@ -102,7 +102,7 @@ export function StaffIncidentSlaSection({
 
   return <Section title="SLA của sự vụ">
     <Label muted size={13}>
-      Mốc phản hồi và hoàn thành được backend tính cho toàn bộ sự vụ.
+      Mốc phản hồi và hoàn thành được tính cho toàn bộ sự vụ.
     </Label>
     {!userId.trim() ? <Notice error>Không xác định được phiên Staff để tải SLA.</Notice> : !incidentId.trim() ? <Notice>Report này chưa được liên kết với sự vụ nên chưa có SLA sự vụ.</Notice> : <>
       <QueryState pending={query.isPending} error={query.error} retry={retry} />

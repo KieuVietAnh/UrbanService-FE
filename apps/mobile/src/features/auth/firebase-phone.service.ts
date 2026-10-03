@@ -5,7 +5,7 @@ type FirebasePhoneModule = typeof import('@react-native-firebase/auth');
 let confirmation: ConfirmationResult | null = null;
 
 const unavailableMessage =
-  'Bản cài đặt hiện tại chưa có cấu hình xác thực số điện thoại. Vui lòng cập nhật APK UrbanMind mới nhất hoặc liên hệ quản trị hệ thống.';
+  'Phiên bản UrbanMind này chưa hỗ trợ xác thực số điện thoại. Vui lòng cập nhật ứng dụng lên phiên bản mới nhất.';
 
 const firebaseErrorMessage = (error: unknown, fallback: string): string => {
   const code = String((error as { code?: unknown })?.code || '').toLowerCase();
@@ -48,7 +48,7 @@ export const sendFirebasePhoneOtp = async (
     confirmation = await firebaseAuth.signInWithPhoneNumber(auth, phoneNumber);
   } catch (error) {
     confirmation = null;
-    throw new Error(firebaseErrorMessage(error, 'Firebase không thể gửi mã OTP. Vui lòng thử lại.'));
+    throw new Error(firebaseErrorMessage(error, 'Không thể gửi mã OTP. Vui lòng thử lại.'));
   }
 };
 
@@ -68,7 +68,7 @@ export const confirmFirebasePhoneOtp = async (otp: string): Promise<string> => {
     throw new Error(firebaseErrorMessage(error, 'Không thể xác thực mã OTP. Vui lòng thử lại.'));
   }
   if (!credential?.user) {
-    throw new Error('Firebase không trả về người dùng đã xác thực. Vui lòng gửi lại mã OTP.');
+    throw new Error('Chưa thể hoàn tất xác thực. Vui lòng yêu cầu mã OTP mới và thử lại.');
   }
 
   return credential.user.getIdToken(true);

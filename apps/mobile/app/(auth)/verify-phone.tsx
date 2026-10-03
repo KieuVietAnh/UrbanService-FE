@@ -16,6 +16,7 @@ import { OTPInput, useToast } from '@/components/shared';
 import { getMobileEntry } from '@/features/auth/mobile-access';
 import { useAuthStore } from '@/features/auth';
 import { semantics } from '@/theme/semantics';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -70,7 +71,7 @@ export default function VerifyPhoneScreen() {
       toast.success(`Đã gửi mã OTP tới ${formatPhone(permission.phoneNumber)}.`);
     } catch (error) {
       setStep(previousStep);
-      toast.error(error instanceof Error ? error.message : 'Không thể gửi mã OTP qua SMS.');
+      toast.error(getUserFacingError(error, 'Không thể gửi mã OTP qua SMS. Vui lòng thử lại.', 'phone-otp-send'));
     } finally {
       setAction(null);
     }
@@ -100,7 +101,7 @@ export default function VerifyPhoneScreen() {
       router.replace(getMobileEntry(verifiedUser));
     } catch (error) {
       setHasOtpError(true);
-      toast.error(error instanceof Error ? error.message : 'Mã OTP không chính xác hoặc đã hết hạn.');
+      toast.error(getUserFacingError(error, 'Mã OTP không chính xác hoặc đã hết hạn.', 'phone-otp-verify'));
     } finally {
       setAction(null);
     }

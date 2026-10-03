@@ -17,6 +17,7 @@ import { PasswordInput } from '@/components/shared';
 import { useAuthStore } from '@/features/auth';
 import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 interface Errors {
   fullName?: string;
@@ -103,7 +104,7 @@ export default function RegisterScreen() {
 
       router.replace({ pathname: '/(auth)/verify-phone', params: { autoSend: '1' } });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Đăng ký thất bại. Vui lòng thử lại.');
+      toast.error(getUserFacingError(err, 'Không thể tạo tài khoản. Vui lòng thử lại.', 'register'));
     }
   };
 

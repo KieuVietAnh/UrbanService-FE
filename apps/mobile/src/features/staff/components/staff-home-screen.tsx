@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
-import { Link, Stack, useFocusEffect, type Href } from 'expo-router';
+import { Link, Stack, type Href } from 'expo-router';
 import { useQueries } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth';
-import { staffApi, staffKeys } from '../staff-api';
+import { staffApi, staffKeys, staffQueryRetry } from '../staff-api';
+import { useRefreshOnReturn } from '../use-refresh-on-return';
 import { recordCode } from '../staff-models';
 import {
   colors, contentStyle, Label, panelStyle, QueryState, RecordCard, Section, StaffIcon,
@@ -53,12 +54,12 @@ export function StaffHomeScreen() {
   const metricColumns = fontScale > 1.5 || (width < 340 && fontScale > 1.15) ? 1 : width >= 780 && fontScale <= 1.15 ? 4 : 2;
   const queries = useQueries({ queries: metrics.map((item) => {
     const params = { pageNumber: 1, status: item.status };
-    return { queryKey: staffKeys.incidents(user?.id || '', params), queryFn: ({ signal }: { signal: AbortSignal }) => staffApi.incidents(user?.id || '', params, signal), enabled: Boolean(user?.id), retry: 1 };
+    return { queryKey: staffKeys.incidents(user?.id || '', params), queryFn: ({ signal }: { signal: AbortSignal }) => staffApi.incidents(user?.id || '', params, signal), enabled: Boolean(user?.id), retry: staffQueryRetry };
   }) });
   const [assigned, inProgress, needRework, waitingApproval] = queries;
   const refresh = useCallback(() => { void assigned.refetch(); void inProgress.refetch(); void needRework.refetch(); void waitingApproval.refetch(); }, [assigned.refetch, inProgress.refetch, needRework.refetch, waitingApproval.refetch]);
-  useFocusEffect(refresh);
-  const metricError = queries.find((query) => query.error)?.error;
+  useRefreshOnReturn(refresh);
+  const metricError = queries.find((query) => query.error && !query.data)?.error;
   const focusItem = needRework.data?.items[0] || inProgress.data?.items[0] || assigned.data?.items[0];
   const focusLabel = needRework.data?.items[0] ? 'Cần xử lý lại ngay' : inProgress.data?.items[0] ? 'Tiếp tục công việc' : 'Bắt đầu công việc mới';
   const firstName = user?.fullName?.trim().split(/\s+/).at(-1) || 'bạn';
@@ -72,7 +73,7 @@ export function StaffHomeScreen() {
         <Link href="/(staff)/staff/(tabs)/incidents" asChild><Pressable accessibilityRole="button" accessibilityLabel="Mở danh sách sự vụ" style={({ pressed }) => ({ minHeight: 50, borderRadius: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, backgroundColor: pressed ? colors.primaryDark : colors.primary })}><Label selectable={false} bold size={14} style={{ color: '#FFFFFF' }}>Mở sự vụ của tôi</Label><StaffIcon name="arrow" color="#FFFFFF" size={18} /></Pressable></Link>
       </View>
 
-      <Section title="Nhịp công việc"><View style={{ ...panelStyle, padding: 0, gap: 0, overflow: 'hidden', flexDirection: 'row', flexWrap: 'wrap' }}>{metrics.map((item, index) => <MetricLink key={item.status} {...item} value={queries[index].isError ? '-' : queries[index].data?.totalItems.toLocaleString('vi-VN') ?? '…'} columns={metricColumns} index={index} />)}</View></Section>
+      <Section title="Nhịp công việc"><View style={{ ...panelStyle, padding: 0, gap: 0, overflow: 'hidden', flexDirection: 'row', flexWrap: 'wrap' }}>{metrics.map((item, index) => <MetricLink key={item.status} {...item} value={queries[index].data?.totalItems.toLocaleString('vi-VN') ?? (queries[index].isError ? '-' : '…')} columns={metricColumns} index={index} />)}</View></Section>
       {metricError ? <QueryState error={metricError} retry={refresh} /> : null}
 
       <Section title="Ưu tiên tiếp theo">
@@ -84,7 +85,7 @@ export function StaffHomeScreen() {
         </Pressable></Link> : <QueryState empty="Hiện không có sự vụ cần bạn xử lý." retry={refresh} />}
       </Section>
 
-      <Section title="Sự vụ mới được giao"><QueryState pending={assigned.isPending} error={assigned.error} empty={!assigned.isPending && !assigned.error && !assigned.data?.items.length && 'Bạn chưa có sự vụ mới được giao.'} retry={() => { void assigned.refetch(); }} />{assigned.data?.items.slice(0, 3).map((item) => <RecordCard key={item.id} item={item} incident />)}</Section>
+      <Section title="Sự vụ mới được giao"><QueryState pending={assigned.isPending} error={assigned.data ? undefined : assigned.error} empty={!assigned.isPending && (!assigned.error || assigned.data) && !assigned.data?.items.length && 'Bạn chưa có sự vụ mới được giao.'} retry={() => { void assigned.refetch(); }} />{assigned.data?.items.slice(0, 3).map((item) => <RecordCard key={item.id} item={item} incident />)}</Section>
       <Section title="Công cụ nhanh"><View style={{ ...panelStyle, padding: 0, gap: 0, overflow: 'hidden' }}>{shortcuts.map((item, index) => <Shortcut key={item.title} item={item} last={index === shortcuts.length - 1} />)}</View></Section>
     </StaffScrollView>
   </>;

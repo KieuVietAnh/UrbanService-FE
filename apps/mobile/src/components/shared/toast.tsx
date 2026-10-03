@@ -12,6 +12,7 @@ import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui/Text';
 import { semantics } from '@/theme/semantics';
 import { shadows } from '@/theme/shadows';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -104,7 +105,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const value: ToastContextValue = {
     show,
     success: (msg) => show(msg, 'success'),
-    error: (msg) => show(msg, 'error'),
+    error: (msg) => show(getUserFacingError(msg), 'error'),
     info: (msg) => show(msg, 'info'),
     warning: (msg) => show(msg, 'warning'),
   };

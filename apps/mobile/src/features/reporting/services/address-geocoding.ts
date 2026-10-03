@@ -63,6 +63,22 @@ const isAbortError = (error: unknown) => (
   error instanceof Error && error.name === 'AbortError'
 );
 
+const detailedAddress = (parts: Array<string | undefined | null>) => {
+  const normalized: string[] = [];
+
+  parts.forEach((part) => {
+    const value = String(part || '').trim();
+    if (!value) return;
+    const key = value.toLocaleLowerCase('vi');
+    if (normalized.some((existing) => existing.toLocaleLowerCase('vi').includes(key))) return;
+    normalized.push(value);
+  });
+
+  return normalized.join(', ');
+};
+
+const postalLabel = (postal?: string) => postal ? `Mã bưu chính ${postal}` : '';
+
 const normalizeResults = (results: Array<{
   id?: string | number;
   label?: string;
@@ -121,12 +137,14 @@ const searchWithArcGis = async (
     maxLocations: '8',
     outFields: 'Match_addr,LongLabel,ShortLabel,PlaceName,Place_addr,Address,AddNum,StName,District,City,Region,Country,Postal',
     countryCode: 'VNM',
+    sourceCountry: 'VNM',
   });
 
   if (viewbox) {
     const [west, north, east, south] = viewbox.split(',').map(Number);
     if ([west, north, east, south].every(Number.isFinite)) {
       params.set('location', `${(west + east) / 2},${(north + south) / 2}`);
+      params.set('searchExtent', `${west},${south},${east},${north}`);
     }
   }
 
@@ -146,18 +164,20 @@ const searchWithArcGis = async (
       || attributes.Address
       || candidate.address
       || attributes.Match_addr;
-    const detail = attributes.Place_addr || [
-      streetAddress,
+    const detail = detailedAddress([
+      attributes.LongLabel,
+      attributes.Place_addr,
+      streetAddress || attributes.Address,
       attributes.District,
       attributes.City,
       attributes.Region,
-      attributes.Postal,
+      postalLabel(attributes.Postal),
       attributes.Country,
-    ].filter(Boolean).join(', ');
-    const displayName = attributes.LongLabel
-      || (detail ? [label, detail].filter(Boolean).join(', ') : attributes.Match_addr)
-      || candidate.address
-      || '';
+    ]);
+    const displayName = detailedAddress([
+      label,
+      detail || attributes.Match_addr || candidate.address,
+    ]);
     return {
       id: `arcgis-${index}-${candidate?.location?.y}-${candidate?.location?.x}`,
       label,
@@ -187,6 +207,7 @@ const searchWithPhoton = async (
     if ([west, north, east, south].every(Number.isFinite)) {
       params.set('lon', String((west + east) / 2));
       params.set('lat', String((north + south) / 2));
+      params.set('bbox', `${west},${south},${east},${north}`);
     }
   }
 
@@ -203,7 +224,7 @@ const searchWithPhoton = async (
     const [longitude, latitude] = feature.geometry?.coordinates || [];
     const street = [properties.housenumber, properties.street].filter(Boolean).join(' ');
     const label = properties.name || street || properties.district || properties.city;
-    const detail = [
+    const detail = detailedAddress([
       street && street !== label ? street : '',
       properties.suburb,
       properties.locality,
@@ -211,9 +232,9 @@ const searchWithPhoton = async (
       properties.county,
       properties.city,
       properties.state,
-      properties.postcode,
+      postalLabel(properties.postcode),
       properties.country,
-    ].filter(Boolean).join(', ');
+    ]);
     return {
       id: properties.osm_id || `photon-${index}-${latitude}-${longitude}`,
       label,

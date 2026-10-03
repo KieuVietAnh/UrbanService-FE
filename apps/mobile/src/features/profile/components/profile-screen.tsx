@@ -22,6 +22,7 @@ import { useToast } from '@/components/shared';
 import { semantics } from '@/theme/semantics';
 import { profileApi, profileKeys } from '../api';
 import { getResidentStage } from '@/features/resident-status';
+import { getUserFacingError } from '@/utils/user-facing-error';
 
 const PROFILE_FEEDBACK_FILTERS: FeedbackFilters = {
   pageSize: 100,
@@ -117,8 +118,8 @@ export default function ProfileScreen() {
       setEditModalVisible(false);
       toast.success('Cập nhật thông tin thành công!');
     },
-    onError: (err: any) => {
-      toast.error(err.message || 'Không thể cập nhật thông tin');
+    onError: (err: unknown) => {
+      toast.error(getUserFacingError(err, 'Không thể cập nhật thông tin. Vui lòng thử lại.'));
     },
   });
 
