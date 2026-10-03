@@ -78,3 +78,27 @@ test('only a real 404 becomes an empty SLA; other failures remain visible', asyn
     await assert.rejects(staffSlaApi.incidentStatus('   '), /Thiếu mã sự vụ/);
   } finally { getStatus.mock.restore(); }
 });
+
+test('dashboard SLA loading batches active Incidents and keeps missing data distinct from failures', async () => {
+  const signal = new AbortController().signal;
+  const getStatus = mock.method(slaApi, 'getIncidentSlaStatus', async (incidentId) => {
+    if (incidentId === 'incident-2') {
+      const error = new Error('Missing');
+      error.status = 404;
+      throw error;
+    }
+    if (incidentId === 'incident-3') throw new Error('Temporary failure');
+    return { incidentId, status: 'Running', resolutionRemainingSeconds: 90 };
+  });
+  try {
+    const result = await staffSlaApi.dashboard(['incident-1', 'incident-2', 'incident-3', 'incident-1'], signal);
+    assert.deepEqual(Object.keys(result.byIncidentId), ['incident-1']);
+    assert.equal(result.withoutSlaCount, 1);
+    assert.equal(result.failedCount, 1);
+    assert.equal(getStatus.mock.callCount(), 3, 'duplicate Incident IDs must not issue duplicate SLA requests');
+    assert.notDeepEqual(
+      staffSlaKeys.dashboard('staff-1', ['incident-1']),
+      staffSlaKeys.dashboard('staff-2', ['incident-1']),
+    );
+  } finally { getStatus.mock.restore(); }
+});

@@ -12,6 +12,7 @@ import { useStaffContentInsets } from './staff-scroll-view';
 import {
   MESSAGE_POLL_INTERVAL_MS,
   REALTIME_RECONCILE_INTERVAL_MS,
+  type RealtimeTicketMessage,
   useTicketMessagesRealtime,
 } from '@/features/messaging/realtime/use-ticket-messages-realtime';
 
@@ -48,14 +49,23 @@ export function StaffChatScreen() {
   const draftKey = `${userId}:${id}:${internal ? 'internal' : 'public'}`;
   const message = drafts[draftKey] || '';
   const queryKey = useMemo(() => staffKeys.messages(userId, id), [id, userId]);
-  /*
-   * Kênh realtime chỉ báo có tin mới; react-query vẫn là nơi tải và hợp nhất dữ
-   * liệu, nên tin nhắn lạc quan đang chờ gửi không bị gói tin đẩy xuống ghi đè.
-   */
   const refetchRef = useRef<() => void>(() => {});
   const { connected: realtimeConnected } = useTicketMessagesRealtime(id, {
     enabled: Boolean(id && userId) && focused && appActive,
-    onMessage: useCallback(() => {
+    onMessage: useCallback((incoming: RealtimeTicketMessage) => {
+      const realtimeMessage: StaffMessage = {
+        id: incoming.interactionMessageId,
+        text: incoming.messageText,
+        sender: incoming.userFullName || incoming.userEmail || 'Người dùng',
+        senderId: incoming.userId,
+        internal: incoming.isInternal,
+        createdAt: incoming.createdAt,
+      };
+      cache.setQueryData<StaffMessage[]>(queryKey, (current = []) => (
+        dedupeMessages([...current, realtimeMessage])
+      ));
+    }, [cache, queryKey]),
+    onSyncNeeded: useCallback(() => {
       refetchRef.current();
     }, []),
   });

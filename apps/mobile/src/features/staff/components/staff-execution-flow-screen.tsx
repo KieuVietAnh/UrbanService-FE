@@ -95,6 +95,73 @@ function CandidateCard({ item, selected, disabled, onPress }: {
   </Pressable>;
 }
 
+function ContactInformation({ phoneNumber, email, onError }: {
+  phoneNumber?: string; email?: string; onError: (message: string) => void;
+}) {
+  const phone = String(phoneNumber || '').trim();
+  const mail = String(email || '').trim();
+  const call = async () => {
+    const target = phone.replace(/[^\d+]/g, '');
+    if (!target) return;
+    try { await Linking.openURL(`tel:${target}`); }
+    catch { onError('Không mở được ứng dụng gọi điện. Bạn vẫn có thể sao chép số điện thoại đang hiển thị.'); }
+  };
+  const composeEmail = async () => {
+    if (!mail) return;
+    try { await Linking.openURL(`mailto:${encodeURIComponent(mail)}`); }
+    catch { onError('Không mở được ứng dụng email. Bạn vẫn có thể sao chép địa chỉ email đang hiển thị.'); }
+  };
+
+  const rowStyle = {
+    minHeight: 54,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderCurve: 'continuous' as const,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+  };
+
+  return <View accessibilityLabel="Thông tin liên hệ" style={{ gap: 8, minWidth: 0 }}>
+    <Label bold size={13} style={{ color: colors.inkSoft }}>Thông tin liên hệ</Label>
+    <Pressable
+      accessibilityRole={phone ? 'button' : undefined}
+      accessibilityLabel={phone ? `Gọi số ${phone}` : 'Số điện thoại chưa được cập nhật'}
+      accessibilityState={{ disabled: !phone }}
+      disabled={!phone}
+      onPress={() => { void call(); }}
+      android_ripple={{ color: colors.primarySoft }}
+      style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.72 : 1 })}
+    >
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Label muted size={11}>Số điện thoại</Label>
+        <Label bold size={14}>{phone || 'Chưa được cập nhật'}</Label>
+      </View>
+      {phone ? <Label bold size={12} style={{ color: colors.primary }}>Gọi ngay</Label> : null}
+    </Pressable>
+    <Pressable
+      accessibilityRole={mail ? 'button' : undefined}
+      accessibilityLabel={mail ? `Gửi email đến ${mail}` : 'Email chưa được cập nhật'}
+      accessibilityState={{ disabled: !mail }}
+      disabled={!mail}
+      onPress={() => { void composeEmail(); }}
+      android_ripple={{ color: colors.primarySoft }}
+      style={({ pressed }) => ({ ...rowStyle, opacity: pressed ? 0.72 : 1 })}
+    >
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Label muted size={11}>Email</Label>
+        <Label bold size={14}>{mail || 'Chưa được cập nhật'}</Label>
+      </View>
+      {mail ? <Label bold size={12} style={{ color: colors.primary }}>Soạn thư</Label> : null}
+    </Pressable>
+  </View>;
+}
+
 function EvidenceCard({ file }: { file: CompletionEvidence }) {
   const [failed, setFailed] = useState(false);
   const [error, setError] = useState('');
@@ -543,8 +610,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
             {assignment.data && <View style={panelStyle}>
               <Label bold size={17}>{assignment.data.providerName || 'Đơn vị xử lý'}</Label>
               <Label>{assignment.data.coordinatorName || 'Chưa có tên đầu mối'}</Label>
-              {!!assignment.data.phoneNumber && <Button secondary label="Gọi đầu mối" onPress={() => { void Linking.openURL(`tel:${assignment.data!.phoneNumber.replace(/[^\d+]/g, '')}`).catch(() => setError('Không mở được ứng dụng gọi điện.')); }} />}
-              {!!assignment.data.email && <Button secondary label="Gửi email" onPress={() => { void Linking.openURL(`mailto:${encodeURIComponent(assignment.data!.email)}`).catch(() => setError('Không mở được ứng dụng email.')); }} />}
+              <ContactInformation phoneNumber={assignment.data.phoneNumber} email={assignment.data.email} onError={setError} />
             </View>}
             <Label muted size={13}>Sau khi trao đổi, lưu lại kết quả để flow chuyển sang bước minh chứng.</Label>
             <Field label="Phương thức liên hệ" placeholder="Gọi điện, email, gặp trực tiếp…" value={draft.contactMethod} onChangeText={(contactMethod) => setDraft((current) => ({ ...current, contactMethod }))} editable={!busy && !readonly} />
@@ -554,7 +620,22 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
             <Label muted size={12}>Để trống để ghi nhận thời điểm bạn bấm lưu.</Label>
             {!validContactTime && <Notice error>Thời gian chưa hợp lệ. Ví dụ: 16/09/2026 14:30.</Notice>}
             {!readonly && <Button label="Lưu liên hệ và tiếp tục" busy={busy === 'contact'} disabled={!!busy || !draft.contactMethod.trim() || !draft.contactResult.trim() || !validContactTime} onPress={() => { void saveContact(); }} />}
-            {!!contacts.data?.length && <View style={{ gap: 10 }}><Label bold>Lịch sử đã lưu</Label>{contacts.data.map((item) => <View key={item.contactLogId} style={panelStyle}><Label muted size={12}>{formatDate(item.contactedAt)}</Label><Label bold>{item.contactMethod}</Label><Label size={14}>{item.contactResult}</Label>{item.contactNote ? <Label muted size={13}>{item.contactNote}</Label> : null}</View>)}</View>}
+            {!!contacts.data?.length && <View style={{ gap: 10 }}>
+              <Label bold>Lịch sử đã lưu</Label>
+              {contacts.data.map((item) => <View key={item.contactLogId} style={panelStyle}>
+                <Label muted size={12}>{formatDate(item.contactedAt)}{item.contactedByUserName ? ` · ${item.contactedByUserName}` : ''}</Label>
+                <Label bold>{item.providerName || assignment.data?.providerName || 'Đơn vị xử lý'}</Label>
+                <Label muted size={13}>{item.coordinatorName || assignment.data?.coordinatorName || 'Chưa có tên đầu mối'}</Label>
+                <ContactInformation phoneNumber={item.phoneNumber} email={item.email} onError={setError} />
+                <View style={{ gap: 5, paddingTop: 2 }}>
+                  <Label muted size={11}>Phương thức</Label>
+                  <Label bold>{item.contactMethod || 'Chưa ghi nhận'}</Label>
+                  <Label muted size={11}>Kết quả liên hệ</Label>
+                  <Label size={14}>{item.contactResult || 'Chưa ghi nhận'}</Label>
+                  {item.contactNote ? <Label muted size={13}>{item.contactNote}</Label> : null}
+                </View>
+              </View>)}
+            </View>}
           </Section>}
 
           {activeStep === 'evidence' && <Section title={mode === 'provider' ? '3. Minh chứng xử lý' : '2. Minh chứng xử lý'}>

@@ -173,8 +173,6 @@ function StepLocation({
   loading,
   error,
   locationError,
-  latitudeError,
-  longitudeError,
 }: {
   areaId: string;
   areas: any[];
@@ -191,8 +189,6 @@ function StepLocation({
   loading?: boolean;
   error?: string;
   locationError?: string;
-  latitudeError?: string;
-  longitudeError?: string;
 }) {
   const mapRef = React.useRef<any>(null);
   const [showAreaModal, setShowAreaModal] = useState(false);
@@ -372,33 +368,106 @@ function StepLocation({
 
         {error ? <Text style={styles.fieldError}>{error}</Text> : null}
 
+        <View style={styles.addressSearchBlock}>
+          <AppInput
+            label="Tìm địa chỉ cụ thể"
+            leftIcon="search"
+            rightIcon={searchingAddress ? undefined : 'map-pin'}
+            value={locationText}
+            onFocus={() => setAddressInputFocused(true)}
+            onChangeText={(value) => {
+              selectedAddressRef.current = '';
+              onLocationChange(value);
+            }}
+            placeholder="Nhập số nhà, tên đường hoặc địa điểm..."
+            autoCorrect={false}
+            returnKeyType="search"
+            containerClassName="mb-0"
+            error={locationError}
+          />
+
+          {searchingAddress ? (
+            <View style={styles.addressSearchStatus}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.addressSearchStatusText}>Đang tìm địa chỉ...</Text>
+            </View>
+          ) : null}
+
+          {addressSuggestions.length > 0 ? (
+            <View style={styles.addressSuggestionList} accessibilityRole="menu">
+              {addressSuggestions.slice(0, 4).map((suggestion, index) => (
+                <Pressable
+                  key={suggestion.id}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel={`Chọn địa chỉ ${suggestion.displayName}`}
+                  onPress={() => {
+                    selectedAddressRef.current = suggestion.displayName;
+                    setAddressInputFocused(false);
+                    setAddressSuggestions([]);
+                    setAddressSearchMessage('');
+                    Keyboard.dismiss();
+                    onAddressSelect(suggestion.displayName, suggestion.latitude, suggestion.longitude);
+                    mapRef.current?.animateToRegion({
+                      latitude: suggestion.latitude,
+                      longitude: suggestion.longitude,
+                      latitudeDelta: 0.008,
+                      longitudeDelta: 0.008,
+                    }, 600);
+                  }}
+                  style={({ pressed }) => [
+                    styles.addressSuggestionItem,
+                    index === Math.min(addressSuggestions.length, 4) - 1 && styles.addressSuggestionItemLast,
+                    pressed && styles.addressSuggestionItemPressed,
+                  ]}
+                >
+                  <View style={styles.addressSuggestionIcon}>
+                    <Icon name="map-pin" size={15} color={colors.primary} />
+                  </View>
+                  <View style={styles.addressSuggestionCopy}>
+                    <NativeText style={styles.addressSuggestionText} numberOfLines={2} maxFontSizeMultiplier={1.25}>
+                      {suggestion.label}
+                    </NativeText>
+                    <NativeText style={styles.addressSuggestionHint} numberOfLines={3} maxFontSizeMultiplier={1.25}>
+                      {suggestion.detail || suggestion.displayName}
+                    </NativeText>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {addressSearchMessage ? (
+            <Text style={styles.addressSearchMessage}>{addressSearchMessage}</Text>
+          ) : null}
+        </View>
+
         <View style={styles.locationMapCard}>
           <View style={styles.mapHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.mapTitle}>Bản đồ khu vực</Text>
-              <Text style={styles.mapSubtitle} numberOfLines={2}>
-                {selectedAreaPolygons.length
-                  ? `Đường viền xanh là ranh giới ${getAreaName(selectedArea)}`
-                  : 'Đánh dấu vị trí sự cố'}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={locating ? 'Đang lấy vị trí hiện tại' : 'Dùng vị trí hiện tại'}
-              disabled={locating}
-              style={({ pressed }) => [styles.mapButton, locating && styles.mapButtonDisabled, pressed && !locating && { opacity: 0.8 }]}
-              onPress={() => {
-                setAddressInputFocused(false);
-                setAddressSuggestions([]);
-                setAddressSearchMessage('');
-                Keyboard.dismiss();
-                onUseCurrentLocation();
-              }}
-            >
-              {locating ? <ActivityIndicator size="small" color={colors.primary} /> : <Icon name="navigation" size={14} color={colors.primary} />}
-              <Text style={styles.mapButtonText}>{locating ? 'Đang lấy...' : 'Hiện tại'}</Text>
-            </Pressable>
+            <Text style={styles.mapTitle}>Bản đồ khu vực</Text>
+            <Text style={styles.mapSubtitle}>
+              {selectedAreaPolygons.length
+                ? `Đường viền xanh là ranh giới ${getAreaName(selectedArea)}`
+                : 'Chạm lên bản đồ để đánh dấu vị trí sự cố'}
+            </Text>
           </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={locating ? 'Đang lấy vị trí hiện tại' : 'Dùng vị trí hiện tại'}
+            accessibilityState={{ disabled: locating, busy: locating }}
+            disabled={locating}
+            style={({ pressed }) => [styles.mapButton, locating && styles.mapButtonDisabled, pressed && !locating && styles.mapButtonPressed]}
+            onPress={() => {
+              setAddressInputFocused(false);
+              setAddressSuggestions([]);
+              setAddressSearchMessage('');
+              Keyboard.dismiss();
+              onUseCurrentLocation();
+            }}
+          >
+            {locating ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon name="navigation" size={17} color="#FFFFFF" />}
+            <Text style={styles.mapButtonText}>{locating ? 'Đang lấy vị trí...' : 'Dùng vị trí hiện tại'}</Text>
+          </Pressable>
 
           <View style={styles.mapInner}>
             <FeedbackLocationPicker
@@ -416,123 +485,17 @@ function StepLocation({
               }}
             />
 
-            <View style={styles.mapSearchOverlay}>
-              <AppInput
-                label="Tìm địa chỉ trên bản đồ"
-                leftIcon="search"
-                rightIcon={searchingAddress ? undefined : 'map-pin'}
-                value={locationText}
-                onFocus={() => setAddressInputFocused(true)}
-                onChangeText={(value) => {
-                  selectedAddressRef.current = '';
-                  onLocationChange(value);
-                }}
-                placeholder="Nhập số nhà, tên đường hoặc địa điểm..."
-                autoCorrect={false}
-                returnKeyType="search"
-                containerClassName="mb-0"
-                error={locationError}
-              />
-
-              {searchingAddress ? (
-                <View style={styles.addressSearchStatus}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.addressSearchStatusText}>Đang tìm địa chỉ...</Text>
-                </View>
-              ) : null}
-
-              {addressSuggestions.length > 0 ? (
-                <View
-                  style={styles.addressSuggestionList}
-                  accessibilityRole="menu"
-                >
-                  {addressSuggestions.slice(0, 4).map((suggestion, index) => (
-                    <Pressable
-                      key={suggestion.id}
-                      accessibilityRole="menuitem"
-                      accessibilityLabel={`Chọn địa chỉ ${suggestion.displayName}`}
-                      onPress={() => {
-                        selectedAddressRef.current = suggestion.displayName;
-                        setAddressInputFocused(false);
-                        setAddressSuggestions([]);
-                        setAddressSearchMessage('');
-                        Keyboard.dismiss();
-                        onAddressSelect(suggestion.displayName, suggestion.latitude, suggestion.longitude);
-                        mapRef.current?.animateToRegion({
-                          latitude: suggestion.latitude,
-                          longitude: suggestion.longitude,
-                          latitudeDelta: 0.008,
-                          longitudeDelta: 0.008,
-                        }, 600);
-                      }}
-                      style={({ pressed }) => [
-                        styles.addressSuggestionItem,
-                        index === Math.min(addressSuggestions.length, 4) - 1 && styles.addressSuggestionItemLast,
-                        pressed && styles.addressSuggestionItemPressed,
-                      ]}
-                    >
-                      <View style={styles.addressSuggestionIcon}>
-                        <Icon name="map-pin" size={15} color={colors.primary} />
-                      </View>
-                      <View style={styles.addressSuggestionCopy}>
-                        <NativeText
-                          style={styles.addressSuggestionText}
-                          numberOfLines={2}
-                          maxFontSizeMultiplier={1.25}
-                        >
-                          {suggestion.label}
-                        </NativeText>
-                        <NativeText
-                          style={styles.addressSuggestionHint}
-                          numberOfLines={3}
-                          maxFontSizeMultiplier={1.25}
-                        >
-                          {suggestion.detail || suggestion.displayName}
-                        </NativeText>
-                      </View>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
-              {addressSearchMessage ? (
-                <Text style={styles.addressSearchMessage}>{addressSearchMessage}</Text>
-              ) : null}
-            </View>
           </View>
 
           <View style={styles.mapMetaRow}>
             <Icon name="map-pin" size={14} color={latitude != null && longitude != null ? colors.primary : '#94A3B8'} />
             <View style={styles.mapMetaContent}>
               <Text style={styles.mapText} numberOfLines={2}>{locationText || 'Chưa chọn địa chỉ cụ thể'}</Text>
-              <Text style={styles.mapHelperText}>{latitude != null && longitude != null ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` : 'Tìm địa chỉ hoặc chạm trực tiếp lên bản đồ'}</Text>
+              <Text style={styles.mapHelperText}>{latitude != null && longitude != null ? 'Tọa độ đã được cập nhật tự động' : 'Tìm địa chỉ hoặc chạm trực tiếp lên bản đồ'}</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.coordRow}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <AppInput
-              label="Vĩ độ"
-              value={latitude == null ? '' : String(latitude)}
-              onChangeText={onLatitudeChange}
-
-              keyboardType="decimal-pad"
-              placeholder="10.7769"
-              error={latitudeError}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <AppInput
-              label="Kinh độ"
-              value={longitude == null ? '' : String(longitude)}
-              onChangeText={onLongitudeChange}
-              keyboardType="decimal-pad"
-              placeholder="106.7009"
-              error={longitudeError}
-            />
-          </View>
-        </View>
       </View>
     </View>
   );
@@ -1325,8 +1288,6 @@ export default function CreateFeedbackWizardScreen() {
                 loading={areasLoading}
                 error={fieldErrors.areaId}
                 locationError={fieldErrors.location}
-                latitudeError={fieldErrors.location}
-                longitudeError={fieldErrors.location}
               />
             )}
             {step === 3 && (
@@ -1413,7 +1374,7 @@ const styles = StyleSheet.create({
   categorySectionCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 14 },
   formCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 18, borderWidth: 1, borderColor: '#E2E8F0' },
   locationPanel: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 18, borderWidth: 1, borderColor: '#E2E8F0' },
-  mapSearchOverlay: { position: 'absolute', top: 12, left: 12, right: 12, zIndex: 20, elevation: 12, padding: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.97)', borderWidth: 1, borderColor: '#DBEAFE', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.14, shadowRadius: 14 },
+  addressSearchBlock: { marginBottom: 14, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#DBEAFE', backgroundColor: '#F8FBFF' },
   addressSearchStatus: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingHorizontal: 4 },
   addressSearchStatusText: { fontFamily: 'Geist-Medium', fontSize: 12, color: '#475569' },
   addressSuggestionList: { width: '100%', marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#DBEAFE', borderRadius: 14, backgroundColor: '#FFFFFF' },
@@ -1426,12 +1387,13 @@ const styles = StyleSheet.create({
   addressSuggestionHint: { marginTop: 2, fontFamily: 'Geist-Regular', fontSize: 11, lineHeight: 15, color: '#64748B', includeFontPadding: false },
   addressSearchMessage: { marginTop: 8, paddingHorizontal: 4, fontFamily: 'Geist-Regular', fontSize: 12, lineHeight: 18, color: '#64748B' },
   locationMapCard: { backgroundColor: '#F8FAFC', borderRadius: 24, padding: 14, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 12 },
-  mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  mapHeader: { gap: 3 },
   mapTitle: { fontFamily: 'Geist-SemiBold', fontSize: 14, color: '#0F172A' },
   mapSubtitle: { fontFamily: 'Geist-Regular', fontSize: 11, color: '#64748B', marginTop: 2 },
-  mapButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EFF6FF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: '#BFDBFE' },
+  mapButton: { width: '100%', minHeight: 48, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: colors.primary },
   mapButtonDisabled: { opacity: 0.65 },
-  mapButtonText: { fontFamily: 'Geist-Medium', fontSize: 11, color: colors.primary },
+  mapButtonPressed: { backgroundColor: '#1D4ED8', borderColor: '#1D4ED8', transform: [{ scale: 0.99 }] },
+  mapButtonText: { fontFamily: 'Geist-SemiBold', fontSize: 13, color: '#FFFFFF' },
   mapInner: { marginTop: 12, minHeight: 300, height: 300, borderRadius: 16, backgroundColor: '#EAF2F8', overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', position: 'relative' },
   mapMetaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 10, paddingHorizontal: 2 },
   mapMetaContent: { flex: 1 },
@@ -1445,7 +1407,6 @@ const styles = StyleSheet.create({
   areaChipActive: { borderColor: colors.primary, backgroundColor: '#EFF6FF' },
   areaChipText: { fontSize: 13, color: '#334155', fontFamily: 'Geist-Medium' },
   areaChipTextActive: { color: colors.primary },
-  coordRow: { flexDirection: 'row', marginBottom: 10 },
   warningBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#EFF6FF', borderRadius: 14, padding: 12, marginTop: 10 },
   duplicateList: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginTop: 10, borderWidth: 1, borderColor: '#E2E8F0' },
   addImgBtn: { backgroundColor: '#EFF6FF', borderRadius: 16, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#BFDBFE', borderStyle: 'dashed' },

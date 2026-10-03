@@ -279,6 +279,32 @@ test('incident query is always scoped to the signed-in staff and fails closed wi
   } finally { get.mock.restore(); }
 });
 
+test('staff dashboard loads every assigned Incident page with the same signed-in scope', async () => {
+  const signal = new AbortController().signal;
+  const get = mock.method(axiosClient, 'get', async (_url, options) => {
+    const pageNumber = options.params.PageNumber;
+    return {
+      items: [{ incidentId: `incident-${pageNumber}`, status: pageNumber === 3 ? 'NeedRework' : 'Assigned' }],
+      pageNumber,
+      pageSize: 100,
+      totalItems: 3,
+      totalPages: 3,
+      hasNextPage: pageNumber < 3,
+    };
+  });
+  try {
+    const result = await staffApi.dashboard('staff-1', signal);
+    assert.deepEqual(result.items.map((item) => item.id).sort(), ['incident-1', 'incident-2', 'incident-3']);
+    assert.equal(result.totalItems, 3);
+    assert.equal(get.mock.callCount(), 3);
+    assert.deepEqual(get.mock.calls.map((call) => call.arguments[1].params.PageNumber).sort(), [1, 2, 3]);
+    assert.ok(get.mock.calls.every((call) => call.arguments[1].params.PageSize === 100));
+    assert.ok(get.mock.calls.every((call) => call.arguments[1].params.AssignedStaffUserId === 'staff-1'));
+    assert.ok(get.mock.calls.every((call) => call.arguments[1].signal === signal));
+    assert.notDeepEqual(staffKeys.dashboard('staff-1'), staffKeys.dashboard('staff-2'));
+  } finally { get.mock.restore(); }
+});
+
 test('lookup filters map numeric schema IDs and array or wrapped response names', async () => {
   const signal = new AbortController().signal;
   const areas = [{ areaId: 12, areaName: 'Phường 12' }];
@@ -396,12 +422,17 @@ test('Staff chat uses the ticket message hub and keeps polling as a fallback', (
   assert.match(realtime, /\/hubs\/ticket-messages/, 'realtime chat must target the documented ticket message hub');
   // Nhịp tải lại vẫn phải còn: WebSocket rớt thì hội thoại không được đứng im.
   assert.match(realtime, /MESSAGE_POLL_INTERVAL_MS\s*=\s*2000/);
+  assert.match(realtime, /TicketMessageReceived/);
+  assert.match(realtime, /JoinTicket/);
+  assert.match(realtime, /withAutomaticReconnect/);
+  assert.match(realtime, /scheduleInitialRetry/);
   assert.match(source, /realtimeConnected \? REALTIME_RECONCILE_INTERVAL_MS : MESSAGE_POLL_INTERVAL_MS/);
   assert.match(source, /AppState\.addEventListener\('change'/);
   assert.match(source, /refetchIntervalInBackground:\s*false/);
   assert.match(source, /enabled:\s*Boolean\(id && userId && focused && appActive\)/);
   assert.match(source, /const tempId\s*=\s*`temp-\$\{Date\.now\(\)\}`/);
   assert.match(source, /cache\.setQueryData<StaffMessage\[]>/);
+  assert.match(source, /incoming\.interactionMessageId/, 'Staff must append the SignalR DTO directly to its query cache');
   assert.match(source, /refreshing=\{manualRefreshing\}/, 'silent polling must not flash the pull-to-refresh spinner');
 });
 
@@ -423,7 +454,17 @@ test('confirmed Incident execution capabilities support provider flow, direct st
 
 const executionAssignment = { providerAssignmentId: 501, incidentId: 'incident/1', coordinatorId: 41, providerName: 'Đội thoát nước', reportStatus: 'Reported', contactLogCount: 0, completionDocumentCount: 0 };
 const executionEvidence = { completionDocumentId: 701, providerAssignmentId: 501, incidentId: 'incident/1', coordinatorId: 41, fileUrl: 'https://files.example.test/evidence.png', fileType: 'image/png' };
-const executionContact = { contactLogId: 801, providerAssignmentId: 501, coordinatorId: 41, contactMethod: 'Điện thoại', contactResult: 'Đã kết nối' };
+const executionContact = {
+  contactLogId: 801,
+  providerAssignmentId: 501,
+  coordinatorId: 41,
+  providerName: 'Đội thoát nước',
+  coordinatorName: 'Nguyễn Điều Phối',
+  phoneNumber: '0909 123 456',
+  email: 'dieuphoi@example.test',
+  contactMethod: 'Điện thoại',
+  contactResult: 'Đã kết nối',
+};
 
 test('execution guards require current ownership and separate initial submit from NeedRework resubmit', () => {
   for (const status of ['Assigned', 'InProgress', 'NeedRework', 'In Progress']) {
@@ -515,7 +556,10 @@ test('execution read APIs use Incident/assignment routes, encode identity and ac
   try {
     assert.equal((await executionApi.candidates(' incident/1 ', signal))[0].coordinatorId, 41);
     assert.equal(await executionApi.assignment('incident/1', signal), null);
-    assert.equal((await executionApi.contacts(501, signal))[0].contactLogId, 801);
+    const contact = (await executionApi.contacts(501, signal))[0];
+    assert.equal(contact.contactLogId, 801);
+    assert.equal(contact.phoneNumber, '0909 123 456');
+    assert.equal(contact.email, 'dieuphoi@example.test');
     assert.equal((await executionApi.evidence(501, signal))[0].completionDocumentId, 701);
     assert.equal((await executionApi.resolutions('incident/1', signal))[0].resolutionId, 601);
     assert.deepEqual(get.mock.calls.map((call) => call.arguments[0]), [
@@ -615,6 +659,17 @@ test('NeedRework evidence clear uses the contract path, validates the assignment
   assert.match(source, /Không thể mở thư viện ảnh/);
   assert.match(source, /Không thể mở trình chọn tệp/);
   assert.match(source, /scroll\.current\?\.scrollTo/);
+});
+
+test('Staff contact step shows backend phone and email in both the current contact and saved history', () => {
+  const source = readFileSync(new URL('../src/features/staff/components/staff-execution-flow-screen.tsx', import.meta.url), 'utf8');
+  assert.match(source, /function ContactInformation/);
+  assert.match(source, /Số điện thoại/);
+  assert.match(source, /Email/);
+  assert.match(source, /tel:\$\{target\}/);
+  assert.match(source, /mailto:\$\{encodeURIComponent\(mail\)\}/);
+  assert.match(source, /phoneNumber=\{assignment\.data\.phoneNumber\}/);
+  assert.match(source, /phoneNumber=\{item\.phoneNumber\}/);
 });
 
 test('native URI evidence is appended as a native file descriptor without assuming Blob support', () => {

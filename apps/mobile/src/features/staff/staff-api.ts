@@ -1,8 +1,8 @@
 import { axiosClient, incidentManagementApi, managementFeedbackApi, normalizeFeedbackListParams } from '@urbanmind/shared-api';
-import { asRecord, asText, itemsFrom, normalizeEvent, normalizeMessage, normalizePage, normalizeStaffRecord, unwrap } from './staff-models';
+import { asRecord, asText, itemsFrom, normalizeEvent, normalizeMessage, normalizePage, normalizeStaffRecord, unwrap, type StaffRecord } from './staff-models';
 import { getUserFacingError } from '../../utils/user-facing-error';
 
-export type StaffListParams = { pageNumber: number; search?: string; status?: string; priority?: string; severity?: string; areaId?: string | number; categoryId?: string | number };
+export type StaffListParams = { pageNumber: number; pageSize?: number; search?: string; status?: string; priority?: string; severity?: string; areaId?: string | number; categoryId?: string | number };
 
 export const staffKeys = {
   all: ['staff'] as const,
@@ -11,6 +11,7 @@ export const staffKeys = {
   feedback: (userId: string, id: string) => ['staff', userId, 'feedback', id] as const,
   incidents: (userId: string, params: object) => ['staff', userId, 'incidents', params] as const,
   incident: (userId: string, id: string) => ['staff', userId, 'incident', id] as const,
+  dashboard: (userId: string) => ['staff', userId, 'dashboard'] as const,
   timeline: (userId: string, id: string, page: number) => ['staff', userId, 'timeline', id, page] as const,
   messages: (userId: string, id: string) => ['staff', userId, 'messages', id] as const,
 };
@@ -65,8 +66,29 @@ export const staffApi = {
   },
   async incidents(userId: string, params: StaffListParams, signal?: AbortSignal) {
     if (!userId.trim()) throw new Error('Không xác định được nhân viên phụ trách. Vui lòng đăng nhập lại.');
-    const response = await incidentManagementApi.getIncidents({ pageNumber: params.pageNumber, search: params.search, status: params.status, priority: params.priority, severity: params.severity, areaId: params.areaId, categoryId: params.categoryId, pageSize: 20, assignedStaffUserId: userId, includeMerged: false }, { signal });
+    const response = await incidentManagementApi.getIncidents({ pageNumber: params.pageNumber, search: params.search, status: params.status, priority: params.priority, severity: params.severity, areaId: params.areaId, categoryId: params.categoryId, pageSize: params.pageSize ?? 20, assignedStaffUserId: userId, includeMerged: false }, { signal });
     return normalizePage(response, (item) => normalizeStaffRecord(item, true), params.pageNumber);
+  },
+  async dashboard(userId: string, signal?: AbortSignal): Promise<{ items: StaffRecord[]; totalItems: number }> {
+    const firstPage = await staffApi.incidents(userId, { pageNumber: 1, pageSize: 100 }, signal);
+    const pages = [firstPage];
+
+    for (let pageNumber = 2; pageNumber <= firstPage.totalPages; pageNumber += 4) {
+      const pageNumbers = Array.from(
+        { length: Math.min(4, firstPage.totalPages - pageNumber + 1) },
+        (_, index) => pageNumber + index,
+      );
+      pages.push(...await Promise.all(
+        pageNumbers.map((page) => staffApi.incidents(userId, { pageNumber: page, pageSize: 100 }, signal)),
+      ));
+    }
+
+    const recordsById = new Map<string, StaffRecord>();
+    pages.flatMap((page) => page.items).forEach((item) => {
+      if (item.id) recordsById.set(item.id, item);
+    });
+
+    return { items: Array.from(recordsById.values()), totalItems: firstPage.totalItems };
   },
   async incident(id: string, signal?: AbortSignal) {
     const response = await incidentManagementApi.getIncidentById(id, { signal });
