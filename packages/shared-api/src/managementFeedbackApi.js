@@ -842,15 +842,27 @@ export const managementFeedbackApi = {
   );
 },
 
-  // Verify feedback
-  async verifyFeedback(feedbackId, verifyData = null) {
-    const hasPayload = verifyData
-      && typeof verifyData === 'object'
-      && Object.keys(verifyData).length > 0;
-    const response = hasPayload
-      ? await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`, verifyData)
-      : await axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`);
-    return response;
+  // Verify feedback with the manager's required classification.
+  async verifyFeedback(feedbackId, verifyData = {}) {
+    const categoryId = Number(verifyData?.categoryId ?? verifyData?.CategoryId);
+    const priority = String(verifyData?.priority ?? verifyData?.Priority ?? '').trim();
+    const severity = String(verifyData?.severity ?? verifyData?.Severity ?? '').trim();
+
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+      throw new Error('Vui lòng chọn danh mục trước khi duyệt phản ánh.');
+    }
+    if (!priority) {
+      throw new Error('Vui lòng chọn mức độ ưu tiên trước khi duyệt phản ánh.');
+    }
+    if (!severity) {
+      throw new Error('Vui lòng chọn mức độ nghiêm trọng trước khi duyệt phản ánh.');
+    }
+
+    return axiosClient.put(`/api/management/feedbacks/${feedbackId}/verify`, {
+      categoryId,
+      priority,
+      severity,
+    });
   },
 
   // Assign feedback to operator

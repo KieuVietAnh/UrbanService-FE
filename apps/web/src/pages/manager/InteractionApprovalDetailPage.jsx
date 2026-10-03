@@ -5,9 +5,9 @@ import * as signalR from '@microsoft/signalr';
 import { createOptionalSignalRConnection } from '../../utils/optionalSignalR';
 import * as Lucide from 'lucide-react';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
-import { incidentManagementApi, slaApi } from '@urbanmind/shared-api';
+import { incidentManagementApi, slaApi, toolsApi } from '@urbanmind/shared-api';
 import { ErrorAlert } from '../../components/alerts/ErrorAlert';
-import { ManagerEmptyState, ManagerPageHeader, ManagerSectionHeader, ManagerToast } from '../../components/manager/ManagerPageElements';
+import { ManagerEmptyState, ManagerPageHeader, ManagerSectionHeader, ManagerSelectMenu, ManagerToast } from '../../components/manager/ManagerPageElements';
 import { getStatusLabel, managementTypes, PRIORITY_BADGE_CLASSES, STATUS_BADGE_CLASSES } from '@urbanmind/shared-types';
 import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
 import { FeedbackLocationMapCard } from '../../components/maps/FeedbackLocationMapCard';
@@ -15,6 +15,25 @@ import { FeedbackLocationMapCard } from '../../components/maps/FeedbackLocationM
 
 const INTERACTION_SECONDARY_CACHE_KEY = 'urbanservice-interaction-secondary-v1';
 const INTERACTION_SECONDARY_CACHE_TTL = 5 * 60 * 1000;
+
+const DIRECT_VERIFY_PRIORITY_OPTIONS = [
+  { value: 'Low', label: 'Thấp' },
+  { value: 'Medium', label: 'Trung bình' },
+  { value: 'High', label: 'Cao' },
+  { value: 'Urgent', label: 'Khẩn cấp' },
+];
+
+const DIRECT_VERIFY_SEVERITY_OPTIONS = [
+  { value: 'Low', label: 'Thấp' },
+  { value: 'Medium', label: 'Trung bình' },
+  { value: 'High', label: 'Cao' },
+  { value: 'Critical', label: 'Nghiêm trọng' },
+];
+
+const normalizeDirectVerifyChoice = (value, options) => {
+  const normalized = String(value || '').trim();
+  return options.find((option) => option.value.toLowerCase() === normalized.toLowerCase())?.value || '';
+};
 
 const readInteractionSecondaryCache = (feedbackId) => {
   try {
@@ -652,6 +671,14 @@ export const InteractionApprovalDetailPage = () => {
   const [reworkReason, setReworkReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState(null);
+  const [directVerifyOpen, setDirectVerifyOpen] = useState(false);
+  const [directVerifySubmitting, setDirectVerifySubmitting] = useState(false);
+  const [directVerifyError, setDirectVerifyError] = useState('');
+  const [directVerifyCategories, setDirectVerifyCategories] = useState([]);
+  const [directVerifyCategoriesError, setDirectVerifyCategoriesError] = useState('');
+  const [directVerifyCategoryId, setDirectVerifyCategoryId] = useState('');
+  const [directVerifyPriority, setDirectVerifyPriority] = useState('');
+  const [directVerifySeverity, setDirectVerifySeverity] = useState('');
   const [slaModal, setSlaModal] = useState(null);
   const [pauseReasonOpen, setPauseReasonOpen] = useState(false);
   const [slaModalForm, setSlaModalForm] = useState({
@@ -668,6 +695,10 @@ export const InteractionApprovalDetailPage = () => {
   const latitude = Number(feedback?.latitude);
   const longitude = Number(feedback?.longitude);
   const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
+  const canDirectVerify = isInteractionView && (
+    feedback?.status === managementTypes.feedbackStatus.SUBMITTED
+    || feedback?.status === managementTypes.feedbackStatus.AI_REVIEWED
+  );
 
   const openLocationOnMap = useCallback(() => {
     if (!hasCoordinates || !feedbackId) return;
@@ -895,6 +926,54 @@ export const InteractionApprovalDetailPage = () => {
   useEffect(() => {
     if (feedbackId) loadFeedback();
   }, [feedbackId, loadFeedback]);
+
+  useEffect(() => {
+    if (!canDirectVerify || !feedback) return;
+
+    setDirectVerifyCategoryId(feedback.categoryId ? String(feedback.categoryId) : '');
+    setDirectVerifyPriority(
+      normalizeDirectVerifyChoice(feedback.priority, DIRECT_VERIFY_PRIORITY_OPTIONS) || 'Medium'
+    );
+    setDirectVerifySeverity(
+      normalizeDirectVerifyChoice(feedback.severity, DIRECT_VERIFY_SEVERITY_OPTIONS) || 'Medium'
+    );
+    setDirectVerifyError('');
+  }, [canDirectVerify, feedback]);
+
+  useEffect(() => {
+    if (!canDirectVerify) return undefined;
+
+    let active = true;
+    const loadDirectVerifyCategories = async () => {
+      try {
+        setDirectVerifyCategoriesError('');
+        const response = await toolsApi.getCategories();
+        const categories = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.items)
+            ? response.items
+            : Array.isArray(response?.data)
+              ? response.data
+              : [];
+
+        if (!active) return;
+        setDirectVerifyCategories(categories);
+        if (categories.length === 0) {
+          setDirectVerifyCategoriesError('Không thể tải danh mục đang hoạt động. Vui lòng thử lại.');
+        }
+      } catch (error) {
+        console.error('Failed to load categories for direct verification', error);
+        if (!active) return;
+        setDirectVerifyCategories([]);
+        setDirectVerifyCategoriesError('Không thể tải danh mục đang hoạt động. Vui lòng thử lại.');
+      }
+    };
+
+    void loadDirectVerifyCategories();
+    return () => {
+      active = false;
+    };
+  }, [canDirectVerify]);
 
   useEffect(() => {
     const incidentId = feedback?.incidentId;
@@ -1234,6 +1313,61 @@ export const InteractionApprovalDetailPage = () => {
     await runSlaAction('check', () => slaApi.checkSlaViolation(feedbackSlaId), 'Đã kiểm tra vi phạm SLA.');
   };
 
+  const handleDirectVerify = async (event) => {
+    event.preventDefault();
+
+    const categoryId = Number(directVerifyCategoryId);
+    const priority = normalizeDirectVerifyChoice(
+      directVerifyPriority,
+      DIRECT_VERIFY_PRIORITY_OPTIONS
+    );
+    const severity = normalizeDirectVerifyChoice(
+      directVerifySeverity,
+      DIRECT_VERIFY_SEVERITY_OPTIONS
+    );
+    const categoryExists = directVerifyCategories.some(
+      (category) => Number(category?.categoryId ?? category?.id) === categoryId
+    );
+
+    if (!Number.isInteger(categoryId) || categoryId <= 0 || !categoryExists) {
+      setDirectVerifyError('Vui lòng chọn một danh mục hợp lệ.');
+      return;
+    }
+    if (!severity) {
+      setDirectVerifyError('Vui lòng chọn mức độ nghiêm trọng.');
+      return;
+    }
+    if (!priority) {
+      setDirectVerifyError('Vui lòng chọn mức độ ưu tiên.');
+      return;
+    }
+
+    setDirectVerifySubmitting(true);
+    setDirectVerifyError('');
+    try {
+      await managementFeedbackApi.verifyFeedback(feedbackId, {
+        categoryId,
+        severity,
+        priority,
+      });
+      setDirectVerifyOpen(false);
+      setMessage({
+        type: 'success',
+        text: 'Đã duyệt phản ánh và tạo sự vụ mà không cần chờ AI review.',
+      });
+      await loadFeedback();
+    } catch (error) {
+      setDirectVerifyError(
+        error?.response?.data?.msg
+        || error?.response?.data?.message
+        || error?.message
+        || 'Không thể duyệt phản ánh. Vui lòng thử lại.'
+      );
+    } finally {
+      setDirectVerifySubmitting(false);
+    }
+  };
+
   const handleDecision = async (decision) => {
   const normalizedReworkReason = (reworkReason || note).trim();
 
@@ -1480,6 +1614,19 @@ export const InteractionApprovalDetailPage = () => {
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+              {canDirectVerify ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDirectVerifyError('');
+                    setDirectVerifyOpen(true);
+                  }}
+                  className="btn admin-primary-action rounded-xl"
+                >
+                  <Lucide.BadgeCheck size={17} aria-hidden="true" />
+                  Duyệt phản ánh
+                </button>
+              ) : null}
               <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${STATUS_BADGE_CLASSES[feedback.status] || 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}>
                 <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" aria-hidden="true" />
                 {getStatusLabel(feedback.status)}
@@ -2638,6 +2785,140 @@ export const InteractionApprovalDetailPage = () => {
                   >
                     {slaActionLoading ? <span className="loading loading-spinner loading-sm" /> : null}
                     {slaModalConfig.confirmLabel}
+                  </button>
+                </footer>
+              </form>
+            </section>
+          </div>,
+          document.body
+        )
+        : null}
+
+      {canDirectVerify && directVerifyOpen && typeof document !== 'undefined'
+        ? createPortal(
+          <div className="fixed inset-0 z-[10030] flex items-center justify-center p-4 sm:p-6" role="presentation">
+            <button
+              type="button"
+              className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]"
+              aria-label="Đóng hộp thoại duyệt phản ánh"
+              onClick={() => !directVerifySubmitting && setDirectVerifyOpen(false)}
+            />
+
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="direct-verify-dialog-title"
+              className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                    <Lucide.BadgeCheck size={20} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 id="direct-verify-dialog-title" className="text-lg font-bold text-slate-950 dark:text-white">
+                      Duyệt phản ánh
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                      Xác nhận phân loại thủ công để chuyển phản ánh sang xử lý ngay, không cần chờ AI review.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDirectVerifyOpen(false)}
+                  disabled={directVerifySubmitting}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  aria-label="Đóng"
+                >
+                  <Lucide.X size={18} aria-hidden="true" />
+                </button>
+              </header>
+
+              <form onSubmit={handleDirectVerify}>
+                <div className="space-y-5 px-6 py-5">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        Danh mục <span className="text-rose-600">*</span>
+                      </span>
+                      <ManagerSelectMenu
+                        value={directVerifyCategoryId}
+                        options={directVerifyCategories.map((category) => ({
+                          value: String(category?.categoryId ?? category?.id ?? ''),
+                          label: category?.categoryName ?? category?.name ?? 'Chưa đặt tên',
+                        }))}
+                        onChange={(value) => {
+                          setDirectVerifyCategoryId(String(value));
+                          setDirectVerifyError('');
+                        }}
+                        disabled={directVerifySubmitting || directVerifyCategories.length === 0}
+                        placeholder="Chọn danh mục"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        Mức độ nghiêm trọng <span className="text-rose-600">*</span>
+                      </span>
+                      <ManagerSelectMenu
+                        value={directVerifySeverity}
+                        options={DIRECT_VERIFY_SEVERITY_OPTIONS}
+                        onChange={(value) => {
+                          setDirectVerifySeverity(value);
+                          setDirectVerifyError('');
+                        }}
+                        disabled={directVerifySubmitting}
+                        placeholder="Chọn mức độ"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        Mức độ ưu tiên <span className="text-rose-600">*</span>
+                      </span>
+                      <ManagerSelectMenu
+                        value={directVerifyPriority}
+                        options={DIRECT_VERIFY_PRIORITY_OPTIONS}
+                        onChange={(value) => {
+                          setDirectVerifyPriority(value);
+                          setDirectVerifyError('');
+                        }}
+                        disabled={directVerifySubmitting}
+                        placeholder="Chọn mức độ"
+                      />
+                    </label>
+                  </div>
+
+                  {directVerifyCategoriesError ? (
+                    <ErrorAlert message={directVerifyCategoriesError} />
+                  ) : null}
+                  {directVerifyError ? <ErrorAlert message={directVerifyError} /> : null}
+
+                  <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-blue-800 dark:border-blue-900/50 dark:bg-blue-950/20 dark:text-blue-200">
+                    <Lucide.Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <p className="text-sm leading-6">
+                      Sau khi duyệt, hệ thống tạo sự vụ với đúng ba giá trị trên và chuyển phản ánh sang trạng thái đã xác minh.
+                    </p>
+                  </div>
+                </div>
+
+                <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-950/30 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setDirectVerifyOpen(false)}
+                    className="btn admin-secondary-action rounded-2xl"
+                    disabled={directVerifySubmitting}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn rounded-2xl bg-blue-600 text-white hover:bg-blue-700"
+                    disabled={directVerifySubmitting || directVerifyCategories.length === 0}
+                  >
+                    {directVerifySubmitting ? <span className="loading loading-spinner loading-sm" /> : null}
+                    Xác nhận duyệt
                   </button>
                 </footer>
               </form>

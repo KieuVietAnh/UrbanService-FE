@@ -15,7 +15,9 @@ export const managementTypes = {
   },
 
   statusFlow: {
-    'Submitted': ['AI Reviewed', 'Rejected'],
+    // Backend cho phép xác minh thẳng từ Submitted, không bắt buộc qua AI. Thiếu
+    // 'Verified' ở đây thì phản ánh kẹt lại khi AI lỗi và không ai duyệt được.
+    'Submitted': ['AI Reviewed', 'Verified', 'Rejected'],
     'AI Reviewed': ['Verified', 'Rejected'],
     'Verified': ['Assigned', 'Rejected'],
     'Assigned': ['InProgress', 'Rejected'],

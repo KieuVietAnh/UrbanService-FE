@@ -83,6 +83,17 @@ const CONTACT_METHOD_LABELS = Object.freeze({
   other: 'Khác',
 });
 
+/*
+ * Kết quả do hệ thống tự ghi khi gửi email giao việc.
+ * Khớp với ProviderContactResult ở backend (IncidentConstants.cs).
+ */
+const SYSTEM_CONTACT_FAILURE_RESULTS = new Set(['chưa gửi được', 'gửi thất bại']);
+
+const isFailedSystemContact = (log) => (
+  normalizeKey(log?.contactMethod) === 'email'
+  && SYSTEM_CONTACT_FAILURE_RESULTS.has(String(log?.contactResult ?? '').trim().toLowerCase())
+);
+
 const formatContactMethod = (value) => {
   const normalized = String(value ?? '').trim();
   if (!normalized) return EMPTY_VALUE;
@@ -582,6 +593,26 @@ export default function StaffIncidentProgressSection({
           </form>
         ) : null}
 
+        {!loading && !loadError && sortedLogs.length > 0 && isFailedSystemContact(sortedLogs[0]) ? (
+          <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-100" role="alert">
+            <div className="flex min-w-0 items-start gap-3">
+              <Lucide.MailWarning className="mt-0.5 shrink-0" size={18} aria-hidden="true" />
+              <p className="text-sm font-semibold leading-6">
+                Hệ thống chưa báo được cho đơn vị qua email. Thời hạn SLA vẫn đang chạy, hãy gọi điện và ghi nhận lại bên dưới.
+              </p>
+            </div>
+            {assignment?.phoneNumber ? (
+              <a
+                href={`tel:${String(assignment.phoneNumber).replace(/\s+/g, '')}`}
+                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-bold text-white transition hover:bg-amber-700"
+              >
+                <Lucide.Phone size={15} aria-hidden="true" />
+                {assignment.phoneNumber}
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-black text-slate-950 dark:text-white">Nhật ký liên hệ</h3>
@@ -603,7 +634,19 @@ export default function StaffIncidentProgressSection({
           <div className="mt-5 flex flex-col items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-9 text-center dark:border-slate-700 dark:bg-slate-900/45" role="status">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-500 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700" aria-hidden="true"><Lucide.PhoneOff size={21} /></span>
             <h4 className="mt-4 text-sm font-black text-slate-900 dark:text-slate-100">Chưa có nhật ký liên hệ</h4>
-            <p className="mt-1.5 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">Các lần liên hệ với đơn vị xử lý sẽ xuất hiện tại đây.</p>
+            <p className="mt-1.5 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Hệ thống chỉ gửi email giao việc tự động khi đơn vị có email trong hồ sơ. Chưa thấy dòng nào ở đây nghĩa là
+              đơn vị có thể chưa biết việc, trong khi thời hạn SLA đã bắt đầu chạy.
+            </p>
+            {assignment?.phoneNumber ? (
+              <a
+                href={`tel:${String(assignment.phoneNumber).replace(/\s+/g, '')}`}
+                className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700 transition hover:border-blue-300 hover:text-blue-700 dark:border-slate-600 dark:text-slate-200"
+              >
+                <Lucide.Phone size={15} aria-hidden="true" />
+                Gọi {assignment.phoneNumber}
+              </a>
+            ) : null}
           </div>
         ) : null}
         {!loading && !loadError && sortedLogs.length > 0 ? (

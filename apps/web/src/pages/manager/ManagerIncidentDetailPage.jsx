@@ -174,9 +174,13 @@ const CANDIDATE_PAGE_SIZE = 100;
 
 const TAB_ITEMS = [
   { id: 'reports', label: 'Phản ánh', icon: Lucide.MessagesSquare },
+  { id: 'reviews', label: 'Đánh giá', icon: Lucide.Star },
   { id: 'subscribers', label: 'Người theo dõi', icon: Lucide.Users },
   { id: 'events', label: 'Lịch sử hoạt động', icon: Lucide.History },
 ];
+
+// Một sự vụ gộp nhiều phản ánh của nhiều người, mỗi người chấm phần của mình.
+const RATING_STARS = [1, 2, 3, 4, 5];
 
 const getLevelLabel = (value) => {
   if (!value) return 'Chưa đặt';
@@ -526,6 +530,10 @@ export const IncidentDetailPage = () => {
   const [notice, setNotice] = useState('');
   const [activeTab, setActiveTab] = useState('reports');
 
+  const [reviewSummary, setReviewSummary] = useState(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsLoaded, setReviewsLoaded] = useState(false);
+  const [reviewsError, setReviewsError] = useState('');
   const [timeline, setTimeline] = useState([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineLoaded, setTimelineLoaded] = useState(false);
@@ -961,6 +969,31 @@ export const IncidentDetailPage = () => {
       void loadTimeline();
     }
   }, [activeTab, loadTimeline, timelineLoaded, timelineLoading]);
+
+  const loadReviews = useCallback(async () => {
+    setReviewsLoading(true);
+    setReviewsError('');
+    try {
+      const summary = await incidentManagementApi.getIncidentResolutionReviews(incidentId);
+      setReviewSummary(summary);
+      setReviewsLoaded(true);
+    } catch (error) {
+      setReviewsError(
+        error?.response?.data?.msg
+        || error?.response?.data?.message
+        || 'Không tải được đánh giá của người dân.',
+      );
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [incidentId]);
+
+  // Chỉ tải khi manager mở tab, giống cách tab lịch sử hoạt động đang làm.
+  useEffect(() => {
+    if (activeTab === 'reviews' && !reviewsLoaded && !reviewsLoading) {
+      void loadReviews();
+    }
+  }, [activeTab, loadReviews, reviewsLoaded, reviewsLoading]);
 
   const loadFeedbackCandidates = useCallback(async ({ pageNumber = 1, append = false } = {}) => {
     const requestId = ++feedbackRequestIdRef.current;
@@ -2009,6 +2042,129 @@ export const IncidentDetailPage = () => {
                     </div>
                   );
                 })}
+              </div>
+            )
+          ) : null}
+
+          {activeTab === 'reviews' ? (
+            reviewsLoading && !reviewSummary ? <PanelSkeleton /> : reviewsError && !reviewSummary ? (
+              <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
+                <Lucide.TriangleAlert size={28} className="text-amber-500" />
+                <p className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{reviewsError}</p>
+                <button
+                  type="button"
+                  onClick={() => { setReviewsLoaded(false); void loadReviews(); }}
+                  className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:text-blue-700 dark:border-slate-700 dark:text-slate-200"
+                >
+                  <Lucide.RefreshCw size={14} aria-hidden="true" />
+                  Thử lại
+                </button>
+              </div>
+            ) : (reviewSummary?.items?.length ?? 0) === 0 ? (
+              <EmptyState
+                icon={Lucide.Star}
+                title="Chưa có đánh giá nào"
+                description={
+                  (reviewSummary?.eligibleReportCount ?? 0) > 0
+                    ? `Sự vụ đang gộp ${reviewSummary.eligibleReportCount} phản ánh. Người dân chỉ đánh giá được sau khi kết quả xử lý của họ đã được duyệt.`
+                    : 'Sự vụ chưa có phản ánh nào được liên kết nên chưa ai đánh giá được.'
+                }
+              />
+            ) : (
+              <div>
+                <div className="grid gap-3 border-b border-slate-100 px-5 py-4 sm:grid-cols-3 sm:px-6 dark:border-slate-800">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500">Điểm trung bình</p>
+                    <p className="mt-1 flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+                        {reviewSummary?.averageRating != null ? reviewSummary.averageRating.toFixed(1) : '—'}
+                      </span>
+                      <span className="text-xs text-slate-500">/ 5</span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500">Đã đánh giá</p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+                      {reviewSummary?.reviewCount ?? 0}
+                      <span className="ml-1 text-xs font-medium text-slate-500">
+                        / {reviewSummary?.eligibleReportCount ?? 0} phản ánh
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500">Hài lòng</p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+                      {reviewSummary?.satisfiedCount ?? 0}
+                      <span className="ml-1 text-xs font-medium text-slate-500">
+                        / {reviewSummary?.reviewCount ?? 0} đánh giá
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {reviewSummary.items.map((review, index) => {
+                    const name = review?.userName || 'Người dân';
+                    const rating = Number(review?.rating) || 0;
+                    const satisfied = review?.isSatisfied === true;
+                    return (
+                      <article key={review?.reviewId ?? index} className="px-5 py-4 sm:px-6">
+                        <div className="flex flex-wrap items-start gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-sm font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                            {String(name).trim().slice(0, 1).toUpperCase()}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{name}</p>
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                  satisfied
+                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                    : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                                }`}
+                              >
+                                <Lucide.Check size={11} aria-hidden="true" />
+                                {satisfied ? 'Hài lòng' : 'Chưa hài lòng'}
+                              </span>
+                            </div>
+
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <span className="flex items-center gap-0.5" aria-label={`${rating} trên 5 sao`}>
+                                {RATING_STARS.map((star) => (
+                                  <Lucide.Star
+                                    key={star}
+                                    size={14}
+                                    aria-hidden="true"
+                                    className={star <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-600'}
+                                  />
+                                ))}
+                              </span>
+                              <span className="text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">{rating}/5</span>
+                              {review?.createdAt ? (
+                                <span className="text-xs text-slate-500">· {formatDateTime(review.createdAt)}</span>
+                              ) : null}
+                            </div>
+
+                            {review?.comment ? (
+                              <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700 dark:text-slate-200">
+                                {review.comment}
+                              </p>
+                            ) : (
+                              <p className="mt-2 text-sm italic text-slate-400">Không có nhận xét kèm theo.</p>
+                            )}
+
+                            {review?.feedbackTitle ? (
+                              <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                                <Lucide.MessageSquare size={12} aria-hidden="true" />
+                                <span className="truncate">Từ phản ánh: {review.feedbackTitle}</span>
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
             )
           ) : null}

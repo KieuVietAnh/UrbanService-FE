@@ -389,16 +389,20 @@ test('Staff chat reuses the Resident keyboard composer contract without double A
   assert.match(source, /accessibilityLabel=\{internal \? 'Lưu ghi chú nội bộ' : 'Gửi phản hồi'\}/);
 });
 
-test('Staff chat mirrors Resident near-realtime polling and optimistic delivery without a chat hub', () => {
+test('Staff chat uses the ticket message hub and keeps polling as a fallback', () => {
   const source = readFileSync(new URL('../src/features/staff/components/staff-chat-screen.tsx', import.meta.url), 'utf8');
-  assert.match(source, /MESSAGE_POLL_INTERVAL_MS\s*=\s*2000/);
+  const realtime = readFileSync(new URL('../src/features/messaging/realtime/use-ticket-messages-realtime.ts', import.meta.url), 'utf8');
+  assert.match(source, /useTicketMessagesRealtime/);
+  assert.match(realtime, /\/hubs\/ticket-messages/, 'realtime chat must target the documented ticket message hub');
+  // Nhịp tải lại vẫn phải còn: WebSocket rớt thì hội thoại không được đứng im.
+  assert.match(realtime, /MESSAGE_POLL_INTERVAL_MS\s*=\s*2000/);
+  assert.match(source, /realtimeConnected \? REALTIME_RECONCILE_INTERVAL_MS : MESSAGE_POLL_INTERVAL_MS/);
   assert.match(source, /AppState\.addEventListener\('change'/);
   assert.match(source, /refetchIntervalInBackground:\s*false/);
   assert.match(source, /enabled:\s*Boolean\(id && userId && focused && appActive\)/);
   assert.match(source, /const tempId\s*=\s*`temp-\$\{Date\.now\(\)\}`/);
   assert.match(source, /cache\.setQueryData<StaffMessage\[]>/);
   assert.match(source, /refreshing=\{manualRefreshing\}/, 'silent polling must not flash the pull-to-refresh spinner');
-  assert.doesNotMatch(source, /SignalR|\/hubs\//i, 'chat must not depend on an undocumented realtime hub');
 });
 
 test('confirmed Incident execution capabilities support provider flow, direct status transition and resubmit', () => {

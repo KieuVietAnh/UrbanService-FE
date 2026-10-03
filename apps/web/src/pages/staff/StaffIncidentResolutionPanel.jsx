@@ -114,11 +114,6 @@ const getSafeHttpUrl = (value) => {
   }
 };
 
-const isImageEvidence = (document) => (
-  String(document?.fileType ?? '').trim().toLowerCase().startsWith('image/')
-  || /\.(avif|bmp|gif|jpe?g|png|webp)(?:$|\?)/i.test(String(document?.fileUrl ?? ''))
-);
-
 const getDocumentName = (document) => {
   const safeUrl = getSafeHttpUrl(document?.fileUrl);
   if (safeUrl) {
@@ -523,7 +518,6 @@ export default function StaffIncidentResolutionPanel({
       }
 
       let latestAssignmentId = null;
-      let latestDocuments = [];
       if (evidenceReady) {
         const latestAssignment = await incidentManagementApi.getIncidentProviderAssignment(incidentId);
         const fetchedAssignmentId = positiveIdentifier(latestAssignment?.providerAssignmentId);
@@ -539,7 +533,8 @@ export default function StaffIncidentResolutionPanel({
             throw new Error('Đơn vị xử lý đã thay đổi. Vui lòng tải lại trước khi gửi kết quả.');
           }
           latestAssignmentId = fetchedAssignmentId;
-          latestDocuments = validateEvidenceDocuments(
+          // Chỉ để xác nhận minh chứng thuộc đúng sự vụ; nội dung không gửi kèm.
+          validateEvidenceDocuments(
             await incidentManagementApi.getProviderAssignmentCompletionDocuments(fetchedAssignmentId),
             fetchedAssignmentId,
             incidentId,
@@ -548,17 +543,21 @@ export default function StaffIncidentResolutionPanel({
           throw new Error('Sự vụ vừa có đơn vị xử lý. Vui lòng tải lại trước khi gửi kết quả.');
         }
       }
-      const imageUrls = latestDocuments
-        .filter(isImageEvidence)
-        .map((document) => getSafeHttpUrl(document?.fileUrl))
-        .filter(Boolean);
-
+      /*
+       * Không gửi imageUrls.
+       *
+       * Ảnh đã được tải lên qua endpoint completion-documents và backend lưu sẵn
+       * cho đơn vị xử lý. Gửi lại chính những URL đó khiến backend tạo thêm một
+       * bản ghi minh chứng cho mỗi ảnh, nên Manager thấy mỗi ảnh hai lần.
+       *
+       * Vẫn gọi validateEvidenceDocuments ở trên để xác nhận minh chứng thuộc
+       * đúng sự vụ trước khi gửi kết quả.
+       */
       const payload = {
         ...(latestAssignmentId ? { providerAssignmentId: latestAssignmentId } : {}),
         resolutionSummary: draft.resolutionSummary.trim(),
         actionTaken: draft.actionTaken.trim(),
         ...(draft.resultNote.trim() ? { resultNote: draft.resultNote.trim() } : {}),
-        ...(imageUrls.length ? { imageUrls } : {}),
       };
 
       await incidentManagementApi.submitIncidentResolution(incidentId, payload);

@@ -180,7 +180,7 @@ const getDuplicateCandidateUi = (candidate = {}) => {
     icon: Lucide.GitCompareArrows,
     buttonLabel: 'Xử lý nghi trùng',
     title: 'AI phát hiện khả năng trùng',
-    description: 'Mở đề xuất để đối chiếu với sự vụ gợi ý. Phản ánh vẫn có thể được xác minh độc lập tại đây.',
+    description: 'Mở đề xuất để đối chiếu với sự vụ gợi ý. Cần xử lý nghi trùng trước khi xác minh phản ánh này.',
   };
 };
 
@@ -743,8 +743,14 @@ export const ManagerReportReviewQueuePage = () => {
   const requestApproveConfirmation = () => {
     if (!selectedTicket || loading) return;
 
+    if (selectedDuplicatePending) {
+      setActionError('Vui lòng xử lý nghi trùng trước khi xác nhận phản ánh.');
+      return;
+    }
+
     const categoryId = Number(editCategoryId);
     const priority = normalizePriority(editPriority);
+    const severity = normalizeSeverity(editSeverity);
     const categoryExists = categories.some((category) => Number(category?.categoryId ?? category?.id) === categoryId);
 
     if (!Number.isInteger(categoryId) || categoryId <= 0 || !categoryExists) {
@@ -754,6 +760,11 @@ export const ManagerReportReviewQueuePage = () => {
 
     if (!priority) {
       setActionError('Vui lòng chọn mức độ ưu tiên trước khi xác nhận.');
+      return;
+    }
+
+    if (!severity) {
+      setActionError('Vui lòng chọn mức độ nghiêm trọng trước khi xác nhận.');
       return;
     }
 
@@ -764,8 +775,15 @@ export const ManagerReportReviewQueuePage = () => {
   const handleApprove = async () => {
     if (!selectedTicket || loading) return;
 
+    if (selectedDuplicatePending) {
+      setApproveConfirmOpen(false);
+      setActionError('Vui lòng xử lý nghi trùng trước khi xác nhận phản ánh.');
+      return;
+    }
+
     const categoryId = Number(editCategoryId);
     const priority = normalizePriority(editPriority);
+    const severity = normalizeSeverity(editSeverity);
     const categoryExists = categories.some((category) => Number(category?.categoryId ?? category?.id) === categoryId);
 
     if (!Number.isInteger(categoryId) || categoryId <= 0 || !categoryExists) {
@@ -775,6 +793,11 @@ export const ManagerReportReviewQueuePage = () => {
 
     if (!priority) {
       setActionError('Vui lòng chọn mức độ ưu tiên trước khi xác nhận.');
+      return;
+    }
+
+    if (!severity) {
+      setActionError('Vui lòng chọn mức độ nghiêm trọng trước khi xác nhận.');
       return;
     }
 
@@ -787,10 +810,13 @@ export const ManagerReportReviewQueuePage = () => {
       await managementFeedbackApi.updateFeedback(selectedTicket.feedbackId, {
         categoryId,
         priority,
-        severity: editSeverity || null,
       });
 
-      await managementFeedbackApi.verifyFeedback(selectedTicket.feedbackId);
+      await managementFeedbackApi.verifyFeedback(selectedTicket.feedbackId, {
+        categoryId,
+        priority,
+        severity,
+      });
 
       sessionStorage.removeItem(aiQueueCacheKey);
       try {
@@ -850,6 +876,10 @@ export const ManagerReportReviewQueuePage = () => {
   const selectedDuplicateUi = selectedDuplicateCandidate
     ? getDuplicateCandidateUi(selectedDuplicateCandidate)
     : null;
+  const selectedDuplicatePending = Boolean(
+    selectedDuplicateCandidate
+      && getDuplicateCandidateStatus(selectedDuplicateCandidate) === 'Pending',
+  );
 
   const openDuplicateCandidate = (candidate) => {
     const candidateId = getDuplicateCandidateId(candidate);
@@ -1474,6 +1504,18 @@ export const ManagerReportReviewQueuePage = () => {
                       </div>
                     ) : null}
 
+                    {selectedDuplicatePending ? (
+                      <div className="flex items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800" role="status">
+                        <Lucide.GitCompareArrows size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        <div>
+                          <p className="font-bold">Cần xử lý nghi trùng trước khi xác nhận</p>
+                          <p className="mt-0.5 text-xs leading-5 text-violet-700">
+                            Hãy mở đề xuất nghi trùng, xác nhận liên kết hoặc kết luận không trùng rồi quay lại duyệt phản ánh.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+
                     <div className="grid gap-3 sm:grid-cols-2">
                         <button
                           type="button"
@@ -1487,7 +1529,8 @@ export const ManagerReportReviewQueuePage = () => {
                         <button
                           type="button"
                           onClick={requestApproveConfirmation}
-                          disabled={loading || categories.length === 0 || !editCategoryId || !normalizePriority(editPriority)}
+                          disabled={selectedDuplicatePending || loading || categories.length === 0 || !editCategoryId || !normalizePriority(editPriority) || !normalizeSeverity(editSeverity)}
+                          title={selectedDuplicatePending ? 'Hãy xử lý nghi trùng trước khi xác nhận phản ánh.' : undefined}
                           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(37,99,235,0.20)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {loading ? <span className="loading loading-spinner loading-sm" /> : <Lucide.CheckCircle2 size={18} aria-hidden="true" />}

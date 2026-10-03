@@ -634,7 +634,7 @@ export const ResolutionResultPage = () => {
         </section>
 
         {/* ── SECTION 3: 2-COLUMN MAIN GRID ───────────────────────────────── */}
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] xl:items-stretch">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] xl:items-start">
 
           {/* ── LEFT COLUMN ──────────────────────────────────────────────── */}
           <div className="flex h-full flex-col gap-4">
@@ -834,11 +834,11 @@ export const ResolutionResultPage = () => {
           </div>
 
           {/* ── RIGHT COLUMN ─────────────────────────────────────────────── */}
-          <div className="h-full">
+          <div>
 
             {/* Resident Rating */}
             <section
-              className={`relative h-full overflow-hidden rounded-[24px] border bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)] ${
+              className={`relative overflow-hidden rounded-[24px] border bg-[var(--public-surface)] shadow-[0_14px_34px_rgba(15,23,42,0.07)] ${
                 alreadyRated
                   ? 'border-[var(--public-border)]'
                   : canSubmitReview

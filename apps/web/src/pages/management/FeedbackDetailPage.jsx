@@ -3,12 +3,49 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Lucide from 'lucide-react';
 import { managementTypes } from '@urbanmind/shared-types';
+import { managementFeedbackApi } from '@urbanmind/shared-api';
 import { getAdminFeedbackCategories, loadAdminFeedbackDetail, peekAdminFeedbackDetail } from '../../services/cache/adminFeedbackDetailCache';
 import FeedbackLocationMapCard from '../../components/maps/FeedbackLocationMapCard';
 import { useResolvedLocationText } from '../../hooks/useResolvedLocationText';
-import { ManagerSectionHeader } from '../../components/manager/ManagerPageElements';
+import { ManagerSectionHeader, ManagerSelectMenu } from '../../components/manager/ManagerPageElements';
 
 const ADMIN_FEEDBACK_RETURN_STORAGE_KEY = 'urbanmind-admin-feedback-return';
+
+/*
+ * Cùng tập giá trị với màn hàng đợi duyệt AI (ManagerReportReviewQueuePage) để hai
+ * nơi cùng gửi đúng chuỗi mà backend chấp nhận.
+ */
+const VERIFY_SEVERITY_OPTIONS = [
+  { value: 'Low', label: 'Thấp' },
+  { value: 'Medium', label: 'Trung bình' },
+  { value: 'High', label: 'Cao' },
+  { value: 'Critical', label: 'Nghiêm trọng' },
+];
+
+const VERIFY_PRIORITY_OPTIONS = [
+  { value: 'Low', label: 'Thấp' },
+  { value: 'Medium', label: 'Trung bình' },
+  { value: 'High', label: 'Cao' },
+  { value: 'Urgent', label: 'Khẩn cấp' },
+];
+
+const normalizeVerifyPriority = (value = '') => {
+  const normalized = `${value || ''}`.trim().toLowerCase();
+  if (normalized === 'urgent' || normalized === 'critical') return 'Urgent';
+  if (normalized === 'high') return 'High';
+  if (normalized === 'medium') return 'Medium';
+  if (normalized === 'low') return 'Low';
+  return '';
+};
+
+const normalizeVerifySeverity = (value = '') => {
+  const normalized = `${value || ''}`.trim().toLowerCase();
+  if (normalized === 'critical') return 'Critical';
+  if (normalized === 'high') return 'High';
+  if (normalized === 'medium') return 'Medium';
+  if (normalized === 'low') return 'Low';
+  return '';
+};
 
 const getFeedbackListReturnUrl = () => {
   if (typeof window === 'undefined') return '/management/feedbacks';
@@ -189,6 +226,11 @@ export const FeedbackDetailPage = () => {
   const [previewIndex, setPreviewIndex] = useState(null);
   const [failedMedia, setFailedMedia] = useState(() => new Set());
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+  const [verifyCategoryId, setVerifyCategoryId] = useState('');
+  const [verifyPriority, setVerifyPriority] = useState('');
+  const [verifySeverity, setVerifySeverity] = useState('');
   const detailRequestIdRef = useRef(0);
   const resolvedLocationText = useResolvedLocationText({
     locationText: feedback?.locationText || feedback?.address,
@@ -291,8 +333,17 @@ export const FeedbackDetailPage = () => {
 
   const returnPath = location.state?.from;
   const returnMapState = location.state?.mapState;
+  const returnState = location.state?.returnState;
+  const returningToIncidentMatch = returnPath?.startsWith('/manager/incident-matches/');
   const isManagerContext = location.pathname.startsWith('/manager/') || returnPath?.startsWith('/manager/');
   const feedbackMapPath = isManagerContext ? '/manager/map' : '/management/map';
+  const backLabel = returnPath === '/management/map' || returnPath === '/manager/map'
+    ? 'Quay lại bản đồ'
+    : returnPath === '/dashboard'
+      ? 'Quay lại tổng quan'
+      : returningToIncidentMatch
+        ? 'Quay lại đối chiếu'
+        : 'Quay lại danh sách';
 
   const goBack = () => {
     if (returnPath === '/management/map' || returnPath === '/manager/map') {
@@ -312,6 +363,13 @@ export const FeedbackDetailPage = () => {
       return;
     }
 
+    if (returningToIncidentMatch) {
+      navigate(returnPath, {
+        state: returnState && typeof returnState === 'object' ? returnState : undefined,
+      });
+      return;
+    }
+
     if (returnPath === '/dashboard') {
       navigate('/dashboard');
       return;
@@ -323,6 +381,63 @@ export const FeedbackDetailPage = () => {
         preserveScrollOnEnter: true,
       },
     });
+  };
+
+  const normalizedStatus = String(feedback?.status || '').trim().toLowerCase();
+  const awaitingAiClassification = normalizedStatus === 'submitted';
+  // Backend nhận cả hai trạng thái này ở PUT /management/feedbacks/{id}/verify.
+  const canVerifyManually = awaitingAiClassification || normalizedStatus === 'aireviewed';
+
+  /*
+   * Đổ sẵn phân loại đang có. Khi AI đã chạy thì đây là đề xuất của AI để manager
+   * soát lại; khi AI lỗi thì phản ánh chưa có gì nên mặc định về mức trung bình để
+   * manager chỉ cần chọn danh mục.
+   */
+  useEffect(() => {
+    if (!feedback) return;
+    setVerifyCategoryId(feedback.categoryId ? String(feedback.categoryId) : '');
+    setVerifyPriority(normalizeVerifyPriority(feedback.priority) || 'Medium');
+    setVerifySeverity(normalizeVerifySeverity(feedback.severity) || 'Medium');
+  }, [feedback]);
+
+  const handleManualVerify = async () => {
+    const categoryId = Number(verifyCategoryId);
+    const priority = normalizeVerifyPriority(verifyPriority);
+    const severity = normalizeVerifySeverity(verifySeverity);
+
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+      setVerifyError('Chọn danh mục trước khi xác minh.');
+      return;
+    }
+
+    if (!priority) {
+      setVerifyError('Chọn mức độ ưu tiên trước khi xác minh.');
+      return;
+    }
+
+    if (!severity) {
+      setVerifyError('Chọn mức độ nghiêm trọng trước khi xác minh.');
+      return;
+    }
+
+    setVerifying(true);
+    setVerifyError('');
+    try {
+      await managementFeedbackApi.verifyFeedback(feedbackId, {
+        categoryId,
+        priority,
+        severity,
+      });
+      setReloadNonce((value) => value + 1);
+    } catch (verifyException) {
+      setVerifyError(
+        verifyException?.response?.data?.msg
+        || verifyException?.response?.data?.message
+        || 'Không thể xác minh phản ánh. Vui lòng thử lại.',
+      );
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const markMediaFailed = (file) => {
@@ -369,7 +484,7 @@ export const FeedbackDetailPage = () => {
               <Lucide.RefreshCw size={16} />
               Thử tải lại
             </button>
-            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{returnPath === '/management/map' || returnPath === '/manager/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}</button>
+            <button type="button" onClick={goBack} className="btn admin-secondary-action h-10 rounded-xl px-5 text-sm font-semibold normal-case">{backLabel}</button>
           </div>
         </div>
       </div>
@@ -383,7 +498,7 @@ export const FeedbackDetailPage = () => {
     <div className="admin-page-shell manager-ui-page space-y-5 pb-4">
       <button type="button" onClick={goBack} className="admin-secondary-link inline-flex h-10 items-center gap-2 px-3.5 text-sm font-semibold transition">
         <Lucide.ArrowLeft size={16} />
-        {returnPath === '/management/map' || returnPath === '/manager/map' ? 'Quay lại bản đồ' : returnPath === '/dashboard' ? 'Quay lại tổng quan' : 'Quay lại danh sách'}
+        {backLabel}
       </button>
 
       {error ? (
@@ -419,6 +534,130 @@ export const FeedbackDetailPage = () => {
           </div>
         </div>
       </section>
+
+      {canVerifyManually ? (
+        <section className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${
+          awaitingAiClassification
+            ? 'border-amber-200 bg-amber-50/70 dark:border-amber-500/20 dark:bg-amber-500/10'
+            : 'border-blue-200 bg-blue-50/70 dark:border-blue-500/20 dark:bg-blue-500/10'
+        }`}>
+          <div className="flex min-w-0 items-start gap-3">
+            <Lucide.ShieldCheck
+              size={18}
+              aria-hidden="true"
+              className={`mt-0.5 shrink-0 ${awaitingAiClassification ? 'text-amber-600 dark:text-amber-300' : 'text-blue-600 dark:text-blue-300'}`}
+            />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {awaitingAiClassification ? 'AI chưa phân loại phản ánh này' : 'Phản ánh đã được AI phân loại'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                {awaitingAiClassification
+                  ? 'Xác minh thủ công sẽ bỏ qua bước phân loại tự động. Bạn chọn danh mục, mức độ ưu tiên và mức nghiêm trọng thay cho AI, rồi hệ thống tạo sự vụ ngay.'
+                  : 'Soát lại đề xuất của AI, chỉnh nếu cần rồi xác minh để tạo sự vụ và đưa vào quy trình xử lý.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 rounded-xl border border-white/70 bg-white/70 p-4 md:grid-cols-2 dark:border-slate-800 dark:bg-slate-900/40">
+            <div className="min-w-0">
+              <span className="mb-2 block text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-200">
+                Danh mục <span className="text-rose-600">*</span>
+              </span>
+              <ManagerSelectMenu
+                value={verifyCategoryId}
+                options={categories.map((category) => ({
+                  value: String(category?.categoryId ?? category?.id),
+                  label: category?.categoryName ?? category?.name ?? 'Chưa đặt tên',
+                }))}
+                onChange={(value) => {
+                  setVerifyCategoryId(String(value));
+                  setVerifyError('');
+                }}
+                placeholder="Chọn danh mục"
+                ariaLabel="Danh mục"
+                disabled={verifying || loading || categories.length === 0}
+                className="w-full"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <span className="mb-2 block text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-200">Khu vực</span>
+              <div className="flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                <Lucide.MapPin size={15} className="mr-2 shrink-0 text-slate-400" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate leading-5">
+                  {feedback?.areaName || feedback?.wardName || 'Chưa xác định'}
+                </span>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <span className="mb-2 block text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-200">Mức độ nghiêm trọng</span>
+              <ManagerSelectMenu
+                value={verifySeverity}
+                options={VERIFY_SEVERITY_OPTIONS}
+                onChange={(value) => {
+                  setVerifySeverity(String(value));
+                  setVerifyError('');
+                }}
+                placeholder="Chọn mức độ"
+                ariaLabel="Mức độ nghiêm trọng"
+                disabled={verifying || loading}
+                className="w-full"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <span className="mb-2 block text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-200">
+                Mức độ ưu tiên <span className="text-rose-600">*</span>
+              </span>
+              <ManagerSelectMenu
+                value={verifyPriority}
+                options={VERIFY_PRIORITY_OPTIONS}
+                onChange={(value) => {
+                  setVerifyPriority(String(value));
+                  setVerifyError('');
+                }}
+                placeholder="Chọn mức ưu tiên"
+                ariaLabel="Mức độ ưu tiên"
+                disabled={verifying || loading}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="min-w-0 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {verifyError ? (
+                <span className="flex items-start gap-1.5 font-medium text-rose-600 dark:text-rose-300">
+                  <Lucide.CircleAlert size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  {verifyError}
+                </span>
+              ) : (
+                'Danh mục và mức độ ưu tiên là bắt buộc, vì SLA của sự vụ được tính từ hai giá trị này.'
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={handleManualVerify}
+              disabled={verifying || loading}
+              className="btn h-10 shrink-0 rounded-xl bg-blue-600 px-4 text-sm font-semibold normal-case text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {verifying ? (
+                <>
+                  <span className="loading loading-spinner loading-xs" aria-hidden="true" />
+                  Đang xác minh...
+                </>
+              ) : (
+                <>
+                  <Lucide.ShieldCheck size={15} aria-hidden="true" />
+                  {awaitingAiClassification ? 'Xác minh thủ công' : 'Xác minh phản ánh'}
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <InfoItem label="Danh mục" value={getCategoryName(feedback, categories)} />

@@ -22,6 +22,31 @@ const durationLabel = (seconds) => {
   ].filter(Boolean).join(' ');
 };
 
+/*
+ * Nhan ly do tam dung, dung bo gia tri voi man quan ly SLA cua Manager.
+ * Staff khong duoc bam nut tam dung, nhung phai doc duoc vi sao dong ho dung im.
+ */
+const PAUSE_REASON_LABELS = Object.freeze({
+  waitingcitizen: 'Chờ phản hồi từ người dân',
+  forcemajeure: 'Sự kiện bất khả kháng',
+  externaldependency: 'Phụ thuộc đơn vị bên ngoài',
+  systemmaintenance: 'Bảo trì hệ thống',
+  other: 'Lý do khác',
+});
+
+export const getStaffIncidentSlaPause = (sla) => {
+  const reasonCode = String(sla?.pauseReasonCode ?? '').trim();
+  const pausedAt = String(sla?.pausedAt ?? '').trim();
+  if (!reasonCode && !pausedAt) return null;
+
+  return {
+    reasonLabel: PAUSE_REASON_LABELS[normalizeKey(reasonCode)] || reasonCode || 'Không ghi lý do',
+    note: String(sla?.pauseReasonNote ?? '').trim(),
+    pausedAt: pausedAt || null,
+    pausedByUserName: String(sla?.pausedByUserName ?? '').trim(),
+  };
+};
+
 export const validateStaffIncidentSlaStatus = (value, expectedIncidentId) => {
   const expected = String(expectedIncidentId ?? '').trim();
   if (!value || typeof value !== 'object' || Array.isArray(value) || !expected) return null;

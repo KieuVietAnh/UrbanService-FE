@@ -1,4 +1,5 @@
-import { APP_ROLES, getInternalRole } from '@urbanmind/shared-types';
+import { APP_ROLES, getInternalRole, managementTypes } from '@urbanmind/shared-types';
+import { ticketApi } from '../services/api/ticketApi';
 
 const SERVICE_USER_TICKET_ROUTE = '/tickets';
 export const NOTIFICATION_FALLBACK_ROUTE = '/notifications';
@@ -148,6 +149,64 @@ const getNotificationKind = (notification) => {
   return 'detail';
 };
 
+export const isServiceUserResolutionNotification = (notification) => (
+  getNotificationKind(notification) === 'resolution'
+);
+
+const getTicketIncidentId = (ticket) => normalizeIdentifier(
+  ticket?.incidentId
+    ?? ticket?.incident?.incidentId
+    ?? ticket?.incident?.id
+    ?? ticket?.linkedIncidentId
+    ?? '',
+);
+
+const getTicketFeedbackId = (ticket) => normalizeIdentifier(
+  ticket?.feedbackId
+    ?? ticket?.feedbackID
+    ?? ticket?.id
+    ?? ticket?.feedback?.feedbackId
+    ?? ticket?.feedback?.id
+    ?? '',
+);
+
+const getTicketUpdatedAt = (ticket) => {
+  const raw = ticket?.updatedAt ?? ticket?.createdAt ?? ticket?.submittedAt ?? null;
+  const value = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(value) ? value : 0;
+};
+
+export const resolveServiceUserResolutionRouteFromTickets = (notification, tickets = []) => {
+  const feedbackId = getNotificationFeedbackId(notification);
+  if (feedbackId) return `${SERVICE_USER_TICKET_ROUTE}/${encodeURIComponent(feedbackId)}/result`;
+
+  const incidentId = getNotificationIncidentId(notification);
+  if (!incidentId || !isServiceUserResolutionNotification(notification)) return '';
+
+  const statusPriority = new Map([
+    [managementTypes.feedbackStatus.APPROVED, 3],
+    [managementTypes.feedbackStatus.CLOSED, 2],
+    [managementTypes.feedbackStatus.RESOLVED, 1],
+    [managementTypes.feedbackStatus.SUBMITTED_FOR_APPROVAL, 1],
+  ]);
+
+  const candidates = (Array.isArray(tickets) ? tickets : [])
+    .filter((ticket) => getTicketIncidentId(ticket) === incidentId)
+    .filter((ticket) => getTicketFeedbackId(ticket))
+    .sort((left, right) => {
+      const leftPriority = statusPriority.get(left?.status) ?? 0;
+      const rightPriority = statusPriority.get(right?.status) ?? 0;
+      if (leftPriority !== rightPriority) return rightPriority - leftPriority;
+      return getTicketUpdatedAt(right) - getTicketUpdatedAt(left);
+    });
+
+  const candidate = candidates[0];
+  const candidateFeedbackId = getTicketFeedbackId(candidate);
+  return candidateFeedbackId
+    ? `${SERVICE_USER_TICKET_ROUTE}/${encodeURIComponent(candidateFeedbackId)}/result`
+    : '';
+};
+
 const buildStaffIncidentRoute = (notification, incidentId) => {
   const encodedId = encodeURIComponent(incidentId);
   const route = `/staff/incidents/${encodedId}`;
@@ -183,9 +242,17 @@ export const getServiceUserNotificationRoute = (notification) => {
     return `/community/feed/${encodeURIComponent(incidentId)}`;
   }
 
-  // NotificationDto now exposes incidentId explicitly. For ServiceUser, an
-  // Incident-only notification belongs to the public/community Incident detail,
-  // even when its title/type is a generic status update rather than "community".
+  // A resolution/approved notification needs a Feedback route because the
+  // resident review is submitted per Feedback. BE currently sends only Incident
+  // metadata for some approved-result notifications, so do not send the resident
+  // to Community in that case. The async resolver below upgrades this fallback to
+  // the exact /tickets/:feedbackId/result route by matching the resident's tickets.
+  if (kind === 'resolution' && incidentId && !feedbackId) {
+    return `${SERVICE_USER_TICKET_ROUTE}?status=awaiting-review`;
+  }
+
+  // Generic Incident-only status/community notifications still belong to the
+  // public/community Incident detail.
   if (incidentId && !feedbackId) {
     return `/community/feed/${encodeURIComponent(incidentId)}`;
   }
@@ -295,4 +362,34 @@ export const resolveNotificationDestination = (notification, currentRole) => {
   }
 
   return NOTIFICATION_FALLBACK_ROUTE;
+};
+
+export const resolveNotificationDestinationAsync = async (notification, currentRole) => {
+  const role = getInternalRole(currentRole);
+  const fallback = resolveNotificationDestination(notification, currentRole);
+
+  if (role !== APP_ROLES.SERVICE_USER || !isServiceUserResolutionNotification(notification)) {
+    return fallback;
+  }
+
+  const directFeedbackId = getNotificationFeedbackId(notification);
+  if (directFeedbackId) return fallback;
+
+  const incidentId = getNotificationIncidentId(notification);
+  if (!incidentId) return fallback;
+
+  try {
+    const tickets = await ticketApi.getAllTickets({}, { role: currentRole });
+    const resolvedRoute = resolveServiceUserResolutionRouteFromTickets(notification, tickets);
+    return resolvedRoute || fallback;
+  } catch (error) {
+    if (import.meta.env?.DEV) {
+      console.warn('Không thể tìm phản ánh của người dân từ thông báo kết quả.', {
+        notificationId: notification?.notificationId,
+        incidentId,
+        error,
+      });
+    }
+    return fallback;
+  }
 };

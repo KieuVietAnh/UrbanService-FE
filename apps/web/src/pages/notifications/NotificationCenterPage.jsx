@@ -7,7 +7,9 @@ import { useNotifications } from '../../hooks/useNotifications';
 import {
   getNotificationDestinationEntity,
   NOTIFICATION_FALLBACK_ROUTE,
+  isServiceUserResolutionNotification,
   resolveNotificationDestination,
+  resolveNotificationDestinationAsync,
 } from '../../utils/notificationNavigation';
 import { getNotificationCategory } from './notificationCenterUtils.js';
 
@@ -153,12 +155,12 @@ export const NotificationCenterPage = () => {
     }
   };
 
-  const openNotification = (notification) => {
-    const destination = resolveNotificationDestination(notification, user?.role);
-
+  const openNotification = async (notification) => {
     if (notification?.isRead === false && notification?.notificationId) {
       markAsRead(notification.notificationId).catch(() => {});
     }
+
+    const destination = await resolveNotificationDestinationAsync(notification, user?.role);
 
     if (destination !== NOTIFICATION_FALLBACK_ROUTE) {
       navigate(destination, {
@@ -328,12 +330,16 @@ export const NotificationCenterPage = () => {
                   const unread = notification?.isRead === false;
                   const destinationEntity = getNotificationDestinationEntity(notification, user?.role);
                   const destination = resolveNotificationDestination(notification, user?.role);
+                  const isResolutionForResident = internalRole === APP_ROLES.SERVICE_USER
+                    && isServiceUserResolutionNotification(notification);
                   const destinationLabel = destination !== NOTIFICATION_FALLBACK_ROUTE
-                    ? {
-                        incident: 'Mở sự vụ',
-                        feedback: 'Mở phản ánh',
-                        'provider-report': 'Mở tiến độ xử lý',
-                      }[destinationEntity]
+                    ? isResolutionForResident
+                      ? 'Mở kết quả'
+                      : {
+                          incident: 'Mở sự vụ',
+                          feedback: 'Mở phản ánh',
+                          'provider-report': 'Mở tiến độ xử lý',
+                        }[destinationEntity]
                     : null;
                   return (
                     <article key={notification?.notificationId ?? `${notification?.title}-${notification?.createdAt}`} className={`notification-row relative px-5 py-4 transition ${index > 0 ? 'border-t border-slate-100 dark:border-white/10' : ''} ${unread ? 'notification-row-unread' : ''}`}>

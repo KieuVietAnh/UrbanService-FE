@@ -1,6 +1,7 @@
 import { axiosClient } from './axiosClient.js';
 import {
   normalizeAssignmentId,
+  normalizeManagedStaffAccountPayload,
   normalizeStaffResponsibilityCollection,
   normalizeStaffResponsibilityCreatePayload,
   normalizeStaffResponsibilityFilters,
@@ -14,12 +15,21 @@ export {
   normalizeStaffResponsibilityCreatePayload,
   normalizeStaffResponsibilityFilters,
   normalizeStaffResponsibilityUpdatePayload,
+  normalizeManagedStaffAccountPayload,
 };
 
 export const staffResponsibilityApi = Object.freeze({
   async getAll(filters = {}, options = {}) {
     const response = await axiosClient.get(BASE, { params: normalizeStaffResponsibilityFilters(filters), signal: options?.signal });
     return normalizeStaffResponsibilityCollection(response);
+  },
+  async getManagedAreas(options = {}) {
+    const response = await axiosClient.get(`${BASE}/managed-areas`, { signal: options?.signal });
+    return normalizeStaffResponsibilityCollection(response);
+  },
+  async createStaffAccount(payload, options = {}) {
+    const response = await axiosClient.post(`${BASE}/staff-accounts`, normalizeManagedStaffAccountPayload(payload), { signal: options?.signal });
+    return response?.data ?? response;
   },
   async create(payload, options = {}) {
     const response = await axiosClient.post(BASE, normalizeStaffResponsibilityCreatePayload(payload), { signal: options?.signal });

@@ -449,13 +449,17 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     const latestMode = incidentResolutionSubmissionMode(latest, userId, existing.length);
     if (!latestMode) throw new Error('Sự vụ không còn ở trạng thái cho phép gửi kết quả.');
     if (mode === 'provider' && !latestAssignment) throw new Error('Không tìm thấy phân công đơn vị của flow hiện tại.');
-    const files = latestAssignment ? await executionApi.evidence(latestAssignment.providerAssignmentId) : [];
+    // Xác nhận minh chứng thuộc đúng phân công trước khi gửi kết quả.
+    if (latestAssignment) await executionApi.evidence(latestAssignment.providerAssignmentId);
     requireSession();
+    /*
+     * Không gửi imageUrls: ảnh đã nằm ở completion-documents của phân công này,
+     * gửi lại URL khiến backend tạo thêm bản ghi và Manager thấy minh chứng nhân đôi.
+     */
     await executionApi.submitResolution(id, {
       ...(latestAssignment ? { providerAssignmentId: latestAssignment.providerAssignmentId } : {}),
       resolutionSummary: draft.resolutionSummary.trim(), actionTaken: draft.actionTaken.trim(),
       resultNote: draft.resultNote.trim() || undefined,
-      imageUrls: files.filter(isImage).map((file) => file.fileUrl).filter((url) => /^https?:\/\//i.test(url)),
     });
     setSubmittedStatus(normalizeKey(latest.status));
     setConfirmSubmit(false);

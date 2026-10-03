@@ -2,6 +2,7 @@
 export default [
   { name: 'Tổng quan hệ thống', path: '/dashboard', icon: 'LayoutDashboard' },
   { name: 'Quản lý người dùng', path: '/management/users', icon: 'Users2' },
+  { name: 'Phạm vi quản lý khu vực', path: '/management/manager-areas', icon: 'MapPinned' },
   { name: 'Phạm vi phụ trách nhân viên', path: '/management/staff-responsibilities', icon: 'UserRoundCog' },
   { name: 'Quản lý điều phối viên', path: '/management/coordinators', icon: 'Network' },
   { name: 'Quản lý phản ánh', path: '/management/feedbacks', icon: 'MessageSquareText' },

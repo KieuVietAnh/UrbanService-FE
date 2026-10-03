@@ -9,8 +9,12 @@ import { getStaffLineHeight } from '../staff-layout';
 import { formatDate, type StaffMessage } from '../staff-models';
 import { colors, contentStyle, Label, QueryState, StaffIcon } from './staff-ui';
 import { useStaffContentInsets } from './staff-scroll-view';
+import {
+  MESSAGE_POLL_INTERVAL_MS,
+  REALTIME_RECONCILE_INTERVAL_MS,
+  useTicketMessagesRealtime,
+} from '@/features/messaging/realtime/use-ticket-messages-realtime';
 
-const MESSAGE_POLL_INTERVAL_MS = 2000;
 
 function dedupeMessages(items: StaffMessage[]) {
   const persisted = new Set<string>();
@@ -44,6 +48,17 @@ export function StaffChatScreen() {
   const draftKey = `${userId}:${id}:${internal ? 'internal' : 'public'}`;
   const message = drafts[draftKey] || '';
   const queryKey = useMemo(() => staffKeys.messages(userId, id), [id, userId]);
+  /*
+   * Kênh realtime chỉ báo có tin mới; react-query vẫn là nơi tải và hợp nhất dữ
+   * liệu, nên tin nhắn lạc quan đang chờ gửi không bị gói tin đẩy xuống ghi đè.
+   */
+  const refetchRef = useRef<() => void>(() => {});
+  const { connected: realtimeConnected } = useTicketMessagesRealtime(id, {
+    enabled: Boolean(id && userId) && focused && appActive,
+    onMessage: useCallback(() => {
+      refetchRef.current();
+    }, []),
+  });
   const query = useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
@@ -54,10 +69,18 @@ export function StaffChatScreen() {
     },
     enabled: Boolean(id && userId && focused && appActive),
     retry: staffQueryRetry,
-    refetchInterval: focused && appActive ? MESSAGE_POLL_INTERVAL_MS : false,
+    refetchInterval: focused && appActive
+      ? (realtimeConnected ? REALTIME_RECONCILE_INTERVAL_MS : MESSAGE_POLL_INTERVAL_MS)
+      : false,
     refetchIntervalInBackground: false,
     staleTime: 1000,
   });
+
+  useEffect(() => {
+    refetchRef.current = () => {
+      void query.refetch();
+    };
+  }, [query.refetch]);
 
   useFocusEffect(useCallback(() => {
     setFocused(true);

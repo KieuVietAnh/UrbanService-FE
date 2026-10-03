@@ -6,12 +6,13 @@ export default [
   { name: 'Giám sát phản ánh', path: '/manager/interactions', icon: 'MessageSquareDashed' },
   { name: 'Quản lý sự vụ', path: '/manager/incidents', icon: 'Siren' },
   { name: 'Duyệt kết quả xử lý', path: '/manager/approvals', icon: 'GitPullRequestArrow' },
+  { name: 'Phạm vi phụ trách nhân viên', path: '/management/staff-responsibilities', icon: 'UserRoundCog' },
   {
     name: 'Quản lý điều phối viên',
     path: '/management/coordinators',
     icon: 'Network',
   },
   { name: 'Phân tích SLA', path: '/analytics/sla', icon: 'BarChart3' },
-  { name: 'Cảm xúc người dân (AI)', path: '/analytics/sentiment', icon: 'Smile' },
+  { name: 'Mức độ hài lòng', path: '/analytics/sentiment', icon: 'Star' },
   { name: 'Bản đồ điểm nóng', path: '/analytics/heatmap', icon: 'Flame' }
 ];
