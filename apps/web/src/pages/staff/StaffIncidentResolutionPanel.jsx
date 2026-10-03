@@ -332,6 +332,7 @@ export default function StaffIncidentResolutionPanel({
   const [evidenceRefreshVersion, setEvidenceRefreshVersion] = useState(0);
   const [evidenceSnapshot, setEvidenceSnapshot] = useState({
     assignment: null,
+    mode: 'provider',
     documents: [],
     selectedFileCount: 0,
     state: STAFF_INCIDENT_EVIDENCE_STATE.LOADING,
@@ -362,8 +363,9 @@ export default function StaffIncidentResolutionPanel({
     STAFF_INCIDENT_EVIDENCE_STATE.NO_PROVIDER,
     STAFF_INCIDENT_EVIDENCE_STATE.READY,
   ].includes(evidenceSnapshot.state);
+  const directMode = evidenceSnapshot.mode === 'direct';
   const providerSummary = evidenceSnapshot.state === STAFF_INCIDENT_EVIDENCE_STATE.READY
-    ? currentAssignment?.providerName || 'Chưa có dữ liệu'
+    ? (directMode ? 'Staff tự xử lý' : currentAssignment?.providerName || 'Chưa có dữ liệu')
     : evidenceSnapshot.state === STAFF_INCIDENT_EVIDENCE_STATE.NO_PROVIDER
       ? 'Gửi trực tiếp theo sự vụ'
       : 'Chưa xác minh';
@@ -523,7 +525,23 @@ export default function StaffIncidentResolutionPanel({
         const fetchedAssignmentId = positiveIdentifier(latestAssignment?.providerAssignmentId);
         const shownAssignmentId = positiveIdentifier(currentAssignment?.providerAssignmentId);
 
-        if (evidenceSnapshot.state === STAFF_INCIDENT_EVIDENCE_STATE.READY) {
+        if (evidenceSnapshot.state === STAFF_INCIDENT_EVIDENCE_STATE.READY && directMode) {
+          /*
+           * Luồng Staff tự xử lý: không có phân công nào để đối chiếu, minh chứng
+           * gắn thẳng vào sự vụ. Vẫn phải có ít nhất một tệp để Manager nghiệm thu.
+           */
+          if (latestAssignment) {
+            throw new Error('Sự vụ vừa có đơn vị xử lý. Vui lòng tải lại trước khi gửi kết quả.');
+          }
+          const incidentDocuments = validateEvidenceDocuments(
+            await incidentManagementApi.getIncidentCompletionDocuments(incidentId),
+            null,
+            incidentId,
+          );
+          if (incidentDocuments.length === 0) {
+            throw new Error('Cần ít nhất một minh chứng trước khi gửi kết quả xử lý.');
+          }
+        } else if (evidenceSnapshot.state === STAFF_INCIDENT_EVIDENCE_STATE.READY) {
           if (
             !latestAssignment
             || !fetchedAssignmentId
@@ -533,12 +551,14 @@ export default function StaffIncidentResolutionPanel({
             throw new Error('Đơn vị xử lý đã thay đổi. Vui lòng tải lại trước khi gửi kết quả.');
           }
           latestAssignmentId = fetchedAssignmentId;
-          // Chỉ để xác nhận minh chứng thuộc đúng sự vụ; nội dung không gửi kèm.
-          validateEvidenceDocuments(
+          const providerDocuments = validateEvidenceDocuments(
             await incidentManagementApi.getProviderAssignmentCompletionDocuments(fetchedAssignmentId),
             fetchedAssignmentId,
             incidentId,
           );
+          if (providerDocuments.length === 0) {
+            throw new Error('Cần ít nhất một minh chứng trước khi gửi kết quả xử lý.');
+          }
         } else if (latestAssignment) {
           throw new Error('Sự vụ vừa có đơn vị xử lý. Vui lòng tải lại trước khi gửi kết quả.');
         }

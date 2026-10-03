@@ -85,6 +85,10 @@ const isImageDocument = (document) => {
   return /\.(avif|bmp|gif|jpe?g|png|webp)(?:$|\?)/i.test(String(document?.fileUrl ?? ''));
 };
 
+/*
+ * assignmentId là null khi Staff tự xử lý: sự vụ không có đơn vị bên thứ ba nên
+ * minh chứng chỉ gắn với chính sự vụ và backend trả providerAssignmentId rỗng.
+ */
 const validateEvidenceCollection = (documents, assignmentId, incidentId) => {
   if (!Array.isArray(documents)) throw new Error('Danh sách minh chứng không đúng định dạng.');
   if (documents.some((document) => (
@@ -200,6 +204,8 @@ export default function StaffIncidentEvidencePanel({
       : STAFF_INCIDENT_EVIDENCE_STATE.API_UNAVAILABLE,
   );
   const [assignment, setAssignment] = useState(null);
+  // 'provider' khi sự vụ giao cho đơn vị bên thứ ba, 'direct' khi Staff tự xử lý.
+  const [mode, setMode] = useState('provider');
   const [documents, setDocuments] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [description, setDescription] = useState('');
@@ -223,6 +229,7 @@ export default function StaffIncidentEvidencePanel({
     && normalizeStatus(incident?.status) === 'needrework'
     && documents.length > 0,
   );
+  const directMode = mode === 'direct';
 
   const loadEvidence = useCallback(async (signal) => {
     if (!assignmentCapability.available || !evidenceCapability.available || !incidentId) {
@@ -239,9 +246,19 @@ export default function StaffIncidentEvidencePanel({
       );
       if (signal?.aborted) return;
       if (!currentAssignment) {
+        /*
+         * Không có đơn vị xử lý nghĩa là Staff tự làm. Minh chứng vẫn bắt buộc để
+         * Manager có căn cứ nghiệm thu, chỉ khác là gắn thẳng vào sự vụ.
+         */
+        const incidentDocuments = await incidentManagementApi.getIncidentCompletionDocuments(
+          incidentId,
+          { signal },
+        );
+        if (signal?.aborted) return;
         setAssignment(null);
-        setDocuments([]);
-        setState(STAFF_INCIDENT_EVIDENCE_STATE.NO_PROVIDER);
+        setMode('direct');
+        setDocuments(validateEvidenceCollection(incidentDocuments, null, incidentId));
+        setState(STAFF_INCIDENT_EVIDENCE_STATE.READY);
         return;
       }
 
@@ -256,6 +273,7 @@ export default function StaffIncidentEvidencePanel({
       );
       if (signal?.aborted) return;
       setAssignment(currentAssignment);
+      setMode('provider');
       setDocuments(validateEvidenceCollection(result, assignmentId, incidentId));
       setState(STAFF_INCIDENT_EVIDENCE_STATE.READY);
     } catch (error) {
@@ -274,12 +292,13 @@ export default function StaffIncidentEvidencePanel({
   useEffect(() => {
     onEvidenceSnapshotChange?.({
       assignment,
+      mode,
       documents,
       selectedFileCount: selectedFiles.length,
       state,
       uploading: mutationBusy,
     });
-  }, [assignment, documents, mutationBusy, onEvidenceSnapshotChange, selectedFiles.length, state]);
+  }, [assignment, documents, mode, mutationBusy, onEvidenceSnapshotChange, selectedFiles.length, state]);
 
   const resetSelection = () => {
     setSelectedFiles([]);
@@ -291,7 +310,7 @@ export default function StaffIncidentEvidencePanel({
     if (mutationBusy || !canUpload || selectedFiles.length === 0) return;
 
     const assignmentId = positiveIdentifier(assignment?.providerAssignmentId);
-    if (!assignmentId || !sameIdentifier(assignment?.incidentId, incidentId)) {
+    if (!directMode && (!assignmentId || !sameIdentifier(assignment?.incidentId, incidentId))) {
       setMessage({ type: 'error', text: 'Chưa có liên kết đơn vị xử lý hợp lệ cho sự vụ.' });
       return;
     }
@@ -307,7 +326,12 @@ export default function StaffIncidentEvidencePanel({
       if (!latestIncident || !canManageIncidentExecution(latestIncident, user)) {
         throw new Error('Bạn không còn quyền thêm minh chứng cho sự vụ này.');
       }
-      if (!latestAssignment
+      if (directMode) {
+        // Sự vụ vừa được giao cho đơn vị thì minh chứng phải đi theo phân công đó.
+        if (latestAssignment) {
+          throw new Error('Sự vụ vừa có đơn vị xử lý. Vui lòng tải lại trang.');
+        }
+      } else if (!latestAssignment
         || !sameIdentifier(latestAssignment?.incidentId, incidentId)
         || positiveIdentifier(latestAssignment?.providerAssignmentId) !== assignmentId) {
         throw new Error('Đơn vị xử lý đã thay đổi. Vui lòng tải lại trang.');
@@ -317,12 +341,18 @@ export default function StaffIncidentEvidencePanel({
       if (description.trim()) formData.append('Description', description.trim());
       selectedFiles.forEach((file) => formData.append('Files', file, file.name));
 
-      const uploaded = await incidentManagementApi.uploadProviderAssignmentCompletionDocuments(
-        assignmentId,
-        formData,
-      );
+      const uploaded = directMode
+        ? await incidentManagementApi.uploadIncidentCompletionDocuments(incidentId, formData)
+        : await incidentManagementApi.uploadProviderAssignmentCompletionDocuments(
+          assignmentId,
+          formData,
+        );
       uploadCompleted = true;
-      const validated = validateEvidenceCollection(uploaded, assignmentId, incidentId);
+      const validated = validateEvidenceCollection(
+        uploaded,
+        directMode ? null : assignmentId,
+        incidentId,
+      );
       setAssignment(latestAssignment);
       setDocuments((current) => {
         const byId = new Map(current.map((document) => [document?.completionDocumentId, document]));
@@ -335,8 +365,14 @@ export default function StaffIncidentEvidencePanel({
       setMessage({ type: 'success', text: 'Đã tải minh chứng lên.' });
 
       try {
-        const refreshed = await incidentManagementApi.getProviderAssignmentCompletionDocuments(assignmentId);
-        setDocuments(validateEvidenceCollection(refreshed, assignmentId, incidentId));
+        const refreshed = directMode
+          ? await incidentManagementApi.getIncidentCompletionDocuments(incidentId)
+          : await incidentManagementApi.getProviderAssignmentCompletionDocuments(assignmentId);
+        setDocuments(validateEvidenceCollection(
+          refreshed,
+          directMode ? null : assignmentId,
+          incidentId,
+        ));
       } catch {
         setMessage({ type: 'success', text: 'Đã tải minh chứng lên. Danh sách mới nhất sẽ được cập nhật khi bạn thử lại.' });
       }
@@ -361,7 +397,7 @@ export default function StaffIncidentEvidencePanel({
     if (mutationBusy || !canClearAll) return;
 
     const assignmentId = positiveIdentifier(assignment?.providerAssignmentId);
-    if (!assignmentId || !sameIdentifier(assignment?.incidentId, incidentId)) {
+    if (!directMode && (!assignmentId || !sameIdentifier(assignment?.incidentId, incidentId))) {
       setClearDialogOpen(false);
       setMessage({ type: 'error', text: 'Chưa có liên kết đơn vị xử lý hợp lệ cho sự vụ.' });
       return;
@@ -380,13 +416,21 @@ export default function StaffIncidentEvidencePanel({
         || normalizeStatus(latestIncident?.status) !== 'needrework') {
         throw new Error('Sự vụ không còn ở trạng thái Cần xử lý lại hoặc bạn không còn quyền cập nhật.');
       }
-      if (!latestAssignment
+      if (directMode) {
+        if (latestAssignment) {
+          throw new Error('Sự vụ vừa có đơn vị xử lý. Vui lòng tải lại trang.');
+        }
+      } else if (!latestAssignment
         || !sameIdentifier(latestAssignment?.incidentId, incidentId)
         || positiveIdentifier(latestAssignment?.providerAssignmentId) !== assignmentId) {
         throw new Error('Đơn vị xử lý đã thay đổi. Vui lòng tải lại trang.');
       }
 
-      await incidentManagementApi.deleteProviderAssignmentCompletionDocuments(assignmentId);
+      if (directMode) {
+        await incidentManagementApi.deleteIncidentCompletionDocuments(incidentId);
+      } else {
+        await incidentManagementApi.deleteProviderAssignmentCompletionDocuments(assignmentId);
+      }
       deleteCompleted = true;
       setDocuments([]);
       setAssignment(latestAssignment);
@@ -395,8 +439,14 @@ export default function StaffIncidentEvidencePanel({
       setMessage({ type: 'success', text: 'Đã xóa toàn bộ minh chứng cũ.' });
 
       try {
-        const refreshed = await incidentManagementApi.getProviderAssignmentCompletionDocuments(assignmentId);
-        setDocuments(validateEvidenceCollection(refreshed, assignmentId, incidentId));
+        const refreshed = directMode
+          ? await incidentManagementApi.getIncidentCompletionDocuments(incidentId)
+          : await incidentManagementApi.getProviderAssignmentCompletionDocuments(assignmentId);
+        setDocuments(validateEvidenceCollection(
+          refreshed,
+          directMode ? null : assignmentId,
+          incidentId,
+        ));
       } catch {
         setMessage({ type: 'success', text: 'Đã xóa toàn bộ minh chứng cũ. Danh sách mới nhất sẽ được cập nhật khi bạn thử lại.' });
       }
@@ -425,7 +475,11 @@ export default function StaffIncidentEvidencePanel({
             </span>
             <div className="min-w-0">
               <h2 id="incident-evidence-title" className="admin-section-title">Tiếp theo · Minh chứng xử lý</h2>
-              <p className="admin-section-description mt-1">Ảnh và tài liệu do Staff bổ sung cho kết quả thực hiện của sự vụ.</p>
+              <p className="admin-section-description mt-1">
+                {directMode
+                  ? 'Ảnh và tài liệu hiện trường do Staff tự xử lý bổ sung, làm căn cứ để Manager nghiệm thu.'
+                  : 'Ảnh và tài liệu do Staff bổ sung cho kết quả thực hiện của sự vụ.'}
+              </p>
             </div>
           </div>
           {state === STAFF_INCIDENT_EVIDENCE_STATE.READY ? (

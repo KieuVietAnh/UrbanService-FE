@@ -346,6 +346,14 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
       Object.freeze({ from: 'Reported', to: 'InProgress' }),
     ]),
   }),
+  // Minh chứng cho sự vụ Staff tự xử lý, không qua đơn vị bên thứ ba.
+  incidentCompletionEvidence: Object.freeze({
+    available: true,
+    endpoint: `${INCIDENT_DETAIL_ENDPOINT}/completion-documents`,
+    scope: 'incident',
+    requiresNoProviderAssignment: true,
+    clearAllAvailable: true,
+  }),
   completionEvidence: Object.freeze({
     available: true,
     endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/completion-documents`,
@@ -595,6 +603,33 @@ export const incidentManagementApi = Object.freeze({
     // the platform must generate the multipart boundary itself.
     const response = await axiosClient.post(endpoint, formData);
     return normalizeIncidentExecutionCollection(response);
+  },
+
+  /*
+   * Minh chứng của sự vụ Staff tự xử lý.
+   *
+   * Sự vụ loại này không có phân công đơn vị nên không dùng được bộ endpoint theo
+   * providerAssignmentId; định danh phải là chính sự vụ.
+   */
+  async getIncidentCompletionDocuments(incidentId, options = {}) {
+    const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
+    const response = await axiosClient.get(`${detailEndpoint}/completion-documents`, {
+      signal: options?.signal,
+    });
+    return normalizeIncidentExecutionCollection(response);
+  },
+
+  async uploadIncidentCompletionDocuments(incidentId, formData) {
+    const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
+    if (!(formData instanceof FormData)) throw new TypeError('Completion evidence must use FormData');
+    // Client dùng chung bỏ header JSON khi gặp FormData để trình duyệt tự sinh boundary.
+    const response = await axiosClient.post(`${detailEndpoint}/completion-documents`, formData);
+    return normalizeIncidentExecutionCollection(response);
+  },
+
+  async deleteIncidentCompletionDocuments(incidentId) {
+    const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
+    await axiosClient.delete(`${detailEndpoint}/completion-documents`);
   },
 
   async deleteProviderAssignmentCompletionDocuments(providerAssignmentId) {
