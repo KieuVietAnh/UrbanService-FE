@@ -562,11 +562,15 @@ test('Incident submit requires the execution narrative, supports empty 200 and p
 test('management mutation capabilities expose update, merge, and report-link contracts', () => {
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.metadataUpdate.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.metadataUpdate.method, 'PATCH');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.deletion.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.deletion.method, 'DELETE');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.deletion.requiredRole, 'SYSTEMADMIN');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.merge.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.merge.endpoint, '/api/management/incidents/{incidentId}/merge');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.reportLinks.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.reportLinks.supportsSoftUnlink, true);
   assert.equal(typeof incidentManagementApi.updateIncident, 'function');
+  assert.equal(typeof incidentManagementApi.deleteIncident, 'function');
   assert.equal(typeof incidentManagementApi.updateIncidentStatus, 'function');
   assert.equal(typeof incidentManagementApi.mergeIncident, 'function');
   assert.equal(typeof incidentManagementApi.linkReport, 'function');
@@ -584,12 +588,14 @@ test('incident management mutations call the documented endpoints', async () => 
     await incidentManagementApi.mergeIncident('incident-1', { targetIncidentId: 'incident-2', reason: null });
     await incidentManagementApi.linkReport('incident-1', { feedbackId: 'feedback-1', linkMethod: 'Manual' });
     await incidentManagementApi.unlinkReport('incident-1', 'feedback-1');
+    assert.equal(await incidentManagementApi.deleteIncident('incident-1'), undefined);
 
     assert.equal(patchMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1');
     assert.equal(patchMock.mock.calls[1].arguments[0], '/api/management/incidents/incident-1/status');
     assert.equal(postMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1/merge');
     assert.equal(postMock.mock.calls[1].arguments[0], '/api/management/incidents/incident-1/reports');
     assert.equal(deleteMock.mock.calls[0].arguments[0], '/api/management/incidents/incident-1/reports/feedback-1');
+    assert.equal(deleteMock.mock.calls[1].arguments[0], '/api/management/incidents/incident-1');
   } finally {
     patchMock.mock.restore();
     postMock.mock.restore();

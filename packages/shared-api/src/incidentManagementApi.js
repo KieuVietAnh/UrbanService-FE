@@ -392,6 +392,12 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
     endpoint: INCIDENT_DETAIL_ENDPOINT,
     method: 'PATCH',
   }),
+  deletion: Object.freeze({
+    available: true,
+    endpoint: INCIDENT_DETAIL_ENDPOINT,
+    method: 'DELETE',
+    requiredRole: 'SYSTEMADMIN',
+  }),
   merge: Object.freeze({
     available: true,
     endpoint: INCIDENT_MERGE_ENDPOINT,
@@ -423,6 +429,12 @@ export const incidentManagementApi = Object.freeze({
     });
 
     return normalizeIncidentDetailResponse(response);
+  },
+
+  async deleteIncident(incidentId, options = {}) {
+    await axiosClient.delete(buildIncidentDetailEndpoint(incidentId), {
+      signal: options?.signal,
+    });
   },
 
   async getIncidentTimeline(incidentId, params = {}, options = {}) {

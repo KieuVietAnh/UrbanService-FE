@@ -509,6 +509,7 @@ export const IncidentDetailPage = () => {
   const location = useLocation();
   const { user } = useAuth();
   const currentRole = normalizeRole(user?.role ?? user?.roleName ?? user?.roles?.[0]);
+  const isAdmin = currentRole === 'administrator';
   const adminReadOnly = isAdminIncidentReadOnly(currentRole);
   const requestIdRef = useRef(0);
   const resolutionRequestIdRef = useRef(0);
@@ -559,6 +560,7 @@ export const IncidentDetailPage = () => {
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [actionError, setActionError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const [editForm, setEditForm] = useState({ title: '', description: '', priority: '', severity: '' });
   const [statusValue, setStatusValue] = useState('');
   const [assigneeCandidates, setAssigneeCandidates] = useState([]);
@@ -701,6 +703,42 @@ export const IncidentDetailPage = () => {
       : typeof location.state?.from === 'string' && location.state.from.startsWith('/analytics/sentiment')
         ? 'Quay lại Cảm xúc người dân'
         : 'Quay lại danh sách';
+
+  const openDeleteDialog = useCallback(() => {
+    if (!isAdmin) return;
+
+    const currentId = incident?.incidentId ?? incident?.id ?? incidentId;
+    setDeleteError('');
+    setConfirmAction({
+      type: 'delete',
+      title: 'Xóa vĩnh viễn sự vụ này?',
+      description: `Toàn bộ dữ liệu xử lý của ${formatIncidentId(currentId)}, các sự vụ đã gộp vào nó, phân công nhà cung cấp, kết quả, chứng từ, SLA, bình luận, theo dõi và thông báo sẽ bị xóa. Các phản ánh gốc của người dân vẫn được giữ lại. Thao tác này không thể hoàn tác.`,
+    });
+  }, [incident, incidentId, isAdmin]);
+
+  const confirmDeleteIncident = useCallback(async () => {
+    if (!isAdmin || actionLoading === 'delete') return;
+
+    const currentId = incident?.incidentId ?? incident?.id ?? incidentId;
+    setActionLoading('delete');
+    setDeleteError('');
+
+    try {
+      await incidentManagementApi.deleteIncident(currentId);
+      setConfirmAction(null);
+      navigate('/management/incidents', {
+        replace: true,
+        state: { deletedIncidentId: String(currentId) },
+      });
+    } catch (deleteIncidentError) {
+      setDeleteError(extractApiErrorMessage(
+        deleteIncidentError,
+        'Không thể xóa sự vụ. Vui lòng thử lại.',
+      ));
+    } finally {
+      setActionLoading('');
+    }
+  }, [actionLoading, incident, incidentId, isAdmin, navigate]);
 
   const reports = useMemo(() => {
     if (Array.isArray(incident?.reports)) return incident.reports;
@@ -1642,9 +1680,20 @@ export const IncidentDetailPage = () => {
             <Lucide.Eye size={18} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Chế độ giám sát chỉ đọc</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Quản trị viên theo dõi toàn hệ thống nhưng không thực hiện phân công, gộp, đổi trạng thái hay thay đổi liên kết phản ánh thay Manager.</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Chế độ giám sát quản trị</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">Quản trị viên không thực hiện phân công, gộp, đổi trạng thái hay thay đổi liên kết phản ánh thay Manager. Quyền xóa sự vụ chỉ dùng để dọn dữ liệu toàn hệ thống.</p>
           </div>
+          <button
+            type="button"
+            onClick={openDeleteDialog}
+            disabled={actionLoading === 'delete'}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionLoading === 'delete'
+              ? <Lucide.LoaderCircle size={15} className="animate-spin" />
+              : <Lucide.Trash2 size={15} />}
+            Xóa sự vụ
+          </button>
         </section>
       ) : isApprovalView ? (
         <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
@@ -2509,15 +2558,24 @@ export const IncidentDetailPage = () => {
       ) : null}
 
       <ManagerConfirmDialog
-        open={!adminReadOnly && Boolean(confirmAction)}
+        open={Boolean(confirmAction) && (confirmAction?.type === 'delete' ? isAdmin : !adminReadOnly)}
         title={confirmAction?.title || 'Xác nhận thao tác'}
         description={confirmAction?.description}
-        confirmLabel={confirmAction?.type === 'merge' ? 'Gộp sự vụ' : confirmAction?.type === 'link-report' ? 'Xác nhận liên kết' : 'Gỡ liên kết'}
+        confirmLabel={confirmAction?.type === 'delete' ? 'Xóa vĩnh viễn' : confirmAction?.type === 'merge' ? 'Gộp sự vụ' : confirmAction?.type === 'link-report' ? 'Xác nhận liên kết' : 'Gỡ liên kết'}
         tone={confirmAction?.type === 'merge' || confirmAction?.type === 'link-report' ? 'warning' : 'danger'}
-        loading={actionLoading === 'merge' || Boolean(unlinkingFeedbackId) || Boolean(linkingFeedbackId)}
-        onCancel={() => setConfirmAction(null)}
-        onConfirm={confirmAction?.type === 'merge' ? confirmMergeIncident : confirmAction?.type === 'link-report' ? confirmLinkReport : confirmUnlinkReport}
-      />
+        loading={actionLoading === 'delete' || actionLoading === 'merge' || Boolean(unlinkingFeedbackId) || Boolean(linkingFeedbackId)}
+        onCancel={() => {
+          setConfirmAction(null);
+          setDeleteError('');
+        }}
+        onConfirm={confirmAction?.type === 'delete' ? confirmDeleteIncident : confirmAction?.type === 'merge' ? confirmMergeIncident : confirmAction?.type === 'link-report' ? confirmLinkReport : confirmUnlinkReport}
+      >
+        {confirmAction?.type === 'delete' && deleteError ? (
+          <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+            {deleteError}
+          </p>
+        ) : null}
+      </ManagerConfirmDialog>
 
       {!adminReadOnly && mergeModalOpen ? createPortal(
         <div className="fixed inset-0 z-[11000] flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="merge-incident-title">
