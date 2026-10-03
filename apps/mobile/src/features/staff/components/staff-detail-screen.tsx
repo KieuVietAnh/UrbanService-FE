@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Linking, RefreshControl, ScrollView, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth';
-import { staffApi, staffKeys } from '../staff-api';
+import { staffApi, staffKeys, staffQueryRetry } from '../staff-api';
+import { useRefreshOnReturn } from '../use-refresh-on-return';
 import { executionApi, executionKeys } from '../staff-execution-api';
 import { buildExecutionSteps, executionDraftKey, parseExecutionDraft, resolveExecutionMode, type ExecutionDraft } from '../staff-execution-flow-models';
 import { sameIncident } from '../staff-execution-models';
@@ -26,11 +27,11 @@ function Metadata({ rows }: { rows: [string, string][] }) {
 function IncidentTimeline({ id }: { id: string }) {
   const userId = useAuthStore((state) => state.user?.id || '');
   const [pageNumber, setPageNumber] = useState(1);
-  const query = useQuery({ queryKey: staffKeys.timeline(userId, id, pageNumber), queryFn: ({ signal }) => staffApi.timeline(id, pageNumber, signal), retry: 1 });
-  useFocusEffect(useCallback(() => { void query.refetch(); }, [query.refetch]));
+  const query = useQuery({ queryKey: staffKeys.timeline(userId, id, pageNumber), queryFn: ({ signal }) => staffApi.timeline(id, pageNumber, signal), retry: staffQueryRetry });
+  useRefreshOnReturn(query.refetch);
   return <Section title="Lịch sử sự vụ">
     <Label muted size={13}>Các hoạt động do hệ thống ghi nhận, theo dữ liệu Incident.</Label>
-    <QueryState pending={query.isPending} error={query.error} empty={!query.isPending && !query.error && !query.data?.items.length && 'Chưa có hoạt động được ghi nhận.'} retry={() => { void query.refetch(); }} />
+    <QueryState pending={query.isPending} error={query.data ? undefined : query.error} empty={!query.isPending && (!query.error || query.data) && !query.data?.items.length && 'Chưa có hoạt động được ghi nhận.'} retry={() => { void query.refetch(); }} />
     {query.data?.items.map((event, index) => <View key={event.id || event.createdAt + '-' + index} style={{ flexDirection: 'row', gap: 14 }}>
       <View style={{ alignItems: 'center', width: 12 }}><View style={{ width: 10, height: 10, marginTop: 6, borderRadius: 5, backgroundColor: colors.primary }} /><View style={{ width: 1, flex: 1, minHeight: 70, backgroundColor: colors.border, marginTop: 6 }} /></View>
       <View style={{ flex: 1, gap: 5, paddingBottom: 18 }}><Label size={12} muted>{formatDate(event.createdAt)}</Label><Label bold>{event.title}</Label>{event.description ? <Label size={14}>{event.description}</Label> : null}<Label muted size={12}>{event.actor || 'Hệ thống'}</Label></View>
@@ -91,12 +92,14 @@ function ExecutionOverview({ item, userId }: { item: StaffRecord; userId: string
       return { assignment, contacts, evidence, resolutions };
     },
     enabled: !!item.id && !!userId,
-    retry: 1,
+    retry: staffQueryRetry,
   });
   const loadDraft = useCallback(() => {
     void AsyncStorage.getItem(executionDraftKey(userId, item.id)).then((value) => setDraft(parseExecutionDraft(value))).catch(() => setDraft(parseExecutionDraft(null)));
   }, [item.id, userId]);
-  useFocusEffect(useCallback(() => { loadDraft(); void summary.refetch(); }, [loadDraft, summary.refetch]));
+  useEffect(() => { loadDraft(); }, [loadDraft]);
+  const refreshSummary = useCallback(() => { loadDraft(); void summary.refetch(); }, [loadDraft, summary.refetch]);
+  useRefreshOnReturn(refreshSummary);
   const mode = resolveExecutionMode({ hasAssignment: !!summary.data?.assignment, status: item.status, draftMode: draft?.mode });
   const steps = useMemo(() => mode ? buildExecutionSteps({
     mode, status: item.status, hasAssignment: !!summary.data?.assignment,
@@ -108,7 +111,7 @@ function ExecutionOverview({ item, userId }: { item: StaffRecord; userId: string
   const editableStatus = ['assigned', 'inprogress', 'needrework'].includes(status);
   const cta = status === 'needrework' ? 'Xử lý lại' : status === 'assigned' ? 'Bắt đầu xử lý' : status === 'inprogress' ? 'Tiếp tục xử lý' : 'Xem tiến độ xử lý';
   return <View style={{ gap: 14 }}>
-    <QueryState pending={summary.isPending || draft === null} error={summary.error} retry={() => { loadDraft(); void summary.refetch(); }} />
+    <QueryState pending={summary.isPending || draft === null} error={summary.data ? undefined : summary.error} retry={() => { loadDraft(); void summary.refetch(); }} />
     {!!steps.length && <View style={{ ...panelStyle, paddingBottom: 4 }}><StaffExecutionProgress steps={steps} /></View>}
     {!mode && status === 'assigned' && <Notice>Khi bắt đầu, bạn sẽ chọn “Phối hợp đơn vị” hoặc “Tự xử lý”; ứng dụng sẽ dẫn từng bước trong một flow.</Notice>}
     {(editableStatus || summary.isSuccess) && <NavigationRow href={(`/(staff)/staff/incidents/${encodeURIComponent(item.id)}/execution`) as Href} label={cta} description={editableStatus ? 'Tiếp tục đúng bước đang dở; dữ liệu đã lưu không bị mất.' : 'Xem các bước và kết quả đã gửi.'} icon="check" primary />}
@@ -144,15 +147,16 @@ export function StaffDetailScreen({ incident = false }: { incident?: boolean }) 
   const scroll = useRef<ScrollView>(null);
   const [tab, setTab] = useState<DetailTab>(tabValue(params.tab));
   useEffect(() => { setTab(tabValue(params.tab)); }, [id, params.tab]);
-  const query = useQuery({ queryKey: incident ? staffKeys.incident(userId, id) : staffKeys.feedback(userId, id), queryFn: ({ signal }) => incident ? staffApi.incident(id, signal) : staffApi.feedback(id, signal), retry: 1 });
-  useFocusEffect(useCallback(() => { void query.refetch(); }, [query.refetch]));
+  const query = useQuery({ queryKey: incident ? staffKeys.incident(userId, id) : staffKeys.feedback(userId, id), queryFn: ({ signal }) => incident ? staffApi.incident(id, signal) : staffApi.feedback(id, signal), retry: staffQueryRetry });
+  useRefreshOnReturn(query.refetch);
   const item = query.data;
   const tabs: { value: DetailTab; label: string }[] = [{ value: 'overview', label: 'Tổng quan' }, { value: 'reports', label: 'Reports' + (item?.reportCount !== null && item?.reportCount !== undefined ? ' (' + item.reportCount + ')' : '') }, { value: 'timeline', label: 'Lịch sử' }];
   return <>
     <Stack.Screen options={{ title: incident ? 'Chi tiết sự vụ' : 'Chi tiết Report' }} />
     <StaffScrollView ref={scroll} keyboardAware={false} refreshControl={<RefreshControl refreshing={query.isRefetching || (incident && tab === 'timeline' && timelineFetching > 0)} onRefresh={() => { void query.refetch(); if (incident) void cache.invalidateQueries({ queryKey: timelineKey }); }} />}>
       <BackLink href={'/(staff)/staff/(tabs)/incidents' as Href} label="Sự vụ của tôi" />
-      <QueryState pending={query.isPending} error={query.error} retry={() => { void query.refetch(); }} />
+      <QueryState pending={query.isPending} error={query.data ? undefined : query.error} retry={() => { void query.refetch(); }} />
+      {query.data && query.error ? <Notice error>Chưa thể cập nhật dữ liệu mới. Chi tiết gần nhất vẫn đang được hiển thị.</Notice> : null}
       {item && <>
         <PageHeading eyebrow={recordCode(item.id, incident)} title={item.title} accessory={<View style={{ gap: 12 }}><Status value={item.status} />{incident && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}><Severity value={item.severity} /><Label muted size={12}>{item.reportCount !== null ? item.reportCount + ' phản ánh liên quan' : 'Chưa có số phản ánh'}</Label></View>}</View>} />
         {incident ? <>

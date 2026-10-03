@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth';
-import { staffApi, staffKeys } from '../staff-api';
+import { staffApi, staffKeys, staffQueryRetry } from '../staff-api';
 import { type StaffRecord } from '../staff-models';
-import { colors, contentStyle, Field, Filters, Label, panelStyle, Pagination, QueryState, RecordCard } from './staff-ui';
+import { colors, contentStyle, Field, Filters, Label, Notice, panelStyle, Pagination, QueryState, RecordCard } from './staff-ui';
 import { useStaffContentInsets } from './staff-scroll-view';
+import { useRefreshOnReturn } from '../use-refresh-on-return';
 
 type Mode = 'incidents' | 'feedbacks' | 'conversations';
 type ListParams = { search: string; status: string; priority: string; severity: string; areaId: string; categoryId: string; pageNumber: number };
@@ -38,14 +39,14 @@ export function StaffListScreen({ mode }: { mode: Mode }) {
   const query = useQuery({
     queryKey: isIncident ? staffKeys.incidents(userId, params) : staffKeys.feedbacks(userId, reportParams),
     queryFn: ({ signal }) => isIncident ? staffApi.incidents(userId, params, signal) : staffApi.feedbacks(reportParams, signal),
-    retry: 1,
+    retry: staffQueryRetry,
   });
   const lookups = useQuery({
     queryKey: staffKeys.lookups(userId),
     queryFn: ({ signal }) => staffApi.lookups(signal),
     enabled: isIncident && advancedOpen,
     staleTime: 5 * 60 * 1000,
-    retry: 1,
+    retry: staffQueryRetry,
   });
   useEffect(() => {
     const timer = setTimeout(() => setParams((current) => current.search === draftSearch.trim() ? current : { ...current, search: draftSearch.trim(), pageNumber: 1 }), 350);
@@ -58,7 +59,7 @@ export function StaffListScreen({ mode }: { mode: Mode }) {
     setDraftSearch(''); setParams({ ...emptyParams, status: routeStatus }); setAdvancedOpen(false);
     router.setParams({ source: '' });
   }, [routeParams.source, routeStatus, router]);
-  useFocusEffect(useCallback(() => { void query.refetch(); }, [query.refetch]));
+  useRefreshOnReturn(query.refetch);
 
   const changeFilter = (key: Exclude<keyof ListParams, 'pageNumber'>, value: string) => {
     setParams((current) => ({ ...current, [key]: value, pageNumber: 1 }));
@@ -105,11 +106,12 @@ export function StaffListScreen({ mode }: { mode: Mode }) {
           {query.data && <View style={{ flexGrow: 1, flexShrink: 1, paddingVertical: 8 }}><Label muted size={13} style={{ fontVariant: ['tabular-nums'] }}>{query.data.totalItems} {isIncident ? 'sự vụ' : 'Report'}{query.isFetching ? ' · Đang cập nhật…' : ''}</Label></View>}
           {hasFilters && <Pressable accessibilityRole="button" accessibilityLabel="Xóa bộ lọc" onPress={resetFilters} android_ripple={{ color: colors.primarySoft, borderless: true }} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8, borderRadius: 8, backgroundColor: 'transparent' }}><Label bold size={13} style={{ color: colors.primary }}>Xóa bộ lọc</Label></Pressable>}
         </View>}
-        <QueryState error={query.error} pending={query.isPending} retry={() => { void query.refetch(); }} />
+        <QueryState error={query.data ? undefined : query.error} pending={query.isPending} retry={() => { void query.refetch(); }} />
+        {query.data && query.error ? <Notice error>Chưa thể cập nhật dữ liệu mới. Danh sách gần nhất vẫn được giữ lại để bạn tiếp tục làm việc.</Notice> : null}
       </View>}
       renderItem={({ item }) => <RecordCard item={item} incident={isIncident} chat={mode === 'conversations'} />}
       ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-      ListEmptyComponent={!query.isPending && !query.error ? <QueryState empty={hasFilters ? 'Không có hồ sơ phù hợp. Hãy thử bộ lọc khác hoặc xóa bộ lọc.' : isIncident ? 'Bạn chưa được phân công sự vụ nào.' : 'Chưa có Report.'} retry={() => { void query.refetch(); }} /> : null}
+      ListEmptyComponent={!query.isPending && (!query.error || query.data) ? <QueryState empty={hasFilters ? 'Không có hồ sơ phù hợp. Hãy thử bộ lọc khác hoặc xóa bộ lọc.' : isIncident ? 'Bạn chưa được phân công sự vụ nào.' : 'Chưa có Report.'} retry={() => { void query.refetch(); }} /> : null}
       ListFooterComponent={<View style={{ paddingTop: 20 }}><Pagination page={query.data} busy={query.isFetching} onChange={changePage} /></View>}
     />
   </>;

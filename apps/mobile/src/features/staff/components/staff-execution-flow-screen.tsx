@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Linking, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { Stack, useLocalSearchParams, type Href } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,8 @@ import { normalizeProviderReportStatus } from '@urbanmind/shared-api';
 import { APP_ROLES } from '@urbanmind/shared-types';
 import { useAuthStore } from '@/features/auth';
 import { canAccessMobileWorkspace } from '@/features/auth/mobile-access';
-import { staffApi, staffError, staffKeys } from '../staff-api';
+import { staffApi, staffError, staffKeys, staffQueryRetry } from '../staff-api';
+import { useRefreshOnReturn } from '../use-refresh-on-return';
 import { executionApi, executionKeys } from '../staff-execution-api';
 import {
   buildExecutionSteps, currentExecutionStep, emptyExecutionDraft, executionDraftKey,
@@ -137,9 +138,9 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
 
   const incidentKey = staffKeys.incident(userId, id);
   const assignmentKey = executionKeys.assignment(userId, id);
-  const incident = useQuery({ queryKey: incidentKey, queryFn: ({ signal }) => staffApi.incident(id, signal), enabled: bootstrapReady, retry: 1 });
-  const readable = incident.isSuccess && !incident.error;
-  const assignment = useQuery({ queryKey: assignmentKey, queryFn: ({ signal }) => executionApi.assignment(id, signal), enabled: readable, retry: 1 });
+  const incident = useQuery({ queryKey: incidentKey, queryFn: ({ signal }) => staffApi.incident(id, signal), enabled: bootstrapReady, retry: staffQueryRetry });
+  const readable = Boolean(incident.data);
+  const assignment = useQuery({ queryKey: assignmentKey, queryFn: ({ signal }) => executionApi.assignment(id, signal), enabled: readable, retry: staffQueryRetry });
   const assignmentId = assignment.data?.providerAssignmentId || 0;
   const routeMode: ExecutionMode | null = initialStep === 'provider'
     ? 'provider'
@@ -155,22 +156,22 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   const candidates = useQuery({
     queryKey: executionKeys.candidates(userId, id),
     queryFn: ({ signal }) => executionApi.candidates(id, signal),
-    enabled: readable && assignment.isSuccess && !assignment.data && canEdit && mode === 'provider', retry: 1,
+    enabled: readable && assignment.isSuccess && !assignment.data && canEdit && mode === 'provider', retry: staffQueryRetry,
   });
   const contacts = useQuery({
     queryKey: executionKeys.contacts(userId, id, assignmentId),
     queryFn: ({ signal }) => executionApi.contacts(assignmentId, signal),
-    enabled: readable && assignmentId > 0, retry: 1,
+    enabled: readable && assignmentId > 0, retry: staffQueryRetry,
   });
   const evidence = useQuery({
     queryKey: executionKeys.evidence(userId, id, assignmentId),
     queryFn: ({ signal }) => executionApi.evidence(assignmentId, signal),
-    enabled: readable && assignmentId > 0, retry: 1,
+    enabled: readable && assignmentId > 0, retry: staffQueryRetry,
   });
   const history = useQuery({
     queryKey: executionKeys.resolutions(userId, id),
     queryFn: ({ signal }) => executionApi.resolutions(id, signal),
-    enabled: readable, retry: 1,
+    enabled: readable, retry: staffQueryRetry,
   });
 
   const steps = useMemo(() => mode ? buildExecutionSteps({
@@ -237,7 +238,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
       cache.invalidateQueries({ queryKey: ['staff', userId, 'timeline', id] }),
     ]);
   }, [cache, id, incidentKey, userId]);
-  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
+  useRefreshOnReturn(refresh);
 
   const isCurrentSession = () => {
     const current = useAuthStore.getState().user;
@@ -478,7 +479,14 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     <Stack.Screen options={{ title: currentStatus === 'needrework' ? 'Xử lý lại sự vụ' : 'Xử lý sự vụ' }} />
     <StaffScrollView ref={scroll} refreshControl={<RefreshControl refreshing={incident.isRefetching || assignment.isRefetching || contacts.isRefetching || evidence.isRefetching || history.isRefetching} onRefresh={() => { if (!operation.current) void refresh(); }} />}>
       <BackLink href={(`/(staff)/staff/incidents/${encodeURIComponent(id)}`) as Href} label="Chi tiết sự vụ" />
-      <QueryState pending={queryPending} error={bootstrapError || incident.error || assignment.error} retry={() => { void refresh(); }} />
+      <QueryState
+        pending={queryPending}
+        error={bootstrapError || (!incident.data ? incident.error : undefined) || (assignment.data === undefined ? assignment.error : undefined)}
+        retry={() => { void refresh(); }}
+      />
+      {(incident.data && incident.error) || (assignment.data !== undefined && assignment.error) ? (
+        <Notice error>Dữ liệu mới chưa đồng bộ được. Tiến trình gần nhất vẫn được giữ lại để bạn tiếp tục xử lý.</Notice>
+      ) : null}
       {readable && hydrated && incident.data && <>
         <PageHeading eyebrow={recordCode(id, true)} title={incident.data.title} accessory={<Status value={incident.data.status} />} description={currentStatus === 'needrework' ? 'Bổ sung phần Manager yêu cầu và gửi lại trong cùng một luồng.' : 'Hoàn thành lần lượt từng bước; tiến độ được lưu khi bạn rời màn hình.'} />
         {error ? <Notice error>{error}</Notice> : null}

@@ -15,6 +15,16 @@ export const staffKeys = {
   messages: (userId: string, id: string) => ['staff', userId, 'messages', id] as const,
 };
 
+export function staffQueryRetry(failureCount: number, error: unknown) {
+  const record = asRecord(error);
+  const status = Number(asRecord(record.response).status ?? record.status);
+
+  // Retrying validation/auth/conflict/rate-limit responses cannot succeed by
+  // repeating the same request and only creates a larger request burst.
+  if (Number.isFinite(status) && status >= 400 && status < 500) return false;
+  return failureCount < 1;
+}
+
 export function staffError(error: unknown) {
   const record = asRecord(error);
   const status = Number(asRecord(record.response).status ?? record.status);

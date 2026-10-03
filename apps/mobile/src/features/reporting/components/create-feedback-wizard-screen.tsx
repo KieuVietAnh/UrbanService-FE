@@ -37,6 +37,12 @@ import {
   searchVietnameseAddresses,
   type AddressSuggestion,
 } from '@/features/reporting/services/address-geocoding';
+import {
+  areaBoundaryValue,
+  boundaryViewbox,
+  extractBoundaryPolygons,
+  flattenBoundaryCoordinates,
+} from '@/features/reporting/services/area-boundary';
 import FeedbackLocationPicker from './feedback-location-picker';
 import { getUserFacingError } from '@/utils/user-facing-error';
 
@@ -195,80 +201,24 @@ function StepLocation({
   const [searchingAddress, setSearchingAddress] = useState(false);
   const [addressSearchMessage, setAddressSearchMessage] = useState('');
   const selectedAddressRef = useRef('');
-  const toast = useToast();
-
-  const normalizeBoundary = (boundaryGeoJson: any) => {
-    if (!boundaryGeoJson) return null;
-    if (typeof boundaryGeoJson === 'object') return boundaryGeoJson;
-    if (typeof boundaryGeoJson !== 'string') return null;
-    const trimmed = boundaryGeoJson.trim();
-    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return null;
-    // try several common serializations
-    const candidates = [trimmed, trimmed.replace(/""/g, '"'), trimmed.replace(/\\"/g, '"')];
-    for (const c of candidates) {
-      try {
-        const parsed = JSON.parse(c);
-        if (parsed) return parsed;
-      } catch (e) {
-        // continue
-
-      }
-    }
-    return null;
-  };
-
-  const extractCoordsFromGeoJson = (geo: any) => {
-    if (!geo) return [];
-    const coords: Array<{ latitude: number; longitude: number }> = [];
-    const pushFromArray = (arr: any) => {
-      if (!Array.isArray(arr)) return;
-      // arr could be [lng, lat] or nested
-      if (typeof arr[0] === 'number' && typeof arr[1] === 'number') {
-        const lng = Number(arr[0]);
-        const lat = Number(arr[1]);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) coords.push({ latitude: lat, longitude: lng });
-        return;
-      }
-      for (const item of arr) pushFromArray(item);
-    };
-
-    if (geo.type === 'FeatureCollection' && Array.isArray(geo.features)) {
-      geo.features.forEach((f: any) => extractCoordsFromGeoJson(f).forEach((c) => coords.push(c)));
-      return coords;
-    }
-    if (geo.type === 'Feature' && geo.geometry) return extractCoordsFromGeoJson(geo.geometry);
-    if (geo.type === 'Polygon' || geo.type === 'MultiPolygon') {
-      pushFromArray(geo.coordinates);
-      return coords;
-    }
-    if (geo.coordinates) {
-      pushFromArray(geo.coordinates);
-      return coords;
-    }
-    return coords;
-  };
 
   const selectedArea = useMemo(
     () => areas.find((area) => getAreaId(area) === areaId),
     [areaId, areas]
   );
 
-  const selectedAreaViewbox = useMemo(() => {
-    const rawBoundary = selectedArea?.BoundaryGeoJson
-      ?? selectedArea?.boundaryGeoJson
-      ?? selectedArea?.boundaryGeoJSON
-      ?? selectedArea?.boundary
-      ?? selectedArea?.geoJson
-      ?? selectedArea?.geoJSON
-      ?? null;
-    const normalized = normalizeBoundary(rawBoundary);
-    const coordinates = extractCoordsFromGeoJson(normalized);
-    if (coordinates.length === 0) return '';
-
-    const latitudes = coordinates.map((coordinate) => coordinate.latitude);
-    const longitudes = coordinates.map((coordinate) => coordinate.longitude);
-    return `${Math.min(...longitudes)},${Math.max(...latitudes)},${Math.max(...longitudes)},${Math.min(...latitudes)}`;
-  }, [selectedArea]);
+  const selectedAreaPolygons = useMemo(
+    () => extractBoundaryPolygons(areaBoundaryValue(selectedArea)),
+    [selectedArea]
+  );
+  const selectedAreaCoordinates = useMemo(
+    () => flattenBoundaryCoordinates(selectedAreaPolygons),
+    [selectedAreaPolygons]
+  );
+  const selectedAreaViewbox = useMemo(
+    () => boundaryViewbox(selectedAreaPolygons),
+    [selectedAreaPolygons]
+  );
 
   React.useEffect(() => {
     if (!addressInputFocused) return undefined;
@@ -325,28 +275,14 @@ function StepLocation({
     const area = selectedArea;
     if (!area || !mapRef.current) return;
 
-    // attempt polygon/geojson first
-    const rawBoundary = area?.BoundaryGeoJson ?? area?.boundaryGeoJson ?? area?.boundaryGeoJSON ?? area?.boundary ?? area?.geoJson ?? area?.geoJSON ?? null;
-    const normalized = normalizeBoundary(rawBoundary);
-    if (normalized) {
+    if (selectedAreaCoordinates.length) {
       try {
-        const coords = extractCoordsFromGeoJson(normalized);
-        if (coords.length > 0) {
-          // fit to polygon bounds
-          try {
-            mapRef.current.fitToCoordinates(coords, { edgePadding: { top: 36, left: 36, right: 36, bottom: 36 }, animated: true });
-          } catch (e) {
-            // some platforms may not support fitToCoordinates; fallback to center
-            const first = coords[0];
-            mapRef.current.animateToRegion({ latitude: first.latitude, longitude: first.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 600);
-          }
-          return;
-        }
-      } catch (err) {
-        if (__DEV__) console.warn('Failed to parse area boundary');
-        toast.error('Không thể tải hình dạng khu vực. Vui lòng thử lại.');
-        return;
+        mapRef.current.fitToCoordinates(selectedAreaCoordinates, { edgePadding: { top: 54, left: 36, right: 36, bottom: 36 }, animated: true });
+      } catch {
+        const first = selectedAreaCoordinates[0];
+        mapRef.current.animateToRegion({ latitude: first.latitude, longitude: first.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 }, 600);
       }
+      return;
     }
 
     // fallback to center coordinates
@@ -359,7 +295,7 @@ function StepLocation({
         // ignore
       }
     }
-  }, [selectedArea, mapRef]);
+  }, [selectedArea, selectedAreaCoordinates]);
 
   React.useEffect(() => {
     if (latitude == null || longitude == null || !mapRef.current) return;
@@ -440,7 +376,11 @@ function StepLocation({
           <View style={styles.mapHeader}>
             <View style={{ flex: 1 }}>
               <Text style={styles.mapTitle}>Bản đồ khu vực</Text>
-              <Text style={styles.mapSubtitle}>Đánh dấu vị trí sự cố</Text>
+              <Text style={styles.mapSubtitle} numberOfLines={2}>
+                {selectedAreaPolygons.length
+                  ? `Đường viền xanh là ranh giới ${getAreaName(selectedArea)}`
+                  : 'Đánh dấu vị trí sự cố'}
+              </Text>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -465,6 +405,7 @@ function StepLocation({
               ref={mapRef}
               latitude={latitude}
               longitude={longitude}
+              boundaryPolygons={selectedAreaPolygons}
               onCoordinateSelect={(nextLatitude, nextLongitude) => {
                 setAddressInputFocused(false);
                 setAddressSuggestions([]);
@@ -543,7 +484,7 @@ function StepLocation({
                         </NativeText>
                         <NativeText
                           style={styles.addressSuggestionHint}
-                          numberOfLines={2}
+                          numberOfLines={3}
                           maxFontSizeMultiplier={1.25}
                         >
                           {suggestion.detail || suggestion.displayName}

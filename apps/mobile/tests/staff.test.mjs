@@ -42,7 +42,7 @@ const resolver = registerHooks({ resolve(specifier, context, nextResolve) {
   }
   return nextResolve(specifier, context);
 } });
-const { staffApi, staffKeys } = await import('../src/features/staff/staff-api.ts');
+const { staffApi, staffKeys, staffQueryRetry } = await import('../src/features/staff/staff-api.ts');
 const { executionApi, executionKeys } = await import('../src/features/staff/staff-execution-api.ts');
 const { buildEvidenceFormData, canEditIncidentExecution, canStartIncidentProcessing, canSubmitIncidentResolution, incidentResolutionSubmissionMode, normalizeIncidentResolution, normalizeCompletionEvidence } = await import('../src/features/staff/staff-execution-models.ts');
 const { buildExecutionSteps, currentExecutionStep, firstRouteParam, parseExecutionDraft, resolveExecutionMode } = await import('../src/features/staff/staff-execution-flow-models.ts');
@@ -232,6 +232,16 @@ test('phone verification exchanges a Firebase ID token for a complete backend se
   assert.match(storeSource, /const requestUser = get\(\)\.user/);
   assert.match(storeSource, /verifiedUser\.id !== requestUser\.id/);
   assert.doesNotMatch(storeSource, /\{ \.\.\.activeUser, isVerified: true \}/);
+});
+
+test('Staff screens do not amplify rate limits with first-focus refetches or client-error retries', () => {
+  const focusHelper = readFileSync(new URL('../src/features/staff/use-refresh-on-return.ts', import.meta.url), 'utf8');
+  assert.equal(staffQueryRetry(0, { response: { status: 429 } }), false);
+  assert.equal(staffQueryRetry(0, { response: { status: 403 } }), false);
+  assert.equal(staffQueryRetry(0, { response: { status: 503 } }), true);
+  assert.equal(staffQueryRetry(1, { response: { status: 503 } }), false);
+  assert.match(focusHelper, /if \(!hasFocused\.current\)/);
+  assert.match(focusHelper, /hasFocused\.current = true;\s*return;/);
 });
 
 test('authentication fails closed, uses opt-in SMS auto-send, and keeps login email-only', () => {
