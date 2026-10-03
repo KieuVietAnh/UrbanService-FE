@@ -502,18 +502,22 @@ test('Staff start processing uses the Provider assignment transition and validat
   } finally { patch.mock.restore(); }
 });
 
-test('Staff direct processing uses the Incident status contract and validates its identity', async () => {
-  const patch = mock.method(axiosClient, 'patch', async () => ({
+test('Staff direct processing uses the dedicated start-processing endpoint and validates its identity', async () => {
+  /*
+   * Endpoint trạng thái chung chỉ dành cho Manager và chỉ nhận Rejected hoặc
+   * Cancelled, nên luồng tự xử lý phải đi qua endpoint riêng của nó.
+   */
+  const post = mock.method(axiosClient, 'post', async () => ({
     incidentId: 'incident/1', status: 'InProgress', assignedStaffUserId: 'staff-1', reports: [],
   }));
   try {
     const result = await executionApi.startIncidentDirectly('incident/1', { note: '  Staff tự xử lý  ', status: 'Closed' });
     assert.equal(result.id, 'incident/1');
     assert.equal(result.status, 'InProgress');
-    assert.deepEqual(patch.mock.calls[0].arguments, ['/api/management/incidents/incident%2F1/status', { status: 'InProgress', note: 'Staff tự xử lý' }]);
-    patch.mock.mockImplementation(async () => ({ incidentId: 'another-incident', status: 'InProgress', reports: [] }));
+    assert.deepEqual(post.mock.calls[0].arguments, ['/api/management/incidents/incident%2F1/start-processing', { note: 'Staff tự xử lý' }]);
+    post.mock.mockImplementation(async () => ({ incidentId: 'another-incident', status: 'InProgress', reports: [] }));
     await assert.rejects(executionApi.startIncidentDirectly('incident/1'), /không thuộc sự vụ/);
-  } finally { patch.mock.restore(); }
+  } finally { post.mock.restore(); }
 });
 
 test('guided execution flow resumes backend progress and preserves an explicit skipped evidence step', () => {

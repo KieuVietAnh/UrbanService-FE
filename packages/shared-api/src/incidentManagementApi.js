@@ -111,8 +111,14 @@ export const normalizeAssignIncidentPayload = (payload = {}) => {
   return normalized;
 };
 
+/*
+ * Luồng Staff tự xử lý có endpoint riêng: POST /incidents/{id}/start-processing.
+ *
+ * Endpoint trạng thái chung chỉ dành cho Manager và chỉ nhận Rejected hoặc
+ * Cancelled, nên gửi InProgress vào đó luôn trả 403.
+ */
 export const normalizeStartIncidentProcessingPayload = (payload = {}) => {
-  const normalized = { status: 'InProgress' };
+  const normalized = {};
   const note = String(payload?.note ?? '').trim();
   if (note) normalized.note = note;
   return normalized;
@@ -301,6 +307,16 @@ export const INCIDENT_MANAGEMENT_CAPABILITIES = Object.freeze({
     endpoint: `${PROVIDER_ASSIGNMENT_ENDPOINT}/status`,
     requestSchema: 'UpdateProviderAssignmentStatusRequest',
     synchronizesIncident: true,
+  }),
+  // Staff tự xử lý, không qua đơn vị bên thứ ba.
+  staffStartDirectProcessing: Object.freeze({
+    available: true,
+    scope: 'incident',
+    fromStatus: 'Assigned',
+    toStatus: 'InProgress',
+    endpoint: `${INCIDENT_DETAIL_ENDPOINT}/start-processing`,
+    requestSchema: 'StartIncidentProcessingRequest',
+    requiresNoProviderAssignment: true,
   }),
   providerAssignment: Object.freeze({
     available: true,
@@ -493,8 +509,8 @@ export const incidentManagementApi = Object.freeze({
 
   async startIncidentProcessing(incidentId, payload = {}) {
     const detailEndpoint = buildIncidentDetailEndpoint(incidentId);
-    const response = await axiosClient.patch(
-      `${detailEndpoint}/status`,
+    const response = await axiosClient.post(
+      `${detailEndpoint}/start-processing`,
       normalizeStartIncidentProcessingPayload(payload),
     );
 

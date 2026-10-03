@@ -270,32 +270,37 @@ test('calls real assignee candidate and assignment endpoints', async () => {
 });
 
 test('normalizes the dedicated Assigned to InProgress payload without exposing a generic status selector', () => {
+  // Endpoint start-processing tự biết trạng thái đích nên payload chỉ còn ghi chú;
+  // status do client gửi lên phải bị bỏ qua.
   assert.deepEqual(normalizeStartIncidentProcessingPayload({
     note: ' Bắt đầu kiểm tra hiện trường ',
     status: 'Approved',
   }), {
-    status: 'InProgress',
     note: 'Bắt đầu kiểm tra hiện trường',
   });
-  assert.deepEqual(normalizeStartIncidentProcessingPayload(), { status: 'InProgress' });
+  assert.deepEqual(normalizeStartIncidentProcessingPayload(), {});
 });
 
-test('generic Incident status wrapper still follows the separately documented endpoint', async () => {
+test('Staff tự xử lý đi qua endpoint start-processing dành riêng', async () => {
+  /*
+   * Trước đây hàm này gọi PATCH /incidents/{id}/status. Endpoint đó chỉ dành cho
+   * Manager và chỉ nhận Rejected hoặc Cancelled, nên Staff luôn nhận 403.
+   */
   const incident = { incidentId: 'incident-1', status: 'InProgress' };
-  const patchMock = mock.method(axiosClient, 'patch', async () => incident);
+  const postMock = mock.method(axiosClient, 'post', async () => incident);
 
   try {
     const result = await incidentManagementApi.startIncidentProcessing('incident-1', {
       note: 'Bắt đầu xử lý',
     });
 
-    assert.deepEqual(patchMock.mock.calls[0].arguments, [
-      '/api/management/incidents/incident-1/status',
-      { status: 'InProgress', note: 'Bắt đầu xử lý' },
+    assert.deepEqual(postMock.mock.calls[0].arguments, [
+      '/api/management/incidents/incident-1/start-processing',
+      { note: 'Bắt đầu xử lý' },
     ]);
     assert.equal(result, incident);
   } finally {
-    patchMock.mock.restore();
+    postMock.mock.restore();
   }
 });
 
