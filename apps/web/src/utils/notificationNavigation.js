@@ -1,5 +1,5 @@
 import { APP_ROLES, getInternalRole, managementTypes } from '@urbanmind/shared-types';
-import { ticketApi } from '../services/api/ticketApi';
+import { ticketApi } from '../services/api/ticketApi.js';
 
 const SERVICE_USER_TICKET_ROUTE = '/tickets';
 export const NOTIFICATION_FALLBACK_ROUTE = '/notifications';
