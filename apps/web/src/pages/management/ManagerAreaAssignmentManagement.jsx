@@ -291,7 +291,7 @@ export const ManagerAreaAssignmentManagement = () => {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-lg font-black text-slate-950 dark:text-slate-100">Danh sách phạm vi Manager</h2>
+                <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-100">Danh sách phạm vi Manager</h2>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Tra cứu, cập nhật và tạm dừng quyền quản lý theo khu vực.</p>
               </div>
               <ManagerListRefreshIndicator visible={refreshing} />
