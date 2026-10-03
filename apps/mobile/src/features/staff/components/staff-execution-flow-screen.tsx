@@ -230,10 +230,17 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     queryFn: ({ signal }) => executionApi.contacts(assignmentId, signal),
     enabled: readable && assignmentId > 0, retry: staffQueryRetry,
   });
+  const evidenceKey = assignmentId > 0
+    ? executionKeys.evidence(userId, id, assignmentId)
+    : executionKeys.incidentEvidence(userId, id);
   const evidence = useQuery({
-    queryKey: executionKeys.evidence(userId, id, assignmentId),
-    queryFn: ({ signal }) => executionApi.evidence(assignmentId, signal),
-    enabled: readable && assignmentId > 0, retry: staffQueryRetry,
+    queryKey: evidenceKey,
+    queryFn: ({ signal }) => assignmentId > 0
+      ? executionApi.evidence(assignmentId, signal)
+      : executionApi.incidentEvidence(id, signal),
+    enabled: readable && assignment.isSuccess && (assignmentId > 0
+      || (mode === 'direct' && normalizeKey(incident.data?.status) !== 'assigned')),
+    retry: staffQueryRetry,
   });
   const history = useQuery({
     queryKey: executionKeys.resolutions(userId, id),
@@ -257,8 +264,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   const submissionMode = incident.data && history.isSuccess
     ? incidentResolutionSubmissionMode(incident.data, userId, history.data.length) : null;
   const submittedForCurrentStatus = !!currentStatus && submittedStatus === currentStatus;
-  const canSubmit = !!submissionMode && !submittedForCurrentStatus && assignment.isSuccess
-    && (!assignmentId || evidence.isSuccess);
+  const canSubmit = !!submissionMode && !submittedForCurrentStatus && assignment.isSuccess && evidence.isSuccess;
   const storageKey = executionDraftKey(userId, id);
 
   useEffect(() => {
@@ -387,7 +393,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     requireSession();
     cache.setQueryData(incidentKey, updated);
     await refresh();
-    advance('evidence', 'Đã bắt đầu tự xử lý. Bạn có thể xem bước minh chứng rồi tiếp tục gửi kết quả.');
+    advance('evidence', 'Đã bắt đầu tự xử lý. Tiếp theo, hãy thêm minh chứng hoặc chọn bỏ qua.');
   });
 
   const saveContact = () => run('contact', async () => {
@@ -476,10 +482,16 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     }
   });
   const uploadEvidence = () => run('upload', async () => {
-    if (!assignmentId || !assets.length) throw new Error('Vui lòng chọn ít nhất một tệp minh chứng.');
+    if (!assets.length) throw new Error('Vui lòng chọn ít nhất một tệp minh chứng.');
     const { latestAssignment } = await freshState();
-    if (!latestAssignment || latestAssignment.providerAssignmentId !== assignmentId) throw new Error('Phân công đơn vị đã thay đổi.');
-    const uploaded = await executionApi.uploadEvidence(assignmentId, assets, draft.evidenceDescription);
+    let uploaded: CompletionEvidence[];
+    if (mode === 'provider') {
+      if (!latestAssignment || latestAssignment.providerAssignmentId !== assignmentId) throw new Error('Phân công đơn vị đã thay đổi.');
+      uploaded = await executionApi.uploadEvidence(assignmentId, assets, draft.evidenceDescription);
+    } else {
+      if (latestAssignment) throw new Error('Sự vụ vừa được chuyển cho đơn vị xử lý. Vui lòng tải lại.');
+      uploaded = await executionApi.uploadIncidentEvidence(id, assets, draft.evidenceDescription);
+    }
     if (!uploaded.length) throw new Error('Máy chủ chưa xác nhận tệp đã lưu. Hãy kiểm tra danh sách trước khi tải lại.');
     setAssets([]);
     setMediaNotice(null);
@@ -490,11 +502,19 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
   });
   const clearEvidence = () => run('clear', async () => {
     const { latest, latestAssignment } = await freshState();
-    if (normalizeKey(latest.status) !== 'needrework' || !latestAssignment || latestAssignment.providerAssignmentId !== assignmentId) {
-      throw new Error('Chỉ được xóa minh chứng của phân công hiện tại khi Manager yêu cầu xử lý lại.');
+    if (normalizeKey(latest.status) !== 'needrework') {
+      throw new Error('Chỉ được xóa minh chứng cũ khi Manager yêu cầu xử lý lại.');
     }
-    await executionApi.clearEvidence(assignmentId);
-    cache.setQueryData(executionKeys.evidence(userId, id, assignmentId), []);
+    if (mode === 'provider') {
+      if (!latestAssignment || latestAssignment.providerAssignmentId !== assignmentId) {
+        throw new Error('Phân công đơn vị đã thay đổi. Vui lòng tải lại.');
+      }
+      await executionApi.clearEvidence(assignmentId);
+    } else {
+      if (latestAssignment) throw new Error('Sự vụ vừa được chuyển cho đơn vị xử lý. Vui lòng tải lại.');
+      await executionApi.clearIncidentEvidence(id);
+    }
+    cache.setQueryData(evidenceKey, []);
     setConfirmClear(false); setSuccess('Đã xóa toàn bộ minh chứng cũ.');
     await refresh();
   });
@@ -516,11 +536,12 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
     const latestMode = incidentResolutionSubmissionMode(latest, userId, existing.length);
     if (!latestMode) throw new Error('Sự vụ không còn ở trạng thái cho phép gửi kết quả.');
     if (mode === 'provider' && !latestAssignment) throw new Error('Không tìm thấy phân công đơn vị của flow hiện tại.');
-    // Xác nhận minh chứng thuộc đúng phân công trước khi gửi kết quả.
+    // Xác nhận kho minh chứng vẫn thuộc đúng nhánh xử lý trước khi gửi kết quả.
     if (latestAssignment) await executionApi.evidence(latestAssignment.providerAssignmentId);
+    else await executionApi.incidentEvidence(id);
     requireSession();
     /*
-     * Không gửi imageUrls: ảnh đã nằm ở completion-documents của phân công này,
+     * Không gửi imageUrls: ảnh đã nằm ở completion-documents của sự vụ/phân công,
      * gửi lại URL khiến backend tạo thêm bản ghi và Manager thấy minh chứng nhân đôi.
      */
     await executionApi.submitResolution(id, {
@@ -639,12 +660,10 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
           </Section>}
 
           {activeStep === 'evidence' && <Section title={mode === 'provider' ? '3. Minh chứng xử lý' : '2. Minh chứng xử lý'}>
-            {mode === 'direct' ? <>
-              <Notice>Khi tự xử lý, bạn có thể mô tả minh chứng trong kết quả. Để tải ảnh hoặc PDF, hãy quay lại và chọn Phối hợp đơn vị.</Notice>
-              <Label muted size={13}>Nếu sự vụ bắt buộc có ảnh/PDF, quay lại và chọn “Phối hợp đơn vị” trước khi bắt đầu. Nếu không, tiếp tục ghi kết quả xử lý.</Label>
-              {!readonly && <Button label="Tiếp tục đến kết quả" disabled={!!busy} onPress={skipEvidence} />}
-            </> : <>
-              <Label muted size={13}>Ảnh và PDF được tải vào đúng phân công đơn vị của sự vụ. Tệp đã chọn trên thiết bị chỉ được giữ khi bạn còn ở màn hình này.</Label>
+            <>
+              <Label muted size={13}>{mode === 'provider'
+                ? 'Ảnh và PDF được tải vào đúng phân công đơn vị của sự vụ.'
+                : 'Ảnh và PDF được tải trực tiếp vào sự vụ bạn đang tự xử lý.'} Tệp đã chọn trên thiết bị chỉ được giữ khi bạn còn ở màn hình này.</Label>
               {mediaNotice ? <Notice error={mediaNotice.error}>{mediaNotice.message}</Notice> : null}
               <Button secondary label="Chụp ảnh trực tiếp" busy={busy === 'camera'} disabled={!!busy || readonly} onPress={() => { void takePhoto(); }} />
               <Button secondary label="Chọn ảnh minh chứng" busy={busy === 'picker'} disabled={!!busy || readonly} onPress={() => { void pickImages(); }} />
@@ -659,7 +678,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
               <QueryState pending={evidence.isPending} error={evidence.error} empty={evidence.isSuccess && !evidence.data?.length && 'Chưa có minh chứng đã tải lên.'} retry={() => { void evidence.refetch(); }} />
               {evidence.data?.map((file) => <EvidenceCard key={file.completionDocumentId} file={file} />)}
               {currentStatus === 'needrework' && !!evidence.data?.length && (confirmClear ? <View style={{ ...panelStyle, borderColor: colors.redDark, backgroundColor: colors.redLight }}><Label bold style={{ color: colors.redDark }}>Xóa toàn bộ minh chứng cũ?</Label><Label size={14}>Thao tác này không thể hoàn tác.</Label><Button danger label="Xác nhận xóa" busy={busy === 'clear'} disabled={!!busy} onPress={() => { void clearEvidence(); }} /><Button secondary label="Giữ lại" disabled={!!busy} onPress={() => setConfirmClear(false)} /></View> : <Button danger label="Xóa toàn bộ minh chứng cũ" disabled={!!busy || readonly} onPress={() => setConfirmClear(true)} />)}
-            </>}
+            </>
           </Section>}
 
           {activeStep === 'resolution' && <Section title={mode === 'provider' ? '4. Gửi kết quả' : '3. Gửi kết quả'}>
@@ -671,7 +690,7 @@ function FlowWorkspace({ id, userId, initialStep }: { id: string; userId: string
               <View style={panelStyle}>
                 <Label bold>Tóm tắt trước khi gửi</Label>
                 <Label muted size={13}>{assignment.data ? `Đơn vị: ${assignment.data.providerName || `#${assignmentId}`}` : 'Staff tự xử lý trực tiếp'}</Label>
-                <Label muted size={13}>{assignment.data ? `${evidence.data?.length || 0} minh chứng đã lưu` : 'Không có kho minh chứng theo phân công đơn vị'}</Label>
+                <Label muted size={13}>{evidence.data?.length || 0} minh chứng đã lưu</Label>
               </View>
               {confirmSubmit ? <View style={{ ...panelStyle, borderColor: colors.primary }}>
               <Label bold>{submissionMode === 'resubmit' ? 'Xác nhận gửi lại kết quả?' : 'Xác nhận gửi kết quả?'}</Label>

@@ -436,7 +436,7 @@ test('Staff chat uses the ticket message hub and keeps polling as a fallback', (
   assert.match(source, /refreshing=\{manualRefreshing\}/, 'silent polling must not flash the pull-to-refresh spinner');
 });
 
-test('confirmed Incident execution capabilities support provider flow, direct status transition and resubmit', () => {
+test('confirmed Incident execution capabilities support provider flow, direct processing and resubmit', () => {
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.available, true);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.scope, 'provider-assignment');
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartProcessing.fromStatus, 'Reported');
@@ -449,11 +449,14 @@ test('confirmed Incident execution capabilities support provider flow, direct st
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.resubmitConfirmed, true);
   assert.deepEqual(INCIDENT_MANAGEMENT_CAPABILITIES.resolutions.submitStatuses, ['InProgress', 'NeedRework']);
   assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.completionEvidence.clearAllAvailable, true);
-  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.statusTransition.available, true);
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.staffStartDirectProcessing.endpoint, '/api/management/incidents/{incidentId}/start-processing');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.incidentCompletionEvidence.endpoint, '/api/management/incidents/{incidentId}/completion-documents');
+  assert.equal(INCIDENT_MANAGEMENT_CAPABILITIES.incidentCompletionEvidence.clearAllAvailable, true);
 });
 
 const executionAssignment = { providerAssignmentId: 501, incidentId: 'incident/1', coordinatorId: 41, providerName: 'Đội thoát nước', reportStatus: 'Reported', contactLogCount: 0, completionDocumentCount: 0 };
 const executionEvidence = { completionDocumentId: 701, providerAssignmentId: 501, incidentId: 'incident/1', coordinatorId: 41, fileUrl: 'https://files.example.test/evidence.png', fileType: 'image/png' };
+const directExecutionEvidence = { ...executionEvidence, completionDocumentId: 702, providerAssignmentId: null, coordinatorId: null };
 const executionContact = {
   contactLogId: 801,
   providerAssignmentId: 501,
@@ -635,6 +638,33 @@ test('evidence upload builds platform multipart files and never fetches remote f
   } finally { post.mock.restore(); }
 });
 
+test('self-handled Incident uses its own evidence collection for list, upload and NeedRework clear', async () => {
+  const signal = new AbortController().signal;
+  const file = new Blob(['direct evidence'], { type: 'image/jpeg' });
+  const assets = [{ uri: 'blob:direct-evidence', name: 'direct.jpg', mimeType: 'image/jpeg', file }];
+  const get = mock.method(axiosClient, 'get', async () => [directExecutionEvidence]);
+  const post = mock.method(axiosClient, 'post', async () => [directExecutionEvidence]);
+  const remove = mock.method(axiosClient, 'delete', async () => undefined);
+  try {
+    assert.equal((await executionApi.incidentEvidence('incident/1', signal))[0].providerAssignmentId, null);
+    assert.deepEqual(get.mock.calls[0].arguments, [
+      '/api/management/incidents/incident%2F1/completion-documents', { signal },
+    ]);
+    assert.equal((await executionApi.uploadIncidentEvidence('incident/1', assets, ' Sau tự xử lý '))[0].completionDocumentId, 702);
+    assert.equal(post.mock.calls[0].arguments[0], '/api/management/incidents/incident%2F1/completion-documents');
+    assert.ok(post.mock.calls[0].arguments[1] instanceof FormData);
+    assert.equal(await executionApi.clearIncidentEvidence('incident/1'), undefined);
+    assert.deepEqual(remove.mock.calls[0].arguments, ['/api/management/incidents/incident%2F1/completion-documents']);
+
+    get.mock.mockImplementation(async () => [{ ...directExecutionEvidence, incidentId: 'another-incident' }]);
+    await assert.rejects(executionApi.incidentEvidence('incident/1'), /không thuộc sự vụ/);
+    get.mock.mockImplementation(async () => [{ ...directExecutionEvidence, providerAssignmentId: 501 }]);
+    await assert.rejects(executionApi.incidentEvidence('incident/1'), /phân công đơn vị khác/);
+  } finally {
+    get.mock.restore(); post.mock.restore(); remove.mock.restore();
+  }
+});
+
 test('NeedRework evidence clear uses the contract path, validates the assignment and requires explicit destructive UI confirmation', async () => {
   const remove = mock.method(axiosClient, 'delete', async () => undefined);
   try {
@@ -663,6 +693,9 @@ test('NeedRework evidence clear uses the contract path, validates the assignment
   assert.match(source, /Không thể mở thư viện ảnh/);
   assert.match(source, /Không thể mở trình chọn tệp/);
   assert.match(source, /scroll\.current\?\.scrollTo/);
+  assert.match(source, /uploadIncidentEvidence/);
+  assert.match(source, /clearIncidentEvidence/);
+  assert.doesNotMatch(source, /Để tải ảnh hoặc PDF, hãy quay lại và chọn Phối hợp đơn vị/);
 });
 
 test('Staff contact step shows backend phone and email in both the current contact and saved history', () => {
@@ -708,7 +741,7 @@ test('execution history rejects cross-Incident evidence and query caches retain 
   assert.throws(() => normalizeIncidentResolution({ resolutionId: 601, incidentId: 'incident/1', providerAssignmentId: 999, completionDocuments: [executionEvidence] }), /không thuộc/);
   const get = mock.method(axiosClient, 'get', async () => [{ ...executionEvidence, providerAssignmentId: 999 }]);
   try { await assert.rejects(executionApi.evidence(501), /không thuộc phân công/); } finally { get.mock.restore(); }
-  const keys = [executionKeys.candidates('s1', 'i1'), executionKeys.assignment('s1', 'i1'), executionKeys.contacts('s1', 'i1', 501), executionKeys.evidence('s1', 'i1', 501), executionKeys.resolutions('s1', 'i1')];
+  const keys = [executionKeys.candidates('s1', 'i1'), executionKeys.assignment('s1', 'i1'), executionKeys.contacts('s1', 'i1', 501), executionKeys.evidence('s1', 'i1', 501), executionKeys.incidentEvidence('s1', 'i1'), executionKeys.resolutions('s1', 'i1')];
   assert.equal(new Set(keys.map((key) => JSON.stringify(key))).size, keys.length);
   assert.notDeepEqual(executionKeys.evidence('s1', 'i1', 501), executionKeys.evidence('s2', 'i1', 501));
   assert.notDeepEqual(executionKeys.evidence('s1', 'i1', 501), executionKeys.evidence('s1', 'i2', 501));
