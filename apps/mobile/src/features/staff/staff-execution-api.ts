@@ -15,13 +15,14 @@ export const executionKeys = {
   assignment: (userId: string, incidentId: string) => [...executionKeys.all(userId, incidentId), 'assignment'] as const,
   contacts: (userId: string, incidentId: string, assignmentId: number) => [...executionKeys.all(userId, incidentId), 'contacts', assignmentId] as const,
   evidence: (userId: string, incidentId: string, assignmentId: number) => [...executionKeys.all(userId, incidentId), 'evidence', assignmentId] as const,
+  incidentEvidence: (userId: string, incidentId: string) => [...executionKeys.all(userId, incidentId), 'incident-evidence'] as const,
   resolutions: (userId: string, incidentId: string) => [...executionKeys.all(userId, incidentId), 'resolutions'] as const,
 };
 
 const assertIncident = (actual: string, expected: string) => {
   if (!sameIncident(actual, expected)) throw new Error('Dữ liệu trả về không thuộc sự vụ đang mở. Vui lòng tải lại.');
 };
-const assertAssignment = (actual: number, expected: number) => {
+const assertAssignment = (actual: number | null, expected: number) => {
   if (actual !== expected) throw new Error('Dữ liệu trả về không thuộc phân công đơn vị đang mở. Vui lòng tải lại.');
 };
 
@@ -100,6 +101,32 @@ export const executionApi = {
     await incidentManagementApi.deleteProviderAssignmentCompletionDocuments(
       requireExecutionId(assignmentId, 'Mã phân công đơn vị'),
     );
+  },
+  async incidentEvidence(incidentId: string, signal?: AbortSignal): Promise<CompletionEvidence[]> {
+    const id = requireIncidentId(incidentId);
+    return (await incidentManagementApi.getIncidentCompletionDocuments(id, { signal })).map((value: unknown) => {
+      const evidence = normalizeCompletionEvidence(value);
+      assertIncident(evidence.incidentId, id);
+      if (evidence.providerAssignmentId !== null) {
+        throw new Error('Minh chứng trả về thuộc một phân công đơn vị khác. Vui lòng tải lại.');
+      }
+      return evidence;
+    });
+  },
+  async uploadIncidentEvidence(incidentId: string, assets: EvidenceUploadAsset[], description = ''): Promise<CompletionEvidence[]> {
+    const id = requireIncidentId(incidentId);
+    const form = buildEvidenceFormData(assets, description);
+    return (await incidentManagementApi.uploadIncidentCompletionDocuments(id, form)).map((value: unknown) => {
+      const evidence = normalizeCompletionEvidence(value);
+      assertIncident(evidence.incidentId, id);
+      if (evidence.providerAssignmentId !== null) {
+        throw new Error('Minh chứng trả về thuộc một phân công đơn vị khác. Vui lòng tải lại.');
+      }
+      return evidence;
+    });
+  },
+  async clearIncidentEvidence(incidentId: string): Promise<void> {
+    await incidentManagementApi.deleteIncidentCompletionDocuments(requireIncidentId(incidentId));
   },
   async resolutions(incidentId: string, signal?: AbortSignal): Promise<IncidentResolution[]> {
     const id = requireIncidentId(incidentId);

@@ -483,6 +483,34 @@ test('Evidence upload preserves FormData and does not set a multipart boundary',
   } finally { postMock.mock.restore(); }
 });
 
+test('self-handled Incident evidence uses the Incident-scoped GET, multipart POST and DELETE contracts', async () => {
+  const document = { completionDocumentId: 2, providerAssignmentId: null, incidentId: 'incident/1' };
+  const getMock = mock.method(axiosClient, 'get', async () => [document]);
+  const postMock = mock.method(axiosClient, 'post', async () => [document]);
+  const deleteMock = mock.method(axiosClient, 'delete', async () => undefined);
+  try {
+    const signal = new AbortController().signal;
+    assert.deepEqual(await incidentManagementApi.getIncidentCompletionDocuments('incident/1', { signal }), [document]);
+    assert.deepEqual(getMock.mock.calls[0].arguments, [
+      '/api/management/incidents/incident%2F1/completion-documents', { signal },
+    ]);
+
+    const form = new FormData();
+    form.append('Files', new Blob(['fixture'], { type: 'image/png' }), 'direct.png');
+    assert.deepEqual(await incidentManagementApi.uploadIncidentCompletionDocuments('incident/1', form), [document]);
+    assert.deepEqual(postMock.mock.calls[0].arguments, [
+      '/api/management/incidents/incident%2F1/completion-documents', form,
+    ]);
+    assert.equal(await incidentManagementApi.deleteIncidentCompletionDocuments('incident/1'), undefined);
+    assert.deepEqual(deleteMock.mock.calls[0].arguments, [
+      '/api/management/incidents/incident%2F1/completion-documents',
+    ]);
+    await assert.rejects(incidentManagementApi.uploadIncidentCompletionDocuments('incident/1', {}), /FormData/);
+  } finally {
+    getMock.mock.restore(); postMock.mock.restore(); deleteMock.mock.restore();
+  }
+});
+
 test('Evidence clear-all uses the exact DELETE contract, validates IDs and preserves backend errors', async () => {
   const deleteMock = mock.method(axiosClient, 'delete', async () => undefined);
   try {

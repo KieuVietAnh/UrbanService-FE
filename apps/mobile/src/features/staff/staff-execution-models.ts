@@ -22,7 +22,7 @@ export type ProviderContact = {
 };
 
 export type CompletionEvidence = {
-  completionDocumentId: number; providerAssignmentId: number; incidentId: string; coordinatorId: number;
+  completionDocumentId: number; providerAssignmentId: number | null; incidentId: string; coordinatorId: number | null;
   providerName: string; uploadedByUserId: string; uploadedByUserName: string;
   fileUrl: string; fileType: string; description: string; receivedAt: string;
 };
@@ -100,10 +100,14 @@ export function normalizeProviderContact(value: unknown): ProviderContact {
 export function normalizeCompletionEvidence(value: unknown): CompletionEvidence {
   const raw = asRecord(value);
   const fileUrl = text(raw, 'fileUrl');
+  const providerAssignmentId = raw.providerAssignmentId === null || raw.providerAssignmentId === undefined
+    ? null : requireExecutionId(raw.providerAssignmentId, 'Mã phân công đơn vị');
+  const coordinatorId = raw.coordinatorId === null || raw.coordinatorId === undefined
+    ? null : requireExecutionId(raw.coordinatorId, 'Mã điều phối viên');
   return {
     completionDocumentId: requireExecutionId(raw.completionDocumentId, 'Mã minh chứng'),
-    providerAssignmentId: requireExecutionId(raw.providerAssignmentId, 'Mã phân công đơn vị'),
-    incidentId: requireIncidentId(raw.incidentId), coordinatorId: requireExecutionId(raw.coordinatorId, 'Mã điều phối viên'),
+    providerAssignmentId,
+    incidentId: requireIncidentId(raw.incidentId), coordinatorId,
     providerName: text(raw, 'providerName'), uploadedByUserId: text(raw, 'uploadedByUserId'), uploadedByUserName: text(raw, 'uploadedByUserName'),
     // Only trusted URL schemes may be handed to Linking or rendered as remote images.
     fileUrl: /^https?:\/\//i.test(fileUrl) ? fileUrl : '', fileType: text(raw, 'fileType'),
