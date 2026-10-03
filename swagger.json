@@ -8950,6 +8950,226 @@
         }
       }
     },
+    "/api/management/staff-area-assignments/managed-areas": {
+      "get": {
+        "tags": [
+          "ManagementStaffAreaAssignments"
+        ],
+        "summary": "Lấy các khu vực đang được phân cho Interaction Manager hiện tại.",
+        "description": "Chỉ `INTERACTIONMANAGER` được truy cập.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AreaDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AreaDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AreaDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/management/staff-responsibilities/managed-areas": {
+      "get": {
+        "tags": [
+          "ManagementStaffAreaAssignments"
+        ],
+        "summary": "Lấy các khu vực đang được phân cho Interaction Manager hiện tại.",
+        "description": "Chỉ `INTERACTIONMANAGER` được truy cập.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AreaDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AreaDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AreaDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/management/staff-area-assignments/staff-accounts": {
+      "post": {
+        "tags": [
+          "ManagementStaffAreaAssignments"
+        ],
+        "summary": "Tạo tài khoản SYSTEMSTAFF và phân công khu vực ban đầu.",
+        "description": "Chỉ `INTERACTIONMANAGER` được thao tác và khu vực phải thuộc phạm vi Manager đang quản lý.\r\nTài khoản cùng phân công được tạo trong một transaction.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedStaffAccountCreateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedStaffAccountCreateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedStaffAccountCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedStaffAccountDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedStaffAccountDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedStaffAccountDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/management/staff-responsibilities/staff-accounts": {
+      "post": {
+        "tags": [
+          "ManagementStaffAreaAssignments"
+        ],
+        "summary": "Tạo tài khoản SYSTEMSTAFF và phân công khu vực ban đầu.",
+        "description": "Chỉ `INTERACTIONMANAGER` được thao tác và khu vực phải thuộc phạm vi Manager đang quản lý.\r\nTài khoản cùng phân công được tạo trong một transaction.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedStaffAccountCreateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedStaffAccountCreateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedStaffAccountCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedStaffAccountDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedStaffAccountDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedStaffAccountDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/management/staff-area-assignments/{assignmentId}": {
       "put": {
         "tags": [
@@ -18847,6 +19067,83 @@
         },
         "additionalProperties": false
       },
+      "ManagedStaffAccountCreateRequest": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "password": {
+            "type": "string",
+            "nullable": true
+          },
+          "phoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "areaId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "categoryId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ManagedStaffAccountDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "roleName": {
+            "type": "string",
+            "nullable": true
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isVerified": {
+            "type": "boolean"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/StaffAreaAssignmentDto"
+          }
+        },
+        "additionalProperties": false
+      },
       "ManagerAreaAssignmentActiveRequest": {
         "type": "object",
         "properties": {
@@ -20813,6 +21110,23 @@
           },
           "isResolutionBreached": {
             "type": "boolean"
+          },
+          "pauseReasonCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "pauseReasonNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "pausedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "pausedByUserName": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

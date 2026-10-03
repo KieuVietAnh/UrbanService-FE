@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -34,6 +35,7 @@ import MessageComposer from './message-composer';
 import {
   MESSAGE_POLL_INTERVAL_MS,
   REALTIME_RECONCILE_INTERVAL_MS,
+  type RealtimeTicketMessage,
   useTicketMessagesRealtime,
 } from '../realtime/use-ticket-messages-realtime';
 import {
@@ -126,14 +128,31 @@ export default function FeedbackChatSection({
     }, []),
   );
 
-  /*
-   * Kênh realtime chỉ báo có tin mới; việc tải lại vẫn do react-query làm, nên API
-   * tiếp tục là nguồn sự thật và tin nhắn lạc quan trong cache không bị ghi đè.
-   */
+  const queryKey = useMemo(
+    () => messagingKeys.feedbackMessages(feedbackId),
+    [feedbackId],
+  );
   const refetchRef = useRef<() => void>(() => {});
   const { connected: realtimeConnected } = useTicketMessagesRealtime(feedbackId, {
     enabled: Boolean(feedbackId) && isAppActive && isScreenFocused,
-    onMessage: useCallback(() => {
+    onMessage: useCallback((incoming: RealtimeTicketMessage) => {
+      // Ghi chú nội bộ tuyệt đối không được xuất hiện ở phía người dân.
+      if (incoming.isInternal) return;
+      const realtimeMessage: ChatMessage = {
+        id: incoming.interactionMessageId,
+        messageId: incoming.interactionMessageId,
+        feedbackId: incoming.feedbackId || feedbackId,
+        senderName: incoming.userFullName || incoming.userEmail || 'Cán bộ',
+        senderType: incoming.senderType || incoming.userRole,
+        senderRole: incoming.userRole,
+        messageText: incoming.messageText,
+        createdAt: incoming.createdAt,
+      };
+      queryClient.setQueryData<ChatMessage[]>(queryKey, (current = []) => (
+        dedupeMessages([...current, realtimeMessage])
+      ));
+    }, [feedbackId, queryClient, queryKey]),
+    onSyncNeeded: useCallback(() => {
       refetchRef.current();
     }, []),
   });
@@ -144,10 +163,7 @@ export default function FeedbackChatSection({
     isError,
     refetch,
   } = useQuery<ChatMessage[]>({
-    queryKey:
-      messagingKeys.feedbackMessages(
-        feedbackId,
-      ),
+    queryKey,
 
     queryFn: async () => {
       const remoteMessages =
@@ -159,9 +175,7 @@ export default function FeedbackChatSection({
         queryClient.getQueryData<
           ChatMessage[]
         >(
-          messagingKeys.feedbackMessages(
-            feedbackId,
-          ),
+          queryKey,
         );
 
       const optimisticMessages =

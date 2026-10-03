@@ -17,6 +17,8 @@ const ticketReview = read('../src/features/reporting/components/ticket-review-sc
 const ticketsScreen = read('../src/features/reporting/components/tickets-screen.tsx');
 const feedbackApi = read('../src/features/reporting/api/feedback-api.ts');
 const messagingApi = read('../src/features/messaging/api/messaging-api.ts');
+const feedbackChat = read('../src/features/messaging/components/feedback-chat-section.tsx');
+const ticketMessagesRealtime = read('../src/features/messaging/realtime/use-ticket-messages-realtime.ts');
 const legacyChatFab = read('../src/features/home/components/ChatFab.tsx');
 const wizard = read('../src/features/reporting/components/create-feedback-wizard-screen.tsx');
 const addressGeocoding = read('../src/features/reporting/services/address-geocoding.ts');
@@ -96,6 +98,12 @@ test('resident feedback history and support chat follow the live Web contracts',
   assert.match(ticketsScreen, /feedbackApi\.listAll/);
   assert.match(messagingApi, /\/api\/feedbacks\/\$\{feedbackId\}\/messages/);
   assert.doesNotMatch(messagingApi, /\/api\/inbox\/conversations/);
+  assert.match(ticketMessagesRealtime, /\/hubs\/ticket-messages/);
+  assert.match(ticketMessagesRealtime, /TicketMessageReceived/);
+  assert.match(ticketMessagesRealtime, /JoinTicket/);
+  assert.match(ticketMessagesRealtime, /withAutomaticReconnect/);
+  assert.match(feedbackChat, /setQueryData<ChatMessage\[]>/, 'Resident inserts realtime messages without waiting for the next REST poll');
+  assert.match(feedbackChat, /if \(incoming\.isInternal\) return/, 'Resident must never render an internal Staff note');
   assert.match(legacyChatFab, /\/\(resident\)\/support\/select-feedback/);
 });
 
@@ -151,8 +159,11 @@ test('feedback address input searches real Vietnamese geocoding services and foc
   assert.match(addressGeocoding, /detail:\s*string/);
   assert.match(wizard, /searchVietnameseAddresses/);
   assert.match(wizard, /setTimeout\(async \(\) =>/);
-  assert.match(wizard, /style=\{styles\.mapSearchOverlay\}/);
-  assert.match(wizard, /label="Tìm địa chỉ trên bản đồ"/);
+  assert.match(wizard, /style=\{styles\.addressSearchBlock\}/);
+  assert.match(wizard, /label="Tìm địa chỉ cụ thể"/);
+  assert.match(wizard, /Dùng vị trí hiện tại/);
+  assert.doesNotMatch(wizard, /label="Vĩ độ"/);
+  assert.doesNotMatch(wizard, /label="Kinh độ"/);
   assert.match(wizard, /onAddressSelect\(suggestion\.displayName, suggestion\.latitude, suggestion\.longitude\)/);
   assert.match(wizard, /latitudeDelta:\s*0\.008/);
   assert.match(wizard, /boundaryPolygons=\{selectedAreaPolygons\}/);
