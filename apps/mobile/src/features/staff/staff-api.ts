@@ -3,6 +3,7 @@ import { asRecord, asText, itemsFrom, normalizeEvent, normalizeMessage, normaliz
 import { getUserFacingError } from '../../utils/user-facing-error';
 
 export type StaffListParams = { pageNumber: number; pageSize?: number; search?: string; status?: string; priority?: string; severity?: string; areaId?: string | number; categoryId?: string | number };
+const DASHBOARD_ACTIVE_STATUSES = ['Assigned', 'InProgress', 'NeedRework', 'SubmittedForApproval'] as const;
 
 export const staffKeys = {
   all: ['staff'] as const,
@@ -70,17 +71,24 @@ export const staffApi = {
     return normalizePage(response, (item) => normalizeStaffRecord(item, true), params.pageNumber);
   },
   async dashboard(userId: string, signal?: AbortSignal): Promise<{ items: StaffRecord[]; totalItems: number }> {
-    const firstPage = await staffApi.incidents(userId, { pageNumber: 1, pageSize: 100 }, signal);
-    const pages = [firstPage];
+    // The dashboard only displays active work. Query each active status instead
+    // of downloading the staff member's complete Resolved/Closed history.
+    const firstPages = await Promise.all(DASHBOARD_ACTIVE_STATUSES.map((status) => (
+      staffApi.incidents(userId, { pageNumber: 1, pageSize: 100, status }, signal)
+    )));
+    const pages = [...firstPages];
+    const remaining = firstPages.flatMap((page, statusIndex) => (
+      Array.from({ length: Math.max(0, page.totalPages - 1) }, (_, index) => ({
+        status: DASHBOARD_ACTIVE_STATUSES[statusIndex],
+        pageNumber: index + 2,
+      }))
+    ));
 
-    for (let pageNumber = 2; pageNumber <= firstPage.totalPages; pageNumber += 4) {
-      const pageNumbers = Array.from(
-        { length: Math.min(4, firstPage.totalPages - pageNumber + 1) },
-        (_, index) => pageNumber + index,
-      );
-      pages.push(...await Promise.all(
-        pageNumbers.map((page) => staffApi.incidents(userId, { pageNumber: page, pageSize: 100 }, signal)),
-      ));
+    for (let index = 0; index < remaining.length; index += 4) {
+      const batch = remaining.slice(index, index + 4);
+      pages.push(...await Promise.all(batch.map(({ status, pageNumber }) => (
+        staffApi.incidents(userId, { pageNumber, pageSize: 100, status }, signal)
+      ))));
     }
 
     const recordsById = new Map<string, StaffRecord>();
@@ -88,7 +96,10 @@ export const staffApi = {
       if (item.id) recordsById.set(item.id, item);
     });
 
-    return { items: Array.from(recordsById.values()), totalItems: firstPage.totalItems };
+    return {
+      items: Array.from(recordsById.values()),
+      totalItems: firstPages.reduce((total, page) => total + page.totalItems, 0),
+    };
   },
   async incident(id: string, signal?: AbortSignal) {
     const response = await incidentManagementApi.getIncidentById(id, { signal });

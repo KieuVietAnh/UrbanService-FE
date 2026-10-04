@@ -79,6 +79,16 @@ export interface PublicIncidentEvent {
   createdAt?: string;
 }
 
+export interface PublicIncidentEventPage {
+  items: PublicIncidentEvent[];
+  pageNumber: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
 export interface IncidentComment {
   incidentCommentId?: string;
   commentId?: string;
@@ -89,6 +99,16 @@ export interface IncidentComment {
   createdAt: string;
 }
 
+export interface IncidentCommentPage {
+  items: IncidentComment[];
+  pageNumber: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
 export interface CommunityIncidentCardProps {
   item: PublicIncidentItem;
   onPress: () => void;
@@ -97,4 +117,6 @@ export interface CommunityIncidentCardProps {
 
 export type CommunityFeedCache = {
   items?: PublicIncidentItem[];
+  pages?: Array<{ items?: PublicIncidentItem[]; [key: string]: unknown }>;
+  [key: string]: unknown;
 };

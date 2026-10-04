@@ -3,6 +3,16 @@ import type { CreateFeedbackPayload, FeedbackFilters } from '../types/reporting.
 
 export type { CreateFeedbackPayload, FeedbackFilters } from '../types/reporting.types';
 
+export type FeedbackPage = {
+  items: any[];
+  pageNumber: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
 const CITIZEN_OPTS = { role: 'service-user' };
 
 /**
@@ -26,6 +36,20 @@ export const feedbackApi = {
     if (filters.sortOrder) params.sortOrder = filters.sortOrder;
 
     return ticketApi.getTickets(params, CITIZEN_OPTS);
+  },
+
+  /** Paginated resident feedback list with backend pagination metadata intact. */
+  async listPage(filters: FeedbackFilters = {}): Promise<FeedbackPage> {
+    const params: Record<string, string | number> = {
+      pageNumber: filters.pageNumber ?? 1,
+      pageSize: filters.pageSize ?? 20,
+    };
+    if (filters.status) params.status = filters.status;
+    if (filters.search) params.search = filters.search;
+    if (filters.sortBy) params.sortBy = filters.sortBy;
+    if (filters.sortOrder) params.sortOrder = filters.sortOrder;
+
+    return ticketApi.getTicketPage(params, CITIZEN_OPTS) as Promise<FeedbackPage>;
   },
 
   /** Full resident history, matching the paged aggregation used by Resident Web. */

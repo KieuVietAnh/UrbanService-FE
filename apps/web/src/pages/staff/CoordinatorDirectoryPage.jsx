@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { managementFeedbackApi } from '../../services/api/managementFeedbackApi';
 import { toolsApi } from '@urbanmind/shared-api';
@@ -38,6 +38,7 @@ const getCategoryLabel = (category) => category?.name || category?.categoryName 
 
 export default function CoordinatorDirectoryPage() {
   const navigate = useNavigate();
+  const coordinatorRequestIdRef = useRef(0);
 
   const [initialCache] = useState(() => readCoordinatorCache());
   const [items, setItems] = useState(() => (
@@ -51,6 +52,9 @@ export default function CoordinatorDirectoryPage() {
   ));
   const [loading, setLoading] = useState(() => !Array.isArray(initialCache?.items));
   const [error, setError] = useState('');
+  const [totalCount, setTotalCount] = useState(() => Number(initialCache?.totalCount) || items.length);
+  const [totalPages, setTotalPages] = useState(() => Number(initialCache?.totalPages) || 1);
+  const [serverPaged, setServerPaged] = useState(() => Boolean(initialCache?.serverPaged));
 
   const [search, setSearch] = useState(() => initialCache?.search || '');
   const [debouncedSearch, setDebouncedSearch] = useState(() => initialCache?.search || '');
@@ -93,12 +97,14 @@ export default function CoordinatorDirectoryPage() {
   }, [search]);
 
   const fetchCoordinators = useCallback(async () => {
+    const requestId = ++coordinatorRequestIdRef.current;
     setLoading(true);
     setError('');
 
     try {
-      // Swagger: endpoint này trả về toàn bộ mảng kết quả và chỉ nhận 4 filter dưới đây.
       const response = await managementFeedbackApi.getServiceProviders({
+        pageNumber: currentPage,
+        pageSize: PAGE_SIZE,
         search: debouncedSearch.trim() || undefined,
         areaId: areaId ? Number(areaId) : undefined,
         categoryId: categoryId ? Number(categoryId) : undefined,
@@ -112,23 +118,40 @@ export default function CoordinatorDirectoryPage() {
           : Array.isArray(response?.data)
             ? response.data
             : [];
+      const hasPagedResponse = !Array.isArray(response) && Array.isArray(response?.items);
+      const nextTotalCount = hasPagedResponse
+        ? Number(response?.totalItems ?? response?.totalCount ?? itemsArr.length) || 0
+        : itemsArr.length;
+      const nextTotalPages = hasPagedResponse
+        ? Math.max(1, Number(response?.totalPages) || Math.ceil(nextTotalCount / PAGE_SIZE))
+        : Math.max(1, Math.ceil(nextTotalCount / PAGE_SIZE));
 
+      if (requestId !== coordinatorRequestIdRef.current) return;
       setItems(itemsArr);
+      setTotalCount(nextTotalCount);
+      setTotalPages(nextTotalPages);
+      setServerPaged(hasPagedResponse);
+      if (currentPage > nextTotalPages) setCurrentPage(nextTotalPages);
       mergeCoordinatorCache({
         items: itemsArr,
+        totalCount: nextTotalCount,
+        totalPages: nextTotalPages,
+        serverPaged: hasPagedResponse,
+        currentPage,
         search: debouncedSearch,
         areaId,
         categoryId,
         includeInactive,
       });
     } catch (err) {
+      if (requestId !== coordinatorRequestIdRef.current) return;
       console.error('Failed to fetch coordinators', err);
       setError('Không thể tải danh sách điều phối viên. Vui lòng thử lại.');
       setItems((current) => (current.length > 0 ? current : []));
     } finally {
-      setLoading(false);
+      if (requestId === coordinatorRequestIdRef.current) setLoading(false);
     }
-  }, [debouncedSearch, areaId, categoryId, includeInactive]);
+  }, [currentPage, debouncedSearch, areaId, categoryId, includeInactive]);
 
   useEffect(() => {
     fetchCoordinators();
@@ -138,14 +161,15 @@ export default function CoordinatorDirectoryPage() {
     setCurrentPage(1);
   }, [debouncedSearch, areaId, categoryId, includeInactive]);
 
-  const totalCount = items.length;
-  const activeCount = useMemo(() => items.filter((item) => item?.isActive !== false).length, [items]);
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
   const pageStart = (safePage - 1) * PAGE_SIZE;
   const paginatedItems = useMemo(
-    () => items.slice(pageStart, pageStart + PAGE_SIZE),
-    [items, pageStart]
+    () => serverPaged ? items : items.slice(pageStart, pageStart + PAGE_SIZE),
+    [items, pageStart, serverPaged]
+  );
+  const activeCount = useMemo(
+    () => paginatedItems.filter((item) => item?.isActive !== false).length,
+    [paginatedItems]
   );
 
   useEffect(() => {
@@ -196,7 +220,7 @@ export default function CoordinatorDirectoryPage() {
           <div>
             <p className="text-sm font-semibold text-slate-500">Đang hoạt động</p>
             <p className="mt-2 text-3xl font-semibold text-slate-950">{activeCount}</p>
-            <p className="mt-2 text-sm text-slate-500">Điều phối viên đang sẵn sàng trong kết quả hiện tại.</p>
+            <p className="mt-2 text-sm text-slate-500">Điều phối viên đang hoạt động trên trang hiện tại.</p>
           </div>
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
             <Lucide.UserCheck size={20} />

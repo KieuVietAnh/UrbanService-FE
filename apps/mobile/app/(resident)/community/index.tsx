@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, RefreshControl, Pressable, StyleSheet, TextInput } from 'react-native';
+import { View, ScrollView, RefreshControl, Pressable, StyleSheet, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { AppCard } from '@/components/ui';
@@ -29,8 +29,14 @@ export default function CommunityFeedScreen() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState('');
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchText.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [searchText]);
 
   const { data: areas = [] } = useQuery({
     queryKey: communityKeys.areas(),
@@ -42,25 +48,36 @@ export default function CommunityFeedScreen() {
   });
 
   const feedParams = {
-    pageNumber: 1,
-    pageSize: 10,
+    pageSize: 20,
     status: activeFilter || undefined,
-    search: searchText || undefined,
+    search: debouncedSearch || undefined,
     areaId: selectedAreaId || undefined,
     categoryId: selectedCategoryId || undefined,
   };
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const feedQuery = useInfiniteQuery({
     queryKey: communityKeys.feed(feedParams),
-    queryFn: () => communityApi.getFeed(feedParams),
+    queryFn: ({ pageParam = 1 }) => communityApi.getFeed({ ...feedParams, pageNumber: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (
+      lastPage.hasNextPage || lastPage.pageNumber < lastPage.totalPages
+        ? lastPage.pageNumber + 1
+        : undefined
+    ),
   });
 
-  const items = (data?.items ?? []) as PublicIncidentItem[];
+  const items = useMemo(() => {
+    const byId = new Map<string, PublicIncidentItem>();
+    (feedQuery.data?.pages ?? []).forEach((page) => {
+      page.items.forEach((item) => byId.set(item.incidentId, item));
+    });
+    return [...byId.values()];
+  }, [feedQuery.data?.pages]);
 
   const summary = useMemo(() => ({
-    total: data?.totalItems ?? items.length,
+    total: feedQuery.data?.pages[0]?.totalItems ?? items.length,
     resolved: items.filter((item) => getResidentStage(item.status) === 'completed').length,
-  }), [data?.totalItems, items]);
+  }), [feedQuery.data?.pages, items]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -92,7 +109,7 @@ export default function CommunityFeedScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage} onRefresh={feedQuery.refetch} tintColor={colors.primary} />}
       >
         <View style={styles.searchBar}>
           <Icon name="search" size={16} color={colors.muted} />
@@ -179,7 +196,7 @@ export default function CommunityFeedScreen() {
           })}
         </ScrollView>
 
-        {isLoading ? (
+        {feedQuery.isLoading ? (
           <View>
             {Array.from({ length: 3 }).map((_, index) => (
               <View key={index} className="mb-3">
@@ -201,6 +218,18 @@ export default function CommunityFeedScreen() {
                 onCommentPress={() => router.push(`/(resident)/community/${item.incidentId}?autoFocusComment=1`)}
               />
             ))}
+            {feedQuery.hasNextPage ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={feedQuery.isFetchingNextPage}
+                onPress={() => { void feedQuery.fetchNextPage(); }}
+                style={styles.loadMoreButton}
+              >
+                {feedQuery.isFetchingNextPage
+                  ? <ActivityIndicator color="#FFFFFF" />
+                  : <Text style={styles.loadMoreText}>Tải thêm sự vụ</Text>}
+              </Pressable>
+            ) : null}
           </View>
         )}
       </ScrollView>
@@ -342,5 +371,18 @@ const styles = StyleSheet.create({
   },
   feedList: {
     gap: 10,
+  },
+  loadMoreButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  loadMoreText: {
+    fontFamily: 'Geist-SemiBold',
+    fontSize: 14,
+    color: '#FFFFFF',
   },
 });

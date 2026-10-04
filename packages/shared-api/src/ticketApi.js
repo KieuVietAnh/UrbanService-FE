@@ -20,9 +20,33 @@ const updateFeedbackStatus = (feedbackId, statusData, options = {}) => {
 };
 
 export const ticketApi = {
-  async getTickets(filters = {}, options = {}) {
+  async getTicketPage(filters = {}, options = {}) {
     const response = await axiosClient.get(getFeedbackBasePath(options.role), { params: filters });
-    return normalizeTicketsResponse(response);
+    const payload = response?.data ?? response;
+    const items = normalizeTicketsResponse(payload);
+    const pageNumber = Math.max(1, Number(payload?.pageNumber ?? filters?.pageNumber) || 1);
+    const pageSize = Math.max(1, Number(payload?.pageSize ?? filters?.pageSize) || items.length || 1);
+    const totalItems = Math.max(0, Number(payload?.totalItems ?? payload?.totalCount) || items.length);
+    const totalPages = Math.max(1, Number(payload?.totalPages) || Math.ceil(totalItems / pageSize) || 1);
+
+    return {
+      items,
+      pageNumber,
+      pageSize,
+      totalItems,
+      totalPages,
+      hasPreviousPage: typeof payload?.hasPreviousPage === 'boolean'
+        ? payload.hasPreviousPage
+        : pageNumber > 1,
+      hasNextPage: typeof payload?.hasNextPage === 'boolean'
+        ? payload.hasNextPage
+        : pageNumber < totalPages,
+    };
+  },
+
+  async getTickets(filters = {}, options = {}) {
+    const page = await ticketApi.getTicketPage(filters, options);
+    return page.items;
   },
 
   async getAllTickets(filters = {}, options = {}) {

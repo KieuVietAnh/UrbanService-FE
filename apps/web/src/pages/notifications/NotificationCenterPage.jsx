@@ -79,10 +79,9 @@ export const NotificationCenterPage = () => {
     totalCount,
     hasNextPage,
     loading,
-    initialized,
     loadingMore,
     error,
-    loadAllNotifications,
+    loadNotifications,
     loadMoreNotifications,
     markAsRead,
     markAllAsRead,
@@ -118,13 +117,6 @@ export const NotificationCenterPage = () => {
     return counts;
   }, [notifications]);
 
-  const loadingFullDataset = totalCount > notifications.length && (loading || loadingMore);
-
-  useEffect(() => {
-    if (!initialized || loading || loadingMore || totalCount <= notifications.length) return;
-    loadAllNotifications({ force: true }).catch(() => {});
-  }, [initialized, loadAllNotifications, loading, loadingMore, notifications.length, totalCount]);
-
   useEffect(() => {
     setVisibleCount(NOTIFICATIONS_PER_VIEW);
   }, [activeCategory, showUnreadOnly, searchQuery]);
@@ -132,7 +124,7 @@ export const NotificationCenterPage = () => {
   const handleRefresh = async () => {
     setVisibleCount(NOTIFICATIONS_PER_VIEW);
     try {
-      await loadAllNotifications({ force: true });
+      await loadNotifications();
     } catch {
       // useNotifications stores the user-facing error state.
     }
@@ -248,7 +240,9 @@ export const NotificationCenterPage = () => {
               <Lucide.Search size={17} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Tìm theo tiêu đề hoặc nội dung..." className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 dark:border-white/10 dark:bg-white/5 dark:text-white dark:focus:ring-blue-500/10" />
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{loadingFullDataset ? 'Đang tải đầy đủ thông báo để lọc chính xác…' : `${filteredNotifications.length} thông báo phù hợp`}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {`${filteredNotifications.length} thông báo phù hợp trong ${notifications.length} thông báo đã tải`}
+            </p>
           </div>
         </section>
 

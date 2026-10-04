@@ -5,7 +5,7 @@
  *
  * PRESERVED (DO NOT MODIFY):
  *  - messagingApi.getAiConversations()   → AI tab
- *  - feedbackApi.list()                  → Support tab (fetch all)
+ *  - feedbackApi.listPage()              → Support tab (paged)
  *  - messagingApi.getFeedbackMessages()  → filter has-conversation
  *  - /(resident)/ai/[id]                 navigation
  *  - /(resident)/tickets/[id]/chat       navigation
@@ -34,7 +34,7 @@ import {
 import { axiosClient } from '@urbanmind/shared-api';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import Icon from '@expo/vector-icons/Feather';
 import { feedbackApi, reportingKeys } from '@/features/reporting/api';
@@ -570,7 +570,12 @@ const SUPPORT_FEEDBACK_FILTERS = {
   sortBy: 'updatedAt',
   sortOrder: 'desc' as const,
 };
-const SUPPORT_INBOX_POLL_INTERVAL_MS = 10000;
+type SupportThreadPage = {
+  items: SupportThread[];
+  pageNumber: number;
+  totalPages: number;
+  hasNextPage: boolean;
+};
 
 export default function InboxScreen() {
   const router = useRouter();
@@ -615,17 +620,20 @@ export default function InboxScreen() {
     isError: supportError,
     refetch: refetchSupport,
     isRefetching: supportRefetching,
-  } = useQuery<SupportThread[]>({
+    hasNextPage: hasNextSupportPage,
+    fetchNextPage: fetchNextSupportPage,
+    isFetchingNextPage: isFetchingNextSupportPage,
+  } = useInfiniteQuery<SupportThreadPage>({
     queryKey: messagingKeys.supportThreads(),
-    queryFn: async (): Promise<SupportThread[]> => {
-      // Step 1: fetch all citizen feedbacks (list API — NO attachment data)
-      // Capped at 15 items for inbox preview to minimize concurrent checking load
+    queryFn: async ({ pageParam = 1 }): Promise<SupportThreadPage> => {
+      // Fetch one feedback page at a time so opening the inbox does not probe
+      // every historical feedback and message thread at once.
       const raw = await queryClient.fetchQuery({
-        queryKey: reportingKeys.list(SUPPORT_FEEDBACK_FILTERS),
-        queryFn: () => feedbackApi.list(SUPPORT_FEEDBACK_FILTERS),
+        queryKey: reportingKeys.list({ ...SUPPORT_FEEDBACK_FILTERS, pageNumber: Number(pageParam) }),
+        queryFn: () => feedbackApi.listPage({ ...SUPPORT_FEEDBACK_FILTERS, pageNumber: Number(pageParam) }),
         staleTime: 0,
       });
-      const items: any[] = Array.isArray(raw) ? raw : (raw?.items ?? []);
+      const items: any[] = raw.items ?? [];
 
       // Step 2: check messages for each feedback in parallel
       let messageProbeCount = 0;
@@ -708,14 +716,19 @@ export default function InboxScreen() {
         })
       );
 
-      return threads;
+      return {
+        items: threads,
+        pageNumber: raw.pageNumber,
+        totalPages: raw.totalPages,
+        hasNextPage: raw.hasNextPage,
+      };
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.hasNextPage ? lastPage.pageNumber + 1 : undefined,
     retry: false,
     staleTime: 1000,
     gcTime: 1000 * 60 * 30,
-    refetchInterval: isAppActive && activeTab === 'support'
-      ? SUPPORT_INBOX_POLL_INTERVAL_MS
-      : false,
+    refetchInterval: false,
     refetchIntervalInBackground: false,
     enabled: authReady && !!user && activeTab === 'support' && isAppActive,
   });
@@ -744,7 +757,9 @@ export default function InboxScreen() {
   );
 
   const aiConversations: AiConversationItem[] = Array.isArray(aiData) ? aiData : [];
-  const supportFeedbacks: SupportThread[] = Array.isArray(supportThreads) ? supportThreads : [];
+  const supportFeedbacks: SupportThread[] = Array.from(new Map(
+    (supportThreads?.pages.flatMap((page) => page.items) ?? []).map((item) => [item.feedbackId, item]),
+  ).values());
 
   const showAiInitialLoading = activeTab === 'ai' && aiLoading && aiData === undefined;
   const showSupportInitialLoading = activeTab === 'support' && supportLoading && supportThreads === undefined;
@@ -904,8 +919,15 @@ export default function InboxScreen() {
                   ]}
                   showsVerticalScrollIndicator={false}
                   refreshControl={
-                    <RefreshControl refreshing={supportRefetching} onRefresh={refetchSupport} tintColor={D.aiPrimary} />
+                    <RefreshControl refreshing={supportRefetching && !isFetchingNextSupportPage} onRefresh={refetchSupport} tintColor={D.aiPrimary} />
                   }
+                  onEndReached={() => {
+                    if (hasNextSupportPage && !isFetchingNextSupportPage) void fetchNextSupportPage();
+                  }}
+                  onEndReachedThreshold={0.35}
+                  ListFooterComponent={isFetchingNextSupportPage ? (
+                    <View style={{ paddingVertical: 18 }}><ActivityIndicator color={D.aiPrimary} /></View>
+                  ) : null}
                   ListEmptyComponent={!showSupportInitialLoading ? <SupportEmpty /> : null}
                   renderItem={({ item, index }) => (
                     <SupportFeedbackCard item={item} index={index} onPress={() => handleSupportPress(item)} />

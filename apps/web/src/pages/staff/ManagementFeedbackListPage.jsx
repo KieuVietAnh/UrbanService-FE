@@ -12,6 +12,8 @@ import { getCategoryLabel } from '../../utils/categoryLabels';
 import * as Lucide from 'lucide-react';
 
 const STAFF_FEEDBACK_LIST_RETURN_KEY = 'staff-feedback-list-return';
+const STAFF_FEEDBACK_TOTALS_CACHE_KEY = 'staff-feedback-workflow-totals';
+const STAFF_FEEDBACK_TOTALS_CACHE_TTL = 60_000;
 
 const readStaffFeedbackListReturn = () => {
   try {
@@ -20,6 +22,30 @@ const readStaffFeedbackListReturn = () => {
     return JSON.parse(raw);
   } catch {
     return null;
+  }
+};
+
+const readWorkflowTotalsCache = () => {
+  try {
+    const raw = sessionStorage.getItem(STAFF_FEEDBACK_TOTALS_CACHE_KEY);
+    const cached = raw ? JSON.parse(raw) : null;
+    if (!cached?.totals || Date.now() - Number(cached.savedAt || 0) > STAFF_FEEDBACK_TOTALS_CACHE_TTL) {
+      return null;
+    }
+    return cached.totals;
+  } catch {
+    return null;
+  }
+};
+
+const writeWorkflowTotalsCache = (totals) => {
+  try {
+    sessionStorage.setItem(
+      STAFF_FEEDBACK_TOTALS_CACHE_KEY,
+      JSON.stringify({ totals, savedAt: Date.now() })
+    );
+  } catch {
+    // Statistics remain usable even when browser storage is unavailable.
   }
 };
 
@@ -37,20 +63,6 @@ const getFeedbackLocationText = (item) => (
   getFeedbackAreaName(item) ||
   ''
 );
-
-const hasPreciseLocation = (item = {}) => {
-  const latitude = item?.latitude ?? item?.lat ?? item?.location?.latitude ?? item?.location?.lat;
-  const longitude = item?.longitude ?? item?.lng ?? item?.long ?? item?.location?.longitude ?? item?.location?.lng;
-
-  return latitude !== null &&
-    latitude !== undefined &&
-    latitude !== '' &&
-    longitude !== null &&
-    longitude !== undefined &&
-    longitude !== '' &&
-    Number.isFinite(Number(latitude)) &&
-    Number.isFinite(Number(longitude));
-};
 
 const FilterDropdown = ({
   menuId,
@@ -156,12 +168,15 @@ export default function ManagementFeedbackListPage() {
   const [currentPage, setCurrentPage] = useState(() => Number(initialReturnSnapshot?.currentPage) || 1);
   const [pageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(() => Number(initialReturnSnapshot?.totalCount) || 0);
+  const [initialWorkflowTotalsCache] = useState(() => readWorkflowTotalsCache());
   const [workflowTotals, setWorkflowTotals] = useState(() => (
     initialReturnSnapshot?.workflowTotals && typeof initialReturnSnapshot.workflowTotals === 'object'
       ? initialReturnSnapshot.workflowTotals
-      : {}
+      : initialWorkflowTotalsCache || {}
   ));
-  const [workflowTotalsLoading, setWorkflowTotalsLoading] = useState(() => !initialReturnSnapshot?.workflowTotals);
+  const [workflowTotalsLoading, setWorkflowTotalsLoading] = useState(
+    () => !initialReturnSnapshot?.workflowTotals && !initialWorkflowTotalsCache
+  );
   const [restoredFeedbackId, setRestoredFeedbackId] = useState('');
   const [openFilterMenu, setOpenFilterMenu] = useState(null);
 
@@ -202,6 +217,9 @@ export default function ManagementFeedbackListPage() {
         search: search || undefined,
         status: normalizeStatusValue(status) || undefined,
         categoryId: categoryId || undefined,
+        hasPreciseLocation: locationFilter === 'all'
+          ? undefined
+          : locationFilter === 'withPreciseLocation',
       };
 
       const response = await managementFeedbackApi.getFeedbacks(params);
@@ -212,10 +230,7 @@ export default function ManagementFeedbackListPage() {
         const matchesSearch = !search || `${item.title || ''} ${item.description || ''} ${item.feedbackId || ''}`.toLowerCase().includes(search.toLowerCase());
         const matchesStatus = !normalizedSelectedStatus || normalizedStatus === normalizedSelectedStatus;
         const matchesCategory = !categoryId || String(item.categoryId ?? item.category?.categoryId ?? '') === String(categoryId);
-        const matchesLocation = locationFilter === 'all' ||
-          (locationFilter === 'withPreciseLocation' && hasPreciseLocation(item)) ||
-          (locationFilter === 'withoutPreciseLocation' && !hasPreciseLocation(item));
-        return matchesSearch && matchesStatus && matchesCategory && matchesLocation;
+        return matchesSearch && matchesStatus && matchesCategory;
       });
 
       setFeedbacks(filteredItems);
@@ -322,6 +337,13 @@ export default function ManagementFeedbackListPage() {
   ], []);
 
   const fetchWorkflowTotals = useCallback(async () => {
+    const cachedTotals = readWorkflowTotalsCache();
+    if (cachedTotals) {
+      setWorkflowTotals(cachedTotals);
+      setWorkflowTotalsLoading(false);
+      return;
+    }
+
     setWorkflowTotalsLoading(true);
     try {
       const entries = await Promise.all(
@@ -337,7 +359,9 @@ export default function ManagementFeedbackListPage() {
         })
       );
 
-      setWorkflowTotals(Object.fromEntries(entries));
+      const totals = Object.fromEntries(entries);
+      setWorkflowTotals(totals);
+      writeWorkflowTotalsCache(totals);
     } catch (err) {
       console.error('Failed to fetch workflow totals', err);
       setWorkflowTotals({});

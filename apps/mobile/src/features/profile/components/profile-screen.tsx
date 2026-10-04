@@ -25,7 +25,8 @@ import { getResidentStage } from '@/features/resident-status';
 import { getUserFacingError } from '@/utils/user-facing-error';
 
 const PROFILE_FEEDBACK_FILTERS: FeedbackFilters = {
-  pageSize: 100,
+  pageNumber: 1,
+  pageSize: 20,
   sortBy: 'createdAt',
   sortOrder: 'desc',
 };
@@ -99,7 +100,7 @@ export default function ProfileScreen() {
   // Fetch Feedback Stats
   const { data: myFeedbacksData, isLoading: isFeedbackLoading } = useQuery({
     queryKey: reportingKeys.list(PROFILE_FEEDBACK_FILTERS),
-    queryFn: () => feedbackApi.list(PROFILE_FEEDBACK_FILTERS),
+    queryFn: () => feedbackApi.listPage(PROFILE_FEEDBACK_FILTERS),
     enabled: Boolean(userId),
   });
 
@@ -138,12 +139,8 @@ export default function ProfileScreen() {
     .join('')
     .toUpperCase() || 'U';
 
-  const feedbackItems = Array.isArray(myFeedbacksData)
-    ? myFeedbacksData
-    : myFeedbacksData?.items || [];
-  const totalCount = Array.isArray(myFeedbacksData)
-    ? myFeedbacksData.length
-    : myFeedbacksData?.totalItems || feedbackItems.length;
+  const feedbackItems = myFeedbacksData?.items || [];
+  const totalCount = myFeedbacksData?.totalItems ?? feedbackItems.length;
 
   const isSubmittedStatus = (status?: string) => getResidentStage(status) === 'submitted';
   const isProcessingStatus = (status?: string) => [
@@ -299,6 +296,7 @@ export default function ProfileScreen() {
                   </View>
                 ))}
               </View>
+              <Text style={styles.statsNote}>Phân loại theo 20 phản ánh gần nhất</Text>
 
               <Pressable
                 onPress={handleOpenMyFeedbacks}
@@ -568,6 +566,15 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist-Medium',
     color: '#64748B',
     marginTop: 2,
+  },
+  statsNote: {
+    marginHorizontal: 20,
+    marginTop: -4,
+    marginBottom: 12,
+    textAlign: 'center',
+    fontFamily: 'Geist-Regular',
+    fontSize: 11,
+    color: '#64748B',
   },
   feedbackPanel: {
     marginHorizontal: 16,

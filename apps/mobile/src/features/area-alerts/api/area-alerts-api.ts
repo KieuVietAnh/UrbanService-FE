@@ -23,6 +23,15 @@ export type AreaAlert = {
   isSubscribedArea?: boolean;
 };
 
+export type AreaAlertPage = {
+  items: AreaAlert[];
+  pageNumber?: number;
+  pageSize?: number;
+  totalItems?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+};
+
 export const areaAlertKeys = {
   all: ['resident-area-alerts'] as const,
   alerts: (onlySubscribed: boolean) => [...areaAlertKeys.all, 'alerts', onlySubscribed] as const,
@@ -31,11 +40,11 @@ export const areaAlertKeys = {
 };
 
 export const areaAlertsApi = {
-  getAlerts: (onlySubscribedAreas = true) => userAreaAlertApi.getAlerts({
+  getAlerts: (onlySubscribedAreas = true, pageNumber = 1, pageSize = 20) => userAreaAlertApi.getAlerts({
     OnlySubscribedAreas: onlySubscribedAreas,
-    PageNumber: 1,
-    PageSize: 50,
-  }) as Promise<{ items: AreaAlert[]; totalItems?: number }>,
+    PageNumber: pageNumber,
+    PageSize: pageSize,
+  }) as Promise<AreaAlertPage>,
   getSubscriptions: () => userAreaAlertApi.getSubscriptions() as Promise<AreaSubscription[]>,
   getAreas: () => toolsApi.getAreas({}, { throwOnError: true }) as Promise<any[]>,
   subscribe: (areaId: number) => userAreaAlertApi.subscribe(areaId, { receiveAlerts: true }),
