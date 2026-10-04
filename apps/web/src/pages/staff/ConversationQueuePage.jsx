@@ -105,14 +105,15 @@ export default function ConversationQueuePage() {
   const [items, setItems] = useState(() => (
     Array.isArray(initialReturnSnapshot?.items)
       ? initialReturnSnapshot.items
-      : (Array.isArray(initialCountCache?.items) ? initialCountCache.items : [])
+      : []
   ));
   const [loading, setLoading] = useState(
-    () => !Array.isArray(initialReturnSnapshot?.items) && !Array.isArray(initialCountCache?.items)
+    () => !Array.isArray(initialReturnSnapshot?.items)
   );
   const [error, setError] = useState('');
   const [page, setPage] = useState(() => Number(initialReturnSnapshot?.page) || 1);
   const [systemTotal, setSystemTotal] = useState(() => Number(initialReturnSnapshot?.systemTotal) || 0);
+  const [pageCount, setPageCount] = useState(() => Number(initialReturnSnapshot?.pageCount) || 1);
   const [conversationFilter, setConversationFilter] = useState(
     () => initialReturnSnapshot?.conversationFilter || 'all'
   );
@@ -168,55 +169,44 @@ export default function ConversationQueuePage() {
     const loadConversations = async () => {
       setLoading(true);
       setError('');
+      setMessageCountsReady(false);
 
       try {
-        const firstResponse = await managementFeedbackApi.getFeedbacks({
-          pageNumber: 1,
-          pageSize: 50,
+        const response = await managementFeedbackApi.getFeedbacks({
+          pageNumber: page,
+          pageSize,
         });
-
-        const firstItems = Array.isArray(firstResponse?.items) ? firstResponse.items : [];
-        const totalItems = Number(firstResponse?.totalItems ?? firstResponse?.totalCount ?? firstItems.length) || 0;
-        const totalPages = Math.max(
-          1,
-          Number(firstResponse?.totalPages) || Math.ceil(totalItems / 50)
-        );
-
-        const remainingResponses = totalPages > 1
-          ? await Promise.all(
-              Array.from({ length: totalPages - 1 }, (_, index) => (
-                managementFeedbackApi.getFeedbacks({
-                  pageNumber: index + 2,
-                  pageSize: 50,
-                })
-              ))
-            )
-          : [];
 
         if (!active) return;
 
-        const feedbacks = [
-          ...firstItems,
-          ...remainingResponses.flatMap((response) => (
-            Array.isArray(response?.items) ? response.items : []
-          )),
-        ];
+        const feedbacks = Array.isArray(response?.items) ? response.items : [];
+        const totalItems = Number(response?.totalItems ?? response?.totalCount ?? feedbacks.length) || 0;
+        const totalPages = Math.max(
+          1,
+          Number(response?.totalPages) || Math.ceil(totalItems / pageSize)
+        );
 
-        const initialItems = feedbacks.map((item) => ({
-          feedbackId: item?.feedbackId || item?.id,
-          title: item?.title || 'Không có tiêu đề',
-          citizenName: item?.userName || item?.reporterName || 'Không rõ',
-          messageCount: Number(
-            item?.interactionMessageCount
+        setSystemTotal(totalItems);
+        setPageCount(totalPages);
+        if (page > totalPages) {
+          setPage(totalPages);
+          return;
+        }
+
+        const initialItems = feedbacks.map((item) => {
+          const returnedMessageCount = item?.interactionMessageCount
             ?? item?.messageCount
-            ?? item?.commentCount
-            ?? 0
-          ),
-          lastActivity: item?.updatedAt || item?.createdAt || null,
-          status: item?.status || '',
-        }));
-
-        setSystemTotal(totalItems || initialItems.length);
+            ?? item?.commentCount;
+          return {
+            feedbackId: item?.feedbackId || item?.id,
+            title: item?.title || 'Không có tiêu đề',
+            citizenName: item?.userName || item?.reporterName || 'Không rõ',
+            messageCount: Number(returnedMessageCount ?? 0),
+            messageCountKnown: returnedMessageCount !== undefined && returnedMessageCount !== null,
+            lastActivity: item?.updatedAt || item?.createdAt || null,
+            status: item?.status || '',
+          };
+        });
 
         const countCacheDirty = isConversationCountCacheDirty();
         const cachedCountItems = Array.isArray(initialCountCache?.items)
@@ -225,7 +215,9 @@ export default function ConversationQueuePage() {
         const cachedCountsById = new Map(
           cachedCountItems.map((item) => [String(item.feedbackId), Number(item.messageCount) || 0])
         );
-        const canReuseCountCache = !countCacheDirty && cachedCountItems.length > 0;
+        const canReuseCountCache = !countCacheDirty
+          && initialItems.length > 0
+          && initialItems.every((item) => cachedCountsById.has(String(item.feedbackId)));
 
         if (canReuseCountCache) {
           const mergedItems = initialItems.map((item) => ({
@@ -246,7 +238,7 @@ export default function ConversationQueuePage() {
 
         const unresolvedIndexes = initialItems
           .map((item, index) => ({ item, index }))
-          .filter(({ item }) => Number(item.messageCount) <= 0);
+          .filter(({ item }) => !item.messageCountKnown);
 
         const resolvedMessageCounts = new Map();
         let nextUnresolvedIndex = 0;
@@ -289,6 +281,7 @@ export default function ConversationQueuePage() {
           messageCount: resolvedMessageCounts.has(index)
             ? resolvedMessageCounts.get(index)
             : item.messageCount,
+          messageCountKnown: resolvedMessageCounts.has(index) || item.messageCountKnown,
         }));
 
         setItems(resolvedItems);
@@ -310,11 +303,11 @@ export default function ConversationQueuePage() {
     return () => {
       active = false;
     };
-  }, [initialCountCache?.items]);
+  }, [initialCountCache?.items, page, pageSize]);
 
 
   const summary = useMemo(() => ({
-    total: systemTotal || items.length,
+    total: systemTotal,
     withMessages: items.filter((item) => Number(item.messageCount) > 0).length,
   }), [items, systemTotal]);
 
@@ -327,7 +320,7 @@ export default function ConversationQueuePage() {
     [conversationFilter, items]
   );
 
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const totalPages = Math.max(1, pageCount);
   const currentPage = Math.min(page, totalPages);
   const openConversationFeedback = useCallback((item) => {
     const scrollContainer = document.querySelector('[data-dashboard-scroll-container]');
@@ -342,6 +335,7 @@ export default function ConversationQueuePage() {
         conversationFilter,
         items,
         systemTotal,
+        pageCount,
         messageCountsReady,
       })
     );
@@ -371,14 +365,12 @@ export default function ConversationQueuePage() {
     location.state,
     messageCountsReady,
     navigate,
+    pageCount,
     systemTotal,
   ]);
 
   const pageStart = (currentPage - 1) * pageSize;
-  const paginatedItems = useMemo(
-    () => filteredItems.slice(pageStart, pageStart + pageSize),
-    [filteredItems, pageStart]
-  );
+  const paginatedItems = filteredItems;
 
   useEffect(() => {
     if (!filterInitializedRef.current) {
@@ -483,8 +475,8 @@ export default function ConversationQueuePage() {
             label="Có trao đổi"
             value={messageCountsReady ? summary.withMessages : '…'}
             description={messageCountsReady
-              ? 'Chỉ hiển thị phản ánh đã phát sinh ít nhất một tin nhắn.'
-              : 'Đang xác định các phản ánh đã phát sinh trao đổi.'}
+              ? 'Số phản ánh có tin nhắn trên trang hiện tại.'
+              : 'Đang xác định trao đổi của trang hiện tại.'}
             icon={Lucide.MessageSquareText}
             toneClass="bg-emerald-50 text-emerald-700"
           />
@@ -495,7 +487,7 @@ export default function ConversationQueuePage() {
         <EmptyState
           title={conversationFilter === 'with-messages' ? 'Chưa có phản ánh có trao đổi' : 'Chưa có phản ánh nào'}
           description={conversationFilter === 'with-messages'
-            ? 'Chưa có phản ánh nào phát sinh tin nhắn.'
+            ? 'Trang hiện tại chưa có phản ánh phát sinh tin nhắn. Bạn có thể chuyển sang trang khác.'
             : 'Danh sách hiện chưa có dữ liệu phản ánh.'}
         />
       ) : (
@@ -594,8 +586,12 @@ export default function ConversationQueuePage() {
 
           <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/55 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
-              Hiển thị <span className="font-semibold text-slate-700">{filteredItems.length === 0 ? 0 : pageStart + 1}–{Math.min(pageStart + pageSize, filteredItems.length)}</span> trong tổng số{' '}
-              <span className="font-semibold text-slate-700">{filteredItems.length}</span> phản ánh
+              {conversationFilter === 'with-messages' ? (
+                <>Có <span className="font-semibold text-slate-700">{filteredItems.length}</span> phản ánh có trao đổi trên trang {currentPage}</>
+              ) : (
+                <>Hiển thị <span className="font-semibold text-slate-700">{items.length === 0 ? 0 : pageStart + 1}–{Math.min(pageStart + items.length, systemTotal)}</span> trong tổng số{' '}
+                  <span className="font-semibold text-slate-700">{systemTotal}</span> phản ánh</>
+              )}
             </p>
 
             <nav className="flex items-center gap-1.5" aria-label="Phân trang danh sách trao đổi">

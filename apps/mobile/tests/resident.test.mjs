@@ -58,8 +58,9 @@ test('community is Incident-centric while My Feedback remains Feedback-centric',
   assert.match(communityApi, /\/api\/public\/incidents/);
   assert.match(webCommunityApi, /\/api\/public\/incidents/);
   assert.match(communityApi, /PageSize:\s*params\.pageSize \?\? 10/);
-  assert.match(communityFeed, /pageSize:\s*10/);
-  assert.match(communityMap, /const PAGE_SIZE = 100/);
+  assert.match(communityFeed, /pageSize:\s*20/);
+  assert.match(communityFeed, /useInfiniteQuery/);
+  assert.match(communityMap, /const PAGE_SIZE = 50/);
   assert.doesNotMatch(communityFeed, /sort:\s*'trending'/);
   assert.doesNotMatch(communityApi, /\/api\/user\/feedbacks\/feed/);
   assert.match(ticketDetail, /feedbackApi\.getById/);
@@ -94,8 +95,10 @@ test('resident resolution review follows the latest feedback detail contract', (
 });
 
 test('resident feedback history and support chat follow the live Web contracts', () => {
-  assert.match(feedbackApi, /ticketApi\.getAllTickets/);
-  assert.match(ticketsScreen, /feedbackApi\.listAll/);
+  assert.match(feedbackApi, /ticketApi\.getTicketPage/);
+  assert.match(ticketsScreen, /feedbackApi\.listPage/);
+  assert.match(ticketsScreen, /useInfiniteQuery/);
+  assert.doesNotMatch(ticketsScreen, /feedbackApi\.listAll/);
   assert.match(messagingApi, /\/api\/feedbacks\/\$\{feedbackId\}\/messages/);
   assert.doesNotMatch(messagingApi, /\/api\/inbox\/conversations/);
   assert.match(ticketMessagesRealtime, /\/hubs\/ticket-messages/);
@@ -211,7 +214,7 @@ test('cached inbox content stays visible during background refresh', () => {
   assert.match(inbox, /aiLoading\s*&&\s*aiData\s*===\s*undefined/);
   assert.match(inbox, /supportLoading\s*&&\s*supportThreads\s*===\s*undefined/);
   assert.match(inbox, /refreshing=\{aiRefetching\}/);
-  assert.match(inbox, /refreshing=\{supportRefetching\}/);
+  assert.match(inbox, /refreshing=\{supportRefetching\s*&&\s*!isFetchingNextSupportPage\}/);
 });
 
 test('notifications degrade to the correct list instead of leaving a dead View action', () => {

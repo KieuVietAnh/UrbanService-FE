@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 
 import { KeyboardAwareComposerLayout } from '@/components/layouts';
@@ -67,15 +67,18 @@ export default function CommunityDetailScreen() {
     queryFn: () => communityApi.getResolution(incidentId),
     enabled: Boolean(incidentId) && getResidentStage(detailQuery.data?.status) === 'completed',
   });
-  const commentsQuery = useQuery({
+  const commentsQuery = useInfiniteQuery({
     queryKey: communityKeys.comments(incidentId),
-    queryFn: () => communityApi.getComments(incidentId),
+    queryFn: ({ pageParam = 1 }) => communityApi.getComments(incidentId, pageParam, 20),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.hasNextPage ? lastPage.pageNumber + 1 : undefined,
     enabled: Boolean(incidentId),
   });
 
   const incident = detailQuery.data;
   const resolution = resolutionQuery.data;
-  const comments = commentsQuery.data ?? [];
+  const comments = commentsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const commentTotal = commentsQuery.data?.pages[0]?.totalItems ?? comments.length;
 
   useEffect(() => {
     if (autoFocusComment === '1' || autoFocusComment === 'true') {
@@ -87,11 +90,17 @@ export default function CommunityDetailScreen() {
   const syncDetail = (patch: Partial<PublicIncidentDetail>) => {
     queryClient.setQueryData<PublicIncidentDetail>(communityKeys.detail(incidentId), (current) => current ? { ...current, ...patch } : current);
     queryClient.setQueriesData<CommunityFeedCache>({ queryKey: communityKeys.feeds() }, (current) => {
-      if (!current?.items) return current;
-      return {
-        ...current,
-        items: current.items.map((item) => item.incidentId === incidentId ? { ...item, ...patch } : item),
-      };
+      if (!current) return current;
+      const updateItems = (items?: CommunityFeedCache['items']) => items?.map((item) => (
+        item.incidentId === incidentId ? { ...item, ...patch } : item
+      ));
+      if (current.pages) {
+        return {
+          ...current,
+          pages: current.pages.map((page) => ({ ...page, items: updateItems(page.items) })),
+        };
+      }
+      return current.items ? { ...current, items: updateItems(current.items) } : current;
     });
   };
 
@@ -307,7 +316,7 @@ export default function CommunityDetailScreen() {
           ) : null}
 
           <View style={styles.commentsSection}>
-            <Text style={styles.sectionTitle}>Bình luận cộng đồng ({comments.length})</Text>
+            <Text style={styles.sectionTitle}>Bình luận cộng đồng ({commentTotal})</Text>
             {commentsQuery.isLoading ? <SkeletonCard /> : comments.length ? comments.map((item) => (
               <View key={item.id} style={styles.commentCard}>
                 <View style={styles.commentIcon}><Icon name="user" size={14} color={semantics.text.brand} /></View>
@@ -320,6 +329,15 @@ export default function CommunityDetailScreen() {
             )) : (
               <AppEmptyState icon={<Icon name="message-circle" size={34} color={semantics.text.lightMuted} />}>Chưa có bình luận công khai.</AppEmptyState>
             )}
+            {commentsQuery.hasNextPage ? (
+              <AppButton
+                variant="outline"
+                loading={commentsQuery.isFetchingNextPage}
+                onPress={() => { void commentsQuery.fetchNextPage(); }}
+              >
+                Xem thêm bình luận
+              </AppButton>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAwareComposerLayout>

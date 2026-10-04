@@ -279,25 +279,32 @@ test('incident query is always scoped to the signed-in staff and fails closed wi
   } finally { get.mock.restore(); }
 });
 
-test('staff dashboard loads every assigned Incident page with the same signed-in scope', async () => {
+test('staff dashboard loads every active Incident page with the same signed-in scope', async () => {
   const signal = new AbortController().signal;
   const get = mock.method(axiosClient, 'get', async (_url, options) => {
     const pageNumber = options.params.PageNumber;
+    const status = options.params.Status;
+    const totalPages = status === 'NeedRework' ? 2 : 1;
     return {
-      items: [{ incidentId: `incident-${pageNumber}`, status: pageNumber === 3 ? 'NeedRework' : 'Assigned' }],
+      items: [{ incidentId: `${status}-${pageNumber}`, status }],
       pageNumber,
       pageSize: 100,
-      totalItems: 3,
-      totalPages: 3,
-      hasNextPage: pageNumber < 3,
+      totalItems: totalPages,
+      totalPages,
+      hasNextPage: pageNumber < totalPages,
     };
   });
   try {
     const result = await staffApi.dashboard('staff-1', signal);
-    assert.deepEqual(result.items.map((item) => item.id).sort(), ['incident-1', 'incident-2', 'incident-3']);
-    assert.equal(result.totalItems, 3);
-    assert.equal(get.mock.callCount(), 3);
-    assert.deepEqual(get.mock.calls.map((call) => call.arguments[1].params.PageNumber).sort(), [1, 2, 3]);
+    assert.deepEqual(result.items.map((item) => item.id).sort(), [
+      'Assigned-1', 'InProgress-1', 'NeedRework-1', 'NeedRework-2', 'SubmittedForApproval-1',
+    ]);
+    assert.equal(result.totalItems, 5);
+    assert.equal(get.mock.callCount(), 5);
+    assert.deepEqual(get.mock.calls.map((call) => call.arguments[1].params.PageNumber).sort(), [1, 1, 1, 1, 2]);
+    assert.deepEqual(new Set(get.mock.calls.map((call) => call.arguments[1].params.Status)), new Set([
+      'Assigned', 'InProgress', 'NeedRework', 'SubmittedForApproval',
+    ]));
     assert.ok(get.mock.calls.every((call) => call.arguments[1].params.PageSize === 100));
     assert.ok(get.mock.calls.every((call) => call.arguments[1].params.AssignedStaffUserId === 'staff-1'));
     assert.ok(get.mock.calls.every((call) => call.arguments[1].signal === signal));
@@ -421,7 +428,8 @@ test('Staff chat uses the ticket message hub and keeps polling as a fallback', (
   assert.match(source, /useTicketMessagesRealtime/);
   assert.match(realtime, /\/hubs\/ticket-messages/, 'realtime chat must target the documented ticket message hub');
   // Nhịp tải lại vẫn phải còn: WebSocket rớt thì hội thoại không được đứng im.
-  assert.match(realtime, /MESSAGE_POLL_INTERVAL_MS\s*=\s*2000/);
+  assert.match(realtime, /MESSAGE_POLL_INTERVAL_MS\s*=\s*5000/);
+  assert.match(realtime, /REALTIME_RECONCILE_INTERVAL_MS\s*=\s*60000/);
   assert.match(realtime, /TicketMessageReceived/);
   assert.match(realtime, /JoinTicket/);
   assert.match(realtime, /withAutomaticReconnect/);

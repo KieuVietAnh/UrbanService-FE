@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 
 import { AppButton, AppCard, AppHeader, Text } from '@/components/ui';
@@ -29,9 +29,16 @@ export default function AreaAlertsScreen() {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const alertsQuery = useQuery({
+  const alertsQuery = useInfiniteQuery({
     queryKey: areaAlertKeys.alerts(onlySubscribed),
-    queryFn: () => areaAlertsApi.getAlerts(onlySubscribed),
+    queryFn: ({ pageParam = 1 }) => areaAlertsApi.getAlerts(onlySubscribed, pageParam, 20),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, pages) => {
+      const current = Number(lastPage.pageNumber ?? pages.length);
+      const totalPages = Number(lastPage.totalPages ?? 0);
+      if (lastPage.hasNextPage || (totalPages > 0 && current < totalPages)) return current + 1;
+      return (lastPage.items?.length ?? 0) >= 20 ? current + 1 : undefined;
+    },
   });
   const subscriptionsQuery = useQuery({
     queryKey: areaAlertKeys.subscriptions(),
@@ -63,7 +70,13 @@ export default function AreaAlertsScreen() {
     onError: () => toast.error('Không thể cập nhật khu vực theo dõi.'),
   });
 
-  const alerts = alertsQuery.data?.items ?? [];
+  const alerts = useMemo(() => {
+    const byId = new Map<number, AreaAlert>();
+    (alertsQuery.data?.pages ?? []).forEach((page) => {
+      (page.items ?? []).forEach((alert) => byId.set(alert.alertId, alert));
+    });
+    return [...byId.values()];
+  }, [alertsQuery.data?.pages]);
   const refreshing = alertsQuery.isRefetching || subscriptionsQuery.isRefetching;
   const refresh = () => {
     alertsQuery.refetch();
@@ -125,7 +138,17 @@ export default function AreaAlertsScreen() {
                 {alert.categoryName ? <Text style={styles.categoryText}>{alert.categoryName}</Text> : null}
               </AppCard>
             );
-          })}</View>
+          })}
+            {alertsQuery.hasNextPage ? (
+              <AppButton
+                variant="outline"
+                loading={alertsQuery.isFetchingNextPage}
+                onPress={() => { void alertsQuery.fetchNextPage(); }}
+              >
+                Tải thêm cảnh báo
+              </AppButton>
+            ) : alertsQuery.isFetchingNextPage ? <ActivityIndicator color={semantics.text.brand} /> : null}
+          </View>
         )}
       </ScrollView>
 

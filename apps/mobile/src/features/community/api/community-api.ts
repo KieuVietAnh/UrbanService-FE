@@ -2,9 +2,10 @@ import { axiosClient, toolsApi } from '@urbanmind/shared-api';
 import type {
   CommunityIncidentParams,
   CommunityIncidentResponse,
-  IncidentComment,
+  IncidentCommentPage,
   PublicIncidentDetail,
   PublicIncidentEvent,
+  PublicIncidentEventPage,
   PublicIncidentItem,
   PublicIncidentMedia,
   PublicIncidentResolution,
@@ -146,22 +147,37 @@ export const communityApi = {
     }
   },
 
-  async getTimeline(incidentId: string): Promise<PublicIncidentEvent[]> {
+  async getTimeline(incidentId: string, pageNumber = 1, pageSize = 20): Promise<PublicIncidentEventPage> {
     const payload = unwrap(await axiosClient.get(
       `/api/public/incidents/${encodeURIComponent(incidentId)}/timeline`,
-      { params: { pageNumber: 1, pageSize: 50 } }
+      { params: { pageNumber, pageSize } }
     ));
-    const items = Array.isArray(payload) ? payload : asRecord(payload).items;
-    return Array.isArray(items) ? items : [];
+    const record = asRecord(payload);
+    const rawItems = Array.isArray(payload) ? payload : record.items;
+    const items = (Array.isArray(rawItems) ? rawItems : []) as PublicIncidentEvent[];
+    const resolvedPageNumber = Number(record.pageNumber ?? pageNumber) || pageNumber;
+    const resolvedPageSize = Number(record.pageSize ?? pageSize) || pageSize;
+    const totalItems = Number(record.totalItems ?? items.length) || items.length;
+    const totalPages = Number(record.totalPages ?? Math.ceil(totalItems / resolvedPageSize)) || 1;
+    return {
+      items,
+      pageNumber: resolvedPageNumber,
+      pageSize: resolvedPageSize,
+      totalItems,
+      totalPages,
+      hasPreviousPage: typeof record.hasPreviousPage === 'boolean' ? record.hasPreviousPage : resolvedPageNumber > 1,
+      hasNextPage: typeof record.hasNextPage === 'boolean' ? record.hasNextPage : resolvedPageNumber < totalPages,
+    };
   },
 
-  async getComments(incidentId: string): Promise<IncidentComment[]> {
+  async getComments(incidentId: string, pageNumber = 1, pageSize = 20): Promise<IncidentCommentPage> {
     const payload = unwrap(await axiosClient.get(
       `/api/public/incidents/${encodeURIComponent(incidentId)}/comments`,
-      { params: { pageNumber: 1, pageSize: 50 } }
+      { params: { pageNumber, pageSize } }
     ));
-    const items = Array.isArray(payload) ? payload : asRecord(payload).items;
-    return (Array.isArray(items) ? items : []).map((value: unknown, index: number) => {
+    const record = asRecord(payload);
+    const rawItems = Array.isArray(payload) ? payload : record.items;
+    const items = (Array.isArray(rawItems) ? rawItems : []).map((value: unknown, index: number) => {
       const item = asRecord(value);
       return {
         ...item,
@@ -170,6 +186,19 @@ export const communityApi = {
         createdAt: String(item.createdAt ?? ''),
       };
     });
+    const resolvedPageNumber = Number(record.pageNumber ?? pageNumber) || pageNumber;
+    const resolvedPageSize = Number(record.pageSize ?? pageSize) || pageSize;
+    const totalItems = Number(record.totalItems ?? items.length) || items.length;
+    const totalPages = Number(record.totalPages ?? Math.ceil(totalItems / resolvedPageSize)) || 1;
+    return {
+      items,
+      pageNumber: resolvedPageNumber,
+      pageSize: resolvedPageSize,
+      totalItems,
+      totalPages,
+      hasPreviousPage: typeof record.hasPreviousPage === 'boolean' ? record.hasPreviousPage : resolvedPageNumber > 1,
+      hasNextPage: typeof record.hasNextPage === 'boolean' ? record.hasNextPage : resolvedPageNumber < totalPages,
+    };
   },
 
   async addComment(incidentId: string, content: string) {

@@ -9,11 +9,12 @@ import {
   Pressable,
   TextInput,
   RefreshControl,
+  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { SkeletonCard } from '@/components/shared';
@@ -46,24 +47,35 @@ export default function TicketsScreen() {
   };
 
   const filters = {
-    pageSize: 100,
+    pageSize: 20,
     search: debouncedSearch || undefined,
     sortBy: 'createdAt',
     sortOrder: 'desc' as const,
   };
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const query = useInfiniteQuery({
     queryKey: reportingKeys.list(filters),
-    queryFn: () => feedbackApi.listAll(filters),
+    queryFn: ({ pageParam = 1 }) => feedbackApi.listPage({ ...filters, pageNumber: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.hasNextPage ? lastPage.pageNumber + 1 : undefined,
   });
 
-  const tickets = (data ?? []) as any[];
+  const tickets = React.useMemo(() => {
+    const byId = new Map<string, any>();
+    (query.data?.pages ?? []).forEach((page) => page.items.forEach((item: any, index: number) => {
+      const id = String(item?.feedbackId ?? item?.id ?? item?.ticketId ?? `${page.pageNumber}-${index}`);
+      byId.set(id, item);
+    }));
+    return [...byId.values()];
+  }, [query.data?.pages]);
 
   const visibleTickets = activeFilter
     ? tickets.filter((item: any) => getResidentStage(item?.status) === activeFilter)
     : tickets;
 
-  const totalCount = activeFilter ? visibleTickets.length : tickets.length;
+  const totalCount = activeFilter
+    ? visibleTickets.length
+    : query.data?.pages[0]?.totalItems ?? tickets.length;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -124,7 +136,7 @@ export default function TicketsScreen() {
       </View>
 
       <FlatList
-        data={isLoading ? Array(4).fill(null) : visibleTickets}
+        data={query.isLoading ? Array(4).fill(null) : visibleTickets}
         keyExtractor={(item, i) =>
           item ? String(item.feedbackId ?? item.id ?? i) : String(i)
         }
@@ -132,13 +144,17 @@ export default function TicketsScreen() {
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={query.isRefetching && !query.isFetchingNextPage}
+            onRefresh={query.refetch}
             tintColor={colors.primary}
           />
         }
+        onEndReached={() => {
+          if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
+        }}
+        onEndReachedThreshold={0.35}
         ListEmptyComponent={
-          !isLoading ? (
+          !query.isLoading ? (
             <View style={styles.emptyWrap}>
               <View style={styles.emptyIconCircle}>
                 <Icon name="inbox" size={40} color={colors.primary} />
@@ -158,6 +174,15 @@ export default function TicketsScreen() {
             </View>
           ) : null
         }
+        ListFooterComponent={query.isFetchingNextPage ? (
+          <View style={{ paddingVertical: 18 }}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : query.hasNextPage ? (
+          <Pressable style={styles.loadMoreButton} onPress={() => { void query.fetchNextPage(); }}>
+            <Text style={styles.loadMoreText}>Tải thêm phản ánh</Text>
+          </Pressable>
+        ) : null}
         renderItem={({ item }) =>
           !item ? (
             <View style={styles.skeletonWrap}>
@@ -320,5 +345,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semibold,
     fontSize: fontSizes['sm'],
     color: colors.surface,
+  },
+  loadMoreButton: {
+    minHeight: 46,
+    marginHorizontal: spacing['5'],
+    marginTop: spacing['3'],
+    borderRadius: radius.control,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  loadMoreText: {
+    fontFamily: fonts.semibold,
+    fontSize: fontSizes.sm,
+    color: colors.primary,
   },
 });

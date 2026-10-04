@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, FlatList, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, FlatList, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { AppHeader, Text } from '@/components/ui';
 import { AppCard } from '@/components/ui';
 import { TicketStatusBadge } from '@/components/ui';
@@ -13,14 +13,16 @@ import { colors } from '@/constants/theme';
 export default function SelectFeedbackScreen() {
   const router = useRouter();
 
-  const { data, isLoading, isError, isRefetching, refetch } = useQuery({
-    queryKey: reportingKeys.list({ pageSize: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
-    queryFn: () =>
-      feedbackApi.list({ pageSize: 50, sortBy: 'createdAt', sortOrder: 'desc' }),
+  const query = useInfiniteQuery({
+    queryKey: reportingKeys.list({ pageSize: 20, sortBy: 'createdAt', sortOrder: 'desc' }),
+    queryFn: ({ pageParam = 1 }) =>
+      feedbackApi.listPage({ pageNumber: pageParam, pageSize: 20, sortBy: 'createdAt', sortOrder: 'desc' }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.hasNextPage ? lastPage.pageNumber + 1 : undefined,
     staleTime: 1000 * 30,
   });
 
-  const feedbacks = Array.isArray(data) ? data : data?.items ?? [];
+  const feedbacks = query.data?.pages.flatMap((page) => page.items) ?? [];
 
   const renderItem = ({ item }: { item: any }) => {
     const createdAt = item?.createdAt
@@ -47,8 +49,8 @@ export default function SelectFeedbackScreen() {
     );
   };
 
-  const renderEmpty = () => isError ? (
-    <AppErrorState onRetry={refetch}>Không thể tải danh sách phản ánh.</AppErrorState>
+  const renderEmpty = () => query.isError ? (
+    <AppErrorState onRetry={query.refetch}>Không thể tải danh sách phản ánh.</AppErrorState>
   ) : (
     <View style={styles.emptyWrap}>
       <View style={styles.emptyIconCircle}>
@@ -77,14 +79,21 @@ export default function SelectFeedbackScreen() {
       </View>
 
       <FlatList
-        data={isLoading ? Array(4).fill(null) : feedbacks}
+        data={query.isLoading ? Array(4).fill(null) : feedbacks}
         keyExtractor={(item, index) => (item ? String(item.feedbackId ?? item.id ?? index) : String(index))}
         renderItem={({ item }) => (item ? renderItem({ item }) : <SkeletonCard />)}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={!isLoading ? renderEmpty : null}
+        ListEmptyComponent={!query.isLoading ? renderEmpty : null}
         showsVerticalScrollIndicator={false}
-        onRefresh={refetch}
-        refreshing={isRefetching}
+        onRefresh={query.refetch}
+        refreshing={query.isRefetching && !query.isFetchingNextPage}
+        onEndReached={() => {
+          if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
+        }}
+        onEndReachedThreshold={0.35}
+        ListFooterComponent={query.isFetchingNextPage ? (
+          <View style={styles.loadingMore}><ActivityIndicator color={colors.primary} /></View>
+        ) : null}
       />
     </SafeAreaView>
   );
@@ -109,4 +118,5 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontFamily: 'Geist-Regular', fontSize: 14, color: colors.muted, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
   emptyButton: { backgroundColor: colors.primary, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 999 },
   emptyButtonText: { fontFamily: 'Geist-SemiBold', fontSize: 14, color: '#FFFFFF' },
+  loadingMore: { paddingVertical: 18, alignItems: 'center' },
 });

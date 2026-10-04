@@ -11,13 +11,13 @@ const INITIAL_RETRY_DELAYS_MS = [1000, 2000, 5000, 10000, 30000] as const;
 /**
  * Nhịp tải lại khi không có kênh realtime, dùng chung cho hai màn hội thoại.
  */
-export const MESSAGE_POLL_INTERVAL_MS = 2000;
+export const MESSAGE_POLL_INTERVAL_MS = 5000;
 
 /**
  * Khi WebSocket đang chạy thì tin nhắn được đẩy xuống ngay, nên nhịp này chỉ còn
  * làm nhiệm vụ đối chiếu lại những gì có thể lọt qua lúc kết nối chập chờn.
  */
-export const REALTIME_RECONCILE_INTERVAL_MS = 30000;
+export const REALTIME_RECONCILE_INTERVAL_MS = 60000;
 
 const readAccessToken = async () => {
   try {
@@ -104,7 +104,7 @@ type TicketMessagesRealtimeOptions = {
  * Hook chỉ báo "có tin mới" chứ không tự ghép tin vào cache, vì màn hình người dân
  * và màn hình nhân sự dùng hai kiểu dữ liệu tin nhắn khác nhau. Để mỗi màn hình tự
  * tải lại giữ cho nguồn sự thật vẫn là API, đổi lại một request cho mỗi tin nhắn
- * thay vì một request mỗi hai giây.
+ * thay vì liên tục tải lại toàn bộ lịch sử ở nhịp ngắn.
  *
  * Trả về trạng thái kết nối để màn hình giãn nhịp tải lại khi socket đang chạy.
  */

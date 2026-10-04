@@ -4,11 +4,12 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Icon from '@expo/vector-icons/Feather';
 import { Text } from '@/components/ui';
 import { AppHeader } from '@/components/ui';
@@ -141,9 +142,15 @@ export default function NotificationsScreen() {
   const queryClient = useQueryClient();
   const [filterUnread, setFilterUnread] = useState(false);
 
-  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
+  const query = useInfiniteQuery({
     queryKey: notificationKeys.list(filterUnread),
-    queryFn: () => notificationApi.list(1, 50, filterUnread ? false : undefined),
+    queryFn: ({ pageParam = 1 }) => notificationApi.list(pageParam, 20, filterUnread ? false : undefined),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (
+      lastPage.hasNextPage || lastPage.pageNumber < lastPage.totalPages
+        ? lastPage.pageNumber + 1
+        : undefined
+    ),
   });
 
   const markAllMutation = useMutation({
@@ -157,7 +164,7 @@ export default function NotificationsScreen() {
     },
   });
 
-  const rawItems = data?.items ?? [];
+  const rawItems = query.data?.pages.flatMap((page) => page.items ?? []) ?? [];
   const notifications: NotificationItem[] = rawItems.flatMap((n: any): NotificationItem[] => {
     const notificationId = n.notificationId ?? n.id;
     if (!Number.isInteger(notificationId) || notificationId <= 0 || notificationId > 2147483647) return [];
@@ -274,13 +281,13 @@ export default function NotificationsScreen() {
         </View>
       </View>
 
-      {isError && !isLoading ? (
-        <AppErrorState onRetry={refetch}>
-          {getUserFacingError(error, 'Không thể tải danh sách thông báo. Vui lòng thử lại.')}
+      {query.isError && !query.data ? (
+        <AppErrorState onRetry={query.refetch}>
+          {getUserFacingError(query.error, 'Không thể tải danh sách thông báo. Vui lòng thử lại.')}
         </AppErrorState>
       ) : (
         <FlatList
-          data={isLoading ? Array(5).fill(null) : flatData}
+          data={query.isLoading ? Array(5).fill(null) : flatData}
           keyExtractor={(item, i) =>
             typeof item === 'string'
               ? `header-${i}`
@@ -292,13 +299,17 @@ export default function NotificationsScreen() {
           contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 100 }}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
+              refreshing={query.isRefetching && !query.isFetchingNextPage}
+              onRefresh={query.refetch}
               tintColor={semantics.text.brand}
             />
           }
+          onEndReached={() => {
+            if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
+          }}
+          onEndReachedThreshold={0.35}
           ListEmptyComponent={
-            !isLoading ? (
+            !query.isLoading ? (
               <AppEmptyState icon={<Icon name="bell-off" size={44} color={semantics.text.lightMuted} />}>
                 {filterUnread
                   ? 'Bạn đã đọc tất cả thông báo.'
@@ -306,6 +317,11 @@ export default function NotificationsScreen() {
               </AppEmptyState>
             ) : null
           }
+          ListFooterComponent={query.isFetchingNextPage ? (
+            <View style={{ paddingVertical: 18 }}>
+              <ActivityIndicator color={semantics.text.brand} />
+            </View>
+          ) : null}
           renderItem={({ item }) => {
             if (item === null) {
               return (

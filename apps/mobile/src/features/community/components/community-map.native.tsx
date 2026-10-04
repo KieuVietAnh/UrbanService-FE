@@ -156,7 +156,7 @@ export default function CommunityMapNative() {
 
   // Keep the public map request aligned with Resident Web. Pagination still
   // remains incremental on native so rendering a large marker set stays smooth.
-  const PAGE_SIZE = 100;
+  const PAGE_SIZE = 50;
 
   const {
     data: feedbackPages,

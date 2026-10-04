@@ -600,13 +600,6 @@ export default function StaffIncidentResolutionPanel({
       const refreshResults = await Promise.allSettled([
         incidentManagementApi.getIncidentById(incidentId),
         incidentManagementApi.getIncidentResolutions(incidentId),
-        incidentManagementApi.getIncidentTimeline(incidentId, { pageNumber: 1, pageSize: 20 }),
-        incidentManagementApi.getIncidentProviderAssignment(incidentId),
-        incidentManagementApi.getIncidents({
-          pageNumber: 1,
-          pageSize: 1,
-          assignedStaffUserId: staffUserId,
-        }),
       ]);
       const [incidentResult, historyResult] = refreshResults;
 
